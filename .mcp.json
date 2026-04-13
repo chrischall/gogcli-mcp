@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "gogcli": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {
+        "GOG_ACCOUNT": "${GOG_ACCOUNT}"
+      }
+    }
+  }
+}
