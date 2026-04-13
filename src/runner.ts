@@ -16,8 +16,17 @@ export interface RunOptions {
 
 const TIMEOUT_MS = 30_000;
 
+function formatTimeout(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds >= 60) {
+    const minutes = Math.round(seconds / 60);
+    return `${ms}ms (${minutes} minute${minutes !== 1 ? 's' : ''})`;
+  }
+  return `${ms}ms`;
+}
+
 export async function run(args: string[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner = spawn as unknown as Spawner, interactive = false } = options;
+  const { account, spawner = spawn as unknown as Spawner, interactive = false, timeout } = options;
 
   const effectiveAccount = account ?? process.env.GOG_ACCOUNT;
 
@@ -30,6 +39,8 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
   }
   fullArgs.push(...args);
 
+  const effectiveTimeout = timeout ?? TIMEOUT_MS;
+
   return new Promise((resolve, reject) => {
     const child = spawner(process.env.GOG_PATH ?? 'gog', fullArgs, { env: process.env });
     let stdout = '';
@@ -39,8 +50,8 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
     const timer = setTimeout(() => {
       settled = true;
       child.kill();
-      reject(new Error(`gog timed out after ${TIMEOUT_MS}ms`));
-    }, TIMEOUT_MS);
+      reject(new Error(`gog timed out after ${formatTimeout(effectiveTimeout)}`));
+    }, effectiveTimeout);
 
     child.stdout!.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
     child.stderr!.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });

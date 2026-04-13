@@ -228,6 +228,41 @@ describe('run', () => {
     expect(callArgs).toContain('--no-input');
   });
 
+  it('uses custom timeout when provided', async () => {
+    vi.useFakeTimers();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      return proc;
+    }) as unknown as Spawner;
+
+    const promise = run(['auth', 'add', 'user@gmail.com'], { spawner, timeout: 300_000 });
+    // Should NOT have timed out at 30s
+    vi.advanceTimersByTime(30_000);
+    // Advance to custom timeout
+    vi.advanceTimersByTime(270_000);
+    await expect(promise).rejects.toThrow('gog timed out after 300000ms (5 minutes)');
+    vi.useRealTimers();
+  });
+
+  it('includes human-readable duration in timeout error for default timeout', async () => {
+    vi.useFakeTimers();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      return proc;
+    }) as unknown as Spawner;
+
+    const promise = run(['sheets', 'get', 'id', 'A1'], { spawner });
+    vi.advanceTimersByTime(30_000);
+    await expect(promise).rejects.toThrow('gog timed out after 30000ms');
+    vi.useRealTimers();
+  });
+
   it('ignores timeout if close event already settled the promise', async () => {
     vi.useFakeTimers();
     const spawner = vi.fn(() => {
