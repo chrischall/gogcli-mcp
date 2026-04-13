@@ -31,30 +31,37 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # Tag the current commit with the current version
+      # Single version in root package.json — source of truth
       - name: Tag current version
         run: |
           CURRENT=$(node -p "require('./package.json').version")
           git tag "v${CURRENT}"
           echo "TAGGED_VERSION=${CURRENT}" >> "$GITHUB_ENV"
 
-      # Bump patch version in all four locations
       - name: Bump patch version
         run: |
           npm version patch --no-git-tag-version
           NEXT=$(node -p "require('./package.json').version")
           echo "NEXT_VERSION=${NEXT}" >> "$GITHUB_ENV"
 
-          # src/index.ts — MCP server version
-          sed -i "s/version: '${TAGGED_VERSION}'/version: '${NEXT}'/" src/index.ts
-
-          # manifest.json
-          node -e "
-            const fs = require('fs');
-            const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
-            m.version = '${NEXT}';
-            fs.writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n');
-          "
+          # Sync version into each package's package.json and manifest.json
+          for PKG_DIR in packages/gogcli-mcp packages/gogcli-mcp-sheets packages/gogcli-mcp-docs; do
+            node -e "
+              const fs = require('fs');
+              const p = JSON.parse(fs.readFileSync('${PKG_DIR}/package.json', 'utf8'));
+              p.version = '${NEXT}';
+              fs.writeFileSync('${PKG_DIR}/package.json', JSON.stringify(p, null, 2) + '\n');
+            "
+            MANIFEST="${PKG_DIR}/manifest.json"
+            if [ -f "$MANIFEST" ]; then
+              node -e "
+                const fs = require('fs');
+                const m = JSON.parse(fs.readFileSync('${MANIFEST}', 'utf8'));
+                m.version = '${NEXT}';
+                fs.writeFileSync('${MANIFEST}', JSON.stringify(m, null, 2) + '\n');
+              "
+            fi
+          done
 
       - name: Rebuild
         run: npm run build

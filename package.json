@@ -1,32 +1,10 @@
 {
-  "name": "gogcli-mcp",
+  "private": true,
   "version": "1.0.6",
-  "description": "MCP server wrapping gogcli for Google service access",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/chrischall/gogcli-mcp"
-  },
-  "type": "module",
-  "bin": {
-    "gogcli-mcp": "dist/index.js"
-  },
+  "workspaces": ["packages/*"],
   "scripts": {
-    "build": "tsc --noEmit && npm run bundle",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^4.3.6"
-  },
-  "devDependencies": {
-    "@types/node": "^25.5.2",
-    "@vitest/coverage-v8": "^4.1.2",
-    "esbuild": "^0.28.0",
-    "typescript": "^6.0.2",
-    "vitest": "^4.1.2"
+    "build": "npm run build --workspaces",
+    "test": "npm test --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
   }
 }

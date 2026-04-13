@@ -161,38 +161,35 @@ describe('gog_docs_structure', () => {
   });
 });
 
-// --- Comments tools ---
+// --- Comments (generic escape hatch) ---
 
-describe('gog_docs_comments_list', () => {
-  it('calls run with correct args for open comments', async () => {
-    vi.mocked(runner.run).mockResolvedValue('[{"id":"c1","content":"Fix this"}]');
+describe('gog_docs_comments', () => {
+  it('passes subcommand and args to runner', async () => {
+    vi.mocked(runner.run).mockResolvedValue('[{"id":"c1"}]');
     const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments_list')!({ docId: 'abc' });
+    const result = await handlers.get('gog_docs_comments')!({ subcommand: 'list', args: ['abc'] });
     expect(runner.run).toHaveBeenCalledWith(['docs', 'comments', 'list', 'abc'], { account: undefined });
-    expect(result.content[0].text).toContain('Fix this');
+    expect(result.content[0].text).toContain('c1');
   });
 
-  it('includes --include-resolved when set', async () => {
-    vi.mocked(runner.run).mockResolvedValue('[]');
+  it('passes flags through args', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_list')!({ docId: 'abc', includeResolved: true });
+    await handlers.get('gog_docs_comments')!({
+      subcommand: 'add', args: ['abc', 'Nice work', '--quoted=paragraph'],
+    });
     expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'list', 'abc', '--include-resolved'],
+      ['docs', 'comments', 'add', 'abc', 'Nice work', '--quoted=paragraph'],
       { account: undefined },
     );
   });
 
-  it('omits --include-resolved when false', async () => {
-    vi.mocked(runner.run).mockResolvedValue('[]');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_list')!({ docId: 'abc', includeResolved: false });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'comments', 'list', 'abc'], { account: undefined });
-  });
-
   it('forwards account override', async () => {
-    vi.mocked(runner.run).mockResolvedValue('[]');
+    vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_list')!({ docId: 'abc', account: 'other@gmail.com' });
+    await handlers.get('gog_docs_comments')!({
+      subcommand: 'list', args: ['abc'], account: 'other@gmail.com',
+    });
     expect(runner.run).toHaveBeenCalledWith(
       ['docs', 'comments', 'list', 'abc'],
       { account: 'other@gmail.com' },
@@ -200,151 +197,10 @@ describe('gog_docs_comments_list', () => {
   });
 
   it('returns error text on failure', async () => {
-    vi.mocked(runner.run).mockRejectedValue(new Error('List failed'));
+    vi.mocked(runner.run).mockRejectedValue(new Error('Comments failed'));
     const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments_list')!({ docId: 'bad' });
-    expect(result.content[0].text).toContain('Error: List failed');
-  });
-});
-
-describe('gog_docs_comments_get', () => {
-  it('calls run with correct args', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{"id":"c1","content":"Fix this","replies":[]}');
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments_get')!({ docId: 'abc', commentId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'comments', 'get', 'abc', 'c1'], { account: undefined });
-    expect(result.content[0].text).toContain('Fix this');
-  });
-
-  it('returns error text on failure', async () => {
-    vi.mocked(runner.run).mockRejectedValue(new Error('Not found'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments_get')!({ docId: 'abc', commentId: 'bad' });
-    expect(result.content[0].text).toContain('Error: Not found');
-  });
-});
-
-describe('gog_docs_comments_add', () => {
-  it('calls run with content', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{"id":"c2"}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_add')!({ docId: 'abc', content: 'Please review' });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'add', 'abc', 'Please review'],
-      { account: undefined },
-    );
-  });
-
-  it('includes --quoted when provided', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{"id":"c2"}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_add')!({
-      docId: 'abc',
-      content: 'Typo here',
-      quoted: 'teh',
-    });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'add', 'abc', 'Typo here', '--quoted=teh'],
-      { account: undefined },
-    );
-  });
-
-  it('omits --quoted when not provided', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{"id":"c2"}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_add')!({ docId: 'abc', content: 'Nice' });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'add', 'abc', 'Nice'],
-      { account: undefined },
-    );
-  });
-
-  it('returns error text on failure', async () => {
-    vi.mocked(runner.run).mockRejectedValue(new Error('Add failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments_add')!({ docId: 'bad', content: 'x' });
-    expect(result.content[0].text).toContain('Error: Add failed');
-  });
-});
-
-describe('gog_docs_comments_reply', () => {
-  it('calls run with correct args', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{"id":"r1"}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_reply')!({ docId: 'abc', commentId: 'c1', content: 'Done' });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'reply', 'abc', 'c1', 'Done'],
-      { account: undefined },
-    );
-  });
-
-  it('returns error text on failure', async () => {
-    vi.mocked(runner.run).mockRejectedValue(new Error('Reply failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments_reply')!({
-      docId: 'abc', commentId: 'c1', content: 'x',
-    });
-    expect(result.content[0].text).toContain('Error: Reply failed');
-  });
-});
-
-describe('gog_docs_comments_resolve', () => {
-  it('calls run with correct args', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_resolve')!({ docId: 'abc', commentId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'resolve', 'abc', 'c1'],
-      { account: undefined },
-    );
-  });
-
-  it('includes --message when provided', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_resolve')!({
-      docId: 'abc', commentId: 'c1', message: 'Fixed in v2',
-    });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'resolve', 'abc', 'c1', '--message=Fixed in v2'],
-      { account: undefined },
-    );
-  });
-
-  it('omits --message when not provided', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_resolve')!({ docId: 'abc', commentId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'resolve', 'abc', 'c1'],
-      { account: undefined },
-    );
-  });
-
-  it('returns error text on failure', async () => {
-    vi.mocked(runner.run).mockRejectedValue(new Error('Resolve failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments_resolve')!({ docId: 'abc', commentId: 'c1' });
-    expect(result.content[0].text).toContain('Error: Resolve failed');
-  });
-});
-
-describe('gog_docs_comments_delete', () => {
-  it('calls run with correct args', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments_delete')!({ docId: 'abc', commentId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'delete', 'abc', 'c1'],
-      { account: undefined },
-    );
-  });
-
-  it('returns error text on failure', async () => {
-    vi.mocked(runner.run).mockRejectedValue(new Error('Delete failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments_delete')!({ docId: 'abc', commentId: 'c1' });
-    expect(result.content[0].text).toContain('Error: Delete failed');
+    const result = await handlers.get('gog_docs_comments')!({ subcommand: 'list', args: ['bad'] });
+    expect(result.content[0].text).toContain('Error: Comments failed');
   });
 });
 
