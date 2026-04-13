@@ -74,23 +74,6 @@ export function registerDocsTools(server: McpServer): void {
     return runOrDiagnose(['docs', 'structure', docId], { account });
   });
 
-  // --- Comments (generic escape hatch — full comment tools are in gogcli-mcp-docs) ---
-
-  server.registerTool('gog_docs_comments', {
-    description:
-      'Run a docs comments subcommand. Subcommands: list, get, add, reply, resolve, delete. ' +
-      'Examples: subcommand="list", args=["<docId>"] | subcommand="add", args=["<docId>", "<text>", "--quoted=<passage>"] | ' +
-      'subcommand="reply", args=["<docId>", "<commentId>", "<text>"]. ' +
-      'For dedicated comment tools with full parameter validation, use the gogcli-mcp-docs package.',
-    inputSchema: {
-      subcommand: z.string().describe('Comments subcommand: list, get, add, reply, resolve, delete'),
-      args: z.array(z.string()).describe('Positional args and flags for the subcommand'),
-      account: accountParam,
-    },
-  }, async ({ subcommand, args, account }) => {
-    return runOrDiagnose(['docs', 'comments', subcommand, ...args], { account });
-  });
-
   server.registerTool('gog_docs_run', {
     description: 'Run any gog docs subcommand not covered by the other tools. Run `gog docs --help` for the full list of subcommands, or `gog docs <subcommand> --help` for flags on a specific subcommand.',
     annotations: { destructiveHint: true },

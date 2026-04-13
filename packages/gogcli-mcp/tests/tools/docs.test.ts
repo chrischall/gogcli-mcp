@@ -161,49 +161,6 @@ describe('gog_docs_structure', () => {
   });
 });
 
-// --- Comments (generic escape hatch) ---
-
-describe('gog_docs_comments', () => {
-  it('passes subcommand and args to runner', async () => {
-    vi.mocked(runner.run).mockResolvedValue('[{"id":"c1"}]');
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments')!({ subcommand: 'list', args: ['abc'] });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'comments', 'list', 'abc'], { account: undefined });
-    expect(result.content[0].text).toContain('c1');
-  });
-
-  it('passes flags through args', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments')!({
-      subcommand: 'add', args: ['abc', 'Nice work', '--quoted=paragraph'],
-    });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'add', 'abc', 'Nice work', '--quoted=paragraph'],
-      { account: undefined },
-    );
-  });
-
-  it('forwards account override', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_docs_comments')!({
-      subcommand: 'list', args: ['abc'], account: 'other@gmail.com',
-    });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'comments', 'list', 'abc'],
-      { account: 'other@gmail.com' },
-    );
-  });
-
-  it('returns error text on failure', async () => {
-    vi.mocked(runner.run).mockRejectedValue(new Error('Comments failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_docs_comments')!({ subcommand: 'list', args: ['bad'] });
-    expect(result.content[0].text).toContain('Error: Comments failed');
-  });
-});
-
 describe('gog_docs_run', () => {
   it('passes raw subcommand and args to runner', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
