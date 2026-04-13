@@ -36,7 +36,8 @@
         "${__dirname}/dist/index.js"
       ],
       "env": {
-        "GOG_ACCOUNT": "${user_config.gog_account}"
+        "GOG_ACCOUNT": "${user_config.gog_account}",
+        "GOG_PATH": "${user_config.gog_path}"
       }
     }
   },
@@ -45,6 +46,12 @@
       "type": "string",
       "title": "Google Account",
       "description": "Default Google account email (optional — uses gogcli's configured default if omitted)",
+      "required": false
+    },
+    "gog_path": {
+      "type": "string",
+      "title": "gog Executable Path",
+      "description": "Path to the gog executable (optional — defaults to 'gog' on your PATH)",
       "required": false
     }
   },

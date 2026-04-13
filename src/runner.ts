@@ -26,7 +26,7 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
   fullArgs.push(...args);
 
   return new Promise((resolve, reject) => {
-    const child = spawner('gog', fullArgs, { env: process.env });
+    const child = spawner(process.env.GOG_PATH ?? 'gog', fullArgs, { env: process.env });
     let stdout = '';
     let stderr = '';
     let settled = false;

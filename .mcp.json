@@ -5,7 +5,8 @@
       "args": ["dist/index.js"],
       "cwd": "/Users/chris/git/gogcli-mcp",
       "env": {
-        "GOG_ACCOUNT": "${GOG_ACCOUNT}"
+        "GOG_ACCOUNT": "${GOG_ACCOUNT}",
+        "GOG_PATH": "${GOG_PATH}"
       }
     }
   }
