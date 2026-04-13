@@ -93,6 +93,83 @@ export function registerDocsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  server.registerTool('gog_docs_comments_get', {
+    description:
+      'Get a single comment by ID, including its replies. ' +
+      'If authentication has expired, use gog_auth_add to re-authorize.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      commentId: z.string().describe('Comment ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, commentId, account }) => {
+    return runOrDiagnose(['docs', 'comments', 'get', docId, commentId], { account });
+  });
+
+  server.registerTool('gog_docs_comments_add', {
+    description:
+      'Add a comment to a Google Doc. Optionally attach quoted text that appears as the highlighted passage in the Google Docs UI. ' +
+      'If authentication has expired, use gog_auth_add to re-authorize.',
+    annotations: { destructiveHint: false },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      content: z.string().describe('Comment text'),
+      quoted: z.string().optional().describe('Quoted text to attach to the comment (shown in UIs when available)'),
+      account: accountParam,
+    },
+  }, async ({ docId, content, quoted, account }) => {
+    const args = ['docs', 'comments', 'add', docId, content];
+    if (quoted) args.push(`--quoted=${quoted}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_comments_reply', {
+    description:
+      'Reply to an existing comment on a Google Doc. ' +
+      'If authentication has expired, use gog_auth_add to re-authorize.',
+    annotations: { destructiveHint: false },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      commentId: z.string().describe('Comment ID to reply to'),
+      content: z.string().describe('Reply text'),
+      account: accountParam,
+    },
+  }, async ({ docId, commentId, content, account }) => {
+    return runOrDiagnose(['docs', 'comments', 'reply', docId, commentId, content], { account });
+  });
+
+  server.registerTool('gog_docs_comments_resolve', {
+    description:
+      'Resolve a comment (mark as done). Optionally include a closing message. ' +
+      'If authentication has expired, use gog_auth_add to re-authorize.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      commentId: z.string().describe('Comment ID to resolve'),
+      message: z.string().optional().describe('Optional message to include when resolving'),
+      account: accountParam,
+    },
+  }, async ({ docId, commentId, message, account }) => {
+    const args = ['docs', 'comments', 'resolve', docId, commentId];
+    if (message) args.push(`--message=${message}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_comments_delete', {
+    description:
+      'Delete a comment from a Google Doc. This action is permanent. ' +
+      'If authentication has expired, use gog_auth_add to re-authorize.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      commentId: z.string().describe('Comment ID to delete'),
+      account: accountParam,
+    },
+  }, async ({ docId, commentId, account }) => {
+    return runOrDiagnose(['docs', 'comments', 'delete', docId, commentId], { account });
+  });
+
   server.registerTool('gog_docs_run', {
     description: 'Run any gog docs subcommand not covered by the other tools. Run `gog docs --help` for the full list of subcommands, or `gog docs <subcommand> --help` for flags on a specific subcommand.',
     annotations: { destructiveHint: true },
