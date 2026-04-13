@@ -10,16 +10,21 @@ export type Spawner = (
 export interface RunOptions {
   account?: string;
   spawner?: Spawner;
+  interactive?: boolean;
+  timeout?: number;
 }
 
 const TIMEOUT_MS = 30_000;
 
 export async function run(args: string[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner = spawn as unknown as Spawner } = options;
+  const { account, spawner = spawn as unknown as Spawner, interactive = false } = options;
 
   const effectiveAccount = account ?? process.env.GOG_ACCOUNT;
 
-  const fullArgs = ['--json', '--no-input', '--color=never'];
+  const fullArgs = ['--json', '--color=never'];
+  if (!interactive) {
+    fullArgs.push('--no-input');
+  }
   if (effectiveAccount) {
     fullArgs.push('--account', effectiveAccount);
   }

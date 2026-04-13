@@ -18,12 +18,12 @@ function makeSpawner(exitCode: number, stdout = '', stderr = ''): Spawner {
 }
 
 describe('run', () => {
-  it('passes --json --no-input --color=never before service args', async () => {
+  it('passes --json --color=never --no-input before service args', async () => {
     const spawner = makeSpawner(0, '{"ok":true}');
     await run(['sheets', 'get', 'id1', 'A1'], { spawner });
     expect(spawner).toHaveBeenCalledWith(
       'gog',
-      ['--json', '--no-input', '--color=never', 'sheets', 'get', 'id1', 'A1'],
+      ['--json', '--color=never', '--no-input', 'sheets', 'get', 'id1', 'A1'],
       expect.objectContaining({ env: process.env }),
     );
   });
@@ -33,7 +33,7 @@ describe('run', () => {
     await run(['sheets', 'metadata', 'id1'], { account: 'me@gmail.com', spawner });
     expect(spawner).toHaveBeenCalledWith(
       'gog',
-      ['--json', '--no-input', '--color=never', '--account', 'me@gmail.com', 'sheets', 'metadata', 'id1'],
+      ['--json', '--color=never', '--no-input', '--account', 'me@gmail.com', 'sheets', 'metadata', 'id1'],
       expect.any(Object),
     );
   });
@@ -46,7 +46,7 @@ describe('run', () => {
       await run(['sheets', 'metadata', 'id1'], { spawner });
       expect(spawner).toHaveBeenCalledWith(
         'gog',
-        ['--json', '--no-input', '--color=never', '--account', 'env@gmail.com', 'sheets', 'metadata', 'id1'],
+        ['--json', '--color=never', '--no-input', '--account', 'env@gmail.com', 'sheets', 'metadata', 'id1'],
         expect.any(Object),
       );
     } finally {
@@ -66,7 +66,7 @@ describe('run', () => {
       await run(['sheets', 'metadata', 'id1'], { account: 'override@gmail.com', spawner });
       expect(spawner).toHaveBeenCalledWith(
         'gog',
-        ['--json', '--no-input', '--color=never', '--account', 'override@gmail.com', 'sheets', 'metadata', 'id1'],
+        ['--json', '--color=never', '--no-input', '--account', 'override@gmail.com', 'sheets', 'metadata', 'id1'],
         expect.any(Object),
       );
     } finally {
@@ -209,6 +209,23 @@ describe('run', () => {
     const result = await promise;
     expect(result).toBe('{"ok":true}');
     vi.useRealTimers();
+  });
+
+  it('omits --no-input when interactive is true', async () => {
+    const spawner = makeSpawner(0, '{"ok":true}');
+    await run(['auth', 'add', 'user@gmail.com'], { spawner, interactive: true });
+    const callArgs = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    expect(callArgs).toContain('--json');
+    expect(callArgs).toContain('--color=never');
+    expect(callArgs).not.toContain('--no-input');
+    expect(callArgs).toContain('auth');
+  });
+
+  it('includes --no-input when interactive is not set', async () => {
+    const spawner = makeSpawner(0, '{"ok":true}');
+    await run(['sheets', 'get', 'id1', 'A1'], { spawner });
+    const callArgs = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    expect(callArgs).toContain('--no-input');
   });
 
   it('ignores timeout if close event already settled the promise', async () => {
