@@ -37,7 +37,8 @@
       ],
       "env": {
         "GOG_ACCOUNT": "${user_config.gog_account}",
-        "GOG_PATH": "${user_config.gog_path}"
+        "GOG_PATH": "${user_config.gog_path}",
+        "GOG_ACCESS_TOKEN": "${user_config.gog_access_token}"
       }
     }
   },
@@ -53,6 +54,13 @@
       "title": "gog Executable Path",
       "description": "Path to the gog executable (optional — defaults to 'gog' on your PATH)",
       "required": false
+    },
+    "gog_access_token": {
+      "type": "string",
+      "title": "Google Access Token",
+      "description": "Short-lived OAuth access token (optional — bypasses stored refresh tokens, expires in ~1h). Useful for CI or automated contexts.",
+      "required": false,
+      "sensitive": true
     }
   },
   "tools": [
