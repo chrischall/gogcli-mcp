@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-sheets",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Extended Google Sheets MCP server via gogcli — all base tools plus full Sheets support",
   "repository": {
     "type": "git",
