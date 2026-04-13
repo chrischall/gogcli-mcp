@@ -1,14 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { run } from '../runner.js';
-
-function toText(output: string): { content: [{ type: 'text'; text: string }] } {
-  return { content: [{ type: 'text' as const, text: output }] };
-}
-
-function toError(err: unknown): { content: [{ type: 'text'; text: string }] } {
-  return toText(err instanceof Error ? `Error: ${err.message}` : String(err));
-}
+import { toText, toError } from './utils.js';
 
 export function registerAuthTools(server: McpServer): void {
   server.registerTool('gog_auth_list', {

@@ -1,30 +1,27 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { run } from '../runner.js';
+import { toText, toError, type ToolResult } from './utils.js';
 
 const accountParam = z.string().optional().describe(
   'Google account email to use (overrides GOG_ACCOUNT env var)',
 );
-
-function toText(output: string): { content: [{ type: 'text'; text: string }] } {
-  return { content: [{ type: 'text' as const, text: output }] };
-}
 
 // On failure, appends `gog auth list` output so Claude can see which accounts
 // are configured and suggest the right one.
 async function runOrDiagnose(
   args: string[],
   options: { account?: string },
-): Promise<{ content: [{ type: 'text'; text: string }] }> {
+): Promise<ToolResult> {
   try {
     return toText(await run(args, options));
   } catch (err) {
-    const errorText = err instanceof Error ? `Error: ${err.message}` : String(err);
+    const base = toError(err);
     try {
       const accounts = await run(['auth', 'list']);
-      return toText(`${errorText}\n\nConfigured accounts:\n${accounts}`);
+      return toText(`${base.content[0].text}\n\nConfigured accounts:\n${accounts}`);
     } catch {
-      return toText(errorText);
+      return base;
     }
   }
 }
