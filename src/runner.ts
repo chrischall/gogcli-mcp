@@ -27,11 +27,14 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
     const child = spawner('gog', fullArgs, { env: process.env });
     let stdout = '';
     let stderr = '';
+    let settled = false;
 
     child.stdout!.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
     child.stderr!.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
 
     child.on('close', (code: number | null) => {
+      if (settled) return;
+      settled = true;
       if (code === 0) {
         resolve(stdout);
       } else {
@@ -39,6 +42,10 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
       }
     });
 
-    child.on('error', reject);
+    child.on('error', (err: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
   });
 }

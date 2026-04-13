@@ -64,9 +64,11 @@ describe('run', () => {
     process.env.GOG_ACCOUNT = 'env@gmail.com';
     try {
       await run(['sheets', 'metadata', 'id1'], { account: 'override@gmail.com', spawner });
-      const callArgs = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
-      const accountIdx = callArgs.indexOf('--account');
-      expect(callArgs[accountIdx + 1]).toBe('override@gmail.com');
+      expect(spawner).toHaveBeenCalledWith(
+        'gog',
+        ['--json', '--no-input', '--color=never', '--account', 'override@gmail.com', 'sheets', 'metadata', 'id1'],
+        expect.any(Object),
+      );
     } finally {
       if (originalEnv === undefined) {
         delete process.env.GOG_ACCOUNT;
