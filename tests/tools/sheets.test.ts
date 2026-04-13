@@ -42,6 +42,13 @@ describe('gog_sheets_get', () => {
     const result = await handlers.get('gog_sheets_get')!({ spreadsheetId: 'bad', range: 'A1' });
     expect(result.content[0].text).toBe('Error: Spreadsheet not found');
   });
+
+  it('handles non-Error rejection', async () => {
+    vi.mocked(runner.run).mockRejectedValue('raw error string');
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_get')!({ spreadsheetId: 'bad', range: 'A1' });
+    expect(result.content[0].text).toBe('raw error string');
+  });
 });
 
 describe('gog_sheets_update', () => {
@@ -54,6 +61,13 @@ describe('gog_sheets_update', () => {
       ['sheets', 'update', 'sid', 'A1:B1', `--values-json=${JSON.stringify(values)}`],
       { account: undefined },
     );
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Update failed'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_update')!({ spreadsheetId: 'bad', range: 'A1', values: [['x']] });
+    expect(result.content[0].text).toBe('Error: Update failed');
   });
 });
 
@@ -68,6 +82,13 @@ describe('gog_sheets_append', () => {
       { account: undefined },
     );
   });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Append failed'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_append')!({ spreadsheetId: 'bad', range: 'A1', values: [['x']] });
+    expect(result.content[0].text).toBe('Error: Append failed');
+  });
 });
 
 describe('gog_sheets_clear', () => {
@@ -76,6 +97,13 @@ describe('gog_sheets_clear', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_clear')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:Z100' });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'clear', 'sid', 'Sheet1!A1:Z100'], { account: undefined });
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Clear failed'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_clear')!({ spreadsheetId: 'bad', range: 'A1' });
+    expect(result.content[0].text).toBe('Error: Clear failed');
   });
 });
 
@@ -87,6 +115,13 @@ describe('gog_sheets_metadata', () => {
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'metadata', 'sid'], { account: undefined });
     expect(result.content[0].text).toContain('My Sheet');
   });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Not found'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_metadata')!({ spreadsheetId: 'bad' });
+    expect(result.content[0].text).toBe('Error: Not found');
+  });
 });
 
 describe('gog_sheets_create', () => {
@@ -96,6 +131,13 @@ describe('gog_sheets_create', () => {
     await handlers.get('gog_sheets_create')!({ title: 'Budget 2026' });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'create', 'Budget 2026'], { account: undefined });
   });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Create failed'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_create')!({ title: 'Bad' });
+    expect(result.content[0].text).toBe('Error: Create failed');
+  });
 });
 
 describe('gog_sheets_find_replace', () => {
@@ -104,6 +146,13 @@ describe('gog_sheets_find_replace', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_find_replace')!({ spreadsheetId: 'sid', find: 'foo', replace: 'bar' });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'find-replace', 'sid', 'foo', 'bar'], { account: undefined });
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Replace failed'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_find_replace')!({ spreadsheetId: 'bad', find: 'x', replace: 'y' });
+    expect(result.content[0].text).toBe('Error: Replace failed');
   });
 });
 
@@ -123,5 +172,12 @@ describe('gog_sheets_run', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_run')!({ subcommand: 'metadata', args: [] });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'metadata'], { account: undefined });
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Run failed'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_run')!({ subcommand: 'freeze', args: [] });
+    expect(result.content[0].text).toBe('Error: Run failed');
   });
 });

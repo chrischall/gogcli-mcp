@@ -104,6 +104,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_create', {
     description: 'Create a new Google Spreadsheet. Returns JSON with the new spreadsheetId and URL.',
+    annotations: { destructiveHint: true },
     inputSchema: {
       title: z.string().describe('Title for the new spreadsheet'),
       account: accountParam,
@@ -118,6 +119,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_find_replace', {
     description: 'Find and replace text across an entire Google Spreadsheet.',
+    annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       find: z.string().describe('Text to find'),
@@ -134,6 +136,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_run', {
     description: 'Run any gog sheets subcommand not covered by the other tools. See `gog sheets --help` for the full list of subcommands and their flags.',
+    annotations: { destructiveHint: true },
     inputSchema: {
       subcommand: z.string().describe('The gog sheets subcommand to run, e.g. "freeze", "add-tab", "rename-tab"'),
       args: z.array(z.string()).describe('Additional positional args and flags, e.g. ["<spreadsheetId>", "--rows=1"]'),

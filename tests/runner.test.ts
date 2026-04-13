@@ -122,4 +122,35 @@ describe('run', () => {
     await expect(run(['sheets', 'get', 'id', 'A1'], { spawner }))
       .rejects.toThrow('gog not found');
   });
+
+  it('ignores close event if error event already settled the promise', async () => {
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      setTimeout(() => {
+        proc.emit('error', new Error('spawn error'));
+        proc.emit('close', 0);
+      }, 0);
+      return proc;
+    }) as unknown as Spawner;
+    await expect(run(['sheets', 'get', 'id', 'A1'], { spawner }))
+      .rejects.toThrow('spawn error');
+  });
+
+  it('ignores error event if close event already settled the promise', async () => {
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      setTimeout(() => {
+        (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', Buffer.from('{"ok":true}'));
+        proc.emit('close', 0);
+        proc.emit('error', new Error('should be ignored'));
+      }, 0);
+      return proc;
+    }) as unknown as Spawner;
+    const result = await run(['sheets', 'get', 'id', 'A1'], { spawner });
+    expect(result).toBe('{"ok":true}');
+  });
 });
