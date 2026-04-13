@@ -1,12 +1,24 @@
 #!/usr/bin/env node
-// Syncs version from root package.json into manifest.json files.
-// Run after `npm version patch` to keep manifests in sync.
+// Usage: node scripts/bump.js [major|minor|patch]
+// Bumps version in root + all workspaces, then syncs manifest.json files.
+const { execSync } = require('child_process');
 const fs = require('fs');
 const { resolve, join } = require('path');
 
-const root = resolve(__dirname, '..');
-const version = require(join(root, 'package.json')).version;
+const level = process.argv[2] || 'patch';
+if (!['major', 'minor', 'patch'].includes(level)) {
+  console.error(`Usage: npm run bump [major|minor|patch] (got "${level}")`);
+  process.exit(1);
+}
 
+const root = resolve(__dirname, '..');
+const opts = { cwd: root, stdio: 'inherit' };
+
+execSync(`npm version ${level} --no-git-tag-version`, opts);
+execSync(`npm version ${level} --no-git-tag-version --workspaces`, opts);
+
+// Sync manifest.json files to match the new version
+const version = require(join(root, 'package.json')).version;
 for (const name of fs.readdirSync(join(root, 'packages'))) {
   const manifest = join(root, 'packages', name, 'manifest.json');
   if (!fs.existsSync(manifest)) continue;
