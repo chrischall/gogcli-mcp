@@ -3,6 +3,7 @@
     "gogcli": {
       "command": "node",
       "args": ["dist/index.js"],
+      "cwd": "/Users/chris/git/gogcli-mcp",
       "env": {
         "GOG_ACCOUNT": "${GOG_ACCOUNT}"
       }
