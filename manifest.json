@@ -57,6 +57,22 @@
   },
   "tools": [
     {
+      "name": "gog_auth_list",
+      "description": "List all Google accounts stored in gogcli"
+    },
+    {
+      "name": "gog_auth_status",
+      "description": "Show gogcli auth configuration (keyring, credential files)"
+    },
+    {
+      "name": "gog_auth_services",
+      "description": "List Google services and OAuth scopes supported by gogcli"
+    },
+    {
+      "name": "gog_auth_run",
+      "description": "Run any gog auth subcommand (escape hatch)"
+    },
+    {
       "name": "gog_sheets_get",
       "description": "Read values from a Google Sheets range"
     },

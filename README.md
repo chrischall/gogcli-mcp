@@ -30,7 +30,7 @@ brew install gogcli
 Then authenticate:
 
 ```bash
-gog auth add
+gog auth add <your-email> --services sheets
 ```
 
 ## Installation
@@ -113,7 +113,7 @@ Claude will pass `account: "work@company.com"` to the tool, which adds `--accoun
 
 **"gog not found"** — gogcli is not installed or not in your PATH. Run `gog --help` in your terminal to verify. Install with `brew install gogcli`.
 
-**"not authenticated"** — run `gog auth add` to authenticate. Run `gog auth list` to see configured accounts.
+**"not authenticated"** — run `gog auth add <your-email> --services sheets` to authenticate. Run `gog auth list` to see configured accounts.
 
 **"Spreadsheet not found"** — verify the spreadsheet ID (the long string in the URL between `/d/` and `/edit`).
 

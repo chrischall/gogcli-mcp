@@ -10,8 +10,23 @@ function toText(output: string): { content: [{ type: 'text'; text: string }] } {
   return { content: [{ type: 'text' as const, text: output }] };
 }
 
-function toError(err: unknown): { content: [{ type: 'text'; text: string }] } {
-  return toText(err instanceof Error ? `Error: ${err.message}` : String(err));
+// On failure, appends `gog auth list` output so Claude can see which accounts
+// are configured and suggest the right one.
+async function runOrDiagnose(
+  args: string[],
+  options: { account?: string },
+): Promise<{ content: [{ type: 'text'; text: string }] }> {
+  try {
+    return toText(await run(args, options));
+  } catch (err) {
+    const errorText = err instanceof Error ? `Error: ${err.message}` : String(err);
+    try {
+      const accounts = await run(['auth', 'list']);
+      return toText(`${errorText}\n\nConfigured accounts:\n${accounts}`);
+    } catch {
+      return toText(errorText);
+    }
+  }
 }
 
 export function registerSheetsTools(server: McpServer): void {
@@ -24,11 +39,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, range, account }) => {
-    try {
-      return toText(await run(['sheets', 'get', spreadsheetId, range], { account }));
-    } catch (err) {
-      return toError(err);
-    }
+    return runOrDiagnose(['sheets', 'get', spreadsheetId, range], { account });
   });
 
   server.registerTool('gog_sheets_update', {
@@ -41,14 +52,10 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, range, values, account }) => {
-    try {
-      return toText(await run(
-        ['sheets', 'update', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`],
-        { account },
-      ));
-    } catch (err) {
-      return toError(err);
-    }
+    return runOrDiagnose(
+      ['sheets', 'update', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`],
+      { account },
+    );
   });
 
   server.registerTool('gog_sheets_append', {
@@ -61,14 +68,10 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, range, values, account }) => {
-    try {
-      return toText(await run(
-        ['sheets', 'append', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`],
-        { account },
-      ));
-    } catch (err) {
-      return toError(err);
-    }
+    return runOrDiagnose(
+      ['sheets', 'append', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`],
+      { account },
+    );
   });
 
   server.registerTool('gog_sheets_clear', {
@@ -80,11 +83,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, range, account }) => {
-    try {
-      return toText(await run(['sheets', 'clear', spreadsheetId, range], { account }));
-    } catch (err) {
-      return toError(err);
-    }
+    return runOrDiagnose(['sheets', 'clear', spreadsheetId, range], { account });
   });
 
   server.registerTool('gog_sheets_metadata', {
@@ -95,11 +94,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, account }) => {
-    try {
-      return toText(await run(['sheets', 'metadata', spreadsheetId], { account }));
-    } catch (err) {
-      return toError(err);
-    }
+    return runOrDiagnose(['sheets', 'metadata', spreadsheetId], { account });
   });
 
   server.registerTool('gog_sheets_create', {
@@ -109,11 +104,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ title, account }) => {
-    try {
-      return toText(await run(['sheets', 'create', title], { account }));
-    } catch (err) {
-      return toError(err);
-    }
+    return runOrDiagnose(['sheets', 'create', title], { account });
   });
 
   server.registerTool('gog_sheets_find_replace', {
@@ -126,11 +117,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, find, replace, account }) => {
-    try {
-      return toText(await run(['sheets', 'find-replace', spreadsheetId, find, replace], { account }));
-    } catch (err) {
-      return toError(err);
-    }
+    return runOrDiagnose(['sheets', 'find-replace', spreadsheetId, find, replace], { account });
   });
 
   server.registerTool('gog_sheets_run', {
@@ -142,10 +129,6 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ subcommand, args, account }) => {
-    try {
-      return toText(await run(['sheets', subcommand, ...args], { account }));
-    } catch (err) {
-      return toError(err);
-    }
+    return runOrDiagnose(['sheets', subcommand, ...args], { account });
   });
 }

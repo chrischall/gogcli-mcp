@@ -36,7 +36,16 @@ describe('gog_sheets_get', () => {
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', 'sid', 'A1'], { account: 'other@gmail.com' });
   });
 
-  it('returns error text on failure', async () => {
+  it('appends auth list on failure when auth list succeeds', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('Spreadsheet not found'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_get')!({ spreadsheetId: 'bad', range: 'A1' });
+    expect(result.content[0].text).toBe('Error: Spreadsheet not found\n\nConfigured accounts:\nuser@gmail.com');
+  });
+
+  it('returns plain error text when auth list also fails', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Spreadsheet not found'));
     const handlers = setupHandlers();
     const result = await handlers.get('gog_sheets_get')!({ spreadsheetId: 'bad', range: 'A1' });
@@ -44,7 +53,9 @@ describe('gog_sheets_get', () => {
   });
 
   it('handles non-Error rejection', async () => {
-    vi.mocked(runner.run).mockRejectedValue('raw error string');
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce('raw error string')
+      .mockRejectedValueOnce(new Error('auth list failed'));
     const handlers = setupHandlers();
     const result = await handlers.get('gog_sheets_get')!({ spreadsheetId: 'bad', range: 'A1' });
     expect(result.content[0].text).toBe('raw error string');
