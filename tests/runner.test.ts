@@ -300,6 +300,23 @@ describe('run', () => {
     vi.useRealTimers();
   });
 
+  it('strips GOG_ACCESS_TOKEN from child environment to force refresh-token auth', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const originalToken = process.env.GOG_ACCESS_TOKEN;
+    process.env.GOG_ACCESS_TOKEN = 'stale-token-from-mcp-config';
+    try {
+      await run(['docs', 'comments', 'list', 'docId'], { spawner });
+      const envPassed = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
+      expect(envPassed.GOG_ACCESS_TOKEN).toBeUndefined();
+    } finally {
+      if (originalToken === undefined) {
+        delete process.env.GOG_ACCESS_TOKEN;
+      } else {
+        process.env.GOG_ACCESS_TOKEN = originalToken;
+      }
+    }
+  });
+
   it('ignores timeout if close event already settled the promise', async () => {
     vi.useFakeTimers();
     const spawner = vi.fn(() => {

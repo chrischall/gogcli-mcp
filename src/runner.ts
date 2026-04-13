@@ -42,7 +42,10 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
   const effectiveTimeout = timeout ?? TIMEOUT_MS;
 
   return new Promise((resolve, reject) => {
-    const child = spawner(process.env.GOG_PATH ?? 'gog', fullArgs, { env: process.env });
+    // Strip GOG_ACCESS_TOKEN so gogcli uses stored refresh tokens instead of
+    // a potentially stale direct access token passed through MCP env config.
+    const { GOG_ACCESS_TOKEN: _, ...cleanEnv } = process.env;
+    const child = spawner(process.env.GOG_PATH ?? 'gog', fullArgs, { env: cleanEnv });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let settled = false;
