@@ -1,41 +1,20 @@
 ---
 name: gogcli-mcp
-description: Use when the user asks to read, write, or manage Google Sheets. Also triggers for requests involving Google Sheets data like "read my spreadsheet", "update a cell", "append rows", "create a spreadsheet", or "find and replace in Sheets". Broader Google service support (Gmail, Calendar, Drive) can be added via future service modules.
+description: Use when the user asks to interact with Google Workspace services. Triggers for requests involving Google Sheets, Docs, Gmail, Calendar, Drive, Tasks, or Contacts — such as "read my spreadsheet", "search my email", "create a calendar event", "list my drive files", or "add a contact". For extended Sheets or Docs support, see gogcli-mcp-sheets and gogcli-mcp-docs.
 ---
 
 # gogcli-mcp
 
-MCP server wrapping [gogcli](https://github.com/steipete/gogcli) — provides Claude with access to Google Sheets (and a scaffold for Gmail, Calendar, Drive, and more).
+MCP server wrapping [gogcli](https://github.com/steipete/gogcli) — provides Claude with access to Google Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, and Auth.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated (`gog --help` works in your shell)
+- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
 - Node.js 18 or later
 
 ## Setup
-
-### Option A — Claude Code (direct MCP)
-
-Add to `.mcp.json` in your project:
-
-```json
-{
-  "mcpServers": {
-    "gogcli": {
-      "command": "node",
-      "args": ["/path/to/gogcli-mcp/dist/index.js"],
-      "cwd": "/path/to/gogcli-mcp",
-      "env": {
-        "GOG_ACCOUNT": "you@gmail.com"
-      }
-    }
-  }
-}
-```
-
-### Option B — npx
 
 ```json
 {
@@ -51,19 +30,19 @@ Add to `.mcp.json` in your project:
 }
 ```
 
-`GOG_ACCOUNT` is optional — omit it to use gogcli's configured default account. Pass it per-tool-call to target a specific account dynamically.
+`GOG_ACCOUNT` is optional — omit it to use gogcli's configured default account.
 
-## Available Tools
+## Tools (52)
 
-| Tool | What it does |
-|------|-------------|
-| `gog_sheets_get` | Read values from a range |
-| `gog_sheets_update` | Write values to a range |
-| `gog_sheets_append` | Append rows after existing data |
-| `gog_sheets_clear` | Clear values in a range |
-| `gog_sheets_metadata` | Get title, tabs, named ranges |
-| `gog_sheets_create` | Create a new spreadsheet |
-| `gog_sheets_find_replace` | Find and replace across a spreadsheet |
-| `gog_sheets_run` | Run any `gog sheets` subcommand (escape hatch) |
+| Service | Tools |
+|---------|-------|
+| **Sheets** (8) | get, update, append, clear, metadata, create, find-replace, run |
+| **Docs** (7) | info, cat, create, write, find-replace, structure, run |
+| **Gmail** (4) | search, get, send, run |
+| **Calendar** (7) | events, get, create, update, delete, respond, run |
+| **Drive** (9) | ls, search, get, mkdir, rename, move, delete, share, run |
+| **Tasks** (7) | lists, list, get, add, done, delete, run |
+| **Contacts** (5) | search, list, get, create, run |
+| **Auth** (5) | list, status, services, add, run |
 
 All tools accept an optional `account` parameter to override the default Google account for that call.

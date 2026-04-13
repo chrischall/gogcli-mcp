@@ -1,11 +1,11 @@
 ---
 name: gogcli-mcp-docs
-description: Use when the user asks to read, write, edit, export, or comment on Google Docs. Triggers for requests involving document editing, inserting text, exporting as PDF/HTML/DOCX, sed-like find-replace, managing document tabs, or working with comments and replies. Also includes Gmail, Calendar, Drive, Sheets, Tasks, and Contacts tools.
+description: Use when the user asks to read, write, edit, export, or comment on Google Docs. Triggers for requests involving document editing, inserting text, exporting as PDF/HTML/DOCX/RTF/ODT/EPUB, sed-like find-replace, managing document tabs, or working with comments and replies. Includes auth and Docs tools only.
 ---
 
 # gogcli-mcp-docs
 
-Extended Google Docs MCP server via [gogcli](https://github.com/steipete/gogcli) — includes auth plus 14 additional dedicated Docs tools.
+Extended Google Docs MCP server via [gogcli](https://github.com/steipete/gogcli) — 26 tools: auth + 7 base Docs + 14 extra dedicated Docs tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
@@ -37,7 +37,7 @@ Extended Google Docs MCP server via [gogcli](https://github.com/steipete/gogcli)
 | `gog_docs_copy` | Copy a document |
 | `gog_docs_delete` | Delete content by character index range |
 | `gog_docs_edit` | Find and replace with case-sensitivity |
-| `gog_docs_export` | Export as PDF, TXT, HTML, DOCX, RTF |
+| `gog_docs_export` | Export as PDF, TXT, HTML, DOCX, RTF, ODT, or EPUB |
 | `gog_docs_insert` | Insert text at a specific position |
 | `gog_docs_list_tabs` | List all document tabs |
 | `gog_docs_sed` | Stream-edit with sed-like regex |

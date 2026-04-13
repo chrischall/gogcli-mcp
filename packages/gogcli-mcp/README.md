@@ -1,6 +1,6 @@
 # gogcli-mcp
 
-Base [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude access to Google Workspace via [gogcli](https://github.com/steipete/gogcli). Includes 53 tools across 8 services: Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, and Auth.
+Base [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude access to Google Workspace via [gogcli](https://github.com/steipete/gogcli). Includes 52 tools across 8 services: Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, and Auth.
 
 For extended Sheets or Docs support, see [gogcli-mcp-sheets](https://www.npmjs.com/package/gogcli-mcp-sheets) and [gogcli-mcp-docs](https://www.npmjs.com/package/gogcli-mcp-docs).
 
@@ -43,12 +43,12 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 claude mcp add gogcli-mcp -- gogcli-mcp
 ```
 
-## Tools (53)
+## Tools (52)
 
 | Service | Tools | Includes |
 |---------|-------|----------|
 | **Sheets** | 8 | get, update, append, clear, metadata, create, find-replace, run |
-| **Docs** | 8 | info, cat, create, write, find-replace, structure, comments (generic), run |
+| **Docs** | 7 | info, cat, create, write, find-replace, structure, run |
 | **Gmail** | 4 | search, get, send, run |
 | **Calendar** | 7 | events, get, create, update, delete, respond, run |
 | **Drive** | 9 | ls, search, get, mkdir, rename, move, delete, share, run |
