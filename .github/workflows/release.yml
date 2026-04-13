@@ -85,12 +85,18 @@ jobs:
             cd - > /dev/null
           done
 
+      - name: Generate changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          node scripts/changelog.js "$PREV_TAG" > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3.0.0
         with:
+          body_path: RELEASE_NOTES.md
           files: |
             gogcli-mcp-${{ env.VERSION }}.skill
             gogcli-mcp-${{ env.VERSION }}.mcpb
             gogcli-mcp-sheets-${{ env.VERSION }}.mcpb
             gogcli-mcp-docs-${{ env.VERSION }}.mcpb
-          generate_release_notes: true

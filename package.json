@@ -8,6 +8,7 @@
     "build": "npm run build --workspaces",
     "test": "npm test --workspaces",
     "typecheck": "npm run typecheck --workspaces",
-    "publish:all": "npm run build && npm publish --access public --workspaces"
+    "publish:all": "npm run build && npm publish --access public --workspaces",
+    "changelog": "node scripts/changelog.js"
   }
 }
