@@ -1,6 +1,6 @@
 # gogcli-mcp-docs
 
-Extended Google Docs [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/steipete/gogcli). Includes all 53 base tools from [gogcli-mcp](https://www.npmjs.com/package/gogcli-mcp) plus 14 additional dedicated Docs tools for editing, exporting, comments, and more.
+Extended Google Docs [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/steipete/gogcli). Includes auth tools plus 14 additional dedicated Docs tools for editing, exporting, comments, and more.
 
 ## Requirements
 
@@ -43,7 +43,7 @@ claude mcp add gogcli-docs -- gogcli-mcp-docs
 
 ## Extra Docs Tools (14)
 
-These are in addition to the 53 base tools (Gmail, Calendar, Drive, Tasks, Contacts, Auth, basic Sheets/Docs).
+Plus 5 auth tools and 7 base Docs tools (info, cat, create, write, find-replace, structure, run).
 
 | Tool | Description |
 |------|-------------|

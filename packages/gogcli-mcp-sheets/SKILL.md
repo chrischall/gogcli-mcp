@@ -5,7 +5,7 @@ description: Use when the user asks to read, write, format, or manage Google She
 
 # gogcli-mcp-sheets
 
-Extended Google Sheets MCP server via [gogcli](https://github.com/steipete/gogcli) — includes all base tools (Gmail, Calendar, Drive, Docs, Tasks, Contacts) plus 22 additional dedicated Sheets tools.
+Extended Google Sheets MCP server via [gogcli](https://github.com/steipete/gogcli) — includes auth plus 22 additional dedicated Sheets tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
@@ -57,4 +57,4 @@ Extended Google Sheets MCP server via [gogcli](https://github.com/steipete/gogcl
 | `gog_sheets_named_ranges_update` | Update a named range |
 | `gog_sheets_named_ranges_delete` | Delete a named range |
 
-These are in addition to the 52 base tools (Sheets CRUD, Gmail, Calendar, Drive, Docs, Tasks, Contacts, Auth).
+Plus 5 auth tools and 8 base Sheets tools.

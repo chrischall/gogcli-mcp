@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { createBaseServer } from '../../gogcli-mcp/src/lib.js';
+import { createServer, registerAuthTools, registerSheetsTools } from '../../gogcli-mcp/src/lib.js';
 import { registerExtraSheetsTools } from './tools/sheets-extra.js';
 
-const server = createBaseServer({ name: 'gogcli-sheets' });
+const server = createServer({ name: 'gogcli-sheets' });
+registerAuthTools(server);
+registerSheetsTools(server);
 registerExtraSheetsTools(server);
 
 const transport = new StdioServerTransport();

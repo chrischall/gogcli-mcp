@@ -12,11 +12,15 @@ import { registerTasksTools } from './tools/tasks.js';
 declare const GOGCLI_VERSION: string;
 export const VERSION = typeof GOGCLI_VERSION !== 'undefined' ? GOGCLI_VERSION : '0.0.0';
 
-export function createBaseServer(options?: { name?: string; version?: string }): McpServer {
-  const server = new McpServer({
+export function createServer(options?: { name?: string; version?: string }): McpServer {
+  return new McpServer({
     name: options?.name ?? 'gogcli',
     version: options?.version ?? VERSION,
   });
+}
+
+export function createBaseServer(options?: { name?: string; version?: string }): McpServer {
+  const server = createServer(options);
 
   registerAuthTools(server);
   registerCalendarTools(server);
@@ -29,3 +33,14 @@ export function createBaseServer(options?: { name?: string; version?: string }):
 
   return server;
 }
+
+export {
+  registerAuthTools,
+  registerCalendarTools,
+  registerContactsTools,
+  registerDocsTools,
+  registerDriveTools,
+  registerGmailTools,
+  registerSheetsTools,
+  registerTasksTools,
+};

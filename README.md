@@ -9,9 +9,9 @@ A monorepo of [Model Context Protocol](https://modelcontextprotocol.io) servers 
 
 | Package | Tools | Description |
 |---------|-------|-------------|
-| [gogcli-mcp](packages/gogcli-mcp) | 53 | Base — Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, Auth |
-| [gogcli-mcp-sheets](packages/gogcli-mcp-sheets) | 75 | Base + 22 extra Sheets tools (tabs, formatting, named ranges, etc.) |
-| [gogcli-mcp-docs](packages/gogcli-mcp-docs) | 67 | Base + 14 extra Docs tools (insert, export, sed, comments, etc.) |
+| [gogcli-mcp](packages/gogcli-mcp) | 52 | All services — Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, Auth |
+| [gogcli-mcp-sheets](packages/gogcli-mcp-sheets) | 35 | Auth + full Sheets (base + 22 extra: tabs, formatting, named ranges, etc.) |
+| [gogcli-mcp-docs](packages/gogcli-mcp-docs) | 26 | Auth + full Docs (base + 14 extra: insert, export, sed, comments, etc.) |
 
 Each package is a **standalone** MCP server. Install whichever one fits your needs — you don't need to install more than one.
 

@@ -5,7 +5,7 @@ description: Use when the user asks to read, write, edit, export, or comment on 
 
 # gogcli-mcp-docs
 
-Extended Google Docs MCP server via [gogcli](https://github.com/steipete/gogcli) — includes all base tools (Gmail, Calendar, Drive, Sheets, Tasks, Contacts) plus 14 additional dedicated Docs tools.
+Extended Google Docs MCP server via [gogcli](https://github.com/steipete/gogcli) — includes auth plus 14 additional dedicated Docs tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
@@ -49,4 +49,4 @@ Extended Google Docs MCP server via [gogcli](https://github.com/steipete/gogcli)
 | `gog_docs_comments_resolve` | Resolve a comment |
 | `gog_docs_comments_delete` | Delete a comment |
 
-These are in addition to the 52 base tools (Docs basics, Sheets, Gmail, Calendar, Drive, Tasks, Contacts, Auth).
+Plus 5 auth tools and 7 base Docs tools.

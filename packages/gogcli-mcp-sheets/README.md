@@ -1,6 +1,6 @@
 # gogcli-mcp-sheets
 
-Extended Google Sheets [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/steipete/gogcli). Includes all 53 base tools from [gogcli-mcp](https://www.npmjs.com/package/gogcli-mcp) plus 22 additional dedicated Sheets tools for tab management, formatting, named ranges, and more.
+Extended Google Sheets [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/steipete/gogcli). Includes auth tools plus 22 additional dedicated Sheets tools for tab management, formatting, named ranges, and more.
 
 ## Requirements
 
@@ -43,7 +43,7 @@ claude mcp add gogcli-sheets -- gogcli-mcp-sheets
 
 ## Extra Sheets Tools (22)
 
-These are in addition to the 53 base tools (Gmail, Calendar, Drive, Tasks, Contacts, Auth, basic Sheets/Docs).
+Plus 5 auth tools and 8 base Sheets tools (get, update, append, clear, metadata, create, find-replace, run).
 
 | Tool | Description |
 |------|-------------|
