@@ -10,7 +10,7 @@ import { registerGmailTools } from './tools/gmail.js';
 import { registerSheetsTools } from './tools/sheets.js';
 import { registerTasksTools } from './tools/tasks.js';
 
-const server = new McpServer({ name: 'gogcli', version: '1.0.1' });
+const server = new McpServer({ name: 'gogcli', version: '1.0.2' });
 
 registerAuthTools(server);
 registerCalendarTools(server);

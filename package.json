@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "MCP server wrapping gogcli for Google service access",
   "type": "module",
   "bin": {
