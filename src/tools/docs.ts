@@ -75,6 +75,24 @@ export function registerDocsTools(server: McpServer): void {
     return runOrDiagnose(['docs', 'structure', docId], { account });
   });
 
+  // --- Comments tools ---
+
+  server.registerTool('gog_docs_comments_list', {
+    description:
+      'List comments on a Google Doc. Returns open comments by default; set includeResolved=true to include resolved comments. ' +
+      'If authentication has expired, use gog_auth_add to re-authorize.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      includeResolved: z.boolean().optional().describe('Include resolved comments (default: false, open only)'),
+      account: accountParam,
+    },
+  }, async ({ docId, includeResolved, account }) => {
+    const args = ['docs', 'comments', 'list', docId];
+    if (includeResolved) args.push('--include-resolved');
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_docs_run', {
     description: 'Run any gog docs subcommand not covered by the other tools. Run `gog docs --help` for the full list of subcommands, or `gog docs <subcommand> --help` for flags on a specific subcommand.',
     annotations: { destructiveHint: true },

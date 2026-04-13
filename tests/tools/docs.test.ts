@@ -161,6 +161,52 @@ describe('gog_docs_structure', () => {
   });
 });
 
+// --- Comments tools ---
+
+describe('gog_docs_comments_list', () => {
+  it('calls run with correct args for open comments', async () => {
+    vi.mocked(runner.run).mockResolvedValue('[{"id":"c1","content":"Fix this"}]');
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_docs_comments_list')!({ docId: 'abc' });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'comments', 'list', 'abc'], { account: undefined });
+    expect(result.content[0].text).toContain('Fix this');
+  });
+
+  it('includes --include-resolved when set', async () => {
+    vi.mocked(runner.run).mockResolvedValue('[]');
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_comments_list')!({ docId: 'abc', includeResolved: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['docs', 'comments', 'list', 'abc', '--include-resolved'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --include-resolved when false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('[]');
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_comments_list')!({ docId: 'abc', includeResolved: false });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'comments', 'list', 'abc'], { account: undefined });
+  });
+
+  it('forwards account override', async () => {
+    vi.mocked(runner.run).mockResolvedValue('[]');
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_comments_list')!({ docId: 'abc', account: 'other@gmail.com' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['docs', 'comments', 'list', 'abc'],
+      { account: 'other@gmail.com' },
+    );
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('List failed'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_docs_comments_list')!({ docId: 'bad' });
+    expect(result.content[0].text).toContain('Error: List failed');
+  });
+});
+
 describe('gog_docs_run', () => {
   it('passes raw subcommand and args to runner', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
