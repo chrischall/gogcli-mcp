@@ -153,4 +153,68 @@ describe('run', () => {
     const result = await run(['sheets', 'get', 'id', 'A1'], { spawner });
     expect(result).toBe('{"ok":true}');
   });
+
+  it('rejects with timeout error when gog does not respond', async () => {
+    vi.useFakeTimers();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      return proc;
+    }) as unknown as Spawner;
+
+    const promise = run(['sheets', 'get', 'id', 'A1'], { spawner });
+    vi.advanceTimersByTime(30_000);
+    await expect(promise).rejects.toThrow('gog timed out after 30000ms');
+    vi.useRealTimers();
+  });
+
+  it('clears timeout when close event fires before timeout', async () => {
+    vi.useFakeTimers();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      setTimeout(() => {
+        (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', Buffer.from('{"ok":true}'));
+        proc.emit('close', 0);
+      }, 5000);
+      return proc;
+    }) as unknown as Spawner;
+
+    const promise = run(['sheets', 'get', 'id', 'A1'], { spawner });
+    vi.advanceTimersByTime(5000);
+    const result = await promise;
+    expect(result).toBe('{"ok":true}');
+    vi.useRealTimers();
+  });
+
+  it('ignores timeout if close event already settled the promise', async () => {
+    vi.useFakeTimers();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      // Schedule close at ~same time as timeout but ensure it wins
+      const closeTimer = setTimeout(() => {
+        (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', Buffer.from('{"ok":true}'));
+        proc.emit('close', 0);
+      }, 29_999);
+      // Store timer so we can control it in test
+      (proc as any).closeTimer = closeTimer;
+      return proc;
+    }) as unknown as Spawner;
+
+    const promise = run(['sheets', 'get', 'id', 'A1'], { spawner });
+    // Advance to just before timeout, triggering close
+    vi.advanceTimersByTime(29_999);
+    const result = await promise;
+    expect(result).toBe('{"ok":true}');
+    // Continue advancing to verify timeout handler doesn't cause issues
+    vi.advanceTimersByTime(2);
+    vi.useRealTimers();
+  });
 });
