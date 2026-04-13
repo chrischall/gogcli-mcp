@@ -2,10 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
-    "composite": true
+    "rootDir": "../"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "references": [{ "path": "../gogcli-mcp" }]
+  "include": ["src/**/*", "../gogcli-mcp/src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

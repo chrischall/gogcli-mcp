@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerExtraSheetsTools } from '../../src/tools/sheets-extra.js';
-import * as lib from 'gogcli-mcp/lib';
+import * as lib from '../../../gogcli-mcp/src/lib.js';
 
-vi.mock('gogcli-mcp/lib', async (importOriginal) => {
+vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
   return {
     ...actual,

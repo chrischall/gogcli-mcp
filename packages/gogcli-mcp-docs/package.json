@@ -1,7 +1,7 @@
 {
   "name": "gogcli-mcp-docs",
   "version": "1.0.6",
-  "description": "Extended Google Docs MCP server via gogcli — all base tools plus full Docs support",
+  "description": "Extended Google Docs MCP server via gogcli \u2014 all base tools plus full Docs support",
   "type": "module",
   "bin": {
     "gogcli-mcp-docs": "dist/index.js"
@@ -18,7 +18,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "gogcli-mcp": "*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.3.6"
   },

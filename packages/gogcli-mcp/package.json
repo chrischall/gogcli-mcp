@@ -11,17 +11,11 @@
     "gogcli-mcp": "dist/index.js"
   },
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./lib": {
-      "types": "./dist/lib.d.ts",
-      "default": "./dist/lib.js"
-    }
+    ".": "./dist/index.js",
+    "./lib": "./dist/lib.js"
   },
   "scripts": {
-    "build": "tsc && npm run bundle",
+    "build": "tsc --noEmit && npm run bundle",
     "bundle": "node ../../scripts/bundle.js src/index.ts dist/index.js && node ../../scripts/bundle.js src/lib.ts dist/lib.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

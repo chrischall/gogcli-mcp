@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from 'gogcli-mcp/lib';
+import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_copy', {

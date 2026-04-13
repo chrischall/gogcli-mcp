@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-vi.mock('gogcli-mcp/lib', async () => {
+vi.mock('../../../gogcli-mcp/src/lib.js', async () => {
   const { z } = await import('zod');
   const mockRun = vi.fn<(args: string[], options?: { account?: string }) => Promise<string>>();
   const accountParam = z.string().optional().describe('Google account email');
@@ -25,7 +25,7 @@ vi.mock('gogcli-mcp/lib', async () => {
   };
 });
 
-import { run } from 'gogcli-mcp/lib';
+import { run } from '../../../gogcli-mcp/src/lib.js';
 import { registerExtraDocsTools } from '../../src/tools/docs-extra.js';
 
 type ToolHandler = (args: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }> }>;
