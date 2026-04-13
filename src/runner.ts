@@ -61,7 +61,11 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
       if (settled) return;
       settled = true;
       if (code === 0) {
-        resolve(stdout);
+        if (interactive && stderr.trim()) {
+          resolve(stdout + '\n' + stderr);
+        } else {
+          resolve(stdout);
+        }
       } else {
         reject(new Error(stderr.trim() || `gog exited with code ${code}`));
       }

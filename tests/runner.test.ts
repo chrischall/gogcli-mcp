@@ -228,6 +228,43 @@ describe('run', () => {
     expect(callArgs).toContain('--no-input');
   });
 
+  it('appends stderr to stdout on success when interactive is true', async () => {
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      setTimeout(() => {
+        (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', Buffer.from('{"success":true}'));
+        (proc as unknown as { stderr: EventEmitter }).stderr.emit('data', Buffer.from('Opening browser...\nIf the browser doesn\'t open, visit this URL:\nhttps://accounts.google.com/auth?...'));
+        proc.emit('close', 0);
+      }, 0);
+      return proc;
+    }) as unknown as Spawner;
+
+    const result = await run(['auth', 'add', 'user@gmail.com'], { spawner, interactive: true });
+    expect(result).toContain('{"success":true}');
+    expect(result).toContain('Opening browser...');
+    expect(result).toContain('https://accounts.google.com/auth?...');
+  });
+
+  it('does not append stderr to stdout on success when interactive is false', async () => {
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      setTimeout(() => {
+        (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', Buffer.from('{"ok":true}'));
+        (proc as unknown as { stderr: EventEmitter }).stderr.emit('data', Buffer.from('some warning'));
+        proc.emit('close', 0);
+      }, 0);
+      return proc;
+    }) as unknown as Spawner;
+
+    const result = await run(['sheets', 'get', 'id', 'A1'], { spawner });
+    expect(result).toBe('{"ok":true}');
+    expect(result).not.toContain('some warning');
+  });
+
   it('uses custom timeout when provided', async () => {
     vi.useFakeTimers();
     const spawner = vi.fn(() => {
