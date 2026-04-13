@@ -6,9 +6,9 @@ Monorepo of MCP servers wrapping [gogcli](https://github.com/steipete/gogcli) �
 
 | Package | Path | Description |
 |---------|------|-------------|
-| `gogcli-mcp` | `packages/gogcli-mcp` | Base — all 59 tools (auth, gmail, calendar, drive, tasks, contacts, basic sheets/docs) |
+| `gogcli-mcp` | `packages/gogcli-mcp` | Base — 53 tools (auth, gmail, calendar, drive, tasks, contacts, basic sheets/docs) |
 | `gogcli-mcp-sheets` | `packages/gogcli-mcp-sheets` | Standalone — base + 22 extra Sheets tools (tab management, formatting, named ranges, etc.) |
-| `gogcli-mcp-docs` | `packages/gogcli-mcp-docs` | Standalone — base + 8 extra Docs tools (insert, delete, export, sed, tabs, etc.) |
+| `gogcli-mcp-docs` | `packages/gogcli-mcp-docs` | Standalone — base + 14 extra Docs tools (insert, delete, export, sed, comments, etc.) |
 
 Sub-packages are **standalone** — each bundles the base and runs as its own MCP server. Users install one package.
 
