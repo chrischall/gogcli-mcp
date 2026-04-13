@@ -15,13 +15,56 @@ A monorepo of [Model Context Protocol](https://modelcontextprotocol.io) servers 
 
 Each package is a **standalone** MCP server. Install whichever one fits your needs — you don't need to install more than one.
 
+## Prerequisites
+
+### Install gogcli
+
+[gogcli](https://github.com/steipete/gogcli) is the CLI that these MCP servers wrap. Install it for your platform:
+
+**macOS (Homebrew):**
+```bash
+brew install steipete/tap/gogcli
+```
+
+**macOS / Linux (binary):**
+```bash
+curl -fsSL https://github.com/steipete/gogcli/releases/latest/download/gog-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') -o /usr/local/bin/gog
+chmod +x /usr/local/bin/gog
+```
+
+**Windows (Scoop):**
+```powershell
+scoop bucket add steipete https://github.com/steipete/scoop-bucket
+scoop install gogcli
+```
+
+**Windows (manual):**
+
+Download `gog-windows-amd64.exe` from the [latest release](https://github.com/steipete/gogcli/releases/latest), rename to `gog.exe`, and add to your PATH.
+
+### Authenticate
+
+```bash
+gog auth add your@gmail.com
+```
+
+This opens a browser for Google OAuth. For specific services only:
+
+```bash
+gog auth add your@gmail.com --services sheets,docs,drive
+```
+
+### Install Node.js
+
+Node.js 18 or later is required. Install via [nodejs.org](https://nodejs.org) or:
+
+```bash
+brew install node        # macOS
+```
+
 ## Quick Start
 
 ```bash
-# Install gogcli
-brew install gogcli
-gog auth add your@gmail.com
-
 # Install the package you want
 npm install -g gogcli-mcp          # base
 npm install -g gogcli-mcp-sheets   # extended sheets
