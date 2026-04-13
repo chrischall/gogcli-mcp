@@ -38,7 +38,7 @@ export function registerTasksTools(server: McpServer): void {
 
   server.registerTool('gog_tasks_add', {
     description: 'Add a task to a Google Task list.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: {
       tasklistId: z.string().describe('Task list ID'),
       title: z.string().describe('Task title'),

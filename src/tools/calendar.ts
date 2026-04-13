@@ -40,7 +40,7 @@ export function registerCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_create', {
     description: 'Create a calendar event.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: {
       calendarId: z.string().describe('Calendar ID (use "primary" for the default calendar)'),
       summary: z.string().describe('Event title'),
@@ -63,7 +63,7 @@ export function registerCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_update', {
     description: 'Update an existing calendar event.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: {
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),

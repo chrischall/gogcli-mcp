@@ -27,6 +27,7 @@ export function registerDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_create', {
     description: 'Create a new Google Doc. Returns JSON with the new docId and URL.',
+    annotations: { destructiveHint: false },
     inputSchema: {
       title: z.string().describe('Title for the new document'),
       account: accountParam,

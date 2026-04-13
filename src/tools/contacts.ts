@@ -37,7 +37,7 @@ export function registerContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_create', {
     description: 'Create a new Google Contact.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: {
       givenName: z.string().describe('Given (first) name'),
       familyName: z.string().optional().describe('Family (last) name'),

@@ -40,6 +40,7 @@ export function registerDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_mkdir', {
     description: 'Create a new folder in Google Drive.',
+    annotations: { destructiveHint: false },
     inputSchema: {
       name: z.string().describe('Folder name'),
       account: accountParam,
