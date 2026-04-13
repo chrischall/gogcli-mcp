@@ -2,6 +2,10 @@
   "name": "gogcli-mcp",
   "version": "1.0.2",
   "description": "MCP server wrapping gogcli for Google service access",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chrischall/gogcli-mcp"
+  },
   "type": "module",
   "bin": {
     "gogcli-mcp": "dist/index.js"
