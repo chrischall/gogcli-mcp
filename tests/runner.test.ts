@@ -18,12 +18,12 @@ function makeSpawner(exitCode: number, stdout = '', stderr = ''): Spawner {
 }
 
 describe('run', () => {
-  it('passes --json --no-input --color=never before service args', async () => {
+  it('passes --json --color=never --no-input before service args', async () => {
     const spawner = makeSpawner(0, '{"ok":true}');
     await run(['sheets', 'get', 'id1', 'A1'], { spawner });
     expect(spawner).toHaveBeenCalledWith(
       'gog',
-      ['--json', '--no-input', '--color=never', 'sheets', 'get', 'id1', 'A1'],
+      ['--json', '--color=never', '--no-input', 'sheets', 'get', 'id1', 'A1'],
       expect.objectContaining({ env: process.env }),
     );
   });
@@ -33,7 +33,7 @@ describe('run', () => {
     await run(['sheets', 'metadata', 'id1'], { account: 'me@gmail.com', spawner });
     expect(spawner).toHaveBeenCalledWith(
       'gog',
-      ['--json', '--no-input', '--color=never', '--account', 'me@gmail.com', 'sheets', 'metadata', 'id1'],
+      ['--json', '--color=never', '--no-input', '--account', 'me@gmail.com', 'sheets', 'metadata', 'id1'],
       expect.any(Object),
     );
   });
@@ -46,7 +46,7 @@ describe('run', () => {
       await run(['sheets', 'metadata', 'id1'], { spawner });
       expect(spawner).toHaveBeenCalledWith(
         'gog',
-        ['--json', '--no-input', '--color=never', '--account', 'env@gmail.com', 'sheets', 'metadata', 'id1'],
+        ['--json', '--color=never', '--no-input', '--account', 'env@gmail.com', 'sheets', 'metadata', 'id1'],
         expect.any(Object),
       );
     } finally {
@@ -66,7 +66,7 @@ describe('run', () => {
       await run(['sheets', 'metadata', 'id1'], { account: 'override@gmail.com', spawner });
       expect(spawner).toHaveBeenCalledWith(
         'gog',
-        ['--json', '--no-input', '--color=never', '--account', 'override@gmail.com', 'sheets', 'metadata', 'id1'],
+        ['--json', '--color=never', '--no-input', '--account', 'override@gmail.com', 'sheets', 'metadata', 'id1'],
         expect.any(Object),
       );
     } finally {
@@ -208,6 +208,95 @@ describe('run', () => {
     vi.advanceTimersByTime(5000);
     const result = await promise;
     expect(result).toBe('{"ok":true}');
+    vi.useRealTimers();
+  });
+
+  it('omits --no-input when interactive is true', async () => {
+    const spawner = makeSpawner(0, '{"ok":true}');
+    await run(['auth', 'add', 'user@gmail.com'], { spawner, interactive: true });
+    const callArgs = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    expect(callArgs).toContain('--json');
+    expect(callArgs).toContain('--color=never');
+    expect(callArgs).not.toContain('--no-input');
+    expect(callArgs).toContain('auth');
+  });
+
+  it('includes --no-input when interactive is not set', async () => {
+    const spawner = makeSpawner(0, '{"ok":true}');
+    await run(['sheets', 'get', 'id1', 'A1'], { spawner });
+    const callArgs = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    expect(callArgs).toContain('--no-input');
+  });
+
+  it('appends stderr to stdout on success when interactive is true', async () => {
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      setTimeout(() => {
+        (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', Buffer.from('{"success":true}'));
+        (proc as unknown as { stderr: EventEmitter }).stderr.emit('data', Buffer.from('Opening browser...\nIf the browser doesn\'t open, visit this URL:\nhttps://accounts.google.com/auth?...'));
+        proc.emit('close', 0);
+      }, 0);
+      return proc;
+    }) as unknown as Spawner;
+
+    const result = await run(['auth', 'add', 'user@gmail.com'], { spawner, interactive: true });
+    expect(result).toContain('{"success":true}');
+    expect(result).toContain('Opening browser...');
+    expect(result).toContain('https://accounts.google.com/auth?...');
+  });
+
+  it('does not append stderr to stdout on success when interactive is false', async () => {
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      setTimeout(() => {
+        (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', Buffer.from('{"ok":true}'));
+        (proc as unknown as { stderr: EventEmitter }).stderr.emit('data', Buffer.from('some warning'));
+        proc.emit('close', 0);
+      }, 0);
+      return proc;
+    }) as unknown as Spawner;
+
+    const result = await run(['sheets', 'get', 'id', 'A1'], { spawner });
+    expect(result).toBe('{"ok":true}');
+    expect(result).not.toContain('some warning');
+  });
+
+  it('uses custom timeout when provided', async () => {
+    vi.useFakeTimers();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      return proc;
+    }) as unknown as Spawner;
+
+    const promise = run(['auth', 'add', 'user@gmail.com'], { spawner, timeout: 300_000 });
+    // Should NOT have timed out at 30s
+    vi.advanceTimersByTime(30_000);
+    // Advance to custom timeout
+    vi.advanceTimersByTime(270_000);
+    await expect(promise).rejects.toThrow('gog timed out after 300000ms (5 minutes)');
+    vi.useRealTimers();
+  });
+
+  it('includes human-readable duration in timeout error for default timeout', async () => {
+    vi.useFakeTimers();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      return proc;
+    }) as unknown as Spawner;
+
+    const promise = run(['sheets', 'get', 'id', 'A1'], { spawner });
+    vi.advanceTimersByTime(30_000);
+    await expect(promise).rejects.toThrow('gog timed out after 30000ms');
     vi.useRealTimers();
   });
 

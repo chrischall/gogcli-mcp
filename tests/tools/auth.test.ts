@@ -78,6 +78,44 @@ describe('gog_auth_services', () => {
   });
 });
 
+describe('gog_auth_add', () => {
+  it('calls run with correct args, interactive true, and 5-minute timeout', async () => {
+    vi.mocked(runner.run).mockResolvedValue('Authorization successful for user@gmail.com');
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_auth_add')!({ email: 'user@gmail.com' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--services', 'all'],
+      { interactive: true, timeout: 300_000 },
+    );
+    expect(result.content[0].text).toBe('Authorization successful for user@gmail.com');
+  });
+
+  it('passes custom services when provided', async () => {
+    vi.mocked(runner.run).mockResolvedValue('Authorization successful');
+    const handlers = setupHandlers();
+    await handlers.get('gog_auth_add')!({ email: 'user@gmail.com', services: 'sheets,gmail' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--services', 'sheets,gmail'],
+      { interactive: true, timeout: 300_000 },
+    );
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Auth cancelled by user'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_auth_add')!({ email: 'user@gmail.com' });
+    expect(result.content[0].text).toBe('Error: Auth cancelled by user');
+  });
+
+  it('returns error text on timeout', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('gog timed out after 300000ms (5 minutes)'));
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_auth_add')!({ email: 'user@gmail.com' });
+    expect(result.content[0].text).toContain('timed out');
+    expect(result.content[0].text).toContain('5 minutes');
+  });
+});
+
 describe('gog_auth_run', () => {
   it('passes subcommand and args to runner', async () => {
     vi.mocked(runner.run).mockResolvedValue('removed user@gmail.com');
