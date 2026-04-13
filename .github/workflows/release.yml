@@ -38,20 +38,21 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
-      # Package the .skill file (base package only)
-      - name: Package skill
+      # Package .skill files for each package that has a SKILL.md
+      - name: Package skills
         run: |
           python3 - <<'EOF'
           import zipfile, pathlib, os
 
           version = os.environ["VERSION"]
-          pkg_dir = pathlib.Path("packages/gogcli-mcp")
-          out = pathlib.Path(f"gogcli-mcp-{version}.skill")
-
-          skill_file = pkg_dir / "SKILL.md"
-          if skill_file.exists():
+          for pkg_dir in pathlib.Path("packages").iterdir():
+              skill_file = pkg_dir / "SKILL.md"
+              if not skill_file.exists():
+                  continue
+              pkg = pkg_dir.name
+              out = pathlib.Path(f"{pkg}-{version}.skill")
               with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-                  zf.write(skill_file, "gogcli-mcp/SKILL.md")
+                  zf.write(skill_file, f"{pkg}/SKILL.md")
               print(f"Packaged {out} ({out.stat().st_size} bytes)")
           EOF
 
@@ -98,5 +99,7 @@ jobs:
           files: |
             gogcli-mcp-${{ env.VERSION }}.skill
             gogcli-mcp-${{ env.VERSION }}.mcpb
+            gogcli-mcp-sheets-${{ env.VERSION }}.skill
             gogcli-mcp-sheets-${{ env.VERSION }}.mcpb
+            gogcli-mcp-docs-${{ env.VERSION }}.skill
             gogcli-mcp-docs-${{ env.VERSION }}.mcpb

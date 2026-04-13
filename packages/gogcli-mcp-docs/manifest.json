@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/anthropics/dxt/main/dist/mcpb-manifest.schema.json",
   "manifest_version": "0.3",
-  "name": "gogcli-mcp",
-  "display_name": "gogcli",
-  "version": "1.0.10",
-  "description": "Google Sheets (and more) for Claude via gogcli — read, write, and manage spreadsheets",
+  "name": "gogcli-mcp-docs",
+  "display_name": "gogcli (Docs)",
+  "version": "1.0.9",
+  "description": "Extended Google Docs for Claude via gogcli — all base tools plus full Docs and comments support",
   "author": {
     "name": "Chris Hall",
     "email": "chris.c.hall@gmail.com",
@@ -25,7 +25,10 @@
     "calendar",
     "drive",
     "gogcli",
-    "gog"
+    "gog",
+    "docs",
+    "comments",
+    "export"
   ],
   "server": {
     "type": "node",
@@ -263,6 +266,62 @@
     {
       "name": "gog_sheets_run",
       "description": "Run any gog sheets subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_docs_copy",
+      "description": "Copy a Google Doc to a new document with the given title."
+    },
+    {
+      "name": "gog_docs_delete",
+      "description": "Delete content within a Google Doc by character index range."
+    },
+    {
+      "name": "gog_docs_edit",
+      "description": "Edit a Google Doc by finding and replacing text (stream-edit style)."
+    },
+    {
+      "name": "gog_docs_export",
+      "description": "Export a Google Doc as PDF, plain text, HTML, DOCX, or other format."
+    },
+    {
+      "name": "gog_docs_insert",
+      "description": "Insert text at a specific position in a Google Doc."
+    },
+    {
+      "name": "gog_docs_list_tabs",
+      "description": "List all tabs in a Google Doc."
+    },
+    {
+      "name": "gog_docs_sed",
+      "description": "Stream-edit a Google Doc with sed-like regex expressions (s/find/replace/ syntax)."
+    },
+    {
+      "name": "gog_docs_update",
+      "description": "Update a Google Doc — insert or replace text at a specific position."
+    },
+    {
+      "name": "gog_docs_comments_list",
+      "description": "List comments on a Google Doc. Returns open comments by default; set includeResolved=true to include resolved comments."
+    },
+    {
+      "name": "gog_docs_comments_get",
+      "description": "Get a single comment by ID, including its replies."
+    },
+    {
+      "name": "gog_docs_comments_add",
+      "description": "Add a comment to a Google Doc. Optionally attach quoted text that appears as the highlighted passage in the Google Docs UI."
+    },
+    {
+      "name": "gog_docs_comments_reply",
+      "description": "Reply to an existing comment on a Google Doc."
+    },
+    {
+      "name": "gog_docs_comments_resolve",
+      "description": "Resolve a comment (mark as done). Optionally include a closing message."
+    },
+    {
+      "name": "gog_docs_comments_delete",
+      "description": "Delete a comment from a Google Doc. This action is permanent."
     }
   ],
   "compatibility": {

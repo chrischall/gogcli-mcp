@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/anthropics/dxt/main/dist/mcpb-manifest.schema.json",
   "manifest_version": "0.3",
-  "name": "gogcli-mcp",
-  "display_name": "gogcli",
-  "version": "1.0.10",
-  "description": "Google Sheets (and more) for Claude via gogcli — read, write, and manage spreadsheets",
+  "name": "gogcli-mcp-sheets",
+  "display_name": "gogcli (Sheets)",
+  "version": "1.0.9",
+  "description": "Extended Google Sheets for Claude via gogcli — all base tools plus full Sheets support",
   "author": {
     "name": "Chris Hall",
     "email": "chris.c.hall@gmail.com",
@@ -25,7 +25,10 @@
     "calendar",
     "drive",
     "gogcli",
-    "gog"
+    "gog",
+    "tabs",
+    "formatting",
+    "named-ranges"
   ],
   "server": {
     "type": "node",
@@ -263,6 +266,94 @@
     {
       "name": "gog_sheets_run",
       "description": "Run any gog sheets subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_sheets_add_tab",
+      "description": "Add a new sheet tab to a spreadsheet."
+    },
+    {
+      "name": "gog_sheets_delete_tab",
+      "description": "Delete a sheet tab from a spreadsheet."
+    },
+    {
+      "name": "gog_sheets_rename_tab",
+      "description": "Rename a sheet tab."
+    },
+    {
+      "name": "gog_sheets_copy",
+      "description": "Copy a spreadsheet to a new spreadsheet with the given title."
+    },
+    {
+      "name": "gog_sheets_export",
+      "description": "Export a spreadsheet as CSV, TSV, or PDF."
+    },
+    {
+      "name": "gog_sheets_freeze",
+      "description": "Freeze rows and/or columns in a sheet."
+    },
+    {
+      "name": "gog_sheets_insert",
+      "description": "Insert rows or columns into a sheet."
+    },
+    {
+      "name": "gog_sheets_merge",
+      "description": "Merge cells in a range."
+    },
+    {
+      "name": "gog_sheets_unmerge",
+      "description": "Unmerge previously merged cells in a range."
+    },
+    {
+      "name": "gog_sheets_format",
+      "description": "Apply cell formatting (bold, colors, alignment, etc.) to a range. Pass format as a JSON CellFormat object."
+    },
+    {
+      "name": "gog_sheets_number_format",
+      "description": "Set number format on a range (currency, percentage, date, etc.)."
+    },
+    {
+      "name": "gog_sheets_read_format",
+      "description": "Read cell formatting for a range."
+    },
+    {
+      "name": "gog_sheets_resize_columns",
+      "description": "Resize column widths. Use --auto for auto-fit or --width for a specific pixel width."
+    },
+    {
+      "name": "gog_sheets_resize_rows",
+      "description": "Resize row heights. Use --auto for auto-fit or --height for a specific pixel height."
+    },
+    {
+      "name": "gog_sheets_notes",
+      "description": "Read cell notes in a range."
+    },
+    {
+      "name": "gog_sheets_update_note",
+      "description": "Add, update, or clear a cell note. Pass an empty string to clear the note."
+    },
+    {
+      "name": "gog_sheets_links",
+      "description": "List hyperlinks in a range."
+    },
+    {
+      "name": "gog_sheets_named_ranges_list",
+      "description": "List all named ranges in a spreadsheet."
+    },
+    {
+      "name": "gog_sheets_named_ranges_get",
+      "description": "Get a named range by name or ID."
+    },
+    {
+      "name": "gog_sheets_named_ranges_add",
+      "description": "Create a new named range."
+    },
+    {
+      "name": "gog_sheets_named_ranges_update",
+      "description": "Update a named range (change its name, range, or both)."
+    },
+    {
+      "name": "gog_sheets_named_ranges_delete",
+      "description": "Delete a named range."
     }
   ],
   "compatibility": {
