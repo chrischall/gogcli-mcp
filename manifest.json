@@ -65,6 +65,10 @@
   },
   "tools": [
     {
+      "name": "gog_auth_add",
+      "description": "Authorize a Google account via browser-based OAuth"
+    },
+    {
       "name": "gog_auth_list",
       "description": "List all Google accounts stored in gogcli"
     },
