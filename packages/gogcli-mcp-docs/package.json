@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-docs",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Extended Google Docs MCP server via gogcli — all base tools plus full Docs support",
   "type": "module",
   "bin": {
