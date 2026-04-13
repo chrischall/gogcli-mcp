@@ -31,7 +31,7 @@ Main is always one version ahead of the latest tag. To release, run the **Tag & 
 4. Rebuilds, commits, and pushes main + tag
 5. The tag push triggers the **Release** workflow (CI + npm publish + .mcpb + .skill + GitHub release)
 
-Do NOT manually bump versions or create tags unless the user explicitly asks.
+Do NOT manually bump versions or create tags unless the user explicitly asks. Always prefer the Tag & Bump action: `gh workflow run tag-and-bump.yml --ref main`. The action handles all four version files, tagging, and triggering the release.
 
 ## Architecture
 
