@@ -31,44 +31,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # Single version in root package.json — source of truth
-      - name: Tag current version
+      - name: Tag, bump, rebuild, push
         run: |
           CURRENT=$(node -p "require('./package.json').version")
           git tag "v${CURRENT}"
-          echo "TAGGED_VERSION=${CURRENT}" >> "$GITHUB_ENV"
 
-      - name: Bump patch version
-        run: |
-          npm version patch --no-git-tag-version
+          npm run bump
+          npm run build
+
           NEXT=$(node -p "require('./package.json').version")
-          echo "NEXT_VERSION=${NEXT}" >> "$GITHUB_ENV"
-
-          # Sync version into each package's package.json and manifest.json
-          for PKG_DIR in packages/gogcli-mcp packages/gogcli-mcp-sheets packages/gogcli-mcp-docs; do
-            node -e "
-              const fs = require('fs');
-              const p = JSON.parse(fs.readFileSync('${PKG_DIR}/package.json', 'utf8'));
-              p.version = '${NEXT}';
-              fs.writeFileSync('${PKG_DIR}/package.json', JSON.stringify(p, null, 2) + '\n');
-            "
-            MANIFEST="${PKG_DIR}/manifest.json"
-            if [ -f "$MANIFEST" ]; then
-              node -e "
-                const fs = require('fs');
-                const m = JSON.parse(fs.readFileSync('${MANIFEST}', 'utf8'));
-                m.version = '${NEXT}';
-                fs.writeFileSync('${MANIFEST}', JSON.stringify(m, null, 2) + '\n');
-              "
-            fi
-          done
-
-      - name: Rebuild
-        run: npm run build
-
-      - name: Commit and push
-        run: |
           git add -A
-          git commit -m "chore: bump version to v${NEXT_VERSION}"
+          git commit -m "chore: bump version to v${NEXT}"
           git push origin main
-          git push origin "v${TAGGED_VERSION}"
+          git push origin "v${CURRENT}"
