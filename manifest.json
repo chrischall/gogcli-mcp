@@ -1,0 +1,95 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/dxt/main/dist/mcpb-manifest.schema.json",
+  "manifest_version": "0.3",
+  "name": "gogcli-mcp",
+  "display_name": "gogcli",
+  "version": "1.0.0",
+  "description": "Google Sheets (and more) for Claude via gogcli — read, write, and manage spreadsheets",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com",
+    "url": "https://github.com/chrischall"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chrischall/gogcli-mcp"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp",
+  "support": "https://github.com/chrischall/gogcli-mcp/issues",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "sheets",
+    "spreadsheet",
+    "gmail",
+    "calendar",
+    "drive",
+    "gogcli",
+    "gog"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {
+        "GOG_ACCOUNT": "${user_config.gog_account}"
+      }
+    }
+  },
+  "user_config": {
+    "gog_account": {
+      "type": "string",
+      "title": "Google Account",
+      "description": "Default Google account email (optional — uses gogcli's configured default if omitted)",
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "gog_sheets_get",
+      "description": "Read values from a Google Sheets range"
+    },
+    {
+      "name": "gog_sheets_update",
+      "description": "Write values to a Google Sheets range"
+    },
+    {
+      "name": "gog_sheets_append",
+      "description": "Append rows to a Google Sheet"
+    },
+    {
+      "name": "gog_sheets_clear",
+      "description": "Clear values in a Google Sheets range"
+    },
+    {
+      "name": "gog_sheets_metadata",
+      "description": "Get spreadsheet metadata (title, tabs, named ranges)"
+    },
+    {
+      "name": "gog_sheets_create",
+      "description": "Create a new Google Spreadsheet"
+    },
+    {
+      "name": "gog_sheets_find_replace",
+      "description": "Find and replace text across a spreadsheet"
+    },
+    {
+      "name": "gog_sheets_run",
+      "description": "Run any gog sheets subcommand (escape hatch)"
+    }
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}
