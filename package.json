@@ -1,10 +1,13 @@
 {
   "private": true,
   "version": "1.0.6",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm test --workspaces",
-    "typecheck": "npm run typecheck --workspaces"
+    "typecheck": "npm run typecheck --workspaces",
+    "publish:all": "npm run build && npm publish --access public --workspaces"
   }
 }
