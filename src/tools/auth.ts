@@ -12,7 +12,7 @@ function toError(err: unknown): { content: [{ type: 'text'; text: string }] } {
 
 export function registerAuthTools(server: McpServer): void {
   server.registerTool('gog_auth_list', {
-    description: 'List all Google accounts stored in gogcli. Use this to check which accounts are configured and available.',
+    description: 'List all Google accounts stored in gogcli. Use this to check which accounts are configured and available. Run `gog auth --help` to see all available auth subcommands.',
     annotations: { readOnlyHint: true },
     inputSchema: {},
   }, async () => {
@@ -24,7 +24,7 @@ export function registerAuthTools(server: McpServer): void {
   });
 
   server.registerTool('gog_auth_status', {
-    description: 'Show gogcli auth configuration: keyring backend, credential files, and auth setup.',
+    description: 'Show gogcli auth configuration: keyring backend, credential files, and auth setup. Run `gog auth --help` to see all available auth subcommands.',
     annotations: { readOnlyHint: true },
     inputSchema: {},
   }, async () => {
@@ -36,7 +36,7 @@ export function registerAuthTools(server: McpServer): void {
   });
 
   server.registerTool('gog_auth_services', {
-    description: 'List all Google services supported by gogcli and the OAuth scopes each requires.',
+    description: 'List all Google services supported by gogcli and the OAuth scopes each requires. Run `gog auth --help` to see all available auth subcommands.',
     annotations: { readOnlyHint: true },
     inputSchema: {},
   }, async () => {
@@ -48,7 +48,7 @@ export function registerAuthTools(server: McpServer): void {
   });
 
   server.registerTool('gog_auth_run', {
-    description: 'Run any gog auth subcommand. Note: gog auth add requires interactive browser auth and cannot be completed over MCP — run it in your terminal instead: gog auth add <email> --services <service>',
+    description: 'Run any gog auth subcommand. Run `gog auth --help` to see all available subcommands and flags. Note: gog auth add requires interactive browser auth and cannot be completed over MCP — run it in your terminal instead: gog auth add <email> --services <service>',
     annotations: { destructiveHint: true },
     inputSchema: {
       subcommand: z.string().describe('The gog auth subcommand, e.g. "remove", "alias", "tokens"'),

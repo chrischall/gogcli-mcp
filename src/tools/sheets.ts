@@ -31,7 +31,7 @@ async function runOrDiagnose(
 
 export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_get', {
-    description: 'Read values from a Google Sheets range. Returns a JSON object with a "values" array of rows.',
+    description: 'Read values from a Google Sheets range. Returns a JSON object with a "values" array of rows. Run `gog sheets get --help` for all available flags.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
@@ -43,7 +43,7 @@ export function registerSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_update', {
-    description: 'Write values to a Google Sheets range, overwriting existing content.',
+    description: 'Write values to a Google Sheets range, overwriting existing content. Run `gog sheets update --help` for all available flags.',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
@@ -59,7 +59,7 @@ export function registerSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_append', {
-    description: 'Append rows to a Google Sheet after the last row with data in the given range.',
+    description: 'Append rows to a Google Sheet after the last row with data in the given range. Run `gog sheets append --help` for all available flags.',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
@@ -75,7 +75,7 @@ export function registerSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_clear', {
-    description: 'Clear all values in a Google Sheets range (formatting is preserved).',
+    description: 'Clear all values in a Google Sheets range (formatting is preserved). Run `gog sheets clear --help` for all available flags.',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
@@ -87,7 +87,7 @@ export function registerSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_metadata', {
-    description: 'Get spreadsheet metadata: title, sheet tabs, named ranges, and other properties.',
+    description: 'Get spreadsheet metadata: title, sheet tabs, named ranges, and other properties. Run `gog sheets metadata --help` for all available flags.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
@@ -98,7 +98,7 @@ export function registerSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_create', {
-    description: 'Create a new Google Spreadsheet. Returns JSON with the new spreadsheetId and URL.',
+    description: 'Create a new Google Spreadsheet. Returns JSON with the new spreadsheetId and URL. Run `gog sheets create --help` for all available flags.',
     inputSchema: {
       title: z.string().describe('Title for the new spreadsheet'),
       account: accountParam,
@@ -108,7 +108,7 @@ export function registerSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_find_replace', {
-    description: 'Find and replace text across an entire Google Spreadsheet.',
+    description: 'Find and replace text across an entire Google Spreadsheet. Run `gog sheets find-replace --help` for all available flags.',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
@@ -121,7 +121,7 @@ export function registerSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_run', {
-    description: 'Run any gog sheets subcommand not covered by the other tools. See `gog sheets --help` for the full list of subcommands and their flags.',
+    description: 'Run any gog sheets subcommand not covered by the other tools. Run `gog sheets --help` for the full list of subcommands, or `gog sheets <subcommand> --help` for flags on a specific subcommand.',
     annotations: { destructiveHint: true },
     inputSchema: {
       subcommand: z.string().describe('The gog sheets subcommand to run, e.g. "freeze", "add-tab", "rename-tab"'),
