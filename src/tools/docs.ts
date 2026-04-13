@@ -1,30 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { run } from '../runner.js';
-import { toText, type ToolResult } from './utils.js';
-
-const accountParam = z.string().optional().describe(
-  'Google account email to use (overrides GOG_ACCOUNT env var)',
-);
-
-// On failure, appends `gog auth list` output so Claude can see which accounts
-// are configured and suggest the right one.
-async function runOrDiagnose(
-  args: string[],
-  options: { account?: string },
-): Promise<ToolResult> {
-  try {
-    return toText(await run(args, options));
-  } catch (err) {
-    const errorText = err instanceof Error ? `Error: ${err.message}` : String(err);
-    try {
-      const accounts = await run(['auth', 'list']);
-      return toText(`${errorText}\n\nConfigured accounts:\n${accounts}`);
-    } catch {
-      return toText(errorText);
-    }
-  }
-}
+import { accountParam, runOrDiagnose } from './utils.js';
 
 export function registerDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_info', {
