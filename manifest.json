@@ -237,6 +237,30 @@
       "description": "Show document structure with numbered paragraphs"
     },
     {
+      "name": "gog_docs_comments_list",
+      "description": "List comments on a Google Doc"
+    },
+    {
+      "name": "gog_docs_comments_get",
+      "description": "Get a single comment by ID with replies"
+    },
+    {
+      "name": "gog_docs_comments_add",
+      "description": "Add a comment to a Google Doc"
+    },
+    {
+      "name": "gog_docs_comments_reply",
+      "description": "Reply to a comment on a Google Doc"
+    },
+    {
+      "name": "gog_docs_comments_resolve",
+      "description": "Resolve (mark as done) a comment on a Google Doc"
+    },
+    {
+      "name": "gog_docs_comments_delete",
+      "description": "Delete a comment from a Google Doc"
+    },
+    {
       "name": "gog_docs_run",
       "description": "Run any gog docs subcommand (escape hatch)"
     },
