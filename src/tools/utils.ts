@@ -21,9 +21,6 @@ const AUTH_HINT =
   '\n\nAuthentication may have expired. Use gog_auth_add to re-authorize the account. ' +
   'Ask the user if they would like to re-authenticate.';
 
-// On failure, appends `gog auth list` output so Claude can see which accounts
-// are configured and suggest the right one. On auth errors, also hints at
-// gog_auth_add for re-authentication.
 export async function runOrDiagnose(
   args: string[],
   options: { account?: string },
@@ -34,12 +31,11 @@ export async function runOrDiagnose(
     const base = toError(err);
     const errText = base.content[0].text;
     const isAuthError = AUTH_ERROR_PATTERN.test(errText);
+    const hint = isAuthError ? AUTH_HINT : '';
     try {
       const accounts = await run(['auth', 'list']);
-      const hint = isAuthError ? AUTH_HINT : '';
       return toText(`${errText}\n\nConfigured accounts:\n${accounts}${hint}`);
     } catch {
-      const hint = isAuthError ? AUTH_HINT : '';
       return toText(`${errText}${hint}`);
     }
   }

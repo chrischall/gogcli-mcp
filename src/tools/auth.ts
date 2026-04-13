@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { run } from '../runner.js';
-import { toText, toError } from './utils.js';
+import { toText, toError, runOrDiagnose } from './utils.js';
 
 export function registerAuthTools(server: McpServer): void {
   server.registerTool('gog_auth_list', {
@@ -73,10 +73,6 @@ export function registerAuthTools(server: McpServer): void {
       args: z.array(z.string()).describe('Additional positional args and flags'),
     },
   }, async ({ subcommand, args }) => {
-    try {
-      return toText(await run(['auth', subcommand, ...args]));
-    } catch (err) {
-      return toError(err);
-    }
+    return runOrDiagnose(['auth', subcommand, ...args], {});
   });
 }

@@ -43,8 +43,8 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
 
   return new Promise((resolve, reject) => {
     const child = spawner(process.env.GOG_PATH ?? 'gog', fullArgs, { env: process.env });
-    let stdout = '';
-    let stderr = '';
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
     let settled = false;
 
     const timer = setTimeout(() => {
@@ -53,21 +53,23 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
       reject(new Error(`gog timed out after ${formatTimeout(effectiveTimeout)}`));
     }, effectiveTimeout);
 
-    child.stdout!.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    child.stderr!.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.stdout!.on('data', (chunk: Buffer) => { stdoutChunks.push(chunk); });
+    child.stderr!.on('data', (chunk: Buffer) => { stderrChunks.push(chunk); });
 
     child.on('close', (code: number | null) => {
       clearTimeout(timer);
       if (settled) return;
       settled = true;
+      const stdout = Buffer.concat(stdoutChunks).toString();
+      const stderr = Buffer.concat(stderrChunks).toString().trim();
       if (code === 0) {
-        if (interactive && stderr.trim()) {
+        if (interactive && stderr) {
           resolve(stdout + '\n' + stderr);
         } else {
           resolve(stdout);
         }
       } else {
-        reject(new Error(stderr.trim() || `gog exited with code ${code}`));
+        reject(new Error(stderr || `gog exited with code ${code}`));
       }
     });
 

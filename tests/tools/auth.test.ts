@@ -121,7 +121,7 @@ describe('gog_auth_run', () => {
     vi.mocked(runner.run).mockResolvedValue('removed user@gmail.com');
     const handlers = setupHandlers();
     const result = await handlers.get('gog_auth_run')!({ subcommand: 'remove', args: ['user@gmail.com'] });
-    expect(runner.run).toHaveBeenCalledWith(['auth', 'remove', 'user@gmail.com']);
+    expect(runner.run).toHaveBeenCalledWith(['auth', 'remove', 'user@gmail.com'], {});
     expect(result.content[0].text).toBe('removed user@gmail.com');
   });
 
@@ -129,7 +129,7 @@ describe('gog_auth_run', () => {
     vi.mocked(runner.run).mockResolvedValue('token info');
     const handlers = setupHandlers();
     await handlers.get('gog_auth_run')!({ subcommand: 'tokens', args: [] });
-    expect(runner.run).toHaveBeenCalledWith(['auth', 'tokens']);
+    expect(runner.run).toHaveBeenCalledWith(['auth', 'tokens'], {});
   });
 
   it('returns error text on failure', async () => {

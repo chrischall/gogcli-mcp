@@ -27,7 +27,6 @@ export function registerDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_create', {
     description: 'Create a new Google Doc. Returns JSON with the new docId and URL.',
-    annotations: { destructiveHint: false },
     inputSchema: {
       title: z.string().describe('Title for the new document'),
       account: accountParam,
@@ -79,8 +78,7 @@ export function registerDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_comments_list', {
     description:
-      'List comments on a Google Doc. Returns open comments by default; set includeResolved=true to include resolved comments. ' +
-      'If authentication has expired, use gog_auth_add to re-authorize.',
+      'List comments on a Google Doc. Returns open comments by default; set includeResolved=true to include resolved comments.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
@@ -94,9 +92,7 @@ export function registerDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_comments_get', {
-    description:
-      'Get a single comment by ID, including its replies. ' +
-      'If authentication has expired, use gog_auth_add to re-authorize.',
+    description: 'Get a single comment by ID, including its replies.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
@@ -109,9 +105,7 @@ export function registerDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_comments_add', {
     description:
-      'Add a comment to a Google Doc. Optionally attach quoted text that appears as the highlighted passage in the Google Docs UI. ' +
-      'If authentication has expired, use gog_auth_add to re-authorize.',
-    annotations: { destructiveHint: false },
+      'Add a comment to a Google Doc. Optionally attach quoted text that appears as the highlighted passage in the Google Docs UI.',
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       content: z.string().describe('Comment text'),
@@ -125,10 +119,7 @@ export function registerDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_comments_reply', {
-    description:
-      'Reply to an existing comment on a Google Doc. ' +
-      'If authentication has expired, use gog_auth_add to re-authorize.',
-    annotations: { destructiveHint: false },
+    description: 'Reply to an existing comment on a Google Doc.',
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       commentId: z.string().describe('Comment ID to reply to'),
@@ -140,9 +131,7 @@ export function registerDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_comments_resolve', {
-    description:
-      'Resolve a comment (mark as done). Optionally include a closing message. ' +
-      'If authentication has expired, use gog_auth_add to re-authorize.',
+    description: 'Resolve a comment (mark as done). Optionally include a closing message.',
     annotations: { destructiveHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
@@ -157,9 +146,7 @@ export function registerDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_comments_delete', {
-    description:
-      'Delete a comment from a Google Doc. This action is permanent. ' +
-      'If authentication has expired, use gog_auth_add to re-authorize.',
+    description: 'Delete a comment from a Google Doc. This action is permanent.',
     annotations: { destructiveHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
