@@ -73,6 +73,34 @@
       "description": "Run any gog auth subcommand (escape hatch)"
     },
     {
+      "name": "gog_docs_info",
+      "description": "Get Google Doc metadata (title, ID, properties)"
+    },
+    {
+      "name": "gog_docs_cat",
+      "description": "Read a Google Doc as plain text"
+    },
+    {
+      "name": "gog_docs_create",
+      "description": "Create a new Google Doc"
+    },
+    {
+      "name": "gog_docs_write",
+      "description": "Write or append text content to a Google Doc"
+    },
+    {
+      "name": "gog_docs_find_replace",
+      "description": "Find and replace text in a Google Doc"
+    },
+    {
+      "name": "gog_docs_structure",
+      "description": "Show document structure with numbered paragraphs"
+    },
+    {
+      "name": "gog_docs_run",
+      "description": "Run any gog docs subcommand (escape hatch)"
+    },
+    {
       "name": "gog_sheets_get",
       "description": "Read values from a Google Sheets range"
     },
