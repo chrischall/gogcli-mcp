@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-drive",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Extended Google Drive MCP server via gogcli — auth + full Drive support (upload/download/permissions/comments/shared drives)",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
   "repository": {
