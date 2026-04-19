@@ -59,7 +59,8 @@ jobs:
       # Build .mcpb bundles for each package that has a manifest
       - name: Build .mcpb bundles
         run: |
-          for PKG_DIR in packages/gogcli-mcp packages/gogcli-mcp-sheets packages/gogcli-mcp-docs; do
+          for PKG_DIR in packages/*/; do
+            PKG_DIR="${PKG_DIR%/}"
             PKG=$(basename "$PKG_DIR")
             MANIFEST="${PKG_DIR}/manifest.json"
             if [ -f "${MANIFEST}" ]; then
@@ -79,7 +80,8 @@ jobs:
       # Publish all packages to npm via trusted publishing (OIDC)
       - name: Publish to npm
         run: |
-          for PKG_DIR in packages/gogcli-mcp packages/gogcli-mcp-sheets packages/gogcli-mcp-docs; do
+          for PKG_DIR in packages/*/; do
+            PKG_DIR="${PKG_DIR%/}"
             echo "Publishing $(basename $PKG_DIR)..."
             cd "${PKG_DIR}"
             npm publish --access public --provenance
@@ -97,9 +99,5 @@ jobs:
         with:
           body_path: RELEASE_NOTES.md
           files: |
-            gogcli-mcp-${{ env.VERSION }}.skill
-            gogcli-mcp-${{ env.VERSION }}.mcpb
-            gogcli-mcp-sheets-${{ env.VERSION }}.skill
-            gogcli-mcp-sheets-${{ env.VERSION }}.mcpb
-            gogcli-mcp-docs-${{ env.VERSION }}.skill
-            gogcli-mcp-docs-${{ env.VERSION }}.mcpb
+            *.skill
+            *.mcpb

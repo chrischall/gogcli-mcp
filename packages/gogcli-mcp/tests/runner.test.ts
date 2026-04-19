@@ -300,6 +300,22 @@ describe('run', () => {
     vi.useRealTimers();
   });
 
+  it('formats 1-minute timeout as singular "minute" (not plural)', async () => {
+    vi.useFakeTimers();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = vi.fn();
+      return proc;
+    }) as unknown as Spawner;
+
+    const promise = run(['docs', 'cat', 'id'], { spawner, timeout: 60_000 });
+    vi.advanceTimersByTime(60_000);
+    await expect(promise).rejects.toThrow('gog timed out after 60000ms (1 minute)');
+    vi.useRealTimers();
+  });
+
   it('strips GOG_ACCESS_TOKEN from child environment to force refresh-token auth', async () => {
     const spawner = makeSpawner(0, '{}');
     const originalToken = process.env.GOG_ACCESS_TOKEN;
