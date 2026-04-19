@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-classroom",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Extended Google Classroom MCP server via gogcli — auth + full Classroom support",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
   "repository": {
