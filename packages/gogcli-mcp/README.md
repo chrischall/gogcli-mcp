@@ -1,5 +1,8 @@
 # gogcli-mcp
 
+> [!WARNING]
+> **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
+
 Base [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude access to Google Workspace via [gogcli](https://github.com/steipete/gogcli). Includes 52 tools across 8 services: Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, and Auth.
 
 For extended Sheets or Docs support, see [gogcli-mcp-sheets](https://www.npmjs.com/package/gogcli-mcp-sheets) and [gogcli-mcp-docs](https://www.npmjs.com/package/gogcli-mcp-docs).

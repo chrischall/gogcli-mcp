@@ -2,10 +2,27 @@
   "name": "gogcli-mcp",
   "version": "2.0.1",
   "description": "MCP server wrapping gogcli for Google service access",
+  "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
   "repository": {
     "type": "git",
     "url": "https://github.com/chrischall/gogcli-mcp"
   },
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "ai",
+    "google",
+    "gogcli",
+    "google-sheets",
+    "google-docs",
+    "google-drive",
+    "google-calendar",
+    "gmail",
+    "google-tasks",
+    "google-contacts"
+  ],
   "type": "module",
   "bin": {
     "gogcli-mcp": "dist/index.js"

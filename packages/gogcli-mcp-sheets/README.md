@@ -1,5 +1,8 @@
 # gogcli-mcp-sheets
 
+> [!WARNING]
+> **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
+
 Extended Google Sheets [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/steipete/gogcli). Includes auth tools plus 22 additional dedicated Sheets tools for tab management, formatting, named ranges, and more.
 
 ## Requirements

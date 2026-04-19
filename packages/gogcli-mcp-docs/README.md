@@ -1,5 +1,8 @@
 # gogcli-mcp-docs
 
+> [!WARNING]
+> **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
+
 Extended Google Docs [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/steipete/gogcli). Includes auth tools plus 14 additional dedicated Docs tools for editing, exporting, comments, and more.
 
 ## Requirements

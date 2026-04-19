@@ -28,11 +28,40 @@ describe('gog_drive_ls', () => {
     expect(runner.run).toHaveBeenCalledWith(['drive', 'ls'], { account: undefined });
   });
 
-  it('appends folderId when provided', async () => {
+  it('passes folderId as --parent flag', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();
     await handlers.get('gog_drive_ls')!({ folderId: 'folder1' });
-    expect(runner.run).toHaveBeenCalledWith(['drive', 'ls', 'folder1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['drive', 'ls', '--parent=folder1'], { account: undefined });
+  });
+
+  it('supports max, page, query, and allDrives flags', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_drive_ls')!({
+      folderId: 'folder1',
+      max: 50,
+      page: 'tok',
+      query: "name contains 'x'",
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['drive', 'ls', '--parent=folder1', '--max=50', '--page=tok', "--query=name contains 'x'"],
+      { account: undefined },
+    );
+  });
+
+  it('passes --no-all-drives when allDrives is false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_drive_ls')!({ allDrives: false });
+    expect(runner.run).toHaveBeenCalledWith(['drive', 'ls', '--no-all-drives'], { account: undefined });
+  });
+
+  it('omits all-drives flag when allDrives is true (default)', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_drive_ls')!({ allDrives: true });
+    expect(runner.run).toHaveBeenCalledWith(['drive', 'ls'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -124,10 +153,27 @@ describe('gog_drive_move', () => {
 });
 
 describe('gog_drive_delete', () => {
-  it('calls run with fileId', async () => {
+  it('calls run with fileId (trash by default)', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();
     await handlers.get('gog_drive_delete')!({ fileId: 'file1' });
+    expect(runner.run).toHaveBeenCalledWith(['drive', 'delete', 'file1'], { account: undefined });
+  });
+
+  it('appends --permanent when permanent=true', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_drive_delete')!({ fileId: 'file1', permanent: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['drive', 'delete', 'file1', '--permanent'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --permanent when permanent=false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_drive_delete')!({ fileId: 'file1', permanent: false });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'delete', 'file1'], { account: undefined });
   });
 

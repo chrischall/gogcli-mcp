@@ -1,7 +1,7 @@
 {
-  "name": "gogcli-mcp-docs",
-  "version": "2.0.1",
-  "description": "Extended Google Docs MCP server via gogcli — all base tools plus full Docs support",
+  "name": "gogcli-mcp-drive",
+  "version": "2.0.0",
+  "description": "Extended Google Drive MCP server via gogcli — auth + full Drive support (upload/download/permissions/comments/shared drives)",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
   "repository": {
     "type": "git",
@@ -9,7 +9,7 @@
   },
   "type": "module",
   "bin": {
-    "gogcli-mcp-docs": "dist/index.js"
+    "gogcli-mcp-drive": "dist/index.js"
   },
   "exports": {
     ".": "./dist/index.js"
@@ -34,7 +34,7 @@
     "ai",
     "google",
     "gogcli",
-    "google-docs",
-    "documents"
+    "google-drive",
+    "drive"
   ]
 }

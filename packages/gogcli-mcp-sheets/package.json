@@ -2,6 +2,7 @@
   "name": "gogcli-mcp-sheets",
   "version": "2.0.1",
   "description": "Extended Google Sheets MCP server via gogcli — all base tools plus full Sheets support",
+  "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
   "repository": {
     "type": "git",
     "url": "https://github.com/chrischall/gogcli-mcp"
@@ -25,5 +26,15 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.3.6"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "ai",
+    "google",
+    "gogcli",
+    "google-sheets",
+    "spreadsheets"
+  ]
 }

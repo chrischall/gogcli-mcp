@@ -1,0 +1,179 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/dxt/main/dist/mcpb-manifest.schema.json",
+  "manifest_version": "0.3",
+  "name": "gogcli-mcp-drive",
+  "display_name": "gogcli (Drive)",
+  "version": "2.0.0",
+  "description": "Extended Google Drive for Claude via gogcli — auth + full Drive support (upload, download, permissions, comments, shared drives)",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com",
+    "url": "https://github.com/chrischall"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chrischall/gogcli-mcp"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp",
+  "support": "https://github.com/chrischall/gogcli-mcp/issues",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "drive",
+    "gogcli",
+    "gog",
+    "upload",
+    "download",
+    "permissions",
+    "comments",
+    "shared-drives"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {
+        "GOG_ACCOUNT": "${user_config.gog_account}",
+        "GOG_PATH": "${user_config.gog_path}"
+      }
+    }
+  },
+  "user_config": {
+    "gog_account": {
+      "type": "string",
+      "title": "Google Account",
+      "description": "Default Google account email (optional — uses gogcli's configured default if omitted)",
+      "required": false
+    },
+    "gog_path": {
+      "type": "string",
+      "title": "gog Executable Path",
+      "description": "Path to the gog executable (optional — defaults to 'gog' on your PATH)",
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "gog_auth_add",
+      "description": "Authorize a Google account via browser-based OAuth"
+    },
+    {
+      "name": "gog_auth_list",
+      "description": "List all Google accounts stored in gogcli"
+    },
+    {
+      "name": "gog_auth_status",
+      "description": "Show gogcli auth configuration (keyring, credential files)"
+    },
+    {
+      "name": "gog_auth_services",
+      "description": "List Google services and OAuth scopes supported by gogcli"
+    },
+    {
+      "name": "gog_auth_run",
+      "description": "Run any gog auth subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_drive_ls",
+      "description": "List files in a Google Drive folder (with pagination and query filters)"
+    },
+    {
+      "name": "gog_drive_search",
+      "description": "Full-text search across Drive"
+    },
+    {
+      "name": "gog_drive_get",
+      "description": "Get file metadata"
+    },
+    {
+      "name": "gog_drive_mkdir",
+      "description": "Create a new folder"
+    },
+    {
+      "name": "gog_drive_rename",
+      "description": "Rename a file or folder"
+    },
+    {
+      "name": "gog_drive_move",
+      "description": "Move a file to a different folder"
+    },
+    {
+      "name": "gog_drive_delete",
+      "description": "Delete a file (trash by default, or permanent=true for irreversible delete)"
+    },
+    {
+      "name": "gog_drive_share",
+      "description": "Share a file or folder"
+    },
+    {
+      "name": "gog_drive_run",
+      "description": "Run any gog drive subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_drive_download",
+      "description": "Download a file (Google Docs formats export as pdf/docx/xlsx/etc.)"
+    },
+    {
+      "name": "gog_drive_upload",
+      "description": "Upload a local file, optionally replacing an existing file or converting to Google format"
+    },
+    {
+      "name": "gog_drive_copy",
+      "description": "Copy a file to a new file"
+    },
+    {
+      "name": "gog_drive_url",
+      "description": "Print shareable web URLs for one or more files"
+    },
+    {
+      "name": "gog_drive_permissions",
+      "description": "List permissions on a file"
+    },
+    {
+      "name": "gog_drive_unshare",
+      "description": "Remove a permission from a file"
+    },
+    {
+      "name": "gog_drive_drives_list",
+      "description": "List shared drives (Team Drives)"
+    },
+    {
+      "name": "gog_drive_comments_list",
+      "description": "List comments on a file"
+    },
+    {
+      "name": "gog_drive_comments_get",
+      "description": "Get a single comment by ID"
+    },
+    {
+      "name": "gog_drive_comments_add",
+      "description": "Add a new comment"
+    },
+    {
+      "name": "gog_drive_comments_update",
+      "description": "Update a comment's text"
+    },
+    {
+      "name": "gog_drive_comments_delete",
+      "description": "Delete a comment"
+    },
+    {
+      "name": "gog_drive_comments_reply",
+      "description": "Reply to an existing comment"
+    }
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}

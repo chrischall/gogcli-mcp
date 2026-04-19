@@ -8,11 +8,19 @@ export function registerDriveTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       folderId: z.string().optional().describe('Folder ID to list (default: root)'),
+      max: z.number().optional().describe('Max results (default: 20)'),
+      page: z.string().optional().describe('Page token for pagination'),
+      query: z.string().optional().describe('Drive query filter (e.g. "name contains \'budget\'")'),
+      allDrives: z.boolean().optional().describe('Include shared drives (default: true). Set false for My Drive only.'),
       account: accountParam,
     },
-  }, async ({ folderId, account }) => {
+  }, async ({ folderId, max, page, query, allDrives, account }) => {
     const args = ['drive', 'ls'];
-    if (folderId) args.push(folderId);
+    if (folderId) args.push(`--parent=${folderId}`);
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (page) args.push(`--page=${page}`);
+    if (query) args.push(`--query=${query}`);
+    if (allDrives === false) args.push('--no-all-drives');
     return runOrDiagnose(args, { account });
   });
 
@@ -74,14 +82,17 @@ export function registerDriveTools(server: McpServer): void {
   });
 
   server.registerTool('gog_drive_delete', {
-    description: 'Move a Google Drive file to trash.',
+    description: 'Move a Google Drive file to trash, or permanently delete it with permanent=true (irreversible).',
     annotations: { destructiveHint: true },
     inputSchema: {
-      fileId: z.string().describe('File ID to trash'),
+      fileId: z.string().describe('File ID to delete'),
+      permanent: z.boolean().optional().describe('Permanently delete instead of moving to trash (irreversible)'),
       account: accountParam,
     },
-  }, async ({ fileId, account }) => {
-    return runOrDiagnose(['drive', 'delete', fileId], { account });
+  }, async ({ fileId, permanent, account }) => {
+    const args = ['drive', 'delete', fileId];
+    if (permanent) args.push('--permanent');
+    return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_drive_share', {

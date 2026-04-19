@@ -17,9 +17,16 @@ export function toError(err: unknown): ToolResult {
 
 const AUTH_ERROR_PATTERN = /\b(401|unauthorized|token.*(expired|revoked)|invalid_grant)\b/i;
 
+const TRANSIENT_ERROR_PATTERN =
+  /\b429\b|\b5\d\d\b|\bquota\b|rateLimit|\bDEADLINE_EXCEEDED\b/i;
+
 const AUTH_HINT =
   '\n\nAuthentication may have expired. Use gog_auth_add to re-authorize the account. ' +
   'Ask the user if they would like to re-authenticate.';
+
+const TRANSIENT_HINT =
+  '\n\nThis error is often transient. Retry the same call before trying a different approach ' +
+  '(do not fall back to smaller writes or row-by-row operations).';
 
 export async function runOrDiagnose(
   args: string[],
@@ -31,7 +38,8 @@ export async function runOrDiagnose(
     const base = toError(err);
     const errText = base.content[0].text;
     const isAuthError = AUTH_ERROR_PATTERN.test(errText);
-    const hint = isAuthError ? AUTH_HINT : '';
+    const isTransientError = !isAuthError && TRANSIENT_ERROR_PATTERN.test(errText);
+    const hint = isAuthError ? AUTH_HINT : isTransientError ? TRANSIENT_HINT : '';
     try {
       const accounts = await run(['auth', 'list']);
       return toText(`${errText}\n\nConfigured accounts:\n${accounts}${hint}`);
