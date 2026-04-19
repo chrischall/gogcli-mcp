@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp-classroom",
   "display_name": "gogcli (Classroom)",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Extended Google Classroom for Claude via gogcli — auth + full Classroom support (courses, rosters, coursework, submissions, announcements, topics, invitations)",
   "author": {
     "name": "Chris Hall",

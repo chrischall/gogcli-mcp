@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp",
   "display_name": "gogcli",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Google Sheets (and more) for Claude via gogcli — read, write, and manage spreadsheets",
   "author": {
     "name": "Chris Hall",

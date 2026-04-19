@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp-drive",
   "display_name": "gogcli (Drive)",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Extended Google Drive for Claude via gogcli — auth + full Drive support (upload, download, permissions, comments, shared drives)",
   "author": {
     "name": "Chris Hall",

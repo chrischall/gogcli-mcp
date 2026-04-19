@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp-sheets",
   "display_name": "gogcli (Sheets)",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Extended Google Sheets for Claude via gogcli — auth + full Sheets support",
   "author": {
     "name": "Chris Hall",
