@@ -4,11 +4,13 @@ export {
   VERSION,
   registerAuthTools,
   registerCalendarTools,
+  registerClassroomTools,
   registerContactsTools,
   registerDocsTools,
   registerDriveTools,
   registerGmailTools,
   registerSheetsTools,
+  registerSlidesTools,
   registerTasksTools,
 } from './server.js';
 export { run } from './runner.js';

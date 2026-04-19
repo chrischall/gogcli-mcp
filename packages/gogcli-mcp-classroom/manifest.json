@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/anthropics/dxt/main/dist/mcpb-manifest.schema.json",
   "manifest_version": "0.3",
-  "name": "gogcli-mcp",
-  "display_name": "gogcli",
-  "version": "2.0.1",
-  "description": "Google Sheets (and more) for Claude via gogcli — read, write, and manage spreadsheets",
+  "name": "gogcli-mcp-classroom",
+  "display_name": "gogcli (Classroom)",
+  "version": "2.0.0",
+  "description": "Extended Google Classroom for Claude via gogcli — auth + full Classroom support (courses, rosters, coursework, submissions, announcements, topics, invitations)",
   "author": {
     "name": "Chris Hall",
     "email": "chris.c.hall@gmail.com",
@@ -19,13 +19,15 @@
   "license": "MIT",
   "keywords": [
     "google",
-    "sheets",
-    "spreadsheet",
-    "gmail",
-    "calendar",
-    "drive",
+    "classroom",
+    "education",
     "gogcli",
-    "gog"
+    "gog",
+    "courses",
+    "assignments",
+    "grading",
+    "students",
+    "teachers"
   ],
   "server": {
     "type": "node",
@@ -75,50 +77,6 @@
     {
       "name": "gog_auth_run",
       "description": "Run any gog auth subcommand (escape hatch)"
-    },
-    {
-      "name": "gog_gmail_search",
-      "description": "Search Gmail threads by query"
-    },
-    {
-      "name": "gog_gmail_get",
-      "description": "Get a Gmail message by ID"
-    },
-    {
-      "name": "gog_gmail_send",
-      "description": "Send an email"
-    },
-    {
-      "name": "gog_gmail_run",
-      "description": "Run any gog gmail subcommand (escape hatch)"
-    },
-    {
-      "name": "gog_calendar_events",
-      "description": "List calendar events with optional filters"
-    },
-    {
-      "name": "gog_calendar_get",
-      "description": "Get a specific calendar event"
-    },
-    {
-      "name": "gog_calendar_create",
-      "description": "Create a calendar event"
-    },
-    {
-      "name": "gog_calendar_update",
-      "description": "Update an existing calendar event"
-    },
-    {
-      "name": "gog_calendar_delete",
-      "description": "Delete a calendar event"
-    },
-    {
-      "name": "gog_calendar_respond",
-      "description": "Respond to a calendar event invitation"
-    },
-    {
-      "name": "gog_calendar_run",
-      "description": "Run any gog calendar subcommand (escape hatch)"
     },
     {
       "name": "gog_classroom_courses_list",
@@ -295,202 +253,6 @@
     {
       "name": "gog_classroom_run",
       "description": "Run any gog classroom subcommand (escape hatch)"
-    },
-    {
-      "name": "gog_drive_ls",
-      "description": "List files in a Google Drive folder"
-    },
-    {
-      "name": "gog_drive_search",
-      "description": "Search Google Drive files"
-    },
-    {
-      "name": "gog_drive_get",
-      "description": "Get Google Drive file metadata"
-    },
-    {
-      "name": "gog_drive_mkdir",
-      "description": "Create a folder in Google Drive"
-    },
-    {
-      "name": "gog_drive_rename",
-      "description": "Rename a file or folder in Google Drive"
-    },
-    {
-      "name": "gog_drive_move",
-      "description": "Move a file to a different folder"
-    },
-    {
-      "name": "gog_drive_delete",
-      "description": "Move a file to trash"
-    },
-    {
-      "name": "gog_drive_share",
-      "description": "Share a file or folder"
-    },
-    {
-      "name": "gog_drive_run",
-      "description": "Run any gog drive subcommand (escape hatch)"
-    },
-    {
-      "name": "gog_tasks_lists",
-      "description": "List all Google Task lists"
-    },
-    {
-      "name": "gog_tasks_list",
-      "description": "List tasks in a task list"
-    },
-    {
-      "name": "gog_tasks_get",
-      "description": "Get a specific task"
-    },
-    {
-      "name": "gog_tasks_add",
-      "description": "Add a task to a task list"
-    },
-    {
-      "name": "gog_tasks_done",
-      "description": "Mark a task as completed"
-    },
-    {
-      "name": "gog_tasks_delete",
-      "description": "Delete a task"
-    },
-    {
-      "name": "gog_tasks_run",
-      "description": "Run any gog tasks subcommand (escape hatch)"
-    },
-    {
-      "name": "gog_contacts_search",
-      "description": "Search Google Contacts"
-    },
-    {
-      "name": "gog_contacts_list",
-      "description": "List all Google Contacts"
-    },
-    {
-      "name": "gog_contacts_get",
-      "description": "Get a contact by resource name"
-    },
-    {
-      "name": "gog_contacts_create",
-      "description": "Create a new Google Contact"
-    },
-    {
-      "name": "gog_contacts_run",
-      "description": "Run any gog contacts subcommand (escape hatch)"
-    },
-    {
-      "name": "gog_docs_info",
-      "description": "Get Google Doc metadata (title, ID, properties)"
-    },
-    {
-      "name": "gog_docs_cat",
-      "description": "Read a Google Doc as plain text"
-    },
-    {
-      "name": "gog_docs_create",
-      "description": "Create a new Google Doc"
-    },
-    {
-      "name": "gog_docs_write",
-      "description": "Write or append text content to a Google Doc"
-    },
-    {
-      "name": "gog_docs_find_replace",
-      "description": "Find and replace text in a Google Doc"
-    },
-    {
-      "name": "gog_docs_structure",
-      "description": "Show document structure with numbered paragraphs"
-    },
-    {
-      "name": "gog_docs_run",
-      "description": "Run any gog docs subcommand (escape hatch)"
-    },
-    {
-      "name": "gog_sheets_get",
-      "description": "Read values from a Google Sheets range"
-    },
-    {
-      "name": "gog_sheets_update",
-      "description": "Write values to a Google Sheets range"
-    },
-    {
-      "name": "gog_sheets_append",
-      "description": "Append rows to a Google Sheet"
-    },
-    {
-      "name": "gog_sheets_clear",
-      "description": "Clear values in a Google Sheets range"
-    },
-    {
-      "name": "gog_sheets_metadata",
-      "description": "Get spreadsheet metadata (title, tabs, named ranges)"
-    },
-    {
-      "name": "gog_sheets_create",
-      "description": "Create a new Google Spreadsheet"
-    },
-    {
-      "name": "gog_sheets_find_replace",
-      "description": "Find and replace text across a spreadsheet"
-    },
-    {
-      "name": "gog_sheets_run",
-      "description": "Run any gog sheets subcommand (escape hatch)"
-    },
-    {
-      "name": "gog_slides_export",
-      "description": "Export a Google Slides presentation to pdf or pptx"
-    },
-    {
-      "name": "gog_slides_info",
-      "description": "Get metadata for a Google Slides presentation"
-    },
-    {
-      "name": "gog_slides_create",
-      "description": "Create a new Google Slides presentation"
-    },
-    {
-      "name": "gog_slides_create_from_markdown",
-      "description": "Create a new Google Slides presentation from markdown content"
-    },
-    {
-      "name": "gog_slides_create_from_template",
-      "description": "Create a new Google Slides presentation from a template with placeholder replacements"
-    },
-    {
-      "name": "gog_slides_copy",
-      "description": "Copy a Google Slides presentation"
-    },
-    {
-      "name": "gog_slides_add_slide",
-      "description": "Add a slide to a presentation from a local image"
-    },
-    {
-      "name": "gog_slides_list_slides",
-      "description": "List slides in a presentation"
-    },
-    {
-      "name": "gog_slides_delete_slide",
-      "description": "Delete a slide from a presentation"
-    },
-    {
-      "name": "gog_slides_read_slide",
-      "description": "Read the content of a slide"
-    },
-    {
-      "name": "gog_slides_update_notes",
-      "description": "Update speaker notes on a slide"
-    },
-    {
-      "name": "gog_slides_replace_slide",
-      "description": "Replace the image content of an existing slide"
-    },
-    {
-      "name": "gog_slides_run",
-      "description": "Run any gog slides subcommand (escape hatch)"
     }
   ],
   "compatibility": {
