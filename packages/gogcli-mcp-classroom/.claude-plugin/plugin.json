@@ -1,0 +1,27 @@
+{
+  "name": "gogcli-mcp-classroom",
+  "displayName": "gogcli (Classroom)",
+  "version": "2.0.3",
+  "description": "Extended Google Classroom for Claude via gogcli \u2014 auth + full Classroom support (courses, rosters, coursework, submissions, announcements, topics, invitations)",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp-classroom",
+  "repository": "https://github.com/chrischall/gogcli-mcp",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "classroom",
+    "education",
+    "gogcli",
+    "gog",
+    "courses",
+    "assignments",
+    "grading",
+    "students",
+    "teachers"
+  ],
+  "skills": "./SKILL.md",
+  "mcp": "./.mcp.json"
+}

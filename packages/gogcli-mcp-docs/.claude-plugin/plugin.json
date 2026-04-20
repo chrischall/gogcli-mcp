@@ -1,0 +1,24 @@
+{
+  "name": "gogcli-mcp-docs",
+  "displayName": "gogcli (Docs)",
+  "version": "2.0.3",
+  "description": "Extended Google Docs for Claude via gogcli \u2014 auth + full Docs and comments support",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp-docs",
+  "repository": "https://github.com/chrischall/gogcli-mcp",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "docs",
+    "documents",
+    "gogcli",
+    "gog",
+    "comments",
+    "export"
+  ],
+  "skills": "./SKILL.md",
+  "mcp": "./.mcp.json"
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "gogcli-mcp-drive",
+  "owner": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "metadata": {
+    "description": "Extended Google Drive for Claude via gogcli \u2014 auth + full Drive support (upload, download, permissions, comments, shared drives)",
+    "version": "2.0.3"
+  },
+  "plugins": [
+    {
+      "name": "gogcli-mcp-drive",
+      "displayName": "gogcli (Drive)",
+      "source": "./",
+      "description": "Extended Google Drive for Claude via gogcli \u2014 auth + full Drive support (upload, download, permissions, comments, shared drives)",
+      "version": "2.0.3",
+      "author": {
+        "name": "Chris Hall"
+      },
+      "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp-drive",
+      "repository": "https://github.com/chrischall/gogcli-mcp",
+      "license": "MIT",
+      "keywords": [
+        "google",
+        "drive",
+        "gogcli",
+        "gog",
+        "upload",
+        "download",
+        "permissions",
+        "comments",
+        "shared-drives"
+      ],
+      "category": "productivity"
+    }
+  ]
+}

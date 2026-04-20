@@ -1,0 +1,26 @@
+{
+  "name": "gogcli-mcp-slides",
+  "displayName": "gogcli (Slides)",
+  "version": "2.0.3",
+  "description": "Extended Google Slides for Claude via gogcli \u2014 auth + full Slides support (create, edit, export, templates, markdown)",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp-slides",
+  "repository": "https://github.com/chrischall/gogcli-mcp",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "slides",
+    "presentations",
+    "gogcli",
+    "gog",
+    "markdown",
+    "templates",
+    "pdf",
+    "pptx"
+  ],
+  "skills": "./SKILL.md",
+  "mcp": "./.mcp.json"
+}

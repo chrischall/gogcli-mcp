@@ -1,0 +1,25 @@
+{
+  "name": "gogcli-mcp",
+  "displayName": "gogcli",
+  "version": "2.0.3",
+  "description": "Google Sheets (and more) for Claude via gogcli \u2014 read, write, and manage spreadsheets",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp",
+  "repository": "https://github.com/chrischall/gogcli-mcp",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "sheets",
+    "spreadsheet",
+    "gmail",
+    "calendar",
+    "drive",
+    "gogcli",
+    "gog"
+  ],
+  "skills": "./SKILL.md",
+  "mcp": "./.mcp.json"
+}

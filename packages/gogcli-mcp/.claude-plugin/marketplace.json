@@ -1,0 +1,38 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "gogcli-mcp",
+  "owner": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "metadata": {
+    "description": "Google Sheets (and more) for Claude via gogcli \u2014 read, write, and manage spreadsheets",
+    "version": "2.0.3"
+  },
+  "plugins": [
+    {
+      "name": "gogcli-mcp",
+      "displayName": "gogcli",
+      "source": "./",
+      "description": "Google Sheets (and more) for Claude via gogcli \u2014 read, write, and manage spreadsheets",
+      "version": "2.0.3",
+      "author": {
+        "name": "Chris Hall"
+      },
+      "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp",
+      "repository": "https://github.com/chrischall/gogcli-mcp",
+      "license": "MIT",
+      "keywords": [
+        "google",
+        "sheets",
+        "spreadsheet",
+        "gmail",
+        "calendar",
+        "drive",
+        "gogcli",
+        "gog"
+      ],
+      "category": "productivity"
+    }
+  ]
+}

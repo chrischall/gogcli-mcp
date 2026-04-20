@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "gogcli-classroom": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/dist/index.js"
+      ],
+      "env": {
+        "GOG_ACCOUNT": "${GOG_ACCOUNT}",
+        "GOG_PATH": "${GOG_PATH}"
+      }
+    }
+  }
+}
