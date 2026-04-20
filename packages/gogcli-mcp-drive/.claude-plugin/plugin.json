@@ -1,0 +1,26 @@
+{
+  "name": "gogcli-mcp-drive",
+  "displayName": "gogcli (Drive)",
+  "version": "2.0.3",
+  "description": "Extended Google Drive for Claude via gogcli \u2014 auth + full Drive support (upload, download, permissions, comments, shared drives)",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp-drive",
+  "repository": "https://github.com/chrischall/gogcli-mcp",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "drive",
+    "gogcli",
+    "gog",
+    "upload",
+    "download",
+    "permissions",
+    "comments",
+    "shared-drives"
+  ],
+  "skills": "./SKILL.md",
+  "mcp": "./.mcp.json"
+}

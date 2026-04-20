@@ -1,0 +1,37 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "gogcli-mcp-docs",
+  "owner": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "metadata": {
+    "description": "Extended Google Docs for Claude via gogcli \u2014 auth + full Docs and comments support",
+    "version": "2.0.3"
+  },
+  "plugins": [
+    {
+      "name": "gogcli-mcp-docs",
+      "displayName": "gogcli (Docs)",
+      "source": "./",
+      "description": "Extended Google Docs for Claude via gogcli \u2014 auth + full Docs and comments support",
+      "version": "2.0.3",
+      "author": {
+        "name": "Chris Hall"
+      },
+      "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp-docs",
+      "repository": "https://github.com/chrischall/gogcli-mcp",
+      "license": "MIT",
+      "keywords": [
+        "google",
+        "docs",
+        "documents",
+        "gogcli",
+        "gog",
+        "comments",
+        "export"
+      ],
+      "category": "productivity"
+    }
+  ]
+}

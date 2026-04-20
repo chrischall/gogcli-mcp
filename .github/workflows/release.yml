@@ -38,6 +38,26 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
+      # Sync version across all JSON files in each package directory.
+      - name: Sync version files to $VERSION
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            for (const pkgDir of fs.readdirSync('packages').map(d => path.join('packages', d))) {
+              for (const f of ['manifest.json', 'server.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json']) {
+                const full = path.join(pkgDir, f);
+                if (!fs.existsSync(full)) continue;
+                const o = JSON.parse(fs.readFileSync(full, 'utf8'));
+                if (o.version !== undefined) o.version = '$VERSION';
+                if (o.metadata?.version !== undefined) o.metadata.version = '$VERSION';
+                if (Array.isArray(o.packages)) o.packages.forEach(p => { if (p.version !== undefined) p.version = '$VERSION'; });
+                if (Array.isArray(o.plugins)) o.plugins.forEach(p => { if (p.version !== undefined) p.version = '$VERSION'; });
+                fs.writeFileSync(full, JSON.stringify(o, null, 2) + '\n');
+              }
+            }
+          "
+
       # Package .skill files for each package that has a SKILL.md
       - name: Package skills
         run: |
@@ -86,6 +106,43 @@ jobs:
             cd "${PKG_DIR}"
             npm publish --access public --provenance
             cd - > /dev/null
+          done
+
+      # ─── modelcontextprotocol/registry — one publish per sub-package ───
+      # PulseMCP auto-ingests from here weekly.
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry (OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish each sub-package to MCP Registry
+        run: |
+          for PKG_DIR in packages/*/; do
+            PKG_DIR="${PKG_DIR%/}"
+            if [ -f "${PKG_DIR}/server.json" ]; then
+              echo "Publishing $(basename $PKG_DIR) to MCP Registry..."
+              (cd "${PKG_DIR}" && ../../mcp-publisher publish)
+            fi
+          done
+
+      # ─── ClawHub — one publish per sub-package (each has a SKILL.md) ───
+      - name: Publish skills to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          if [ -z "$CLAWHUB_TOKEN" ]; then
+            echo "CLAWHUB_TOKEN not set — skipping ClawHub publish."
+            exit 0
+          fi
+          npx --yes clawhub login --token "$CLAWHUB_TOKEN"
+          for PKG_DIR in packages/*/; do
+            PKG_DIR="${PKG_DIR%/}"
+            if [ -f "${PKG_DIR}/SKILL.md" ]; then
+              echo "Publishing $(basename $PKG_DIR) to ClawHub..."
+              npx --yes clawhub skill publish "${PKG_DIR}" --version "${VERSION}"
+            fi
           done
 
       - name: Generate changelog

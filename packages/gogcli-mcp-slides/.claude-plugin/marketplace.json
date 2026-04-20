@@ -1,0 +1,39 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "gogcli-mcp-slides",
+  "owner": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "metadata": {
+    "description": "Extended Google Slides for Claude via gogcli \u2014 auth + full Slides support (create, edit, export, templates, markdown)",
+    "version": "2.0.3"
+  },
+  "plugins": [
+    {
+      "name": "gogcli-mcp-slides",
+      "displayName": "gogcli (Slides)",
+      "source": "./",
+      "description": "Extended Google Slides for Claude via gogcli \u2014 auth + full Slides support (create, edit, export, templates, markdown)",
+      "version": "2.0.3",
+      "author": {
+        "name": "Chris Hall"
+      },
+      "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp-slides",
+      "repository": "https://github.com/chrischall/gogcli-mcp",
+      "license": "MIT",
+      "keywords": [
+        "google",
+        "slides",
+        "presentations",
+        "gogcli",
+        "gog",
+        "markdown",
+        "templates",
+        "pdf",
+        "pptx"
+      ],
+      "category": "productivity"
+    }
+  ]
+}

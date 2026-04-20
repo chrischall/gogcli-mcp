@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.chrischall/gogcli-mcp-slides",
+  "description": "Extended Google Slides for Claude via gogcli \u2014 auth + full Slides support (create, edit, export, templates, markdown)",
+  "repository": {
+    "url": "https://github.com/chrischall/gogcli-mcp",
+    "source": "github",
+    "subfolder": "packages/gogcli-mcp-slides"
+  },
+  "version": "2.0.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "gogcli-mcp-slides",
+      "version": "2.0.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GOG_ACCOUNT",
+          "description": "Email address of the Google account to use (matches gogcli auth)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOG_PATH",
+          "description": "Override path to the gogcli binary (auto-discovered otherwise)",
+          "isRequired": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
