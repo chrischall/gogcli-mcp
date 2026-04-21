@@ -141,7 +141,7 @@ jobs:
             PKG_DIR="${PKG_DIR%/}"
             if [ -f "${PKG_DIR}/SKILL.md" ]; then
               echo "Publishing $(basename $PKG_DIR) to ClawHub..."
-              npx --yes clawhub skill publish "${PKG_DIR}" --version "${VERSION}"
+              npx --yes clawhub publish "${PKG_DIR}" --version "${VERSION}"
             fi
           done
 
