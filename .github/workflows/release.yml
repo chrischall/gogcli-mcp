@@ -129,6 +129,7 @@ jobs:
 
       # ─── ClawHub — one publish per sub-package (each has a SKILL.md) ───
       - name: Publish skills to ClawHub
+        continue-on-error: true
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
         run: |
@@ -136,7 +137,7 @@ jobs:
             echo "CLAWHUB_TOKEN not set — skipping ClawHub publish."
             exit 0
           fi
-          npx --yes clawhub login --token "$CLAWHUB_TOKEN"
+          npx --yes clawhub login --token "$CLAWHUB_TOKEN" --no-browser
           for PKG_DIR in packages/*/; do
             PKG_DIR="${PKG_DIR%/}"
             if [ -f "${PKG_DIR}/SKILL.md" ]; then
