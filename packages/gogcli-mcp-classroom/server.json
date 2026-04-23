@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.chrischall/gogcli-mcp-classroom",
-  "description": "Extended Google Classroom for Claude via gogcli \u2014 auth + full Classroom support (courses, rosters, coursework, submissions, announcements, topics, invitations)",
+  "description": "Google Classroom via gogcli for Claude \u2014 courses, assignments, submissions, grading",
   "repository": {
     "url": "https://github.com/chrischall/gogcli-mcp",
     "source": "github",

@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.chrischall/gogcli-mcp-slides",
-  "description": "Extended Google Slides for Claude via gogcli \u2014 auth + full Slides support (create, edit, export, templates, markdown)",
+  "description": "Google Slides via gogcli for Claude \u2014 deck and slide authoring",
   "repository": {
     "url": "https://github.com/chrischall/gogcli-mcp",
     "source": "github",
