@@ -142,7 +142,12 @@ jobs:
             PKG_DIR="${PKG_DIR%/}"
             if [ -f "${PKG_DIR}/SKILL.md" ]; then
               echo "Publishing $(basename $PKG_DIR) to ClawHub..."
-              npx --yes clawhub package publish "${PKG_DIR}" --version "${VERSION}"
+              # ClawHub's `publish` rejects folders with .claude-plugin/plugin.json,
+              # and `package publish` requires an openclaw.plugin.json we don't ship.
+              # Workaround: copy the package's SKILL.md to a clean temp dir.
+              SKILL_DIR=$(mktemp -d)
+              cp "${PKG_DIR}/SKILL.md" "$SKILL_DIR/"
+              npx --yes clawhub publish "$SKILL_DIR" --version "${VERSION}" --slug "$(basename ${PKG_DIR})"
             fi
           done
 
