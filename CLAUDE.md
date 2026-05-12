@@ -12,6 +12,7 @@ Monorepo of MCP servers wrapping [gogcli](https://github.com/steipete/gogcli) �
 | `gogcli-mcp-drive` | `packages/gogcli-mcp-drive` | Focused — 27 tools: auth + Drive (9 base + 13 extra: upload, download, permissions, comments, shared drives, etc.) |
 | `gogcli-mcp-slides` | `packages/gogcli-mcp-slides` | Focused — 18 tools: auth + Slides (12 dedicated + 1 run escape hatch: create, edit, export, templates, markdown) |
 | `gogcli-mcp-classroom` | `packages/gogcli-mcp-classroom` | Focused — 49 tools: auth + Classroom (43 dedicated + 1 run escape hatch: courses, rosters, coursework, submissions, announcements, topics, invitations) |
+| `gogcli-mcp-gmail` | `packages/gogcli-mcp-gmail` | Focused — 32 tools: auth + Gmail (4 base + 23 extra: threads, labels, drafts, attachments, forward, autoreply, bulk operations) |
 
 Sub-packages are **focused** — each includes only auth + its service's tools. Users who want everything use the base.
 
