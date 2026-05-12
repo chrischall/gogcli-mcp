@@ -121,6 +121,30 @@
       "description": "Run any gog calendar subcommand (escape hatch)"
     },
     {
+      "name": "gog_meet_create",
+      "description": "Create a Google Meet space"
+    },
+    {
+      "name": "gog_meet_get",
+      "description": "Get a Google Meet space by meeting code"
+    },
+    {
+      "name": "gog_meet_update",
+      "description": "Update a Google Meet space configuration"
+    },
+    {
+      "name": "gog_meet_end",
+      "description": "End the active conference in a Meet space"
+    },
+    {
+      "name": "gog_meet_history",
+      "description": "List past calls in a Meet space"
+    },
+    {
+      "name": "gog_meet_participants",
+      "description": "List participants from a Meet call"
+    },
+    {
       "name": "gog_classroom_courses_list",
       "description": "List Google Classroom courses"
     },
@@ -379,6 +403,26 @@
     {
       "name": "gog_contacts_run",
       "description": "Run any gog contacts subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_people_me",
+      "description": "Show your own Google People profile"
+    },
+    {
+      "name": "gog_people_get",
+      "description": "Get a People profile by resource name"
+    },
+    {
+      "name": "gog_people_search",
+      "description": "Search the Google Workspace directory"
+    },
+    {
+      "name": "gog_people_relations",
+      "description": "Get relations (manager, reports) for a user"
+    },
+    {
+      "name": "gog_people_raw",
+      "description": "Dump raw Google People API JSON for a person"
     },
     {
       "name": "gog_docs_info",

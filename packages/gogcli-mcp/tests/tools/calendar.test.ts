@@ -227,3 +227,141 @@ describe('gog_calendar_run', () => {
     expect(result.content[0].text).toBe('Error: Run failed');
   });
 });
+
+describe('gog_meet_create', () => {
+  it('calls run with no flags', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_create')!({});
+    expect(runner.run).toHaveBeenCalledWith(['meet', 'create'], { account: undefined });
+  });
+
+  it('passes --access and --open when provided', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_create')!({ access: 'open', open: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['meet', 'create', '--access=open', '--open'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --open when false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_create')!({ open: false });
+    expect(runner.run).toHaveBeenCalledWith(['meet', 'create'], { account: undefined });
+  });
+});
+
+describe('gog_meet_get', () => {
+  it('calls run with meetingCode', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_get')!({ meetingCode: 'abc-defg-hij' });
+    expect(runner.run).toHaveBeenCalledWith(['meet', 'get', 'abc-defg-hij'], { account: undefined });
+  });
+});
+
+describe('gog_meet_update', () => {
+  it('calls run with meetingCode and --access', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_update')!({ meetingCode: 'abc-defg-hij', access: 'restricted' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['meet', 'update', 'abc-defg-hij', '--access=restricted'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --access when not provided', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_update')!({ meetingCode: 'abc-defg-hij' });
+    expect(runner.run).toHaveBeenCalledWith(['meet', 'update', 'abc-defg-hij'], { account: undefined });
+  });
+});
+
+describe('gog_meet_end', () => {
+  it('calls run with meetingCode', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_end')!({ meetingCode: 'abc-defg-hij' });
+    expect(runner.run).toHaveBeenCalledWith(['meet', 'end', 'abc-defg-hij'], { account: undefined });
+  });
+});
+
+describe('gog_meet_history', () => {
+  it('calls run with meetingCode', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_history')!({ meetingCode: 'abc-defg-hij' });
+    expect(runner.run).toHaveBeenCalledWith(['meet', 'history', 'abc-defg-hij'], { account: undefined });
+  });
+
+  it('passes pagination flags', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_history')!({
+      meetingCode: 'abc-defg-hij',
+      max: 50,
+      page: 'tok',
+      all: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['meet', 'history', 'abc-defg-hij', '--max=50', '--page=tok', '--all'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --all when false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_history')!({ meetingCode: 'abc-defg-hij', all: false });
+    expect(runner.run).toHaveBeenCalledWith(['meet', 'history', 'abc-defg-hij'], { account: undefined });
+  });
+});
+
+describe('gog_meet_participants', () => {
+  it('calls run with meetingCode', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_participants')!({ meetingCode: 'abc-defg-hij' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['meet', 'participants', 'abc-defg-hij'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --conference and pagination flags', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_participants')!({
+      meetingCode: 'abc-defg-hij',
+      conference: 'conf123',
+      max: 100,
+      page: 'tok',
+      all: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'meet', 'participants', 'abc-defg-hij',
+        '--conference=conf123',
+        '--max=100',
+        '--page=tok',
+        '--all',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('omits --all when false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_meet_participants')!({ meetingCode: 'abc-defg-hij', all: false });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['meet', 'participants', 'abc-defg-hij'],
+      { account: undefined },
+    );
+  });
+});
