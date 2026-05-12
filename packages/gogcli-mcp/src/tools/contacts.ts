@@ -4,7 +4,7 @@ import { accountParam, runOrDiagnose } from './utils.js';
 
 export function registerContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_search', {
-    description: 'Search Google Contacts by name, email, or phone.',
+    description: 'Search personal Google Contacts by name, email, or phone. For searching the Workspace directory (internal users not in your personal contacts), use gog_people_search from gogcli-mcp-contacts.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       query: z.string().describe('Search query (name, email, or phone)'),

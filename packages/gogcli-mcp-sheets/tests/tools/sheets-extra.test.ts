@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerExtraSheetsTools } from '../../src/tools/sheets-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
+import { setupExtrasHandlers, toText } from '../../../gogcli-mcp/tests/helpers/extras-harness.js';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -11,22 +11,7 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   };
 });
 
-type ToolHandler = (args: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }> }>;
-
-function toText(text: string) {
-  return { content: [{ type: 'text', text }] };
-}
-
-function setupHandlers(): Map<string, ToolHandler> {
-  const server = new McpServer({ name: 'test', version: '0.0.0' });
-  const handlers = new Map<string, ToolHandler>();
-  vi.spyOn(server, 'registerTool').mockImplementation((name, _config, cb) => {
-    handlers.set(name, cb as ToolHandler);
-    return undefined as never;
-  });
-  registerExtraSheetsTools(server);
-  return handlers;
-}
+const setupHandlers = () => setupExtrasHandlers(registerExtraSheetsTools);
 
 beforeEach(() => vi.clearAllMocks());
 

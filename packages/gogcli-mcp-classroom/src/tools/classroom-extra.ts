@@ -2,17 +2,41 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
 
+const courseState = z.enum(['ACTIVE', 'ARCHIVED', 'PROVISIONED', 'DECLINED', 'SUSPENDED']);
+const workState = z.enum(['PUBLISHED', 'DRAFT']);
+const workType = z.enum(['ASSIGNMENT', 'SHORT_ANSWER_QUESTION', 'MULTIPLE_CHOICE_QUESTION']);
+
+// Fields shared by courses_create and courses_update. `name` is required on
+// create, optional on update — keep it out of this fragment so each tool can
+// declare its own rule.
+const courseSharedFields = {
+  owner: z.string().optional().describe('Owner user ID (default "me" on create)'),
+  section: z.string().optional().describe('Section'),
+  descriptionHeading: z.string().optional().describe('Description heading'),
+  description: z.string().optional().describe('Description'),
+  room: z.string().optional().describe('Room'),
+  state: courseState.optional().describe('Course state'),
+};
+
+// Fields shared by coursework_create and coursework_update.
+const courseworkSharedFields = {
+  description: z.string().optional().describe('Description'),
+  type: workType.optional().describe('Work type (default: ASSIGNMENT)'),
+  state: workState.optional().describe('State'),
+  maxPoints: z.number().optional().describe('Max points'),
+  due: z.string().optional().describe('Due datetime (combined date+time)'),
+  dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
+  dueTime: z.string().optional().describe('Due time (HH:MM)'),
+  scheduled: z.string().optional().describe('Scheduled publish time'),
+  topic: z.string().optional().describe('Topic ID'),
+};
+
 export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_create', {
     description: 'Create a new Google Classroom course.',
     inputSchema: {
       name: z.string().describe('Course name'),
-      owner: z.string().optional().describe('Owner user ID (default: "me")'),
-      section: z.string().optional().describe('Section'),
-      descriptionHeading: z.string().optional().describe('Description heading'),
-      description: z.string().optional().describe('Description'),
-      room: z.string().optional().describe('Room'),
-      state: z.string().optional().describe('Course state: ACTIVE, ARCHIVED, PROVISIONED, DECLINED, SUSPENDED'),
+      ...courseSharedFields,
       account: accountParam,
     },
   }, async ({ name, owner, section, descriptionHeading, description, room, state, account }) => {
@@ -32,12 +56,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
     inputSchema: {
       courseId: z.string().describe('Course ID'),
       name: z.string().optional().describe('Course name'),
-      owner: z.string().optional().describe('Owner user ID'),
-      section: z.string().optional().describe('Section'),
-      descriptionHeading: z.string().optional().describe('Description heading'),
-      description: z.string().optional().describe('Description'),
-      room: z.string().optional().describe('Room'),
-      state: z.string().optional().describe('Course state: ACTIVE, ARCHIVED, PROVISIONED, DECLINED, SUSPENDED'),
+      ...courseSharedFields,
       account: accountParam,
     },
   }, async ({ courseId, name, owner, section, descriptionHeading, description, room, state, account }) => {
@@ -76,7 +95,6 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_courses_unarchive', {
     description: 'Unarchive a Google Classroom course (restore to ACTIVE).',
-    annotations: { destructiveHint: true },
     inputSchema: {
       courseId: z.string().describe('Course ID'),
       account: accountParam,
@@ -139,15 +157,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
     inputSchema: {
       courseId: z.string().describe('Course ID'),
       title: z.string().describe('Coursework title'),
-      description: z.string().optional().describe('Description'),
-      type: z.string().optional().describe('Work type (ASSIGNMENT, SHORT_ANSWER_QUESTION, MULTIPLE_CHOICE_QUESTION). Default: ASSIGNMENT'),
-      state: z.string().optional().describe('State: PUBLISHED or DRAFT'),
-      maxPoints: z.number().optional().describe('Max points'),
-      due: z.string().optional().describe('Due datetime (combined date+time)'),
-      dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
-      dueTime: z.string().optional().describe('Due time (HH:MM)'),
-      scheduled: z.string().optional().describe('Scheduled publish time'),
-      topic: z.string().optional().describe('Topic ID'),
+      ...courseworkSharedFields,
       account: accountParam,
     },
   }, async ({ courseId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account }) => {
@@ -171,15 +181,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
       title: z.string().optional().describe('New title'),
-      description: z.string().optional().describe('New description'),
-      type: z.string().optional().describe('Work type'),
-      state: z.string().optional().describe('State: PUBLISHED or DRAFT'),
-      maxPoints: z.number().optional().describe('Max points'),
-      due: z.string().optional().describe('Due datetime'),
-      dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
-      dueTime: z.string().optional().describe('Due time (HH:MM)'),
-      scheduled: z.string().optional().describe('Scheduled publish time'),
-      topic: z.string().optional().describe('Topic ID'),
+      ...courseworkSharedFields,
       account: accountParam,
     },
   }, async ({ courseId, courseworkId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account }) => {
@@ -216,7 +218,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       courseId: z.string().describe('Course ID'),
       announcementId: z.string().describe('Announcement ID'),
       text: z.string().optional().describe('New text'),
-      state: z.string().optional().describe('State: PUBLISHED or DRAFT'),
+      state: workState.optional().describe('State'),
       scheduled: z.string().optional().describe('Scheduled publish time'),
       account: accountParam,
     },

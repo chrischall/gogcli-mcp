@@ -2,6 +2,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
 
+const meetAccess = z.enum(['open', 'trusted', 'restricted']);
+
 export function registerExtraCalendarTools(server: McpServer): void {
   // ─── Meet API tools ────────────────────────────────────────────
   // Meet spaces are the conferencing surface attached to calendar events,
@@ -10,7 +12,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
   server.registerTool('gog_meet_create', {
     description: 'Create a Google Meet space and return its meeting code.',
     inputSchema: {
-      access: z.enum(['open', 'trusted', 'restricted']).optional().describe('Access type (default: trusted)'),
+      access: meetAccess.optional().describe('Access type (default: trusted)'),
       open: z.boolean().optional().describe('Open the meeting in a browser after creation'),
       account: accountParam,
     },
@@ -37,7 +39,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
     annotations: { destructiveHint: true },
     inputSchema: {
       meetingCode: z.string().describe('Meeting code'),
-      access: z.enum(['open', 'trusted', 'restricted']).optional().describe('Access type'),
+      access: meetAccess.optional().describe('Access type'),
       account: accountParam,
     },
   }, async ({ meetingCode, access, account }) => {

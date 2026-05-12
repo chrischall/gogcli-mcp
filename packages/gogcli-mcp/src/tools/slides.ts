@@ -84,6 +84,7 @@ export function registerSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_run', {
     description: 'Run any gog slides subcommand not covered by the other tools. Run `gog slides --help` for the full list of subcommands, or `gog slides <subcommand> --help` for flags on a specific subcommand.',
+    annotations: { destructiveHint: true },
     inputSchema: {
       subcommand: z.string().describe('The gog slides subcommand to run'),
       args: z.array(z.string()).describe('Additional positional args and flags'),

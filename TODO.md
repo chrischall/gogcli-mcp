@@ -31,7 +31,7 @@ Reading form responses and structurally working with surveys is a strong agent u
 - **Notable**: question types are an enum; expose `questionType` as `z.enum([...])` where practical.
 - **Prerequisite**: confirm the Forms API scope is already configured in gogcli.
 
-### Keep → likely a small new sub-package `gogcli-mcp-keep`
+### Keep → new sub-package `gogcli-mcp-keep`
 
 Lightweight note capture and search. Smaller surface, but high frequency-of-use for personal productivity flows.
 
@@ -41,7 +41,7 @@ Lightweight note capture and search. Smaller surface, but high frequency-of-use 
   - Possibly labels/colors/pin metadata
 - **Tool count estimate:** ~8–12 tools.
 - **Caveat**: Keep API is Workspace-only (no personal Google accounts). Document this clearly in the README.
-- **Decision point**: small enough that it could live in `gogcli-mcp` base instead of a focused sub-package. Default to base, only split if it grows past ~10 tools.
+- **Split**: put list/get/search/create in base (common ops), put update/delete/labels-management in extras. Mirror the slides/classroom rebalance.
 
 ## Lower priority
 
@@ -95,24 +95,22 @@ Project management, deployments, script execution. Useful for power users automa
 
 ## Cross-cutting follow-ups
 
-- **People-as-an-alias for Contacts directory**: People search hits the Workspace directory while `gog contacts search` only sees personal contacts. Worth updating the `gog_contacts_search` description to mention `gog_people_search` for directory-wide search.
 - **Meet conferences attached to events**: when `gog calendar create` is enhanced to attach a Meet space, it's a one-flag change (likely `--add-meet`). Verify the flag name with `gog calendar create --help` first.
 - **Track + autoreply observability**: `gog_gmail_autoreply` adds a dedupe label on threads. Worth a recipe in the gmail README showing how to combine `gog_gmail_autoreply` with `gog_gmail_search` to inspect what was auto-replied to.
 
-## Folded in this pass
-
-- ✅ **People → contacts** — `gog_people_me/get/search/relations/raw` added to `packages/gogcli-mcp/src/tools/contacts.ts`.
-- ✅ **Meet → calendar** — `gog_meet_create/get/update/end/history/participants` added to `packages/gogcli-mcp/src/tools/calendar.ts`.
-
 ## Conventions for new wrappers
 
-When adding any of the above, follow the established pattern:
+See **Tool placement** + **Adding Tools to a Sub-Package** in CLAUDE.md for the
+authoritative pattern. Key points:
 
 1. Verify the gogcli surface with `gog <service> --help` and `gog <service> <cmd> --help`.
-2. TDD: write the test file first against the expected argv shape.
+2. TDD: write the test file first against the expected argv shape. Use the
+   shared `extras-harness.ts` helper (see CLAUDE.md).
 3. Use `accountParam` + `runOrDiagnose` from `./utils.js` (base) or `../../../gogcli-mcp/src/lib.js` (sub-packages).
-4. Inline `if (flag) args.push(\`--flag=\${val}\`)` — no helpers.
-5. Annotations: `readOnlyHint: true` for reads, `destructiveHint: true` for deletes/overwrites/grades. Leave creates without annotations.
-6. 100% coverage threshold enforced by vitest config — write enough tests to hit every branch.
-7. Update `packages/gogcli-mcp/manifest.json` with new tools.
-8. Update `CLAUDE.md` packages table if scope changed.
+4. Inline `if (flag) args.push(\`--flag=\${val}\`)` — no generic helpers.
+5. `z.enum([...])` for closed-set flags; `z.string()` only for free-form input.
+6. Split base vs extras by the "common operations vs specialty" rule
+   (slides/classroom/contacts/calendar refactor in v2.0.5+ is the model).
+7. 100% coverage threshold enforced by vitest config.
+8. Update both base and sub-package `manifest.json` files when a tool moves.
+9. Update `CLAUDE.md` packages table if tool counts or scope changes.

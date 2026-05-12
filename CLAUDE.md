@@ -60,12 +60,36 @@ Do NOT manually bump versions or create tags unless the user explicitly asks.
 - `packages/gogcli-mcp/src/tools/*.ts` — each service registers tools via `registerXxxTools(server)`.
 - Sub-packages import from `gogcli-mcp/lib`, call `createBaseServer()`, add their own tools, then connect transport.
 
+## Tool placement
+
+The split between **base** and **sub-package extras** matters:
+
+- **Base** = common operations every service exposes (read, list, get, grade,
+  accept, send, the everyday writes a user reaches for daily). Plus the `run`
+  escape hatch so agents can still hit anything not wrapped.
+- **Sub-package extras** = service-specific authoring, admin, CRUD that's
+  intentionally niche enough to keep out of the kitchen-sink bundle.
+
+When adding a tool, ask: does a user opening the "all services" base package
+want this tool exposed by default? If yes → base. If no → extras.
+
 ## Adding Tools to a Sub-Package
 
 1. Add the tool registration in `packages/<pkg>/src/tools/<service>-extra.ts`
-2. Add a test in `packages/<pkg>/tests/tools/<service>-extra.test.ts`
+2. Add a test in `packages/<pkg>/tests/tools/<service>-extra.test.ts` — use
+   the shared harness:
+   ```ts
+   import { setupExtrasHandlers, toText, type ToolHandler }
+     from '../../../gogcli-mcp/tests/helpers/extras-harness.js';
+   ```
 3. Import `accountParam` and `runOrDiagnose` from `gogcli-mcp/lib`
-4. Follow the exact same pattern as existing tools
+4. Follow the inline `if (flag) args.push(\`--flag=\${val}\`)` style — no helpers
+5. Use `z.enum([...])` for closed-set CLI flags (states, types, roles), not
+   `z.string()` with values stuffed into `.describe()`
+6. Annotations: `readOnlyHint: true` for reads, `destructiveHint: true` for
+   deletes/overwrites/grades/run-escape-hatches. Leave creates and restorative
+   ops (e.g. unarchive) unannotated.
+7. Update the sub-package's `manifest.json` with the new tool
 
 ## Adding a New Google Service to Base
 
@@ -73,6 +97,7 @@ Do NOT manually bump versions or create tags unless the user explicitly asks.
 2. Add tests in `packages/gogcli-mcp/tests/tools/<service>.test.ts`
 3. In `packages/gogcli-mcp/src/server.ts`, import and call `registerXxxTools(server)`
 4. Add tools to `packages/gogcli-mcp/manifest.json`
+5. Same annotation/enum/inline-style rules as the sub-package list above
 
 ## gogcli Notes
 

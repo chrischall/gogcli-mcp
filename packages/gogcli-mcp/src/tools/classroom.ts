@@ -291,7 +291,7 @@ export function registerClassroomTools(server: McpServer): void {
     inputSchema: {
       courseId: z.string().describe('Course ID'),
       text: z.string().describe('Announcement text'),
-      state: z.string().optional().describe('State: PUBLISHED or DRAFT'),
+      state: z.enum(['PUBLISHED', 'DRAFT']).optional().describe('State'),
       scheduled: z.string().optional().describe('Scheduled publish time'),
       account: accountParam,
     },
@@ -389,6 +389,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_run', {
     description: 'Run any gog classroom subcommand not covered by the other tools (guardians, guardian-invitations, materials, coursework assignees, announcement assignees, etc.). Run `gog classroom --help` for the full list, or `gog classroom <subcommand> --help` for flags.',
+    annotations: { destructiveHint: true },
     inputSchema: {
       subcommand: z.string().describe('The gog classroom subcommand to run, e.g. "guardians", "materials", "guardian-invitations"'),
       args: z.array(z.string()).describe('Additional positional args and flags'),
