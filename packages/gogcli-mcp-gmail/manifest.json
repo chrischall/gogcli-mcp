@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp-gmail",
   "display_name": "gogcli (Gmail)",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Extended Gmail for Claude via gogcli — auth + full Gmail support (threads, labels, drafts, attachments, forward, autoreply, bulk operations)",
   "author": {
     "name": "Chris Hall",
@@ -57,43 +57,154 @@
     }
   },
   "tools": [
-    { "name": "gog_auth_add", "description": "Authorize a Google account via browser-based OAuth" },
-    { "name": "gog_auth_list", "description": "List all Google accounts stored in gogcli" },
-    { "name": "gog_auth_status", "description": "Show gogcli auth configuration" },
-    { "name": "gog_auth_services", "description": "List Google services and OAuth scopes supported by gogcli" },
-    { "name": "gog_auth_run", "description": "Run any gog auth subcommand (escape hatch)" },
-    { "name": "gog_gmail_search", "description": "Search Gmail threads using Gmail query syntax" },
-    { "name": "gog_gmail_get", "description": "Get a Gmail message by ID" },
-    { "name": "gog_gmail_send", "description": "Send an email" },
-    { "name": "gog_gmail_run", "description": "Run any gog gmail subcommand (escape hatch)" },
-    { "name": "gog_gmail_raw", "description": "Dump raw Gmail API JSON for a message" },
-    { "name": "gog_gmail_attachment", "description": "Download a single attachment from a message" },
-    { "name": "gog_gmail_url", "description": "Print Gmail web URLs for one or more threads" },
-    { "name": "gog_gmail_history", "description": "List Gmail history events since a historyId" },
-    { "name": "gog_gmail_archive", "description": "Archive messages by IDs or by query" },
-    { "name": "gog_gmail_mark_read", "description": "Mark messages as read by IDs or by query" },
-    { "name": "gog_gmail_mark_unread", "description": "Mark messages as unread by IDs or by query" },
-    { "name": "gog_gmail_trash", "description": "Move messages to trash by IDs or by query" },
-    { "name": "gog_gmail_message_modify", "description": "Modify labels on a single message" },
-    { "name": "gog_gmail_batch_delete", "description": "Permanently delete multiple messages (irreversible)" },
-    { "name": "gog_gmail_batch_modify", "description": "Modify labels on multiple messages at once" },
-    { "name": "gog_gmail_thread_get", "description": "Get a thread with all messages" },
-    { "name": "gog_gmail_thread_modify", "description": "Modify labels on all messages in a thread" },
-    { "name": "gog_gmail_thread_attachments", "description": "List or download all attachments in a thread" },
-    { "name": "gog_gmail_labels_list", "description": "List all Gmail labels" },
-    { "name": "gog_gmail_labels_get", "description": "Get label details and counts" },
-    { "name": "gog_gmail_labels_create", "description": "Create a new Gmail label" },
-    { "name": "gog_gmail_labels_rename", "description": "Rename a Gmail label" },
-    { "name": "gog_gmail_labels_delete", "description": "Delete a Gmail label" },
-    { "name": "gog_gmail_labels_modify", "description": "Modify labels on one or more threads" },
-    { "name": "gog_gmail_drafts_list", "description": "List Gmail drafts" },
-    { "name": "gog_gmail_drafts_get", "description": "Get a Gmail draft by ID" },
-    { "name": "gog_gmail_drafts_create", "description": "Create a new Gmail draft" },
-    { "name": "gog_gmail_drafts_update", "description": "Update an existing Gmail draft" },
-    { "name": "gog_gmail_drafts_delete", "description": "Delete a Gmail draft" },
-    { "name": "gog_gmail_drafts_send", "description": "Send an existing Gmail draft" },
-    { "name": "gog_gmail_forward", "description": "Forward a Gmail message to new recipients" },
-    { "name": "gog_gmail_autoreply", "description": "Reply once to all messages matching a Gmail search query" }
+    {
+      "name": "gog_auth_add",
+      "description": "Authorize a Google account via browser-based OAuth"
+    },
+    {
+      "name": "gog_auth_list",
+      "description": "List all Google accounts stored in gogcli"
+    },
+    {
+      "name": "gog_auth_status",
+      "description": "Show gogcli auth configuration"
+    },
+    {
+      "name": "gog_auth_services",
+      "description": "List Google services and OAuth scopes supported by gogcli"
+    },
+    {
+      "name": "gog_auth_run",
+      "description": "Run any gog auth subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_gmail_search",
+      "description": "Search Gmail threads using Gmail query syntax"
+    },
+    {
+      "name": "gog_gmail_get",
+      "description": "Get a Gmail message by ID"
+    },
+    {
+      "name": "gog_gmail_send",
+      "description": "Send an email"
+    },
+    {
+      "name": "gog_gmail_run",
+      "description": "Run any gog gmail subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_gmail_raw",
+      "description": "Dump raw Gmail API JSON for a message"
+    },
+    {
+      "name": "gog_gmail_attachment",
+      "description": "Download a single attachment from a message"
+    },
+    {
+      "name": "gog_gmail_url",
+      "description": "Print Gmail web URLs for one or more threads"
+    },
+    {
+      "name": "gog_gmail_history",
+      "description": "List Gmail history events since a historyId"
+    },
+    {
+      "name": "gog_gmail_archive",
+      "description": "Archive messages by IDs or by query"
+    },
+    {
+      "name": "gog_gmail_mark_read",
+      "description": "Mark messages as read by IDs or by query"
+    },
+    {
+      "name": "gog_gmail_mark_unread",
+      "description": "Mark messages as unread by IDs or by query"
+    },
+    {
+      "name": "gog_gmail_trash",
+      "description": "Move messages to trash by IDs or by query"
+    },
+    {
+      "name": "gog_gmail_message_modify",
+      "description": "Modify labels on a single message"
+    },
+    {
+      "name": "gog_gmail_batch_delete",
+      "description": "Permanently delete multiple messages (irreversible)"
+    },
+    {
+      "name": "gog_gmail_batch_modify",
+      "description": "Modify labels on multiple messages at once"
+    },
+    {
+      "name": "gog_gmail_thread_get",
+      "description": "Get a thread with all messages"
+    },
+    {
+      "name": "gog_gmail_thread_modify",
+      "description": "Modify labels on all messages in a thread"
+    },
+    {
+      "name": "gog_gmail_thread_attachments",
+      "description": "List or download all attachments in a thread"
+    },
+    {
+      "name": "gog_gmail_labels_list",
+      "description": "List all Gmail labels"
+    },
+    {
+      "name": "gog_gmail_labels_get",
+      "description": "Get label details and counts"
+    },
+    {
+      "name": "gog_gmail_labels_create",
+      "description": "Create a new Gmail label"
+    },
+    {
+      "name": "gog_gmail_labels_rename",
+      "description": "Rename a Gmail label"
+    },
+    {
+      "name": "gog_gmail_labels_delete",
+      "description": "Delete a Gmail label"
+    },
+    {
+      "name": "gog_gmail_labels_modify",
+      "description": "Modify labels on one or more threads"
+    },
+    {
+      "name": "gog_gmail_drafts_list",
+      "description": "List Gmail drafts"
+    },
+    {
+      "name": "gog_gmail_drafts_get",
+      "description": "Get a Gmail draft by ID"
+    },
+    {
+      "name": "gog_gmail_drafts_create",
+      "description": "Create a new Gmail draft"
+    },
+    {
+      "name": "gog_gmail_drafts_update",
+      "description": "Update an existing Gmail draft"
+    },
+    {
+      "name": "gog_gmail_drafts_delete",
+      "description": "Delete a Gmail draft"
+    },
+    {
+      "name": "gog_gmail_drafts_send",
+      "description": "Send an existing Gmail draft"
+    },
+    {
+      "name": "gog_gmail_forward",
+      "description": "Forward a Gmail message to new recipients"
+    },
+    {
+      "name": "gog_gmail_autoreply",
+      "description": "Reply once to all messages matching a Gmail search query"
+    }
   ],
   "compatibility": {
     "platforms": [
