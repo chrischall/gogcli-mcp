@@ -6,15 +6,17 @@ Monorepo of MCP servers wrapping [gogcli](https://github.com/steipete/gogcli) �
 
 | Package | Path | Description |
 |---------|------|-------------|
-| `gogcli-mcp` | `packages/gogcli-mcp` | All services — 109 tools (auth, gmail, calendar, classroom, drive, slides, tasks, contacts, basic sheets/docs) |
+| `gogcli-mcp` | `packages/gogcli-mcp` | Common operations across every service — 84 tools (auth + read/grading subsets of gmail, calendar, classroom, drive, slides, tasks, contacts, basic sheets/docs) |
 | `gogcli-mcp-sheets` | `packages/gogcli-mcp-sheets` | Focused — 35 tools: auth + Sheets (8 base + 22 extra: tabs, formatting, named ranges, etc.) |
 | `gogcli-mcp-docs` | `packages/gogcli-mcp-docs` | Focused — 26 tools: auth + Docs (7 base + 14 extra: insert, delete, export, sed, comments, etc.) |
 | `gogcli-mcp-drive` | `packages/gogcli-mcp-drive` | Focused — 27 tools: auth + Drive (9 base + 13 extra: upload, download, permissions, comments, shared drives, etc.) |
-| `gogcli-mcp-slides` | `packages/gogcli-mcp-slides` | Focused — 18 tools: auth + Slides (12 dedicated + 1 run escape hatch: create, edit, export, templates, markdown) |
-| `gogcli-mcp-classroom` | `packages/gogcli-mcp-classroom` | Focused — 49 tools: auth + Classroom (43 dedicated + 1 run escape hatch: courses, rosters, coursework, submissions, announcements, topics, invitations) |
+| `gogcli-mcp-slides` | `packages/gogcli-mcp-slides` | Focused — 18 tools: auth + Slides (7 base + 6 extra authoring tools: create-from-markdown/template, add/delete/replace slide, update notes) |
+| `gogcli-mcp-classroom` | `packages/gogcli-mcp-classroom` | Focused — 49 tools: auth + Classroom (25 base read/grading + 19 extra CRUD/admin: course/coursework/topic/announcement/invitation create/update/delete, student/teacher add/remove) |
 | `gogcli-mcp-gmail` | `packages/gogcli-mcp-gmail` | Focused — 32 tools: auth + Gmail (4 base + 23 extra: threads, labels, drafts, attachments, forward, autoreply, bulk operations) |
+| `gogcli-mcp-contacts` | `packages/gogcli-mcp-contacts` | Focused — 15 tools: auth + Contacts (5 base + 5 extra People API: directory search, profiles, relations) |
+| `gogcli-mcp-calendar` | `packages/gogcli-mcp-calendar` | Focused — 18 tools: auth + Calendar (7 base + 6 extra Meet space management: create, get, update, end, history, participants) |
 
-Sub-packages are **focused** — each includes only auth + its service's tools. Users who want everything use the base.
+Sub-packages are **focused** — each includes only auth + its service's tools. Base now holds the common subset every service exposes; each sub-package layers on its dedicated extras.
 
 ## Build & Test
 

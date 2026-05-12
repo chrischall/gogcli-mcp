@@ -1,0 +1,83 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/dxt/main/dist/mcpb-manifest.schema.json",
+  "manifest_version": "0.3",
+  "name": "gogcli-mcp-contacts",
+  "display_name": "gogcli (Contacts)",
+  "version": "2.0.5",
+  "description": "Extended Google Contacts for Claude via gogcli — auth + Contacts + Workspace directory (People API)",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com",
+    "url": "https://github.com/chrischall"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chrischall/gogcli-mcp"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp",
+  "support": "https://github.com/chrischall/gogcli-mcp/issues",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "contacts",
+    "people",
+    "directory",
+    "gogcli",
+    "gog"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {
+        "GOG_ACCOUNT": "${user_config.gog_account}",
+        "GOG_PATH": "${user_config.gog_path}"
+      }
+    }
+  },
+  "user_config": {
+    "gog_account": {
+      "type": "string",
+      "title": "Google Account",
+      "description": "Default Google account email (optional — uses gogcli's configured default if omitted)",
+      "required": false
+    },
+    "gog_path": {
+      "type": "string",
+      "title": "gog Executable Path",
+      "description": "Path to the gog executable (optional — defaults to 'gog' on your PATH)",
+      "required": false
+    }
+  },
+  "tools": [
+    { "name": "gog_auth_add", "description": "Authorize a Google account via browser-based OAuth" },
+    { "name": "gog_auth_list", "description": "List all Google accounts stored in gogcli" },
+    { "name": "gog_auth_status", "description": "Show gogcli auth configuration" },
+    { "name": "gog_auth_services", "description": "List Google services and OAuth scopes supported by gogcli" },
+    { "name": "gog_auth_run", "description": "Run any gog auth subcommand (escape hatch)" },
+    { "name": "gog_contacts_search", "description": "Search personal contacts by name, email, or phone" },
+    { "name": "gog_contacts_list", "description": "List all personal contacts" },
+    { "name": "gog_contacts_get", "description": "Get a contact by resource name" },
+    { "name": "gog_contacts_create", "description": "Create a new contact" },
+    { "name": "gog_contacts_run", "description": "Run any gog contacts subcommand (escape hatch)" },
+    { "name": "gog_people_me", "description": "Show your own People profile" },
+    { "name": "gog_people_get", "description": "Get a People profile by resource name" },
+    { "name": "gog_people_search", "description": "Search the Workspace directory" },
+    { "name": "gog_people_relations", "description": "Get manager/reports relations for a user" },
+    { "name": "gog_people_raw", "description": "Dump raw People API JSON for a person" }
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}

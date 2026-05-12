@@ -121,56 +121,12 @@
       "description": "Run any gog calendar subcommand (escape hatch)"
     },
     {
-      "name": "gog_meet_create",
-      "description": "Create a Google Meet space"
-    },
-    {
-      "name": "gog_meet_get",
-      "description": "Get a Google Meet space by meeting code"
-    },
-    {
-      "name": "gog_meet_update",
-      "description": "Update a Google Meet space configuration"
-    },
-    {
-      "name": "gog_meet_end",
-      "description": "End the active conference in a Meet space"
-    },
-    {
-      "name": "gog_meet_history",
-      "description": "List past calls in a Meet space"
-    },
-    {
-      "name": "gog_meet_participants",
-      "description": "List participants from a Meet call"
-    },
-    {
       "name": "gog_classroom_courses_list",
       "description": "List Google Classroom courses"
     },
     {
       "name": "gog_classroom_courses_get",
       "description": "Get a single course by ID"
-    },
-    {
-      "name": "gog_classroom_courses_create",
-      "description": "Create a new course"
-    },
-    {
-      "name": "gog_classroom_courses_update",
-      "description": "Update an existing course"
-    },
-    {
-      "name": "gog_classroom_courses_delete",
-      "description": "Delete a course"
-    },
-    {
-      "name": "gog_classroom_courses_archive",
-      "description": "Archive a course"
-    },
-    {
-      "name": "gog_classroom_courses_unarchive",
-      "description": "Unarchive a course"
     },
     {
       "name": "gog_classroom_students_list",
@@ -181,28 +137,12 @@
       "description": "Get a specific student"
     },
     {
-      "name": "gog_classroom_students_add",
-      "description": "Add a student to a course"
-    },
-    {
-      "name": "gog_classroom_students_remove",
-      "description": "Remove a student from a course"
-    },
-    {
       "name": "gog_classroom_teachers_list",
       "description": "List teachers in a course"
     },
     {
       "name": "gog_classroom_teachers_get",
       "description": "Get a specific teacher"
-    },
-    {
-      "name": "gog_classroom_teachers_add",
-      "description": "Add a teacher to a course"
-    },
-    {
-      "name": "gog_classroom_teachers_remove",
-      "description": "Remove a teacher from a course"
     },
     {
       "name": "gog_classroom_roster",
@@ -215,18 +155,6 @@
     {
       "name": "gog_classroom_coursework_get",
       "description": "Get a single coursework item"
-    },
-    {
-      "name": "gog_classroom_coursework_create",
-      "description": "Create coursework (assignment/question)"
-    },
-    {
-      "name": "gog_classroom_coursework_update",
-      "description": "Update existing coursework"
-    },
-    {
-      "name": "gog_classroom_coursework_delete",
-      "description": "Delete coursework"
     },
     {
       "name": "gog_classroom_submissions_list",
@@ -265,32 +193,12 @@
       "description": "Create an announcement"
     },
     {
-      "name": "gog_classroom_announcements_update",
-      "description": "Update an announcement"
-    },
-    {
-      "name": "gog_classroom_announcements_delete",
-      "description": "Delete an announcement"
-    },
-    {
       "name": "gog_classroom_topics_list",
       "description": "List topics in a course"
     },
     {
       "name": "gog_classroom_topics_get",
       "description": "Get a topic"
-    },
-    {
-      "name": "gog_classroom_topics_create",
-      "description": "Create a topic"
-    },
-    {
-      "name": "gog_classroom_topics_update",
-      "description": "Rename a topic"
-    },
-    {
-      "name": "gog_classroom_topics_delete",
-      "description": "Delete a topic"
     },
     {
       "name": "gog_classroom_invitations_list",
@@ -301,16 +209,8 @@
       "description": "Get an invitation"
     },
     {
-      "name": "gog_classroom_invitations_create",
-      "description": "Create an invitation"
-    },
-    {
       "name": "gog_classroom_invitations_accept",
       "description": "Accept an invitation"
-    },
-    {
-      "name": "gog_classroom_invitations_delete",
-      "description": "Delete (revoke) an invitation"
     },
     {
       "name": "gog_classroom_profile_get",
@@ -405,26 +305,6 @@
       "description": "Run any gog contacts subcommand (escape hatch)"
     },
     {
-      "name": "gog_people_me",
-      "description": "Show your own Google People profile"
-    },
-    {
-      "name": "gog_people_get",
-      "description": "Get a People profile by resource name"
-    },
-    {
-      "name": "gog_people_search",
-      "description": "Search the Google Workspace directory"
-    },
-    {
-      "name": "gog_people_relations",
-      "description": "Get relations (manager, reports) for a user"
-    },
-    {
-      "name": "gog_people_raw",
-      "description": "Dump raw Google People API JSON for a person"
-    },
-    {
       "name": "gog_docs_info",
       "description": "Get Google Doc metadata (title, ID, properties)"
     },
@@ -497,40 +377,16 @@
       "description": "Create a new Google Slides presentation"
     },
     {
-      "name": "gog_slides_create_from_markdown",
-      "description": "Create a new Google Slides presentation from markdown content"
-    },
-    {
-      "name": "gog_slides_create_from_template",
-      "description": "Create a new Google Slides presentation from a template with placeholder replacements"
-    },
-    {
       "name": "gog_slides_copy",
       "description": "Copy a Google Slides presentation"
-    },
-    {
-      "name": "gog_slides_add_slide",
-      "description": "Add a slide to a presentation from a local image"
     },
     {
       "name": "gog_slides_list_slides",
       "description": "List slides in a presentation"
     },
     {
-      "name": "gog_slides_delete_slide",
-      "description": "Delete a slide from a presentation"
-    },
-    {
       "name": "gog_slides_read_slide",
       "description": "Read the content of a slide"
-    },
-    {
-      "name": "gog_slides_update_notes",
-      "description": "Update speaker notes on a slide"
-    },
-    {
-      "name": "gog_slides_replace_slide",
-      "description": "Replace the image content of an existing slide"
     },
     {
       "name": "gog_slides_run",
