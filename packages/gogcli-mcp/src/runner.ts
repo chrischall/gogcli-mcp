@@ -16,6 +16,16 @@ export interface RunOptions {
 
 const TIMEOUT_MS = 30_000;
 
+// Treat unresolved .mcpb placeholders ("${user_config.gog_path}") and empty
+// strings the same as an unset env var. When an optional .mcpb user_config
+// field is left blank, some clients pass the literal placeholder text through
+// to the spawned server instead of substituting "" or omitting the key.
+function envOrUndefined(key: string): string | undefined {
+  const value = process.env[key];
+  if (!value || value.startsWith('${')) return undefined;
+  return value;
+}
+
 function formatTimeout(ms: number): string {
   const seconds = Math.round(ms / 1000);
   if (seconds >= 60) {
@@ -28,7 +38,7 @@ function formatTimeout(ms: number): string {
 export async function run(args: string[], options: RunOptions = {}): Promise<string> {
   const { account, spawner = spawn as unknown as Spawner, interactive = false, timeout } = options;
 
-  const effectiveAccount = account ?? process.env.GOG_ACCOUNT;
+  const effectiveAccount = account ?? envOrUndefined('GOG_ACCOUNT');
 
   const fullArgs = ['--json', '--color=never'];
   if (!interactive) {
@@ -45,10 +55,7 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
     // Strip GOG_ACCESS_TOKEN so gogcli uses stored refresh tokens instead of
     // a potentially stale direct access token passed through MCP env config.
     const { GOG_ACCESS_TOKEN: _, ...cleanEnv } = process.env;
-    // Use `||` (not `??`) so an empty-string GOG_PATH — common when the .mcpb
-    // user_config "gog_path" is left blank and substituted as "" — falls back
-    // to PATH lookup instead of trying to spawn an empty executable name.
-    const child = spawner(process.env.GOG_PATH || 'gog', fullArgs, { env: cleanEnv });
+    const child = spawner(envOrUndefined('GOG_PATH') ?? 'gog', fullArgs, { env: cleanEnv });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let settled = false;
