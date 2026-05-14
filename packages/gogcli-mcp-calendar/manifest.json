@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp-calendar",
   "display_name": "gogcli (Calendar)",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Extended Google Calendar for Claude via gogcli — auth + Calendar events + Meet space management",
   "author": {
     "name": "Chris Hall",
@@ -54,24 +54,78 @@
     }
   },
   "tools": [
-    { "name": "gog_auth_add", "description": "Authorize a Google account via browser-based OAuth" },
-    { "name": "gog_auth_list", "description": "List all Google accounts stored in gogcli" },
-    { "name": "gog_auth_status", "description": "Show gogcli auth configuration" },
-    { "name": "gog_auth_services", "description": "List Google services and OAuth scopes supported by gogcli" },
-    { "name": "gog_auth_run", "description": "Run any gog auth subcommand (escape hatch)" },
-    { "name": "gog_calendar_events", "description": "List calendar events with optional filters" },
-    { "name": "gog_calendar_get", "description": "Get a specific calendar event" },
-    { "name": "gog_calendar_create", "description": "Create a calendar event" },
-    { "name": "gog_calendar_update", "description": "Update an existing calendar event" },
-    { "name": "gog_calendar_delete", "description": "Delete a calendar event" },
-    { "name": "gog_calendar_respond", "description": "Respond to a calendar event invitation" },
-    { "name": "gog_calendar_run", "description": "Run any gog calendar subcommand (escape hatch)" },
-    { "name": "gog_meet_create", "description": "Create a Google Meet space" },
-    { "name": "gog_meet_get", "description": "Get a Google Meet space by meeting code" },
-    { "name": "gog_meet_update", "description": "Update a Google Meet space configuration" },
-    { "name": "gog_meet_end", "description": "End the active conference in a Meet space" },
-    { "name": "gog_meet_history", "description": "List past calls in a Meet space" },
-    { "name": "gog_meet_participants", "description": "List participants from a Meet call" }
+    {
+      "name": "gog_auth_add",
+      "description": "Authorize a Google account via browser-based OAuth"
+    },
+    {
+      "name": "gog_auth_list",
+      "description": "List all Google accounts stored in gogcli"
+    },
+    {
+      "name": "gog_auth_status",
+      "description": "Show gogcli auth configuration"
+    },
+    {
+      "name": "gog_auth_services",
+      "description": "List Google services and OAuth scopes supported by gogcli"
+    },
+    {
+      "name": "gog_auth_run",
+      "description": "Run any gog auth subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_calendar_events",
+      "description": "List calendar events with optional filters"
+    },
+    {
+      "name": "gog_calendar_get",
+      "description": "Get a specific calendar event"
+    },
+    {
+      "name": "gog_calendar_create",
+      "description": "Create a calendar event"
+    },
+    {
+      "name": "gog_calendar_update",
+      "description": "Update an existing calendar event"
+    },
+    {
+      "name": "gog_calendar_delete",
+      "description": "Delete a calendar event"
+    },
+    {
+      "name": "gog_calendar_respond",
+      "description": "Respond to a calendar event invitation"
+    },
+    {
+      "name": "gog_calendar_run",
+      "description": "Run any gog calendar subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_meet_create",
+      "description": "Create a Google Meet space"
+    },
+    {
+      "name": "gog_meet_get",
+      "description": "Get a Google Meet space by meeting code"
+    },
+    {
+      "name": "gog_meet_update",
+      "description": "Update a Google Meet space configuration"
+    },
+    {
+      "name": "gog_meet_end",
+      "description": "End the active conference in a Meet space"
+    },
+    {
+      "name": "gog_meet_history",
+      "description": "List past calls in a Meet space"
+    },
+    {
+      "name": "gog_meet_participants",
+      "description": "List participants from a Meet call"
+    }
   ],
   "compatibility": {
     "platforms": [

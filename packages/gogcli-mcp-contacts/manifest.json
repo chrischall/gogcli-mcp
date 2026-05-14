@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp-contacts",
   "display_name": "gogcli (Contacts)",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Extended Google Contacts for Claude via gogcli — auth + Contacts + Workspace directory (People API)",
   "author": {
     "name": "Chris Hall",
@@ -54,21 +54,66 @@
     }
   },
   "tools": [
-    { "name": "gog_auth_add", "description": "Authorize a Google account via browser-based OAuth" },
-    { "name": "gog_auth_list", "description": "List all Google accounts stored in gogcli" },
-    { "name": "gog_auth_status", "description": "Show gogcli auth configuration" },
-    { "name": "gog_auth_services", "description": "List Google services and OAuth scopes supported by gogcli" },
-    { "name": "gog_auth_run", "description": "Run any gog auth subcommand (escape hatch)" },
-    { "name": "gog_contacts_search", "description": "Search personal contacts by name, email, or phone" },
-    { "name": "gog_contacts_list", "description": "List all personal contacts" },
-    { "name": "gog_contacts_get", "description": "Get a contact by resource name" },
-    { "name": "gog_contacts_create", "description": "Create a new contact" },
-    { "name": "gog_contacts_run", "description": "Run any gog contacts subcommand (escape hatch)" },
-    { "name": "gog_people_me", "description": "Show your own People profile" },
-    { "name": "gog_people_get", "description": "Get a People profile by resource name" },
-    { "name": "gog_people_search", "description": "Search the Workspace directory" },
-    { "name": "gog_people_relations", "description": "Get manager/reports relations for a user" },
-    { "name": "gog_people_raw", "description": "Dump raw People API JSON for a person" }
+    {
+      "name": "gog_auth_add",
+      "description": "Authorize a Google account via browser-based OAuth"
+    },
+    {
+      "name": "gog_auth_list",
+      "description": "List all Google accounts stored in gogcli"
+    },
+    {
+      "name": "gog_auth_status",
+      "description": "Show gogcli auth configuration"
+    },
+    {
+      "name": "gog_auth_services",
+      "description": "List Google services and OAuth scopes supported by gogcli"
+    },
+    {
+      "name": "gog_auth_run",
+      "description": "Run any gog auth subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_contacts_search",
+      "description": "Search personal contacts by name, email, or phone"
+    },
+    {
+      "name": "gog_contacts_list",
+      "description": "List all personal contacts"
+    },
+    {
+      "name": "gog_contacts_get",
+      "description": "Get a contact by resource name"
+    },
+    {
+      "name": "gog_contacts_create",
+      "description": "Create a new contact"
+    },
+    {
+      "name": "gog_contacts_run",
+      "description": "Run any gog contacts subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_people_me",
+      "description": "Show your own People profile"
+    },
+    {
+      "name": "gog_people_get",
+      "description": "Get a People profile by resource name"
+    },
+    {
+      "name": "gog_people_search",
+      "description": "Search the Workspace directory"
+    },
+    {
+      "name": "gog_people_relations",
+      "description": "Get manager/reports relations for a user"
+    },
+    {
+      "name": "gog_people_raw",
+      "description": "Dump raw People API JSON for a person"
+    }
   ],
   "compatibility": {
     "platforms": [
