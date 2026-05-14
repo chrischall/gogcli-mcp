@@ -113,6 +113,36 @@ describe('run', () => {
     }
   });
 
+  it('falls back to "gog" on PATH when GOG_PATH is unset', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const originalEnv = process.env.GOG_PATH;
+    delete process.env.GOG_PATH;
+    try {
+      await run(['sheets', 'metadata', 'id1'], { spawner });
+      expect(spawner).toHaveBeenCalledWith('gog', expect.any(Array), expect.any(Object));
+    } finally {
+      if (originalEnv !== undefined) {
+        process.env.GOG_PATH = originalEnv;
+      }
+    }
+  });
+
+  it('falls back to "gog" on PATH when GOG_PATH is set to empty string', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const originalEnv = process.env.GOG_PATH;
+    process.env.GOG_PATH = '';
+    try {
+      await run(['sheets', 'metadata', 'id1'], { spawner });
+      expect(spawner).toHaveBeenCalledWith('gog', expect.any(Array), expect.any(Object));
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.GOG_PATH;
+      } else {
+        process.env.GOG_PATH = originalEnv;
+      }
+    }
+  });
+
   it('returns stdout on exit code 0', async () => {
     const spawner = makeSpawner(0, '{"values":[["hello"]]}');
     const result = await run(['sheets', 'get', 'id1', 'A1'], { spawner });
