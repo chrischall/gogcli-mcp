@@ -45,6 +45,9 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
     // Strip GOG_ACCESS_TOKEN so gogcli uses stored refresh tokens instead of
     // a potentially stale direct access token passed through MCP env config.
     const { GOG_ACCESS_TOKEN: _, ...cleanEnv } = process.env;
+    // Use `||` (not `??`) so an empty-string GOG_PATH — common when the .mcpb
+    // user_config "gog_path" is left blank and substituted as "" — falls back
+    // to PATH lookup instead of trying to spawn an empty executable name.
     const child = spawner(process.env.GOG_PATH || 'gog', fullArgs, { env: cleanEnv });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
