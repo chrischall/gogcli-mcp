@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { delimiter } from 'node:path';
 
 export type Spawner = (
   command: string,
@@ -24,6 +25,32 @@ function envOrUndefined(key: string): string | undefined {
   const value = process.env[key];
   if (!value || value.startsWith('${')) return undefined;
   return value;
+}
+
+// MCP desktop clients often spawn servers with a stripped PATH that excludes
+// Homebrew, user-local, and Go's default install dirs — so even when gog is
+// installed, the spawned server can't find it. Augment the child's PATH with
+// the locations where gogcli is commonly installed.
+function augmentedPath(): string {
+  const home = process.env.HOME;
+  const candidates = [
+    process.env.PATH ?? '',
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    home ? `${home}/.local/bin` : '',
+    home ? `${home}/go/bin` : '',
+  ];
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const c of candidates) {
+    if (!c) continue;
+    for (const dir of c.split(delimiter)) {
+      if (!dir || seen.has(dir)) continue;
+      seen.add(dir);
+      parts.push(dir);
+    }
+  }
+  return parts.join(delimiter);
 }
 
 function formatTimeout(ms: number): string {
@@ -55,7 +82,8 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
     // Strip GOG_ACCESS_TOKEN so gogcli uses stored refresh tokens instead of
     // a potentially stale direct access token passed through MCP env config.
     const { GOG_ACCESS_TOKEN: _, ...cleanEnv } = process.env;
-    const child = spawner(envOrUndefined('GOG_PATH') ?? 'gog', fullArgs, { env: cleanEnv });
+    const childEnv = { ...cleanEnv, PATH: augmentedPath() };
+    const child = spawner(envOrUndefined('GOG_PATH') ?? 'gog', fullArgs, { env: childEnv });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let settled = false;
@@ -90,6 +118,14 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
       clearTimeout(timer);
       if (settled) return;
       settled = true;
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        reject(new Error(
+          'gog executable not found. Install gogcli (https://github.com/steipete/gogcli) ' +
+          'or set GOG_PATH in your MCP client config to the absolute binary path ' +
+          '(run `which gog` in a terminal to find it).',
+        ));
+        return;
+      }
       reject(err);
     });
   });

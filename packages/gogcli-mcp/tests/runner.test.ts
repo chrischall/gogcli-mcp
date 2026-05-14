@@ -24,7 +24,7 @@ describe('run', () => {
     expect(spawner).toHaveBeenCalledWith(
       'gog',
       ['--json', '--color=never', '--no-input', 'sheets', 'get', 'id1', 'A1'],
-      expect.objectContaining({ env: process.env }),
+      expect.objectContaining({ env: expect.any(Object) }),
     );
   });
 
@@ -204,6 +204,93 @@ describe('run', () => {
     }) as unknown as Spawner;
     await expect(run(['sheets', 'get', 'id', 'A1'], { spawner }))
       .rejects.toThrow('gog not found');
+  });
+
+  it('wraps ENOENT spawn errors with an install-or-set-GOG_PATH hint', async () => {
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      setTimeout(() => {
+        const err = new Error('spawn gog ENOENT') as NodeJS.ErrnoException;
+        err.code = 'ENOENT';
+        proc.emit('error', err);
+      }, 0);
+      return proc;
+    }) as unknown as Spawner;
+    await expect(run(['sheets', 'get', 'id', 'A1'], { spawner }))
+      .rejects.toThrow(/gog executable not found.*Install gogcli.*GOG_PATH/s);
+  });
+
+  it('augments child PATH with common gogcli install dirs', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const originalHome = process.env.HOME;
+    const originalPath = process.env.PATH;
+    process.env.HOME = '/Users/test';
+    process.env.PATH = '/usr/bin:/bin';
+    try {
+      await run(['sheets', 'metadata', 'id1'], { spawner });
+      const passedEnv = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
+      const passedPath = passedEnv.PATH!;
+      expect(passedPath).toContain('/usr/bin');
+      expect(passedPath).toContain('/opt/homebrew/bin');
+      expect(passedPath).toContain('/usr/local/bin');
+      expect(passedPath).toContain('/Users/test/.local/bin');
+      expect(passedPath).toContain('/Users/test/go/bin');
+    } finally {
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+  });
+
+  it('does not duplicate dirs that are already on PATH', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const originalPath = process.env.PATH;
+    process.env.PATH = '/opt/homebrew/bin:/usr/bin';
+    try {
+      await run(['sheets', 'metadata', 'id1'], { spawner });
+      const passedEnv = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
+      const passedPath = passedEnv.PATH!;
+      const homebrewCount = passedPath.split(':').filter(d => d === '/opt/homebrew/bin').length;
+      expect(homebrewCount).toBe(1);
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+  });
+
+  it('augments PATH even when HOME is unset', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const originalHome = process.env.HOME;
+    const originalPath = process.env.PATH;
+    delete process.env.HOME;
+    process.env.PATH = '/usr/bin';
+    try {
+      await run(['sheets', 'metadata', 'id1'], { spawner });
+      const passedEnv = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
+      const passedPath = passedEnv.PATH!;
+      expect(passedPath).toContain('/opt/homebrew/bin');
+      expect(passedPath).not.toContain('.local/bin');
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+  });
+
+  it('handles empty PATH gracefully', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const originalPath = process.env.PATH;
+    delete process.env.PATH;
+    try {
+      await run(['sheets', 'metadata', 'id1'], { spawner });
+      const passedEnv = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
+      expect(passedEnv.PATH).toContain('/opt/homebrew/bin');
+    } finally {
+      if (originalPath !== undefined) process.env.PATH = originalPath;
+    }
   });
 
   it('ignores close event if error event already settled the promise', async () => {
