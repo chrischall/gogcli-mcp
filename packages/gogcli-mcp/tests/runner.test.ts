@@ -516,6 +516,18 @@ describe('run', () => {
     }
   });
 
+  it('redacts Bearer with quoted/encoded characters', async () => {
+    const stderrLeak = 'http 401: header was Bearer eyJ.test+slash/equal=padding more text';
+    const spawner = makeSpawner(1, '', stderrLeak);
+    try {
+      await run(['gmail', 'get', 'm1'], { spawner });
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).not.toContain('eyJ.test+slash/equal=padding');
+      expect(msg).toContain('[REDACTED]');
+    }
+  });
+
   it('redacts bearer/refresh tokens and Google API keys from stderr surfaced to the client', async () => {
     const stderrLeak = 'request failed: Authorization: Bearer ya29.a0Ad52N3-LEAKED-TOKEN-VALUE refresh 1//0eLEAKED-REFRESH key AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI extra';
     const spawner = makeSpawner(1, '', stderrLeak);
