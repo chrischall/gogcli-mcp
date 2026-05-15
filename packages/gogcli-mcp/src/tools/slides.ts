@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_export', {
@@ -82,15 +82,5 @@ export function registerSlidesTools(server: McpServer): void {
     return runOrDiagnose(['slides', 'read-slide', presentationId, slideId], { account });
   });
 
-  server.registerTool('gog_slides_run', {
-    description: 'Run any gog slides subcommand not covered by the other tools. Run `gog slides --help` for the full list of subcommands, or `gog slides <subcommand> --help` for flags on a specific subcommand.',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      subcommand: z.string().describe('The gog slides subcommand to run'),
-      args: z.array(z.string()).describe('Additional positional args and flags'),
-      account: accountParam,
-    },
-  }, async ({ subcommand, args, account }) => {
-    return runOrDiagnose(['slides', subcommand, ...args], { account });
-  });
+  registerRunTool(server, { service: 'slides', examples: '"add-slide", "delete-slide", "update-notes"' });
 }

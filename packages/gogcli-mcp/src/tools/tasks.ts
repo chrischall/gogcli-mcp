@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerTasksTools(server: McpServer): void {
   server.registerTool('gog_tasks_lists', {
@@ -77,15 +77,5 @@ export function registerTasksTools(server: McpServer): void {
     return runOrDiagnose(['tasks', 'delete', tasklistId, taskId], { account });
   });
 
-  server.registerTool('gog_tasks_run', {
-    description: 'Run any gog tasks subcommand not covered by the other tools. Run `gog tasks --help` for the full list of subcommands, or `gog tasks <subcommand> --help` for flags on a specific subcommand.',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      subcommand: z.string().describe('The gog tasks subcommand to run, e.g. "update", "undo", "clear"'),
-      args: z.array(z.string()).describe('Additional positional args and flags'),
-      account: accountParam,
-    },
-  }, async ({ subcommand, args, account }) => {
-    return runOrDiagnose(['tasks', subcommand, ...args], { account });
-  });
+  registerRunTool(server, { service: 'tasks', examples: '"update", "undo", "clear"' });
 }

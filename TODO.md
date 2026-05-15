@@ -97,6 +97,7 @@ Project management, deployments, script execution. Useful for power users automa
 
 - **Meet conferences attached to events**: when `gog calendar create` is enhanced to attach a Meet space, it's a one-flag change (likely `--add-meet`). Verify the flag name with `gog calendar create --help` first.
 - **Track + autoreply observability**: `gog_gmail_autoreply` adds a dedupe label on threads. Worth a recipe in the gmail README showing how to combine `gog_gmail_autoreply` with `gog_gmail_search` to inspect what was auto-replied to.
+- **Manifest description drift**: ~45 of 84 base-package tool descriptions in `packages/gogcli-mcp/manifest.json` are slightly different from the source `description:` in `src/tools/*.ts`. Same for sub-package manifests. Build a `scripts/sync-manifest-descriptions.js` that reads source, extracts (tool, description) pairs, and updates each manifest. Needs special handling for the dynamic `gog_<service>_run` factory descriptions (they aren't string literals in source). Once written, run it once to sync, then add a CI check to flag future drift.
 
 ## Conventions for new wrappers
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerExtraContactsTools } from '../../src/tools/contacts-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
-import { setupExtrasHandlers, toText, type ToolHandler } from '../../../gogcli-mcp/tests/helpers/extras-harness.js';
+import { setupHandlers, toText, type ToolHandler } from '../../../gogcli-mcp/tests/helpers/test-harness.js';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -16,7 +16,7 @@ let handlers: Map<string, ToolHandler>;
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-  handlers = setupExtrasHandlers(registerExtraContactsTools);
+  handlers = setupHandlers(registerExtraContactsTools);
 });
 
 describe('gog_people_me', () => {

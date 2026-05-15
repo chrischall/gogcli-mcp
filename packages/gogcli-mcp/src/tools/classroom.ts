@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_list', {
@@ -387,15 +387,9 @@ export function registerClassroomTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  server.registerTool('gog_classroom_run', {
-    description: 'Run any gog classroom subcommand not covered by the other tools (guardians, guardian-invitations, materials, coursework assignees, announcement assignees, etc.). Run `gog classroom --help` for the full list, or `gog classroom <subcommand> --help` for flags.',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      subcommand: z.string().describe('The gog classroom subcommand to run, e.g. "guardians", "materials", "guardian-invitations"'),
-      args: z.array(z.string()).describe('Additional positional args and flags'),
-      account: accountParam,
-    },
-  }, async ({ subcommand, args, account }) => {
-    return runOrDiagnose(['classroom', subcommand, ...args], { account });
+  registerRunTool(server, {
+    service: 'classroom',
+    examples: '"guardians", "materials", "guardian-invitations"',
+    note: 'Covers anything not wrapped by the dedicated tools (guardians, guardian-invitations, materials, coursework assignees, announcement assignees, etc.).',
   });
 }

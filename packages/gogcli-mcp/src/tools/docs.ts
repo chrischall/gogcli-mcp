@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_info', {
@@ -74,15 +74,5 @@ export function registerDocsTools(server: McpServer): void {
     return runOrDiagnose(['docs', 'structure', docId], { account });
   });
 
-  server.registerTool('gog_docs_run', {
-    description: 'Run any gog docs subcommand not covered by the other tools. Run `gog docs --help` for the full list of subcommands, or `gog docs <subcommand> --help` for flags on a specific subcommand.',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      subcommand: z.string().describe('The gog docs subcommand to run, e.g. "copy", "clear", "insert", "sed", "export"'),
-      args: z.array(z.string()).describe('Additional positional args and flags'),
-      account: accountParam,
-    },
-  }, async ({ subcommand, args, account }) => {
-    return runOrDiagnose(['docs', subcommand, ...args], { account });
-  });
+  registerRunTool(server, { service: 'docs', examples: '"copy", "clear", "insert", "sed", "export"' });
 }

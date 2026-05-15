@@ -483,6 +483,53 @@ describe('run', () => {
     }
   });
 
+  it('strips GOOGLE_APPLICATION_CREDENTIALS and *_TOKEN/*_SECRET/*_API_KEY/*_PRIVATE_KEY vars', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const snapshot = {
+      GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      DB_PASSWORD_TOKEN: process.env.DB_PASSWORD_TOKEN,
+      AWS_SECRET: process.env.AWS_SECRET,
+      MY_PRIVATE_KEY: process.env.MY_PRIVATE_KEY,
+      BENIGN_VAR: process.env.BENIGN_VAR,
+    };
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = '/path/to/sa.json';
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-secret';
+    process.env.DB_PASSWORD_TOKEN = 'secret';
+    process.env.AWS_SECRET = 'secret';
+    process.env.MY_PRIVATE_KEY = 'secret';
+    process.env.BENIGN_VAR = 'hello';
+    try {
+      await run(['docs', 'cat', 'id'], { spawner });
+      const envPassed = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
+      expect(envPassed.GOOGLE_APPLICATION_CREDENTIALS).toBeUndefined();
+      expect(envPassed.ANTHROPIC_API_KEY).toBeUndefined();
+      expect(envPassed.DB_PASSWORD_TOKEN).toBeUndefined();
+      expect(envPassed.AWS_SECRET).toBeUndefined();
+      expect(envPassed.MY_PRIVATE_KEY).toBeUndefined();
+      expect(envPassed.BENIGN_VAR).toBe('hello');
+    } finally {
+      for (const [k, v] of Object.entries(snapshot)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
+  it('redacts bearer/refresh tokens and Google API keys from stderr surfaced to the client', async () => {
+    const stderrLeak = 'request failed: Authorization: Bearer ya29.a0Ad52N3-LEAKED-TOKEN-VALUE refresh 1//0eLEAKED-REFRESH key AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI extra';
+    const spawner = makeSpawner(1, '', stderrLeak);
+    try {
+      await run(['gmail', 'get', 'm1'], { spawner });
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).not.toContain('ya29.a0Ad52N3-LEAKED-TOKEN-VALUE');
+      expect(msg).not.toContain('1//0eLEAKED-REFRESH');
+      expect(msg).not.toContain('AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI');
+      expect(msg).toContain('[REDACTED]');
+    }
+  });
+
   it('ignores timeout if close event already settled the promise', async () => {
     vi.useFakeTimers();
     const spawner = vi.fn(() => {

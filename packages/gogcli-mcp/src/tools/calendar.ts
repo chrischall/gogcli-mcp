@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_events', {
@@ -114,15 +114,5 @@ export function registerCalendarTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  server.registerTool('gog_calendar_run', {
-    description: 'Run any gog calendar subcommand not covered by the other tools. Run `gog calendar --help` for the full list of subcommands, or `gog calendar <subcommand> --help` for flags on a specific subcommand.',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      subcommand: z.string().describe('The gog calendar subcommand to run, e.g. "calendars", "freebusy"'),
-      args: z.array(z.string()).describe('Additional positional args and flags'),
-      account: accountParam,
-    },
-  }, async ({ subcommand, args, account }) => {
-    return runOrDiagnose(['calendar', subcommand, ...args], { account });
-  });
+  registerRunTool(server, { service: 'calendar', examples: '"calendars", "freebusy"' });
 }

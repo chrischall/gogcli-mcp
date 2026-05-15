@@ -142,8 +142,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // --- Dedicated comment tools (replacing the generic escape hatch in base) ---
-
+  // Comment-thread tools
   server.registerTool('gog_docs_comments_list', {
     description:
       'List comments on a Google Doc. Returns open comments by default; set includeResolved=true to include resolved comments.',

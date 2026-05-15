@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerExtraSheetsTools } from '../../src/tools/sheets-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
-import { setupExtrasHandlers, toText } from '../../../gogcli-mcp/tests/helpers/extras-harness.js';
+import { setupHandlers as setupHandlersBase, toText } from '../../../gogcli-mcp/tests/helpers/test-harness.js';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -11,7 +11,7 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   };
 });
 
-const setupHandlers = () => setupExtrasHandlers(registerExtraSheetsTools);
+const setupHandlers = () => setupHandlersBase(registerExtraSheetsTools);
 
 beforeEach(() => vi.clearAllMocks());
 

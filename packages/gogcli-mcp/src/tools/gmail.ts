@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_search', {
@@ -53,15 +53,5 @@ export function registerGmailTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  server.registerTool('gog_gmail_run', {
-    description: 'Run any gog gmail subcommand not covered by the other tools. Run `gog gmail --help` for the full list of subcommands, or `gog gmail <subcommand> --help` for flags on a specific subcommand.',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      subcommand: z.string().describe('The gog gmail subcommand to run, e.g. "archive", "mark-read", "labels"'),
-      args: z.array(z.string()).describe('Additional positional args and flags'),
-      account: accountParam,
-    },
-  }, async ({ subcommand, args, account }) => {
-    return runOrDiagnose(['gmail', subcommand, ...args], { account });
-  });
+  registerRunTool(server, { service: 'gmail', examples: '"archive", "mark-read", "labels"' });
 }

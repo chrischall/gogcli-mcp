@@ -27,6 +27,40 @@ function envOrUndefined(key: string): string | undefined {
   return value;
 }
 
+// Strip ambient secrets from the child env so gogcli only sees its own
+// configured credentials. GOG_ACCESS_TOKEN is the original target: gogcli
+// would otherwise try to use a (potentially stale) directly-passed token
+// instead of the stored refresh token. The broader patterns are
+// defense-in-depth — the parent process's shell may have other Google /
+// cloud / API secrets in scope that the child has no business seeing.
+function sanitizedEnv(): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key === 'GOG_ACCESS_TOKEN') continue;
+    if (key === 'GOOGLE_APPLICATION_CREDENTIALS') continue;
+    if (/(_TOKEN|_SECRET|_API_KEY|_PRIVATE_KEY)$/.test(key)) continue;
+    result[key] = value;
+  }
+  return result;
+}
+
+// Redact bearer/refresh-token patterns from error text before surfacing
+// it back to the MCP client. If gog ever emits a token in stderr (e.g.
+// from a verbose log mode), this prevents it from leaking to the model.
+const TOKEN_PATTERNS: RegExp[] = [
+  /Bearer\s+[A-Za-z0-9._\-+/=]+/gi,
+  /ya29\.[A-Za-z0-9._\-]+/g,           // OAuth2 access tokens
+  /1\/\/[A-Za-z0-9._\-]+/g,            // OAuth2 refresh tokens
+  /AIza[A-Za-z0-9_\-]{35}/g,           // Google API keys
+];
+export function redactSecrets(text: string): string {
+  let redacted = text;
+  for (const re of TOKEN_PATTERNS) {
+    redacted = redacted.replace(re, '[REDACTED]');
+  }
+  return redacted;
+}
+
 // MCP desktop clients often spawn servers with a stripped PATH that excludes
 // Homebrew, user-local, and Go's default install dirs — so even when gog is
 // installed, the spawned server can't find it. Augment the child's PATH with
@@ -79,10 +113,7 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
   const effectiveTimeout = timeout ?? TIMEOUT_MS;
 
   return new Promise((resolve, reject) => {
-    // Strip GOG_ACCESS_TOKEN so gogcli uses stored refresh tokens instead of
-    // a potentially stale direct access token passed through MCP env config.
-    const { GOG_ACCESS_TOKEN: _, ...cleanEnv } = process.env;
-    const childEnv = { ...cleanEnv, PATH: augmentedPath() };
+    const childEnv = { ...sanitizedEnv(), PATH: augmentedPath() };
     const child = spawner(envOrUndefined('GOG_PATH') ?? 'gog', fullArgs, { env: childEnv });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -110,7 +141,7 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
           resolve(stdout);
         }
       } else {
-        reject(new Error(stderr || `gog exited with code ${code}`));
+        reject(new Error(redactSecrets(stderr || `gog exited with code ${code}`)));
       }
     });
 

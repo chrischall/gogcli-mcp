@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_search', {
@@ -57,15 +57,5 @@ export function registerContactsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  server.registerTool('gog_contacts_run', {
-    description: 'Run any gog contacts subcommand not covered by the other tools. Run `gog contacts --help` for the full list of subcommands, or `gog contacts <subcommand> --help` for flags on a specific subcommand.',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      subcommand: z.string().describe('The gog contacts subcommand to run, e.g. "update", "delete", "directory"'),
-      args: z.array(z.string()).describe('Additional positional args and flags'),
-      account: accountParam,
-    },
-  }, async ({ subcommand, args, account }) => {
-    return runOrDiagnose(['contacts', subcommand, ...args], { account });
-  });
+  registerRunTool(server, { service: 'contacts', examples: '"update", "delete", "directory"' });
 }

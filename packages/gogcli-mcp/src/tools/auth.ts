@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { run } from '../runner.js';
-import { toText, toError, runOrDiagnose } from './utils.js';
+import { toText, toError, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerAuthTools(server: McpServer): void {
   server.registerTool('gog_auth_list', {
@@ -65,14 +65,10 @@ export function registerAuthTools(server: McpServer): void {
     }
   });
 
-  server.registerTool('gog_auth_run', {
-    description: 'Run any gog auth subcommand. Run `gog auth --help` to see all available subcommands and flags. Note: for browser-based authorization, use gog_auth_add instead.',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      subcommand: z.string().describe('The gog auth subcommand, e.g. "remove", "alias", "tokens"'),
-      args: z.array(z.string()).describe('Additional positional args and flags'),
-    },
-  }, async ({ subcommand, args }) => {
-    return runOrDiagnose(['auth', subcommand, ...args], {});
+  registerRunTool(server, {
+    service: 'auth',
+    examples: '"remove", "alias", "tokens"',
+    omitAccount: true,
+    note: 'For browser-based authorization, use gog_auth_add instead.',
   });
 }

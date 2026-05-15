@@ -4,11 +4,9 @@ import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
 
 const meetAccess = z.enum(['open', 'trusted', 'restricted']);
 
+// Meet spaces are the conferencing surface attached to calendar events,
+// so they live in the calendar sub-package.
 export function registerExtraCalendarTools(server: McpServer): void {
-  // ─── Meet API tools ────────────────────────────────────────────
-  // Meet spaces are the conferencing surface attached to calendar events,
-  // so they live in the calendar sub-package.
-
   server.registerTool('gog_meet_create', {
     description: 'Create a Google Meet space and return its meeting code.',
     inputSchema: {

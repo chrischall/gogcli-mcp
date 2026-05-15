@@ -1,22 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerDriveTools } from '../../src/tools/drive.js';
 import * as runner from '../../src/runner.js';
+import { setupHandlers as setupHandlersBase, type ToolHandler } from '../helpers/test-harness.js';
 
 vi.mock('../../src/runner.js');
 
-type ToolHandler = (args: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }> }>;
-
-function setupHandlers(): Map<string, ToolHandler> {
-  const server = new McpServer({ name: 'test', version: '0.0.0' });
-  const handlers = new Map<string, ToolHandler>();
-  vi.spyOn(server, 'registerTool').mockImplementation((name, _config, cb) => {
-    handlers.set(name, cb as ToolHandler);
-    return undefined as never;
-  });
-  registerDriveTools(server);
-  return handlers;
-}
+const setupHandlers = () => setupHandlersBase(registerDriveTools);
 
 beforeEach(() => vi.clearAllMocks());
 

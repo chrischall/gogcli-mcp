@@ -1,11 +1,7 @@
-// Shared test harness for `*-extra.ts` registrars across sub-packages.
+// Shared test harness for tool registrars across base + sub-packages.
 //
-// Each sub-package's extras test file follows the same shape: mock the
-// `runOrDiagnose` export from `gogcli-mcp/lib`, register the extras tools onto
-// a stub `McpServer`, capture each tool's handler into a Map, and exercise the
-// handlers with sample inputs. The `vi.mock(...)` call must stay in the
-// caller's test file (vitest hoists it at the module scope), but the
-// boilerplate around it can live here.
+// `vi.mock(...)` must stay in the caller's test file because vitest hoists
+// it at module scope, but the boilerplate around it lives here.
 import { vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -17,7 +13,7 @@ export function toText(text: string): { content: Array<{ type: string; text: str
   return { content: [{ type: 'text', text }] };
 }
 
-export function setupExtrasHandlers(
+export function setupHandlers(
   register: (server: McpServer) => void,
 ): Map<string, ToolHandler> {
   const server = new McpServer({ name: 'test', version: '0.0.0' });

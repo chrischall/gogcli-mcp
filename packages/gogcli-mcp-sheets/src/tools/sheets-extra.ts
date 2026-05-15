@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraSheetsTools(server: McpServer): void {
-  // 1. Add tab
+
   server.registerTool('gog_sheets_add_tab', {
     description: 'Add a new sheet tab to a spreadsheet.',
     inputSchema: {
@@ -15,7 +15,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'add-tab', spreadsheetId, tabName], { account });
   });
 
-  // 2. Delete tab
   server.registerTool('gog_sheets_delete_tab', {
     description: 'Delete a sheet tab from a spreadsheet.',
     annotations: { destructiveHint: true },
@@ -28,7 +27,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'delete-tab', spreadsheetId, tabName], { account });
   });
 
-  // 3. Rename tab
   server.registerTool('gog_sheets_rename_tab', {
     description: 'Rename a sheet tab.',
     annotations: { destructiveHint: true },
@@ -42,7 +40,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'rename-tab', spreadsheetId, oldName, newName], { account });
   });
 
-  // 4. Copy spreadsheet
   server.registerTool('gog_sheets_copy', {
     description: 'Copy a spreadsheet to a new spreadsheet with the given title.',
     inputSchema: {
@@ -57,7 +54,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 5. Export spreadsheet
   server.registerTool('gog_sheets_export', {
     description: 'Export a spreadsheet as CSV, TSV, or PDF.',
     annotations: { readOnlyHint: true },
@@ -74,7 +70,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 6. Freeze rows/columns
   server.registerTool('gog_sheets_freeze', {
     description: 'Freeze rows and/or columns in a sheet.',
     annotations: { destructiveHint: true },
@@ -93,7 +88,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 7. Insert rows/columns
   server.registerTool('gog_sheets_insert', {
     description: 'Insert rows or columns into a sheet.',
     annotations: { destructiveHint: true },
@@ -113,7 +107,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 8. Merge cells
   server.registerTool('gog_sheets_merge', {
     description: 'Merge cells in a range.',
     annotations: { destructiveHint: true },
@@ -129,7 +122,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 9. Unmerge cells
   server.registerTool('gog_sheets_unmerge', {
     description: 'Unmerge previously merged cells in a range.',
     annotations: { destructiveHint: true },
@@ -142,7 +134,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'unmerge', spreadsheetId, range], { account });
   });
 
-  // 10. Format cells
   server.registerTool('gog_sheets_format', {
     description: 'Apply cell formatting (bold, colors, alignment, etc.) to a range. Pass format as a JSON CellFormat object.',
     annotations: { destructiveHint: true },
@@ -159,7 +150,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 11. Number format
   server.registerTool('gog_sheets_number_format', {
     description: 'Set number format on a range (currency, percentage, date, etc.).',
     annotations: { destructiveHint: true },
@@ -177,7 +167,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 12. Read format
   server.registerTool('gog_sheets_read_format', {
     description: 'Read cell formatting for a range.',
     annotations: { readOnlyHint: true },
@@ -193,7 +182,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 13. Resize columns
   server.registerTool('gog_sheets_resize_columns', {
     description: 'Resize column widths. Use --auto for auto-fit or --width for a specific pixel width.',
     annotations: { destructiveHint: true },
@@ -211,7 +199,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 14. Resize rows
   server.registerTool('gog_sheets_resize_rows', {
     description: 'Resize row heights. Use --auto for auto-fit or --height for a specific pixel height.',
     annotations: { destructiveHint: true },
@@ -229,7 +216,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 15. Notes (read)
   server.registerTool('gog_sheets_notes', {
     description: 'Read cell notes in a range.',
     annotations: { readOnlyHint: true },
@@ -242,7 +228,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'notes', spreadsheetId, range], { account });
   });
 
-  // 16. Update note
   server.registerTool('gog_sheets_update_note', {
     description: 'Add, update, or clear a cell note. Pass an empty string to clear the note.',
     annotations: { destructiveHint: true },
@@ -256,7 +241,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'update-note', spreadsheetId, range, `--note=${note}`], { account });
   });
 
-  // 17. Links
   server.registerTool('gog_sheets_links', {
     description: 'List hyperlinks in a range.',
     annotations: { readOnlyHint: true },
@@ -269,7 +253,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'links', spreadsheetId, range], { account });
   });
 
-  // 18. Named ranges list
   server.registerTool('gog_sheets_named_ranges_list', {
     description: 'List all named ranges in a spreadsheet.',
     annotations: { readOnlyHint: true },
@@ -281,7 +264,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'named-ranges', 'list', spreadsheetId], { account });
   });
 
-  // 19. Named ranges get
   server.registerTool('gog_sheets_named_ranges_get', {
     description: 'Get a named range by name or ID.',
     annotations: { readOnlyHint: true },
@@ -294,7 +276,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'named-ranges', 'get', spreadsheetId, nameOrId], { account });
   });
 
-  // 20. Named ranges add
   server.registerTool('gog_sheets_named_ranges_add', {
     description: 'Create a new named range.',
     inputSchema: {
@@ -307,7 +288,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'named-ranges', 'add', spreadsheetId, name, range], { account });
   });
 
-  // 21. Named ranges update
   server.registerTool('gog_sheets_named_ranges_update', {
     description: 'Update a named range (change its name, range, or both).',
     annotations: { destructiveHint: true },
@@ -325,7 +305,6 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // 22. Named ranges delete
   server.registerTool('gog_sheets_named_ranges_delete', {
     description: 'Delete a named range.',
     annotations: { destructiveHint: true },

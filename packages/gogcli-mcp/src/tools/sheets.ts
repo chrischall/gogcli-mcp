@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_get', {
@@ -94,15 +94,5 @@ export function registerSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'find-replace', spreadsheetId, find, replace], { account });
   });
 
-  server.registerTool('gog_sheets_run', {
-    description: 'Run any gog sheets subcommand not covered by the other tools. Run `gog sheets --help` for the full list of subcommands, or `gog sheets <subcommand> --help` for flags on a specific subcommand.',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      subcommand: z.string().describe('The gog sheets subcommand to run, e.g. "freeze", "add-tab", "rename-tab"'),
-      args: z.array(z.string()).describe('Additional positional args and flags, e.g. ["<spreadsheetId>", "--rows=1"]'),
-      account: accountParam,
-    },
-  }, async ({ subcommand, args, account }) => {
-    return runOrDiagnose(['sheets', subcommand, ...args], { account });
-  });
+  registerRunTool(server, { service: 'sheets', examples: '"freeze", "add-tab", "rename-tab"' });
 }

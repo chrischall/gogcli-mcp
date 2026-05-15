@@ -2,11 +2,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
 
+// People is the richer API behind Google Contacts: Workspace directory
+// search, profile fields, and relations.
 export function registerExtraContactsTools(server: McpServer): void {
-  // ─── People API tools ──────────────────────────────────────────
-  // People is the richer API behind Google Contacts: Workspace directory
-  // search, profile fields, and relations.
-
   server.registerTool('gog_people_me', {
     description: 'Show your own People profile (people/me).',
     annotations: { readOnlyHint: true },

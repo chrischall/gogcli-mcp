@@ -1,10 +1,44 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as runner from '../../src/runner.js';
-import { runOrDiagnose } from '../../src/tools/utils.js';
+import { runOrDiagnose, pushPaginationFlags } from '../../src/tools/utils.js';
 
 vi.mock('../../src/runner.js');
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('pushPaginationFlags', () => {
+  it('does nothing when no fields are provided', () => {
+    const args: string[] = ['cmd'];
+    pushPaginationFlags(args, {});
+    expect(args).toEqual(['cmd']);
+  });
+
+  it('pushes --max when a number is provided (including 0)', () => {
+    const args: string[] = ['cmd'];
+    pushPaginationFlags(args, { max: 0 });
+    expect(args).toEqual(['cmd', '--max=0']);
+  });
+
+  it('pushes --page when a string is provided', () => {
+    const args: string[] = ['cmd'];
+    pushPaginationFlags(args, { page: 'tok' });
+    expect(args).toEqual(['cmd', '--page=tok']);
+  });
+
+  it('pushes --all only when true', () => {
+    const args: string[] = ['cmd'];
+    pushPaginationFlags(args, { all: false });
+    expect(args).toEqual(['cmd']);
+    pushPaginationFlags(args, { all: true });
+    expect(args).toEqual(['cmd', '--all']);
+  });
+
+  it('pushes all three in canonical order', () => {
+    const args: string[] = ['cmd'];
+    pushPaginationFlags(args, { max: 50, page: 'tok', all: true });
+    expect(args).toEqual(['cmd', '--max=50', '--page=tok', '--all']);
+  });
+});
 
 describe('runOrDiagnose', () => {
   it('returns output text on success', async () => {
