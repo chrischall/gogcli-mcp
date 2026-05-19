@@ -519,6 +519,15 @@ describe('gog_docs_comments_delete', () => {
   });
 });
 
+describe('gog_docs_trash', () => {
+  it('routes to gog drive delete <docId>', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_trash')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'delete', 'd1'], { account: undefined });
+  });
+});
+
 describe('gog_docs_append', () => {
   it('uses gog docs write --append', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));

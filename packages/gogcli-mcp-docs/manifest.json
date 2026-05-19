@@ -170,6 +170,10 @@
     {
       "name": "gog_docs_format",
       "description": "Apply text/paragraph formatting (bold, italic, font size, color, alignment, line spacing) — supports match, matchAll, matchCase"
+    },
+    {
+      "name": "gog_docs_trash",
+      "description": "Move an entire Google Doc to Drive trash (convenience wrapper around gog drive delete)"
     }
   ],
   "compatibility": {

@@ -18,7 +18,7 @@ export function registerExtraDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_delete', {
-    description: 'Delete content within a Google Doc by character index range.',
+    description: 'Delete content within a Google Doc by character index range. To remove the entire document (move to Drive trash), use gog_docs_trash.',
     annotations: { destructiveHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
@@ -31,6 +31,17 @@ export function registerExtraDocsTools(server: McpServer): void {
     const args = ['docs', 'delete', `--start=${start}`, `--end=${end}`, docId];
     if (tabId) args.push(`--tab-id=${tabId}`);
     return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_trash', {
+    description: 'Move an entire Google Doc to Drive trash. Convenience wrapper around `gog drive delete` so docs-only users can clean up without installing gogcli-mcp-drive. The doc remains recoverable from Drive trash for ~30 days.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID to move to trash'),
+      account: accountParam,
+    },
+  }, async ({ docId, account }) => {
+    return runOrDiagnose(['drive', 'delete', docId], { account });
   });
 
   server.registerTool('gog_docs_edit', {
