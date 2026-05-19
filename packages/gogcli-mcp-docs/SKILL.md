@@ -5,13 +5,13 @@ description: Use when the user asks to read, write, edit, export, or comment on 
 
 # gogcli-mcp-docs
 
-Extended Google Docs MCP server via [gogcli](https://github.com/steipete/gogcli) — 26 tools: auth + 7 base Docs + 14 extra dedicated Docs tools.
+Extended Google Docs MCP server via [gogcli](https://github.com/openclaw/gogcli) — 26 tools: auth + 7 base Docs + 14 extra dedicated Docs tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
 - Node.js 18 or later
 
 ## Setup

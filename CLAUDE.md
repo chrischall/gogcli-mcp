@@ -1,6 +1,6 @@
 # gogcli-mcp
 
-Monorepo of MCP servers wrapping [gogcli](https://github.com/steipete/gogcli) — gives Claude read/write access to Google Workspace (Sheets, Docs, Gmail, Calendar, Drive, Slides, Classroom, Tasks, Contacts). Each package is a standalone MCP server using stdio transport.
+Monorepo of MCP servers wrapping [gogcli](https://github.com/openclaw/gogcli) — gives Claude read/write access to Google Workspace (Sheets, Docs, Gmail, Calendar, Drive, Slides, Classroom, Tasks, Contacts). Each package is a standalone MCP server using stdio transport.
 
 ## Packages
 

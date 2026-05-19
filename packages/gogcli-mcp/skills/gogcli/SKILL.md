@@ -5,13 +5,13 @@ description: Use when the user asks to read, write, or manage Google Sheets. Als
 
 # gogcli-mcp
 
-MCP server wrapping [gogcli](https://github.com/steipete/gogcli) — provides Claude with access to Google Sheets (and a scaffold for Gmail, Calendar, Drive, and more).
+MCP server wrapping [gogcli](https://github.com/openclaw/gogcli) — provides Claude with access to Google Sheets (and a scaffold for Gmail, Calendar, Drive, and more).
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated (`gog --help` works in your shell)
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated (`gog --help` works in your shell)
 - Node.js 18 or later
 
 ## Setup

@@ -3,11 +3,11 @@
 > [!WARNING]
 > **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
 
-Extended Google Drive [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/steipete/gogcli). Includes auth tools plus 13 additional dedicated Drive tools for upload/download, permissions, comments, shared drives, and more.
+Extended Google Drive [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/openclaw/gogcli). Includes auth tools plus 13 additional dedicated Drive tools for upload/download, permissions, comments, shared drives, and more.
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
 - Node.js 18+
 
 ```bash

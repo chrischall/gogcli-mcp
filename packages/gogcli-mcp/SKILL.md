@@ -5,13 +5,13 @@ description: Use when the user asks to interact with Google Workspace services. 
 
 # gogcli-mcp
 
-MCP server wrapping [gogcli](https://github.com/steipete/gogcli) — provides Claude with access to Google Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, and Auth.
+MCP server wrapping [gogcli](https://github.com/openclaw/gogcli) — provides Claude with access to Google Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, and Auth.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
 - Node.js 18 or later
 
 ## Setup

@@ -5,13 +5,13 @@ description: Use when the user asks to create, edit, read, or export Google Slid
 
 # gogcli-mcp-slides
 
-Extended Google Slides MCP server via [gogcli](https://github.com/steipete/gogcli) — 18 tools: auth + 12 Slides + 1 run escape hatch.
+Extended Google Slides MCP server via [gogcli](https://github.com/openclaw/gogcli) — 18 tools: auth + 12 Slides + 1 run escape hatch.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
 - Node.js 18 or later
 
 ## Setup

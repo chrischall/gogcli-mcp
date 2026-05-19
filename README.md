@@ -1,6 +1,6 @@
 # gogcli-mcp
 
-A monorepo of [Model Context Protocol](https://modelcontextprotocol.io) servers that give Claude natural-language access to Google Workspace via [gogcli](https://github.com/steipete/gogcli).
+A monorepo of [Model Context Protocol](https://modelcontextprotocol.io) servers that give Claude natural-language access to Google Workspace via [gogcli](https://github.com/openclaw/gogcli).
 
 > [!WARNING]
 > **AI-developed project.** This codebase was built and is actively maintained by Claude. Review all code and tool permissions before use.
@@ -19,7 +19,7 @@ Each package is a **standalone** MCP server. Install whichever one fits your nee
 
 ### Install gogcli
 
-[gogcli](https://github.com/steipete/gogcli) is the CLI that these MCP servers wrap. Install it for your platform:
+[gogcli](https://github.com/openclaw/gogcli) is the CLI that these MCP servers wrap. Install it for your platform:
 
 **macOS (Homebrew):**
 ```bash
@@ -28,7 +28,7 @@ brew install steipete/tap/gogcli
 
 **macOS / Linux (binary):**
 ```bash
-curl -fsSL https://github.com/steipete/gogcli/releases/latest/download/gog-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') -o /usr/local/bin/gog
+curl -fsSL https://github.com/openclaw/gogcli/releases/latest/download/gog-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') -o /usr/local/bin/gog
 chmod +x /usr/local/bin/gog
 ```
 
@@ -40,7 +40,7 @@ scoop install gogcli
 
 **Windows (manual):**
 
-Download `gog-windows-amd64.exe` from the [latest release](https://github.com/steipete/gogcli/releases/latest), rename to `gog.exe`, and add to your PATH.
+Download `gog-windows-amd64.exe` from the [latest release](https://github.com/openclaw/gogcli/releases/latest), rename to `gog.exe`, and add to your PATH.
 
 ### Authenticate
 

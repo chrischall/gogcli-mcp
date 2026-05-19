@@ -5,13 +5,13 @@ description: Use when the user asks to look up, search, or manage Google Contact
 
 # gogcli-mcp-contacts
 
-Extended Google Contacts MCP server via [gogcli](https://github.com/steipete/gogcli) — 15 tools: auth + 5 base Contacts + 5 extra People API tools.
+Extended Google Contacts MCP server via [gogcli](https://github.com/openclaw/gogcli) — 15 tools: auth + 5 base Contacts + 5 extra People API tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
 - Node.js 18 or later
 
 ## Setup

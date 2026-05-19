@@ -5,13 +5,13 @@ description: Use when the user asks to manage Google Calendar events or Google M
 
 # gogcli-mcp-calendar
 
-Extended Google Calendar MCP server via [gogcli](https://github.com/steipete/gogcli) — 18 tools: auth + 7 base Calendar + 6 extra Meet tools.
+Extended Google Calendar MCP server via [gogcli](https://github.com/openclaw/gogcli) — 18 tools: auth + 7 base Calendar + 6 extra Meet tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
 - Node.js 18 or later
 
 ## Setup

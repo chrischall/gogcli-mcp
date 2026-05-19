@@ -5,13 +5,13 @@ description: Use when the user asks to read, organize, draft, forward, autoreply
 
 # gogcli-mcp-gmail
 
-Extended Gmail MCP server via [gogcli](https://github.com/steipete/gogcli) — 32 tools: auth + 4 base Gmail + 23 extra dedicated Gmail tools.
+Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 32 tools: auth + 4 base Gmail + 23 extra dedicated Gmail tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
 - Node.js 18 or later
 
 ## Setup

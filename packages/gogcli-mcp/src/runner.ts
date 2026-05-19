@@ -151,7 +151,7 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
       settled = true;
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         reject(new Error(
-          'gog executable not found. Install gogcli (https://github.com/steipete/gogcli) ' +
+          'gog executable not found. Install gogcli (https://github.com/openclaw/gogcli) ' +
           'or set GOG_PATH in your MCP client config to the absolute binary path ' +
           '(run `which gog` in a terminal to find it).',
         ));

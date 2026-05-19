@@ -5,13 +5,13 @@ description: Use when the user asks to browse, upload, download, share, or manag
 
 # gogcli-mcp-drive
 
-Extended Google Drive MCP server via [gogcli](https://github.com/steipete/gogcli) — 27 tools: auth + 9 base Drive + 13 extra dedicated Drive tools.
+Extended Google Drive MCP server via [gogcli](https://github.com/openclaw/gogcli) — 27 tools: auth + 9 base Drive + 13 extra dedicated Drive tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
 - Node.js 18 or later
 
 ## Setup

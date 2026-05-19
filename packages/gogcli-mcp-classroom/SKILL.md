@@ -5,13 +5,13 @@ description: Use when the user asks to manage Google Classroom — create or upd
 
 # gogcli-mcp-classroom
 
-Extended Google Classroom MCP server via [gogcli](https://github.com/steipete/gogcli) — 49 tools: auth (5) + 44 dedicated Classroom tools spanning courses, students, teachers, coursework, submissions, announcements, topics, invitations, and profiles.
+Extended Google Classroom MCP server via [gogcli](https://github.com/openclaw/gogcli) — 49 tools: auth (5) + 44 dedicated Classroom tools spanning courses, students, teachers, coursework, submissions, announcements, topics, invitations, and profiles.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
 ## Requirements
 
-- [gogcli](https://github.com/steipete/gogcli) installed and authenticated
+- [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
 - Node.js 18 or later
 
 ## Setup
