@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-sheets",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "mcpName": "io.github.chrischall/gogcli-mcp-sheets",
   "description": "Extended Google Sheets MCP server via gogcli — all base tools plus full Sheets support",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
