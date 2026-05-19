@@ -185,13 +185,13 @@ export function registerExtraDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_append', {
-    description: 'Append text to the end of a Google Doc. This is the right tool for iterative document construction — multiple sequential calls produce content in the order they were called. Use gog_docs_insert only when you need to insert at a specific character position.',
+    description: 'Append text to the end of a Google Doc. This is the right tool for iterative document construction — multiple sequential calls produce content in the order they were called. Use gog_docs_insert only when you need to insert at a specific character position. Known markdown=true limitations (tracked upstream): (a) 3+ tables in one call reorders the trailing punctuation of the paragraph before the 3rd table — split into multiple calls with ≤2 tables each (openclaw/gogcli#607); (b) inline **bold** / *italic* / `code` inside table cells renders as literal characters — pre-format cell text separately or apply formatting after the append via gog_docs_format (openclaw/gogcli#608); (c) tables with an empty header row leak the last data row as literal pipe text — always supply a non-empty header (openclaw/gogcli#609).',
     annotations: { destructiveHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Text content to append'),
       file: z.string().optional().describe('Path to a text file to append (use "-" for stdin)'),
-      markdown: z.boolean().optional().describe('Convert markdown to Google Docs formatting (headings, bold, lists, etc.)'),
+      markdown: z.boolean().optional().describe('Convert markdown to Google Docs formatting (headings, bold, lists, etc.). See the tool description for known upstream limitations around tables.'),
       tab: z.string().optional().describe('Target tab title or ID (for multi-tab docs)'),
       account: accountParam,
     },
