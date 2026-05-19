@@ -2,6 +2,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
+// Cell value type: matches what gog sheets --values-json accepts (passed
+// straight to the Sheets API as userEnteredValue). Strings starting with
+// "=" are treated as formulas by gog's default --input=USER_ENTERED.
+const cellValueParam = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+
 export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_get', {
     description: 'Read values from a Google Sheets range. Returns a JSON object with a "values" array of rows.',
@@ -16,12 +21,12 @@ export function registerSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_update', {
-    description: 'Write values to a Google Sheets range, overwriting existing content.',
+    description: 'Write values to a Google Sheets range, overwriting existing content. Values may be strings, numbers, booleans, or null. Strings starting with "=" are interpreted as formulas (e.g. "=SUM(A1:A10)").',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       range: z.string().describe('Top-left cell or range in A1 notation, e.g. Sheet1!A1'),
-      values: z.array(z.array(z.string())).describe('2D array of values: outer array is rows, inner is columns'),
+      values: z.array(z.array(cellValueParam)).describe('2D array of values (rows of columns). Cells may be string/number/boolean/null; strings starting with "=" are formulas.'),
       account: accountParam,
     },
   }, async ({ spreadsheetId, range, values, account }) => {
@@ -32,12 +37,12 @@ export function registerSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_append', {
-    description: 'Append rows to a Google Sheet after the last row with data in the given range.',
+    description: 'Append rows to a Google Sheet after the last row with data in the given range. Values may be strings, numbers, booleans, or null. Strings starting with "=" are interpreted as formulas.',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       range: z.string().describe('Range indicating which sheet/columns to append to, e.g. Sheet1!A:C'),
-      values: z.array(z.array(z.string())).describe('2D array of rows to append'),
+      values: z.array(z.array(cellValueParam)).describe('2D array of rows to append. Cells may be string/number/boolean/null; strings starting with "=" are formulas.'),
       account: accountParam,
     },
   }, async ({ spreadsheetId, range, values, account }) => {

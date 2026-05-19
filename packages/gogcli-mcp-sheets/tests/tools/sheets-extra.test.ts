@@ -170,19 +170,132 @@ describe('gog_sheets_unmerge', () => {
 
 // 10. format
 describe('gog_sheets_format', () => {
-  it('calls runOrDiagnose with correct args', async () => {
+  it('passes raw formatJson + formatFields through unchanged (escape hatch)', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     const fj = '{"textFormat":{"bold":true}}';
-    await handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1:B2', formatJson: fj });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'format', 'sid', 'A1:B2', `--format-json=${fj}`], { account: undefined });
+    await handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1:B2', formatJson: fj, formatFields: 'textFormat.bold' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'format', 'sid', 'A1:B2', `--format-json=${fj}`, '--format-fields=textFormat.bold'],
+      { account: undefined },
+    );
   });
 
-  it('includes --format-fields when provided', async () => {
+  it('passes raw formatJson without formatFields', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
-    await handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1', formatJson: '{}', formatFields: 'textFormat.bold' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'format', 'sid', 'A1', '--format-json={}', '--format-fields=textFormat.bold'], { account: undefined });
+    await handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1', formatJson: '{}' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'format', 'sid', 'A1', '--format-json={}'],
+      { account: undefined },
+    );
+  });
+
+  it('composes named flags into CellFormat JSON + auto-computed fields', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_format')!({
+      spreadsheetId: 'sid', range: 'A1:C3',
+      bold: true,
+      backgroundColor: '#FFF5D9',
+      wrapStrategy: 'WRAP',
+      verticalAlignment: 'TOP',
+    });
+    const call = vi.mocked(lib.runOrDiagnose).mock.calls[0]!;
+    const argv = call[0];
+    expect(argv[0]).toBe('sheets');
+    expect(argv[1]).toBe('format');
+    expect(argv[2]).toBe('sid');
+    expect(argv[3]).toBe('A1:C3');
+    const fmtArg = (argv[4] as string).replace(/^--format-json=/, '');
+    const parsed = JSON.parse(fmtArg);
+    expect(parsed.textFormat.bold).toBe(true);
+    expect(parsed.backgroundColor.red).toBeCloseTo(1.0);
+    expect(parsed.backgroundColor.green).toBeCloseTo(245 / 255);
+    expect(parsed.backgroundColor.blue).toBeCloseTo(217 / 255);
+    expect(parsed.wrapStrategy).toBe('WRAP');
+    expect(parsed.verticalAlignment).toBe('TOP');
+    const fieldsArg = argv[5] as string;
+    expect(fieldsArg).toMatch(/^--format-fields=/);
+    expect(fieldsArg).toContain('textFormat.bold');
+    expect(fieldsArg).toContain('backgroundColor');
+    expect(fieldsArg).toContain('wrapStrategy');
+    expect(fieldsArg).toContain('verticalAlignment');
+  });
+
+  it('composes all named flags including textColor + alignment', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_format')!({
+      spreadsheetId: 'sid', range: 'A1',
+      italic: true,
+      underline: true,
+      strikethrough: true,
+      fontSize: 14,
+      fontFamily: 'Inter',
+      textColor: '#FFF',
+      horizontalAlignment: 'CENTER',
+    });
+    const call = vi.mocked(lib.runOrDiagnose).mock.calls[0]!;
+    const fmtArg = (call[0][4] as string).replace(/^--format-json=/, '');
+    const parsed = JSON.parse(fmtArg);
+    expect(parsed.textFormat.italic).toBe(true);
+    expect(parsed.textFormat.underline).toBe(true);
+    expect(parsed.textFormat.strikethrough).toBe(true);
+    expect(parsed.textFormat.fontSize).toBe(14);
+    expect(parsed.textFormat.fontFamily).toBe('Inter');
+    expect(parsed.textFormat.foregroundColor.red).toBeCloseTo(1);
+    expect(parsed.textFormat.foregroundColor.green).toBeCloseTo(1);
+    expect(parsed.textFormat.foregroundColor.blue).toBeCloseTo(1);
+    expect(parsed.horizontalAlignment).toBe('CENTER');
+  });
+
+  it('rejects bad hex in textColor', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await expect(
+      handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1', textColor: 'not-a-hex' }),
+    ).rejects.toThrow(/Invalid textColor/);
+  });
+
+  it('rejects bad hex in backgroundColor', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await expect(
+      handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1', backgroundColor: 'orange' }),
+    ).rejects.toThrow(/Invalid backgroundColor/);
+  });
+
+  it('rejects no-op calls with neither flags nor formatJson', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await expect(
+      handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1' }),
+    ).rejects.toThrow(/requires at least one named flag/);
+  });
+
+  it('honors caller-provided formatFields when also using named flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_format')!({
+      spreadsheetId: 'sid', range: 'A1',
+      bold: true,
+      formatFields: 'textFormat.bold,textFormat.italic',
+    });
+    const call = vi.mocked(lib.runOrDiagnose).mock.calls[0]!;
+    expect(call[0][5]).toBe('--format-fields=textFormat.bold,textFormat.italic');
+  });
+});
+
+describe('gog_sheets_list_tabs', () => {
+  it('uses metadata with a --select projection', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_list_tabs')!({ spreadsheetId: 'sid' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'metadata', 'sid', '--select=sheets.properties.sheetId,sheets.properties.title,sheets.properties.index,sheets.properties.gridProperties'],
+      { account: undefined },
+    );
   });
 });
 

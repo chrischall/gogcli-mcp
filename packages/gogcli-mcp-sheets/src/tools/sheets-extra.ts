@@ -2,7 +2,38 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
 
+// Convert a CSS-style hex color ("#FFF5D9", "#FD9", "FFF5D9") to the
+// {red, green, blue} 0-1 float triple that Sheets API CellFormat expects.
+// Returns null on unparseable input — caller decides whether to fall back
+// or error.
+export function hexToRgb(hex: string): { red: number; green: number; blue: number } | null {
+  let h = hex.trim().replace(/^#/, '');
+  if (h.length === 3) h = h[0]! + h[0]! + h[1]! + h[1]! + h[2]! + h[2]!;
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+  const n = parseInt(h, 16);
+  return {
+    red: ((n >> 16) & 0xff) / 255,
+    green: ((n >> 8) & 0xff) / 255,
+    blue: (n & 0xff) / 255,
+  };
+}
+
 export function registerExtraSheetsTools(server: McpServer): void {
+
+  server.registerTool('gog_sheets_list_tabs', {
+    description: 'List tabs (sheets) in a spreadsheet with their titles, sheetIds, and indices. A friendlier view than gog_sheets_metadata when you only need the tab list — useful for restructuring a workbook over a long agent session without losing track of names.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, account }) => {
+    // jq projection keeps the response compact: sheetId, title, index, gridProperties only.
+    return runOrDiagnose(
+      ['sheets', 'metadata', spreadsheetId, '--select=sheets.properties.sheetId,sheets.properties.title,sheets.properties.index,sheets.properties.gridProperties'],
+      { account },
+    );
+  });
 
   server.registerTool('gog_sheets_add_tab', {
     description: 'Add a new sheet tab to a spreadsheet.',
@@ -135,19 +166,92 @@ export function registerExtraSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_format', {
-    description: 'Apply cell formatting (bold, colors, alignment, etc.) to a range. Pass format as a JSON CellFormat object.',
+    description: 'Apply cell formatting to a range. The named flags (bold, italic, backgroundColor, etc.) compose into a Sheets API CellFormat — use them for the 90% case. For full API control, pass formatJson + formatFields (Sheets CellFormat + field mask) directly.',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to format (e.g. Sheet1!A1:C3)'),
-      formatJson: z.string().describe('JSON CellFormat object (e.g. {"textFormat":{"bold":true}})'),
-      formatFields: z.string().optional().describe('Comma-separated field mask (e.g. textFormat.bold,backgroundColor)'),
+      bold: z.boolean().optional().describe('Set bold'),
+      italic: z.boolean().optional().describe('Set italic'),
+      underline: z.boolean().optional().describe('Set underline'),
+      strikethrough: z.boolean().optional().describe('Set strikethrough'),
+      fontSize: z.number().optional().describe('Font size in points'),
+      fontFamily: z.string().optional().describe('Font family (e.g. Arial)'),
+      textColor: z.string().optional().describe('Text color as #RRGGBB or #RGB'),
+      backgroundColor: z.string().optional().describe('Cell background color as #RRGGBB or #RGB'),
+      horizontalAlignment: z.enum(['LEFT', 'CENTER', 'RIGHT']).optional().describe('Horizontal alignment'),
+      verticalAlignment: z.enum(['TOP', 'MIDDLE', 'BOTTOM']).optional().describe('Vertical alignment'),
+      wrapStrategy: z.enum(['OVERFLOW_CELL', 'LEGACY_WRAP', 'CLIP', 'WRAP']).optional().describe('Text wrap strategy'),
+      formatJson: z.string().optional().describe('Escape hatch: raw CellFormat JSON. When provided, named flags above are ignored and formatJson is sent as-is.'),
+      formatFields: z.string().optional().describe('Comma-separated field mask (e.g. textFormat.bold,backgroundColor). Required when using formatJson; auto-computed when using named flags.'),
       account: accountParam,
     },
-  }, async ({ spreadsheetId, range, formatJson, formatFields, account }) => {
-    const args = ['sheets', 'format', spreadsheetId, range, `--format-json=${formatJson}`];
+  }, async (rawArgs) => {
+    const a = rawArgs as {
+      spreadsheetId: string;
+      range: string;
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+      strikethrough?: boolean;
+      fontSize?: number;
+      fontFamily?: string;
+      textColor?: string;
+      backgroundColor?: string;
+      horizontalAlignment?: string;
+      verticalAlignment?: string;
+      wrapStrategy?: string;
+      formatJson?: string;
+      formatFields?: string;
+      account?: string;
+    };
+    let formatJson = a.formatJson;
+    let formatFields = a.formatFields;
+    // If the caller didn't pass raw JSON, compose it from the named flags.
+    if (!formatJson) {
+      const cellFormat: Record<string, unknown> = {};
+      const textFormat: Record<string, unknown> = {};
+      const fields: string[] = [];
+      if (a.bold !== undefined) { textFormat.bold = a.bold; fields.push('textFormat.bold'); }
+      if (a.italic !== undefined) { textFormat.italic = a.italic; fields.push('textFormat.italic'); }
+      if (a.underline !== undefined) { textFormat.underline = a.underline; fields.push('textFormat.underline'); }
+      if (a.strikethrough !== undefined) { textFormat.strikethrough = a.strikethrough; fields.push('textFormat.strikethrough'); }
+      if (a.fontSize !== undefined) { textFormat.fontSize = a.fontSize; fields.push('textFormat.fontSize'); }
+      if (a.fontFamily !== undefined) { textFormat.fontFamily = a.fontFamily; fields.push('textFormat.fontFamily'); }
+      if (a.textColor !== undefined) {
+        const rgb = hexToRgb(a.textColor);
+        if (!rgb) throw new Error(`Invalid textColor: ${a.textColor} (expected #RRGGBB or #RGB)`);
+        textFormat.foregroundColor = rgb;
+        fields.push('textFormat.foregroundColor');
+      }
+      if (Object.keys(textFormat).length > 0) cellFormat.textFormat = textFormat;
+      if (a.backgroundColor !== undefined) {
+        const rgb = hexToRgb(a.backgroundColor);
+        if (!rgb) throw new Error(`Invalid backgroundColor: ${a.backgroundColor} (expected #RRGGBB or #RGB)`);
+        cellFormat.backgroundColor = rgb;
+        fields.push('backgroundColor');
+      }
+      if (a.horizontalAlignment !== undefined) {
+        cellFormat.horizontalAlignment = a.horizontalAlignment;
+        fields.push('horizontalAlignment');
+      }
+      if (a.verticalAlignment !== undefined) {
+        cellFormat.verticalAlignment = a.verticalAlignment;
+        fields.push('verticalAlignment');
+      }
+      if (a.wrapStrategy !== undefined) {
+        cellFormat.wrapStrategy = a.wrapStrategy;
+        fields.push('wrapStrategy');
+      }
+      if (Object.keys(cellFormat).length === 0) {
+        throw new Error('gog_sheets_format requires at least one named flag or a formatJson value');
+      }
+      formatJson = JSON.stringify(cellFormat);
+      if (!formatFields) formatFields = fields.join(',');
+    }
+    const args = ['sheets', 'format', a.spreadsheetId, a.range, `--format-json=${formatJson}`];
     if (formatFields) args.push(`--format-fields=${formatFields}`);
-    return runOrDiagnose(args, { account });
+    return runOrDiagnose(args, { account: a.account });
   });
 
   server.registerTool('gog_sheets_number_format', {

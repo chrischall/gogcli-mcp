@@ -49,6 +49,94 @@ export function registerExtraDocsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  server.registerTool('gog_docs_read', {
+    description: 'Read the content of a Google Doc. Default: plain text body. Use format="json" for the raw Google Docs API response (lossless, includes character indices needed for index-based gog_docs_insert / gog_docs_delete calls). For markdown output, use gog_docs_export with format="md" — it writes to a file. Use gog_docs_structure to see paragraph-by-paragraph layout with indices.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      format: z.enum(['text', 'json']).optional().describe('Output format (default: text)'),
+      tab: z.string().optional().describe('Target tab title or ID (text mode only)'),
+      allTabs: z.boolean().optional().describe('Show all tabs with headers (text mode only)'),
+      maxBytes: z.number().optional().describe('Max bytes to read in text mode (0 = unlimited; default 2000000)'),
+      account: accountParam,
+    },
+  }, async ({ docId, format, tab, allTabs, maxBytes, account }) => {
+    if (format === 'json') {
+      return runOrDiagnose(['docs', 'raw', docId, '--pretty'], { account });
+    }
+    const args = ['docs', 'cat', docId];
+    if (tab) args.push(`--tab=${tab}`);
+    if (allTabs) args.push('--all-tabs');
+    if (maxBytes !== undefined) args.push(`--max-bytes=${maxBytes}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_format', {
+    description: 'Apply text or paragraph formatting to a Google Doc. Use `match` to format a specific text occurrence, `matchAll` to format every occurrence, or omit both to format the whole doc. Boolean flags (bold/italic/etc.) set the attribute; negated flags (noBold/noItalic/etc.) clear it.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      match: z.string().optional().describe('Format only the first text match'),
+      matchAll: z.boolean().optional().describe('Format all matches instead of only the first'),
+      matchCase: z.boolean().optional().describe('Case-sensitive matching'),
+      tab: z.string().optional().describe('Target tab title or ID'),
+      fontFamily: z.string().optional().describe('Font family (e.g. Arial, Georgia)'),
+      fontSize: z.number().optional().describe('Font size in points'),
+      textColor: z.string().optional().describe('Text color as #RRGGBB or #RGB'),
+      bgColor: z.string().optional().describe('Text background color as #RRGGBB or #RGB'),
+      bold: z.boolean().optional().describe('Set bold'),
+      noBold: z.boolean().optional().describe('Clear bold'),
+      italic: z.boolean().optional().describe('Set italic'),
+      noItalic: z.boolean().optional().describe('Clear italic'),
+      underline: z.boolean().optional().describe('Set underline'),
+      noUnderline: z.boolean().optional().describe('Clear underline'),
+      strikethrough: z.boolean().optional().describe('Set strikethrough'),
+      noStrikethrough: z.boolean().optional().describe('Clear strikethrough'),
+      alignment: z.enum(['left', 'center', 'right', 'justify', 'start', 'end', 'justified']).optional().describe('Paragraph alignment'),
+      lineSpacing: z.number().optional().describe('Line spacing percentage (e.g. 100 for single, 150 for 1.5x, 200 for double)'),
+      account: accountParam,
+    },
+  }, async (args) => {
+    const a = args as {
+      docId: string;
+      match?: string;
+      matchAll?: boolean;
+      matchCase?: boolean;
+      tab?: string;
+      fontFamily?: string;
+      fontSize?: number;
+      textColor?: string;
+      bgColor?: string;
+      bold?: boolean; noBold?: boolean;
+      italic?: boolean; noItalic?: boolean;
+      underline?: boolean; noUnderline?: boolean;
+      strikethrough?: boolean; noStrikethrough?: boolean;
+      alignment?: string;
+      lineSpacing?: number;
+      account?: string;
+    };
+    const argv = ['docs', 'format', a.docId];
+    if (a.match) argv.push(`--match=${a.match}`);
+    if (a.matchAll) argv.push('--match-all');
+    if (a.matchCase) argv.push('--match-case');
+    if (a.tab) argv.push(`--tab=${a.tab}`);
+    if (a.fontFamily) argv.push(`--font-family=${a.fontFamily}`);
+    if (a.fontSize !== undefined) argv.push(`--font-size=${a.fontSize}`);
+    if (a.textColor) argv.push(`--text-color=${a.textColor}`);
+    if (a.bgColor) argv.push(`--bg-color=${a.bgColor}`);
+    if (a.bold) argv.push('--bold');
+    if (a.noBold) argv.push('--no-bold');
+    if (a.italic) argv.push('--italic');
+    if (a.noItalic) argv.push('--no-italic');
+    if (a.underline) argv.push('--underline');
+    if (a.noUnderline) argv.push('--no-underline');
+    if (a.strikethrough) argv.push('--strikethrough');
+    if (a.noStrikethrough) argv.push('--no-strikethrough');
+    if (a.alignment) argv.push(`--alignment=${a.alignment}`);
+    if (a.lineSpacing !== undefined) argv.push(`--line-spacing=${a.lineSpacing}`);
+    return runOrDiagnose(argv, { account: a.account });
+  });
+
   server.registerTool('gog_docs_export', {
     description: 'Export a Google Doc as PDF, plain text, HTML, DOCX, or other format.',
     annotations: { readOnlyHint: true },
@@ -66,12 +154,12 @@ export function registerExtraDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_insert', {
-    description: 'Insert text at a specific position in a Google Doc.',
+    description: 'Insert text at a specific character index in a Google Doc. When `index` is omitted, gog defaults to 1 (the very beginning), NOT the end — sequential inserts without an explicit index produce reversed output. To append at the end of the doc, use gog_docs_append (which uses `gog docs write --append` and is the right tool for iterative document construction). To find a valid index for mid-document inserts, call gog_docs_structure or gog_docs_read first.',
     annotations: { destructiveHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       content: z.string().optional().describe('Text content to insert'),
-      index: z.number().optional().describe('Character index to insert at (default: end of document)'),
+      index: z.number().optional().describe('Character index to insert at (1-based; default: 1 = start of doc). Prefer gog_docs_append when you want to add at the end.'),
       file: z.string().optional().describe('Path to a file whose content to insert'),
       tabId: z.string().optional().describe('Tab ID to insert into (for multi-tab docs)'),
       account: accountParam,
@@ -82,6 +170,26 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (index !== undefined) args.push(`--index=${index}`);
     if (file) args.push(`--file=${file}`);
     if (tabId) args.push(`--tab-id=${tabId}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_append', {
+    description: 'Append text to the end of a Google Doc. This is the right tool for iterative document construction — multiple sequential calls produce content in the order they were called. Use gog_docs_insert only when you need to insert at a specific character position.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      text: z.string().optional().describe('Text content to append'),
+      file: z.string().optional().describe('Path to a text file to append (use "-" for stdin)'),
+      markdown: z.boolean().optional().describe('Convert markdown to Google Docs formatting (headings, bold, lists, etc.)'),
+      tab: z.string().optional().describe('Target tab title or ID (for multi-tab docs)'),
+      account: accountParam,
+    },
+  }, async ({ docId, text, file, markdown, tab, account }) => {
+    const args = ['docs', 'write', docId, '--append'];
+    if (text) args.push(`--text=${text}`);
+    if (file) args.push(`--file=${file}`);
+    if (markdown) args.push('--markdown');
+    if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
 

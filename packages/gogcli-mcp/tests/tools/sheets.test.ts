@@ -63,6 +63,21 @@ describe('gog_sheets_update', () => {
     );
   });
 
+  it('preserves non-string cell types (numbers, booleans, nulls, formulas) in --values-json', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    const values = [['Sheet', 'A', 'B', 'C'], ['Row', 1, 2.5, '=A2+B2'], ['Bool', true, false, null]];
+    await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1:D3', values });
+    const call = vi.mocked(runner.run).mock.calls[0]!;
+    expect(call[0][4]).toBe(`--values-json=${JSON.stringify(values)}`);
+    // Spot-check the serialized JSON keeps non-string primitives intact (no stringification)
+    expect(call[0][4]).toContain('"=A2+B2"');
+    expect(call[0][4]).toContain(',1,');
+    expect(call[0][4]).toContain('2.5');
+    expect(call[0][4]).toContain('true');
+    expect(call[0][4]).toContain('null');
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Update failed'));
     const handlers = setupHandlers();

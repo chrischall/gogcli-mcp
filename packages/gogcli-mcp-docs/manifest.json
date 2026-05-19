@@ -158,6 +158,18 @@
     {
       "name": "gog_docs_comments_delete",
       "description": "Delete a comment from a Google Doc. This action is permanent."
+    },
+    {
+      "name": "gog_docs_append",
+      "description": "Append text to the end of a Google Doc (the right tool for iterative construction; sequential calls produce in-order content)"
+    },
+    {
+      "name": "gog_docs_read",
+      "description": "Read a Google Doc as plain text or as raw Docs API JSON"
+    },
+    {
+      "name": "gog_docs_format",
+      "description": "Apply text/paragraph formatting (bold, italic, font size, color, alignment, line spacing) — supports match, matchAll, matchCase"
     }
   ],
   "compatibility": {

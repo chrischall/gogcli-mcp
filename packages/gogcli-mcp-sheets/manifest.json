@@ -146,7 +146,7 @@
     },
     {
       "name": "gog_sheets_format",
-      "description": "Apply cell formatting (bold, colors, alignment, etc.) to a range. Pass format as a JSON CellFormat object."
+      "description": "Apply cell formatting to a range. Named flags (bold, italic, backgroundColor, etc.) compose to a Sheets CellFormat; pass formatJson for full control."
     },
     {
       "name": "gog_sheets_number_format",
@@ -195,6 +195,10 @@
     {
       "name": "gog_sheets_named_ranges_delete",
       "description": "Delete a named range."
+    },
+    {
+      "name": "gog_sheets_list_tabs",
+      "description": "List tabs in a spreadsheet (sheetId, title, index, gridProperties)"
     }
   ],
   "compatibility": {

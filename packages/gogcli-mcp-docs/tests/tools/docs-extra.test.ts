@@ -518,3 +518,120 @@ describe('gog_docs_comments_delete', () => {
     );
   });
 });
+
+describe('gog_docs_append', () => {
+  it('uses gog docs write --append', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_append')!({ docId: 'd1', text: 'Hello' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'write', 'd1', '--append', '--text=Hello'],
+      { account: undefined },
+    );
+  });
+
+  it('passes file, markdown, and tab flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_append')!({
+      docId: 'd1', file: '/tmp/section.md', markdown: true, tab: 'Notes',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'write', 'd1', '--append', '--file=/tmp/section.md', '--markdown', '--tab=Notes'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_read', () => {
+  it('defaults to plain text via gog docs cat', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('hello'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_read')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'cat', 'd1'], { account: undefined });
+  });
+
+  it('routes json format to gog docs raw --pretty', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_read')!({ docId: 'd1', format: 'json' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty'], { account: undefined });
+  });
+
+  it('passes tab, allTabs, maxBytes in text mode', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText(''));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_read')!({ docId: 'd1', tab: 'Section A', allTabs: true, maxBytes: 0 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cat', 'd1', '--tab=Section A', '--all-tabs', '--max-bytes=0'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_format', () => {
+  it('passes all text/paragraph attribute flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({
+      docId: 'd1',
+      match: 'Title',
+      matchAll: true,
+      matchCase: true,
+      tab: 'Body',
+      fontFamily: 'Arial',
+      fontSize: 18,
+      textColor: '#333333',
+      bgColor: '#FFF5D9',
+      bold: true,
+      italic: true,
+      underline: true,
+      strikethrough: true,
+      alignment: 'center',
+      lineSpacing: 150,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'docs', 'format', 'd1',
+        '--match=Title',
+        '--match-all',
+        '--match-case',
+        '--tab=Body',
+        '--font-family=Arial',
+        '--font-size=18',
+        '--text-color=#333333',
+        '--bg-color=#FFF5D9',
+        '--bold',
+        '--italic',
+        '--underline',
+        '--strikethrough',
+        '--alignment=center',
+        '--line-spacing=150',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('emits clear-style flags (noBold/noItalic/...) without the set variants', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({
+      docId: 'd1',
+      noBold: true,
+      noItalic: true,
+      noUnderline: true,
+      noStrikethrough: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--no-bold', '--no-italic', '--no-underline', '--no-strikethrough'],
+      { account: undefined },
+    );
+  });
+
+  it('omits all flags when not provided (whole-doc no-op call passes through)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'format', 'd1'], { account: undefined });
+  });
+});
