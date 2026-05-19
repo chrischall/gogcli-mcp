@@ -161,7 +161,7 @@
     },
     {
       "name": "gog_docs_append",
-      "description": "Append text to the end of a Google Doc (the right tool for iterative construction; sequential calls produce in-order content)"
+      "description": "Append text to the end of a Google Doc (the right tool for iterative construction). markdown=true known limitations (upstream): 3+ tables/call reorders trailing punctuation (split calls); inline bold/italic/code in cells renders literally (format after); empty-header tables leak literal pipes (use non-empty header)."
     },
     {
       "name": "gog_docs_read",

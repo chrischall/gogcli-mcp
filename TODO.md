@@ -99,6 +99,9 @@ Project management, deployments, script execution. Useful for power users automa
 - **#14 `gog_sheets_reorder_tab`** — needs a `gog sheets reorder-tab` (or batch-update primitive). `gog sheets --help` doesn't expose either. Same wrapper-contract concern as #11.
 - **Docs headings + page breaks** (subset of #10) — needs `gog docs format --heading-level` and `gog docs insert-page-break`. Format covers text/paragraph attrs, but namedStyleType/page-break operations aren't exposed.
 - **Markdown read** (subset of #9) — `gog docs export --format=md` writes to a file (no stdout sink). Once gog supports stdout export (e.g. `--out=-`), add `format: "markdown"` to `gog_docs_read`.
+- **#18 `gog_docs_append` markdown: 3+ tables reorders trailing paragraph punctuation** — upstream [openclaw/gogcli#607](https://github.com/openclaw/gogcli/issues/607). Wrapper-side workaround would mean splitting input at table boundaries and making N calls; not worth the complexity until upstream fix lands.
+- **#19 `gog_docs_append` markdown: inline `**bold**` / `*italic*` / `` `code` `` inside table cells renders literally** — upstream [openclaw/gogcli#608](https://github.com/openclaw/gogcli/issues/608). Workaround documented in tool description: apply formatting via `gog_docs_format` after the append.
+- **#20 `gog_docs_append` markdown: empty-header tables leak last row as literal pipe text** — upstream [openclaw/gogcli#609](https://github.com/openclaw/gogcli/issues/609). Workaround documented: always supply a non-empty header.
 
 When tracking, reopen the matching closed GitHub issue rather than filing new ones.
 

@@ -550,6 +550,28 @@ describe('gog_docs_append', () => {
       { account: undefined },
     );
   });
+
+  // Regression: the tool description must warn about the 3 known upstream
+  // markdown converter bugs (openclaw/gogcli#607, #608, #609). If upstream
+  // fixes any of these and the warning is removed, this test fails as a
+  // prompt to revisit + reopen the README/SKILL/TODO sections too.
+  it('description warns about all 3 known upstream markdown limitations', async () => {
+    // Local mock to capture the registration config (the shared harness only
+    // captures the handler callback).
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const configs = new Map<string, { description?: string }>();
+    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
+      configs.set(name, config as { description?: string });
+      return undefined as never;
+    });
+    const { registerExtraDocsTools } = await import('../../src/tools/docs-extra.js');
+    registerExtraDocsTools(server);
+    const desc = configs.get('gog_docs_append')?.description ?? '';
+    expect(desc).toMatch(/openclaw\/gogcli#607/);
+    expect(desc).toMatch(/openclaw\/gogcli#608/);
+    expect(desc).toMatch(/openclaw\/gogcli#609/);
+  });
 });
 
 describe('gog_docs_read', () => {
