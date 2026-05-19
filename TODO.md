@@ -93,6 +93,15 @@ Project management, deployments, script execution. Useful for power users automa
 - **Tool count estimate:** ~8 tools.
 - **Decision**: skip until requested. Could pair with a future Sites/Forms wrapper as a "Workspace power-user" bundle.
 
+## Blocked on upstream gogcli
+
+- **#11 `gog_docs_insert_table`** — needs a `gog docs insert-table` subcommand. `gog docs --help` has no insert-table primitive. Implementing in MCP would require bypassing the gog binary to call Docs API `InsertTableRequest` directly, which breaks the wrapper contract.
+- **#14 `gog_sheets_reorder_tab`** — needs a `gog sheets reorder-tab` (or batch-update primitive). `gog sheets --help` doesn't expose either. Same wrapper-contract concern as #11.
+- **Docs headings + page breaks** (subset of #10) — needs `gog docs format --heading-level` and `gog docs insert-page-break`. Format covers text/paragraph attrs, but namedStyleType/page-break operations aren't exposed.
+- **Markdown read** (subset of #9) — `gog docs export --format=md` writes to a file (no stdout sink). Once gog supports stdout export (e.g. `--out=-`), add `format: "markdown"` to `gog_docs_read`.
+
+When tracking, reopen the matching closed GitHub issue rather than filing new ones.
+
 ## Cross-cutting follow-ups
 
 - **Meet conferences attached to events**: when `gog calendar create` is enhanced to attach a Meet space, it's a one-flag change (likely `--add-meet`). Verify the flag name with `gog calendar create --help` first.
