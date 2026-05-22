@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp-contacts",
   "display_name": "gogcli (Contacts)",
-  "version": "2.0.12",
+  "version": "2.0.13",
   "description": "Extended Google Contacts for Claude via gogcli — auth + Contacts + Workspace directory (People API)",
   "author": {
     "name": "Chris Hall",
