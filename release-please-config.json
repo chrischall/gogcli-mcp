@@ -1,0 +1,139 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "packages/gogcli-mcp": {
+      "package-name": "gogcli-mcp",
+      "release-type": "node",
+      "component": "gogcli-mcp",
+      "extra-files": [
+        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
+        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
+      ]
+    },
+    "packages/gogcli-mcp-calendar": {
+      "package-name": "gogcli-mcp-calendar",
+      "release-type": "node",
+      "component": "gogcli-mcp-calendar",
+      "extra-files": [
+        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" }
+      ]
+    },
+    "packages/gogcli-mcp-classroom": {
+      "package-name": "gogcli-mcp-classroom",
+      "release-type": "node",
+      "component": "gogcli-mcp-classroom",
+      "extra-files": [
+        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
+        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
+      ]
+    },
+    "packages/gogcli-mcp-contacts": {
+      "package-name": "gogcli-mcp-contacts",
+      "release-type": "node",
+      "component": "gogcli-mcp-contacts",
+      "extra-files": [
+        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" }
+      ]
+    },
+    "packages/gogcli-mcp-docs": {
+      "package-name": "gogcli-mcp-docs",
+      "release-type": "node",
+      "component": "gogcli-mcp-docs",
+      "extra-files": [
+        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
+        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
+      ]
+    },
+    "packages/gogcli-mcp-drive": {
+      "package-name": "gogcli-mcp-drive",
+      "release-type": "node",
+      "component": "gogcli-mcp-drive",
+      "extra-files": [
+        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
+        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
+      ]
+    },
+    "packages/gogcli-mcp-gmail": {
+      "package-name": "gogcli-mcp-gmail",
+      "release-type": "node",
+      "component": "gogcli-mcp-gmail",
+      "extra-files": [
+        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" }
+      ]
+    },
+    "packages/gogcli-mcp-sheets": {
+      "package-name": "gogcli-mcp-sheets",
+      "release-type": "node",
+      "component": "gogcli-mcp-sheets",
+      "extra-files": [
+        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
+        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
+      ]
+    },
+    "packages/gogcli-mcp-slides": {
+      "package-name": "gogcli-mcp-slides",
+      "release-type": "node",
+      "component": "gogcli-mcp-slides",
+      "extra-files": [
+        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
+        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
+      ]
+    }
+  },
+  "plugins": [
+    {
+      "type": "linked-versions",
+      "groupName": "gogcli-mcp",
+      "components": [
+        "gogcli-mcp",
+        "gogcli-mcp-calendar",
+        "gogcli-mcp-classroom",
+        "gogcli-mcp-contacts",
+        "gogcli-mcp-docs",
+        "gogcli-mcp-drive",
+        "gogcli-mcp-gmail",
+        "gogcli-mcp-sheets",
+        "gogcli-mcp-slides"
+      ]
+    }
+  ],
+  "separate-pull-requests": false,
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "revert", "section": "Reverts" },
+    { "type": "refactor", "section": "Refactor" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "test", "section": "Tests", "hidden": true },
+    { "type": "build", "section": "Build", "hidden": true },
+    { "type": "ci", "section": "CI", "hidden": true },
+    { "type": "chore", "section": "Chores", "hidden": true }
+  ]
+}
