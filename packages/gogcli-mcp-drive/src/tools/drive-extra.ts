@@ -177,14 +177,41 @@ export function registerExtraDriveTools(server: McpServer): void {
   });
 
   server.registerTool('gog_drive_comments_reply', {
-    description: 'Reply to an existing comment on a Drive file.',
+    description: 'Reply to an existing comment on a Drive file. Pass `action: "resolve"` or `"reopen"` to atomically flip the parent comment\'s resolved state via the Drive API\'s Reply.action field — avoids the older workaround of deleting the comment (which destroys review-thread context).',
     inputSchema: {
       fileId: z.string().describe('File ID'),
       commentId: z.string().describe('Comment ID to reply to'),
       content: z.string().describe('Reply text'),
+      action: z.enum(['resolve', 'reopen']).optional().describe('Optional action on the parent comment alongside the reply'),
       account: accountParam,
     },
-  }, async ({ fileId, commentId, content, account }) => {
-    return runOrDiagnose(['drive', 'comments', 'reply', fileId, commentId, content], { account });
+  }, async ({ fileId, commentId, content, action, account }) => {
+    const args = ['drive', 'comments', 'reply', fileId, commentId, content];
+    if (action) args.push(`--action=${action}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_comments_resolve', {
+    description: 'Resolve a comment on a Drive file (mark as done) without posting a reply. To resolve while replying, use gog_drive_comments_reply with action: "resolve".',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      fileId: z.string().describe('File ID'),
+      commentId: z.string().describe('Comment ID to resolve'),
+      account: accountParam,
+    },
+  }, async ({ fileId, commentId, account }) => {
+    return runOrDiagnose(['drive', 'comments', 'resolve', fileId, commentId], { account });
+  });
+
+  server.registerTool('gog_drive_comments_reopen', {
+    description: 'Reopen a previously resolved comment on a Drive file. To reopen while replying, use gog_drive_comments_reply with action: "reopen".',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      fileId: z.string().describe('File ID'),
+      commentId: z.string().describe('Comment ID to reopen'),
+      account: accountParam,
+    },
+  }, async ({ fileId, commentId, account }) => {
+    return runOrDiagnose(['drive', 'comments', 'reopen', fileId, commentId], { account });
   });
 }

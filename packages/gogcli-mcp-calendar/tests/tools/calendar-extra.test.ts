@@ -93,6 +93,56 @@ describe('gog_meet_history', () => {
   });
 });
 
+// --- gog 0.18.0 Zoom S2S OAuth (Zoom is calendar conferencing — lives here) ---
+
+describe('gog_zoom_auth_setup', () => {
+  it('passes credentials and uses default alias when omitted', async () => {
+    await handlers.get('gog_zoom_auth_setup')!({
+      accountId: 'acct',
+      clientId: 'cid',
+      clientSecret: 'csecret',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'zoom', 'auth', 'setup',
+        '--account-id=acct', '--client-id=cid', '--client-secret=csecret',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('passes --alias and --skip-validate when provided', async () => {
+    await handlers.get('gog_zoom_auth_setup')!({
+      accountId: 'acct', clientId: 'cid', clientSecret: 'csecret',
+      alias: 'work', skipValidate: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'zoom', 'auth', 'setup',
+        '--alias=work',
+        '--account-id=acct', '--client-id=cid', '--client-secret=csecret',
+        '--skip-validate',
+      ],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_zoom_auth_doctor', () => {
+  it('validates default alias', async () => {
+    await handlers.get('gog_zoom_auth_doctor')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['zoom', 'auth', 'doctor'], { account: undefined });
+  });
+
+  it('passes --alias when provided', async () => {
+    await handlers.get('gog_zoom_auth_doctor')!({ alias: 'work' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['zoom', 'auth', 'doctor', '--alias=work'],
+      { account: undefined },
+    );
+  });
+});
+
 describe('gog_meet_participants', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
     await handlers.get('gog_meet_participants')!({ meetingCode: 'abc-defg-hij' });

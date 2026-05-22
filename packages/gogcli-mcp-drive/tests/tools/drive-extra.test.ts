@@ -202,4 +202,55 @@ describe('gog_drive_comments_reply', () => {
       { account: undefined },
     );
   });
+
+  // gog 0.18.0: --action atomically flips resolved state on the parent comment.
+  it('passes --action=resolve when action provided', async () => {
+    await handlers.get('gog_drive_comments_reply')!({
+      fileId: 'f1', commentId: 'c1', content: 'lgtm, resolving', action: 'resolve',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'comments', 'reply', 'f1', 'c1', 'lgtm, resolving', '--action=resolve'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --action=reopen when action provided', async () => {
+    await handlers.get('gog_drive_comments_reply')!({
+      fileId: 'f1', commentId: 'c1', content: 'actually wait', action: 'reopen',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'comments', 'reply', 'f1', 'c1', 'actually wait', '--action=reopen'],
+      { account: undefined },
+    );
+  });
+});
+
+// --- gog 0.18.0 ---
+
+describe('gog_drive_comments_resolve', () => {
+  it('calls runOrDiagnose with fileId and commentId', async () => {
+    await handlers.get('gog_drive_comments_resolve')!({ fileId: 'f1', commentId: 'c1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'comments', 'resolve', 'f1', 'c1'],
+      { account: undefined },
+    );
+  });
+
+  it('forwards account', async () => {
+    await handlers.get('gog_drive_comments_resolve')!({ fileId: 'f1', commentId: 'c1', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'comments', 'resolve', 'f1', 'c1'],
+      { account: 'a@b.com' },
+    );
+  });
+});
+
+describe('gog_drive_comments_reopen', () => {
+  it('calls runOrDiagnose with fileId and commentId', async () => {
+    await handlers.get('gog_drive_comments_reopen')!({ fileId: 'f1', commentId: 'c1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'comments', 'reopen', 'f1', 'c1'],
+      { account: undefined },
+    );
+  });
 });

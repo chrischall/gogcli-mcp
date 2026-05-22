@@ -97,6 +97,41 @@ describe('gog_calendar_create', () => {
     );
   });
 
+  // gog 0.18.0: --with-zoom attaches a Zoom conference via description-mode
+  // integration (native conference card not supported for non-Workspace-Marketplace
+  // OAuth clients).
+  it('passes --with-zoom when withZoom is true', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_calendar_create')!({
+      calendarId: 'primary',
+      summary: 'Sync',
+      from: '2026-04-14T09:00:00Z',
+      to: '2026-04-14T09:30:00Z',
+      withZoom: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'calendar', 'create', 'primary',
+        '--summary=Sync', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z',
+        '--with-zoom',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('omits --with-zoom when false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_calendar_create')!({
+      calendarId: 'primary', summary: 's', from: 'f', to: 't', withZoom: false,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'create', 'primary', '--summary=s', '--from=f', '--to=t'],
+      { account: undefined },
+    );
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Create failed'));
     const handlers = setupHandlers();
@@ -139,6 +174,52 @@ describe('gog_calendar_update', () => {
         '--summary=New', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T10:00:00Z',
         '--description=Desc', '--location=NYC', '--attendees=a@b.com',
       ],
+      { account: undefined },
+    );
+  });
+
+  // gog 0.18.0 Zoom flags: with-zoom adds, regenerate-zoom replaces, remove-zoom strips.
+  it('passes --with-zoom / --regenerate-zoom / --remove-zoom independently', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_calendar_update')!({
+      calendarId: 'primary', eventId: 'evt1', withZoom: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--with-zoom'],
+      { account: undefined },
+    );
+
+    vi.clearAllMocks();
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    await handlers.get('gog_calendar_update')!({
+      calendarId: 'primary', eventId: 'evt1', regenerateZoom: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--regenerate-zoom'],
+      { account: undefined },
+    );
+
+    vi.clearAllMocks();
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    await handlers.get('gog_calendar_update')!({
+      calendarId: 'primary', eventId: 'evt1', removeZoom: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--remove-zoom'],
+      { account: undefined },
+    );
+  });
+
+  it('omits zoom flags when all false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_calendar_update')!({
+      calendarId: 'primary', eventId: 'evt1',
+      withZoom: false, regenerateZoom: false, removeZoom: false,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1'],
       { account: undefined },
     );
   });

@@ -420,4 +420,41 @@ export function registerExtraSheetsTools(server: McpServer): void {
   }, async ({ spreadsheetId, nameOrId, account }) => {
     return runOrDiagnose(['sheets', 'named-ranges', 'delete', spreadsheetId, nameOrId], { account });
   });
+
+  server.registerTool('gog_sheets_batch_update', {
+    description: 'Update values in multiple ranges with one Sheets API request. dataJson is a JSON array of {range, values} objects (or "@/path/to/file.json"). Atomic — either all ranges update or none do.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      dataJson: z.string().describe('Value ranges as JSON array, or @file (e.g. [{"range":"Sheet1!A1:B2","values":[["a","b"]]}])'),
+      input: z.enum(['RAW', 'USER_ENTERED']).optional().describe('Value input option (default: USER_ENTERED)'),
+      includeValuesInResponse: z.boolean().optional().describe('Include updated values in the response'),
+      responseRender: z.enum(['FORMATTED_VALUE', 'UNFORMATTED_VALUE', 'FORMULA']).optional().describe('Response value render option'),
+      responseDateTimeRender: z.enum(['SERIAL_NUMBER', 'FORMATTED_STRING']).optional().describe('Response date/time render option'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, dataJson, input, includeValuesInResponse, responseRender, responseDateTimeRender, account }) => {
+    const args = ['sheets', 'batch-update', spreadsheetId, `--data-json=${dataJson}`];
+    if (input) args.push(`--input=${input}`);
+    if (includeValuesInResponse) args.push('--include-values-in-response');
+    if (responseRender) args.push(`--response-render=${responseRender}`);
+    if (responseDateTimeRender) args.push(`--response-date-time-render=${responseDateTimeRender}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_reorder_tab', {
+    description: 'Move a tab to a specific 0-based position. `tab` is the tab name or numeric sheetId; `to=0` is the leftmost slot.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      tab: z.string().describe('Target tab by name or numeric sheet ID'),
+      to: z.number().int().min(0).describe('Destination final 0-based tab index'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, tab, to, account }) => {
+    return runOrDiagnose(
+      ['sheets', 'reorder-tab', spreadsheetId, `--tab=${tab}`, `--to=${to}`],
+      { account },
+    );
+  });
 }

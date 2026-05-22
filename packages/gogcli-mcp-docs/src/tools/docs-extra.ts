@@ -105,6 +105,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       noStrikethrough: z.boolean().optional().describe('Clear strikethrough'),
       alignment: z.enum(['left', 'center', 'right', 'justify', 'start', 'end', 'justified']).optional().describe('Paragraph alignment'),
       lineSpacing: z.number().optional().describe('Line spacing percentage (e.g. 100 for single, 150 for 1.5x, 200 for double)'),
+      headingLevel: z.number().int().optional().describe('Set paragraph named style to HEADING_1..HEADING_6 (shortcut for namedStyle=HEADING_N)'),
+      namedStyle: z.enum(['NORMAL_TEXT', 'TITLE', 'SUBTITLE', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'HEADING_5', 'HEADING_6']).optional().describe('Set paragraph named style explicitly'),
       account: accountParam,
     },
   }, async (args) => {
@@ -124,6 +126,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       strikethrough?: boolean; noStrikethrough?: boolean;
       alignment?: string;
       lineSpacing?: number;
+      headingLevel?: number;
+      namedStyle?: string;
       account?: string;
     };
     const argv = ['docs', 'format', a.docId];
@@ -145,6 +149,8 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (a.noStrikethrough) argv.push('--no-strikethrough');
     if (a.alignment) argv.push(`--alignment=${a.alignment}`);
     if (a.lineSpacing !== undefined) argv.push(`--line-spacing=${a.lineSpacing}`);
+    if (a.headingLevel !== undefined) argv.push(`--heading-level=${a.headingLevel}`);
+    if (a.namedStyle) argv.push(`--named-style=${a.namedStyle}`);
     return runOrDiagnose(argv, { account: a.account });
   });
 
@@ -341,5 +347,71 @@ export function registerExtraDocsTools(server: McpServer): void {
     },
   }, async ({ docId, commentId, account }) => {
     return runOrDiagnose(['docs', 'comments', 'delete', docId, commentId], { account });
+  });
+
+  server.registerTool('gog_docs_comments_reopen', {
+    description: 'Reopen a previously resolved comment (flip resolved → open).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      commentId: z.string().describe('Comment ID to reopen'),
+      account: accountParam,
+    },
+  }, async ({ docId, commentId, account }) => {
+    return runOrDiagnose(['docs', 'comments', 'reopen', docId, commentId], { account });
+  });
+
+  server.registerTool('gog_docs_insert_page_break', {
+    description: 'Insert a Google Docs page break via InsertPageBreakRequest — the only path for multi-page deliverables (markdown has no page-break construct). Specify `index` for a precise character position, or `atEnd` for end-of-doc.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      index: z.number().int().optional().describe('Character index to insert at (1 = beginning). Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Insert at end-of-doc/tab (mutually exclusive with index)'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, index, atEnd, tab, account }) => {
+    const args = ['docs', 'insert-page-break', docId];
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_page_layout', {
+    description: 'Toggle the page layout (pageless | pages) of an existing Google Doc. Sibling to the --pageless flag on docs create/write/update for docs that were already created (e.g. by Drive markdown conversion) without the desired layout.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      layout: z.enum(['pageless', 'pages']).optional().describe('Page layout (default: pageless)'),
+      account: accountParam,
+    },
+  }, async ({ docId, layout, account }) => {
+    const args = ['docs', 'page-layout', docId];
+    if (layout) args.push(`--layout=${layout}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_insert_table', {
+    description: 'Insert a native Google Docs table via InsertTableRequest, bypassing the markdown writer. Use this instead of writing a markdown table when you need precise dimensions or to avoid the markdown writer\'s table limitations. `valuesJson` is a JSON 2D string array whose dimensions must match rows x cols.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      rows: z.number().int().min(1).describe('Number of rows (>=1)'),
+      cols: z.number().int().min(1).describe('Number of columns (>=1)'),
+      index: z.number().int().optional().describe('Character index to insert at (1 = beginning). Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Insert at end-of-doc/tab (mutually exclusive with index)'),
+      valuesJson: z.string().optional().describe('Cell values as a JSON 2D string array; dimensions must match rows x cols when supplied'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, rows, cols, index, atEnd, valuesJson, tab, account }) => {
+    const args = ['docs', 'insert-table', docId, `--rows=${rows}`, `--cols=${cols}`];
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
+    if (valuesJson !== undefined) args.push(`--values-json=${valuesJson}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
   });
 }

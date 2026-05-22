@@ -199,6 +199,14 @@
     {
       "name": "gog_sheets_list_tabs",
       "description": "List tabs in a spreadsheet (sheetId, title, index, gridProperties)"
+    },
+    {
+      "name": "gog_sheets_batch_update",
+      "description": "Update values in multiple ranges atomically with one Sheets API request."
+    },
+    {
+      "name": "gog_sheets_reorder_tab",
+      "description": "Move a tab to a specific 0-based position."
     }
   ],
   "compatibility": {

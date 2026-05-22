@@ -163,7 +163,15 @@
     },
     {
       "name": "gog_drive_comments_reply",
-      "description": "Reply to an existing comment"
+      "description": "Reply to an existing comment (optionally resolve/reopen the parent atomically via action)"
+    },
+    {
+      "name": "gog_drive_comments_resolve",
+      "description": "Resolve a comment on a Drive file (mark as done)"
+    },
+    {
+      "name": "gog_drive_comments_reopen",
+      "description": "Reopen a previously resolved comment"
     }
   ],
   "compatibility": {

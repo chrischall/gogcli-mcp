@@ -665,4 +665,137 @@ describe('gog_docs_format', () => {
     await handlers.get('gog_docs_format')!({ docId: 'd1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'format', 'd1'], { account: undefined });
   });
+
+  // gog 0.18.0
+  it('passes --heading-level and --named-style when provided', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({
+      docId: 'd1', match: 'Intro', headingLevel: 1, namedStyle: 'HEADING_1',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--match=Intro', '--heading-level=1', '--named-style=HEADING_1'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --heading-level=0 when explicitly 0 (HEADING_0 reserved but argument should reach gog)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({ docId: 'd1', headingLevel: 0 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--heading-level=0'],
+      { account: undefined },
+    );
+  });
+});
+
+// --- gog 0.18.0 new tools ---
+
+describe('gog_docs_insert_page_break', () => {
+  it('inserts at index when --index provided', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_page_break')!({ docId: 'd1', index: 42 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-page-break', 'd1', '--index=42'],
+      { account: undefined },
+    );
+  });
+
+  it('uses --at-end when atEnd is true', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_page_break')!({ docId: 'd1', atEnd: true, tab: 'Body' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-page-break', 'd1', '--at-end', '--tab=Body'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --index=1 when explicitly 1', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_page_break')!({ docId: 'd1', index: 1 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-page-break', 'd1', '--index=1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_page_layout', () => {
+  it('passes --layout when provided', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_page_layout')!({ docId: 'd1', layout: 'pages' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'page-layout', 'd1', '--layout=pages'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --layout when not provided (defaults to pageless on gog side)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_page_layout')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'page-layout', 'd1'], { account: undefined });
+  });
+});
+
+describe('gog_docs_insert_table', () => {
+  it('passes required --rows and --cols', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_table')!({ docId: 'd1', rows: 3, cols: 2 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-table', 'd1', '--rows=3', '--cols=2'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --values-json, --index, --tab when provided', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    const vj = '[["a","b"],["c","d"]]';
+    await handlers.get('gog_docs_insert_table')!({
+      docId: 'd1', rows: 2, cols: 2, index: 10, valuesJson: vj, tab: 'Body',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-table', 'd1', '--rows=2', '--cols=2', '--index=10', `--values-json=${vj}`, '--tab=Body'],
+      { account: undefined },
+    );
+  });
+
+  it('uses --at-end when atEnd is true', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_table')!({ docId: 'd1', rows: 1, cols: 1, atEnd: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-table', 'd1', '--rows=1', '--cols=1', '--at-end'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_comments_reopen', () => {
+  it('calls runOrDiagnose with docId and commentId', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_comments_reopen')!({ docId: 'd1', commentId: 'c1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'comments', 'reopen', 'd1', 'c1'],
+      { account: undefined },
+    );
+  });
+
+  it('forwards account', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_comments_reopen')!({ docId: 'd1', commentId: 'c1', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'comments', 'reopen', 'd1', 'c1'],
+      { account: 'a@b.com' },
+    );
+  });
 });
