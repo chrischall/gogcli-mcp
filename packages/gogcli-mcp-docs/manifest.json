@@ -169,11 +169,27 @@
     },
     {
       "name": "gog_docs_format",
-      "description": "Apply text/paragraph formatting (bold, italic, font size, color, alignment, line spacing) — supports match, matchAll, matchCase"
+      "description": "Apply text/paragraph formatting (bold, italic, font size, color, alignment, line spacing, named style / heading level) — supports match, matchAll, matchCase"
     },
     {
       "name": "gog_docs_trash",
       "description": "Move an entire Google Doc to Drive trash (convenience wrapper around gog drive delete)"
+    },
+    {
+      "name": "gog_docs_comments_reopen",
+      "description": "Reopen a previously resolved comment."
+    },
+    {
+      "name": "gog_docs_insert_page_break",
+      "description": "Insert a Google Docs page break at a given index or at end-of-doc — the only path for multi-page deliverables."
+    },
+    {
+      "name": "gog_docs_page_layout",
+      "description": "Toggle page layout (pageless | pages) on an existing Google Doc."
+    },
+    {
+      "name": "gog_docs_insert_table",
+      "description": "Insert a native Google Docs table with given dimensions, optionally populated from a JSON 2D array."
     }
   ],
   "compatibility": {

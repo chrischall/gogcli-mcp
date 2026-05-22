@@ -75,6 +75,41 @@ export function registerExtraCalendarTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  // Zoom S2S OAuth credentials are scoped to Zoom-as-calendar-conferencing
+  // today (the `--with-zoom` flag on calendar create/update), so the auth
+  // helpers live in the calendar extras alongside meet space management.
+  server.registerTool('gog_zoom_auth_setup', {
+    description: 'Store Zoom Server-to-Server (S2S) OAuth credentials so calendar events can be attached to Zoom meetings via the --with-zoom flag on gog_calendar_create / gog_calendar_update. Credentials are saved in gogcli\'s keyring under the given alias.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      accountId: z.string().describe('Zoom S2S OAuth account ID'),
+      clientId: z.string().describe('Zoom S2S OAuth client ID'),
+      clientSecret: z.string().describe('Zoom S2S OAuth client secret'),
+      alias: z.string().optional().describe('Zoom credential alias (default: "default")'),
+      skipValidate: z.boolean().optional().describe('Store credentials without calling Zoom /users/me to validate'),
+    },
+  }, async ({ accountId, clientId, clientSecret, alias, skipValidate }) => {
+    const args = ['zoom', 'auth', 'setup'];
+    if (alias) args.push(`--alias=${alias}`);
+    args.push(`--account-id=${accountId}`);
+    args.push(`--client-id=${clientId}`);
+    args.push(`--client-secret=${clientSecret}`);
+    if (skipValidate) args.push('--skip-validate');
+    return runOrDiagnose(args, {});
+  });
+
+  server.registerTool('gog_zoom_auth_doctor', {
+    description: 'Validate stored Zoom S2S OAuth credentials by calling Zoom /users/me.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      alias: z.string().optional().describe('Zoom credential alias to check (default: "default")'),
+    },
+  }, async ({ alias }) => {
+    const args = ['zoom', 'auth', 'doctor'];
+    if (alias) args.push(`--alias=${alias}`);
+    return runOrDiagnose(args, {});
+  });
+
   server.registerTool('gog_meet_participants', {
     description: 'List participants from the latest (or a specific) Meet call.',
     annotations: { readOnlyHint: true },

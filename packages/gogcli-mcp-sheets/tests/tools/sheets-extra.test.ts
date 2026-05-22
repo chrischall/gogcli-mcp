@@ -481,3 +481,87 @@ describe('gog_sheets_named_ranges_delete', () => {
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'delete', 'sid', 'OldRange'], { account: undefined });
   });
 });
+
+// 23. batch-update (gog 0.18.0)
+describe('gog_sheets_batch_update', () => {
+  it('passes --data-json and required spreadsheetId', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    const data = '[{"range":"Sheet1!A1:B1","values":[["a","b"]]}]';
+    await handlers.get('gog_sheets_batch_update')!({ spreadsheetId: 'sid', dataJson: data });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'batch-update', 'sid', `--data-json=${data}`],
+      { account: undefined },
+    );
+  });
+
+  it('passes optional --input, --include-values-in-response, --response-render, --response-date-time-render', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_batch_update')!({
+      spreadsheetId: 'sid',
+      dataJson: '[]',
+      input: 'RAW',
+      includeValuesInResponse: true,
+      responseRender: 'FORMULA',
+      responseDateTimeRender: 'FORMATTED_STRING',
+      account: 'a@b.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'sheets', 'batch-update', 'sid',
+        '--data-json=[]',
+        '--input=RAW',
+        '--include-values-in-response',
+        '--response-render=FORMULA',
+        '--response-date-time-render=FORMATTED_STRING',
+      ],
+      { account: 'a@b.com' },
+    );
+  });
+
+  it('omits --include-values-in-response when false', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_batch_update')!({
+      spreadsheetId: 'sid', dataJson: '[]', includeValuesInResponse: false,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'batch-update', 'sid', '--data-json=[]'],
+      { account: undefined },
+    );
+  });
+});
+
+// 24. reorder-tab (gog 0.18.0)
+describe('gog_sheets_reorder_tab', () => {
+  it('passes --tab and --to', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_reorder_tab')!({ spreadsheetId: 'sid', tab: 'Data', to: 2 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'reorder-tab', 'sid', '--tab=Data', '--to=2'],
+      { account: undefined },
+    );
+  });
+
+  it('sends --to=0 explicitly to reach the leftmost position', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_reorder_tab')!({ spreadsheetId: 'sid', tab: '123', to: 0 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'reorder-tab', 'sid', '--tab=123', '--to=0'],
+      { account: undefined },
+    );
+  });
+
+  it('forwards account', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_reorder_tab')!({ spreadsheetId: 'sid', tab: 'Data', to: 1, account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'reorder-tab', 'sid', '--tab=Data', '--to=1'],
+      { account: 'a@b.com' },
+    );
+  });
+});

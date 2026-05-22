@@ -84,11 +84,11 @@
     },
     {
       "name": "gog_calendar_create",
-      "description": "Create a calendar event"
+      "description": "Create a calendar event (optionally attach a Zoom meeting via withZoom)"
     },
     {
       "name": "gog_calendar_update",
-      "description": "Update an existing calendar event"
+      "description": "Update an existing calendar event (add/replace/remove Zoom meeting via withZoom/regenerateZoom/removeZoom)"
     },
     {
       "name": "gog_calendar_delete",
@@ -125,6 +125,14 @@
     {
       "name": "gog_meet_participants",
       "description": "List participants from a Meet call"
+    },
+    {
+      "name": "gog_zoom_auth_setup",
+      "description": "Store Zoom Server-to-Server OAuth credentials (needed for calendar event Zoom attachment)"
+    },
+    {
+      "name": "gog_zoom_auth_doctor",
+      "description": "Validate stored Zoom Server-to-Server OAuth credentials"
     }
   ],
   "compatibility": {

@@ -39,7 +39,7 @@ export function registerCalendarTools(server: McpServer): void {
   });
 
   server.registerTool('gog_calendar_create', {
-    description: 'Create a calendar event.',
+    description: 'Create a calendar event. Set withZoom=true to attach a Zoom meeting (requires Zoom S2S OAuth setup via gog_zoom_auth_setup; the join URL + meeting ID + passcode are appended to the event description — Google rejects native conference card writes from non-Workspace-Marketplace OAuth clients).',
     annotations: { destructiveHint: false },
     inputSchema: {
       calendarId: z.string().describe('Calendar ID (use "primary" for the default calendar)'),
@@ -50,19 +50,21 @@ export function registerCalendarTools(server: McpServer): void {
       location: z.string().optional().describe('Event location'),
       attendees: z.string().optional().describe('Attendee emails, comma-separated'),
       allDay: z.boolean().optional().describe('All-day event (use date-only in from/to)'),
+      withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event (requires Zoom S2S OAuth setup)'),
       account: accountParam,
     },
-  }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, account }) => {
+  }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, withZoom, account }) => {
     const args = ['calendar', 'create', calendarId, `--summary=${summary}`, `--from=${from}`, `--to=${to}`];
     if (description) args.push(`--description=${description}`);
     if (location) args.push(`--location=${location}`);
     if (attendees) args.push(`--attendees=${attendees}`);
     if (allDay) args.push('--all-day');
+    if (withZoom) args.push('--with-zoom');
     return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_calendar_update', {
-    description: 'Update an existing calendar event.',
+    description: 'Update an existing calendar event. Zoom: withZoom adds a Zoom meeting, regenerateZoom replaces the existing one, removeZoom strips it (each are independent — use one per call).',
     annotations: { destructiveHint: false },
     inputSchema: {
       calendarId: z.string().describe('Calendar ID'),
@@ -73,9 +75,12 @@ export function registerCalendarTools(server: McpServer): void {
       description: z.string().optional().describe('New description'),
       location: z.string().optional().describe('New location'),
       attendees: z.string().optional().describe('New attendee emails, comma-separated (replaces existing)'),
+      withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event'),
+      regenerateZoom: z.boolean().optional().describe('Replace the event\'s existing Zoom video conference'),
+      removeZoom: z.boolean().optional().describe('Remove the event\'s Zoom video conference'),
       account: accountParam,
     },
-  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, account }) => {
+  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, withZoom, regenerateZoom, removeZoom, account }) => {
     const args = ['calendar', 'update', calendarId, eventId];
     if (summary !== undefined) args.push(`--summary=${summary}`);
     if (from !== undefined) args.push(`--from=${from}`);
@@ -83,6 +88,9 @@ export function registerCalendarTools(server: McpServer): void {
     if (description !== undefined) args.push(`--description=${description}`);
     if (location !== undefined) args.push(`--location=${location}`);
     if (attendees !== undefined) args.push(`--attendees=${attendees}`);
+    if (withZoom) args.push('--with-zoom');
+    if (regenerateZoom) args.push('--regenerate-zoom');
+    if (removeZoom) args.push('--remove-zoom');
     return runOrDiagnose(args, { account });
   });
 
