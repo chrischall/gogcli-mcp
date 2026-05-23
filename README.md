@@ -17,7 +17,33 @@ Each package is a **standalone** MCP server. Install whichever one fits your nee
 
 ## Prerequisites
 
-### Install gogcli
+### Acknowledgement of Terms
+
+By using this MCP server, you acknowledge and agree to the following:
+
+**1. This server accesses your own Google Workspace data via Google's official APIs** (Gmail, Calendar, Drive, Sheets, Docs, Contacts). Auth happens via OAuth, with your explicit consent at each scope. It does not — and cannot — access anyone else's Google account or shared content you don't have permission to read.
+
+**2. [Google's APIs Terms of Service](https://developers.google.com/terms) govern your use of this server**, in addition to any [Google Workspace Acceptable Use Policy](https://workspace.google.com/terms/use_policy.html) your domain admin enforces. The clauses most relevant here:
+
+> Google sets and enforces limits on your use of the APIs (e.g. limiting the number of API requests that you may make or the number of users you may serve), in our sole discretion.
+
+And on credentials, which is the most-tripped-on clause for open-source projects:
+
+> You will keep your credentials confidential and make reasonable efforts to prevent and discourage other API Clients from using your credentials. **Developer credentials may not be embedded in open source projects.**
+
+You are agreeing to those terms — read by the maintainer 2026-05-23 — every time you invoke a tool in this server.
+
+**3. You must configure your own OAuth client.** This MCP does **not** ship an embedded `client_secret.json`. You register your own OAuth client at https://console.cloud.google.com/, scope it to your own user/project, and authorize it for the Workspace APIs you want to use. Do not check `client_secret.json`, `credentials.json`, or any refresh tokens into git — these are credentials and Google's ToS explicitly prohibits embedding them in OSS.
+
+**4. Personal, single-user use only.** This project is not affiliated with, endorsed by, sponsored by, or in partnership with Google LLC. It is a personal automation tool for one Google account holder to read and write their own Workspace content. Do not use it to bulk-extract Workspace data from your org, automate against other users' accounts, or build a multi-tenant SaaS on top of it. If you want to do those things, you need a verified app, a domain-wide-delegation service account, and a Workspace admin's blessing — none of which this MCP provides.
+
+**5. Your domain admin's policy may add restrictions.** If you're using a corporate Google Workspace account, your admin may restrict third-party OAuth apps, prohibit data exfiltration, or require app verification. **Check with your IT admin** before authorizing this MCP against a corporate domain.
+
+**6. You accept full responsibility** for any consequences of using this server in connection with your Google account — quota exhaustion (Gmail and Drive APIs have aggressive per-user quotas), token revocation, account warnings, your domain admin emailing you, or any enforcement action. If Google or your domain admin objects to your use, stop using this server.
+
+This section is the maintainer's good-faith summary of the terms — it is not legal advice and does not modify or supersede Google's actual APIs ToS or your domain's policies.
+
+## Install gogcli
 
 [gogcli](https://github.com/openclaw/gogcli) is the CLI that these MCP servers wrap. Install it for your platform:
 
