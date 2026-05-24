@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.chrischall/gogcli-mcp-sheets",
-  "description": "Extended Google Sheets for Claude via gogcli \u2014 auth + full Sheets support",
+  "description": "Extended Google Sheets for Claude via gogcli — auth + full Sheets support",
   "repository": {
     "url": "https://github.com/chrischall/gogcli-mcp",
     "source": "github",
     "subfolder": "packages/gogcli-mcp-sheets"
   },
-  "version": "2.0.3",
+  "version": "2.1.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "gogcli-mcp-sheets",
-      "version": "2.0.3",
+      "version": "2.1.0",
       "transport": {
         "type": "stdio"
       },
