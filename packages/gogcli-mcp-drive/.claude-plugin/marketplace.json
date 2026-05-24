@@ -6,16 +6,16 @@
     "email": "chris.c.hall@gmail.com"
   },
   "metadata": {
-    "description": "Extended Google Drive for Claude via gogcli — auth + full Drive support (upload, download, permissions, comments, shared drives)",
-    "version": "2.1.0"
+    "description": "Extended Google Drive for Claude via gogcli \u2014 auth + full Drive support (upload, download, permissions, comments, shared drives)",
+    "version": "2.0.3"
   },
   "plugins": [
     {
       "name": "gogcli-mcp-drive",
       "displayName": "gogcli (Drive)",
       "source": "./",
-      "description": "Extended Google Drive for Claude via gogcli — auth + full Drive support (upload, download, permissions, comments, shared drives)",
-      "version": "2.1.0",
+      "description": "Extended Google Drive for Claude via gogcli \u2014 auth + full Drive support (upload, download, permissions, comments, shared drives)",
+      "version": "2.0.3",
       "author": {
         "name": "Chris Hall"
       },

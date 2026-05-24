@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp-calendar",
   "display_name": "gogcli (Calendar)",
-  "version": "2.1.0",
+  "version": "2.0.13",
   "description": "Extended Google Calendar for Claude via gogcli — auth + Calendar events + Meet space management",
   "author": {
     "name": "Chris Hall",

@@ -6,16 +6,16 @@
     "email": "chris.c.hall@gmail.com"
   },
   "metadata": {
-    "description": "Extended Google Slides for Claude via gogcli — auth + full Slides support (create, edit, export, templates, markdown)",
-    "version": "2.1.0"
+    "description": "Extended Google Slides for Claude via gogcli \u2014 auth + full Slides support (create, edit, export, templates, markdown)",
+    "version": "2.0.3"
   },
   "plugins": [
     {
       "name": "gogcli-mcp-slides",
       "displayName": "gogcli (Slides)",
       "source": "./",
-      "description": "Extended Google Slides for Claude via gogcli — auth + full Slides support (create, edit, export, templates, markdown)",
-      "version": "2.1.0",
+      "description": "Extended Google Slides for Claude via gogcli \u2014 auth + full Slides support (create, edit, export, templates, markdown)",
+      "version": "2.0.3",
       "author": {
         "name": "Chris Hall"
       },
