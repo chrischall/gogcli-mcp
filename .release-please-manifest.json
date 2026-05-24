@@ -1,4 +1,5 @@
 {
+  ".": "2.0.13",
   "packages/gogcli-mcp": "2.0.13",
   "packages/gogcli-mcp-calendar": "2.0.13",
   "packages/gogcli-mcp-classroom": "2.0.13",

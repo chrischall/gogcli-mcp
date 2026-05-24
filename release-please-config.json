@@ -1,6 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "packages": {
+    ".": {
+      "release-type": "node",
+      "component": "gogcli-mcp-root"
+    },
     "packages/gogcli-mcp": {
       "package-name": "gogcli-mcp",
       "release-type": "node",
@@ -106,9 +110,14 @@
   },
   "plugins": [
     {
+      "type": "node-workspace",
+      "merge": false
+    },
+    {
       "type": "linked-versions",
       "groupName": "gogcli-mcp",
       "components": [
+        "gogcli-mcp-root",
         "gogcli-mcp",
         "gogcli-mcp-calendar",
         "gogcli-mcp-classroom",
