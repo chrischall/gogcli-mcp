@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.chrischall/gogcli-mcp-classroom",
-  "description": "Google Classroom via gogcli for Claude — courses, assignments, submissions, grading",
+  "description": "Google Classroom via gogcli for Claude \u2014 courses, assignments, submissions, grading",
   "repository": {
     "url": "https://github.com/chrischall/gogcli-mcp",
     "source": "github",
     "subfolder": "packages/gogcli-mcp-classroom"
   },
-  "version": "2.1.0",
+  "version": "2.0.3",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "gogcli-mcp-classroom",
-      "version": "2.1.0",
+      "version": "2.0.3",
       "transport": {
         "type": "stdio"
       },
