@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.event.pull_request.draft == false &&
+      github.event.pull_request.head.ref != 'release-please--branches--main' &&
       (github.event.pull_request.user.login == github.repository_owner ||
        github.event.pull_request.user.login == 'dependabot[bot]')
     steps:
