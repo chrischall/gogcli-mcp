@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.0.14](https://github.com/chrischall/gogcli-mcp/compare/v2.0.13...v2.0.14) (2026-05-25)
+## [2.1.0](https://github.com/chrischall/gogcli-mcp/compare/v2.0.13...v2.1.0) (2026-05-25)
 
 
 ### Refactor
