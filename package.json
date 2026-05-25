@@ -4,6 +4,9 @@
   "workspaces": [
     "packages/*"
   ],
+  "devDependencies": {
+    "vitest": "^4.1.6"
+  },
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm test --workspaces",
