@@ -6,16 +6,16 @@
     "email": "chris.c.hall@gmail.com"
   },
   "metadata": {
-    "description": "Extended Google Docs for Claude via gogcli \u2014 auth + full Docs and comments support",
-    "version": "2.0.3"
+    "description": "Extended Google Docs for Claude via gogcli — auth + full Docs and comments support",
+    "version": "2.1.0"
   },
   "plugins": [
     {
       "name": "gogcli-mcp-docs",
       "displayName": "gogcli (Docs)",
       "source": "./",
-      "description": "Extended Google Docs for Claude via gogcli \u2014 auth + full Docs and comments support",
-      "version": "2.0.3",
+      "description": "Extended Google Docs for Claude via gogcli — auth + full Docs and comments support",
+      "version": "2.1.0",
       "author": {
         "name": "Chris Hall"
       },
