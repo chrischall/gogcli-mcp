@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.0](https://github.com/chrischall/gogcli-mcp/compare/v2.1.0...v2.2.0) (2026-05-26)
+
+
+### Features
+
+* **sheets:** warn when DATE/DATE_TIME format applied to small integers ([#46](https://github.com/chrischall/gogcli-mcp/issues/46)) ([623c432](https://github.com/chrischall/gogcli-mcp/commit/623c432998d94875706733d4140b346de74ef9d8))
+
+
+### Bug Fixes
+
+* **sheets:** gog_sheets_insert with after:true now actually shifts the insertion point ([#44](https://github.com/chrischall/gogcli-mcp/issues/44)) ([a766d80](https://github.com/chrischall/gogcli-mcp/commit/a766d8065993e764a8ed35965e506af472eafa89))
+
 ## [2.1.0](https://github.com/chrischall/gogcli-mcp/compare/v2.0.13...v2.1.0) (2026-05-25)
 
 
