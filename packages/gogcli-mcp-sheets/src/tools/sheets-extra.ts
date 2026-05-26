@@ -18,6 +18,54 @@ export function hexToRgb(hex: string): { red: number; green: number; blue: numbe
   };
 }
 
+// Issue #43: peek the target range before applying DATE / DATE_TIME number
+// formatting. If every numeric cell is a small integer (< 10000), Sheets will
+// render them as day-serials near 1899-12-30 — almost certainly not what the
+// caller intended. Return a warning string in that case, otherwise null.
+//
+// Returns null (no warning) when:
+//   - the peek fails / response isn't parseable JSON
+//   - the range is empty
+//   - any value is a non-integer number or a number >= 10000
+//   - any value is a string (other than empty), boolean, etc.
+// Nulls and empty strings are ignored.
+async function checkDateFormatTarget(
+  spreadsheetId: string,
+  range: string,
+  account: string | undefined,
+): Promise<string | null> {
+  const peek = await runOrDiagnose(
+    ['sheets', 'get', spreadsheetId, range, '--render=UNFORMATTED_VALUE'],
+    { account },
+  );
+  let parsed: { values?: unknown[][] };
+  try {
+    parsed = JSON.parse(peek.content[0].text) as { values?: unknown[][] };
+  } catch {
+    return null;
+  }
+  const rows = parsed.values;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  let sawSmallInt = false;
+  for (const row of rows) {
+    for (const cell of row) {
+      if (cell === null || cell === undefined || cell === '') continue;
+      if (typeof cell !== 'number') return null;
+      if (!Number.isInteger(cell)) return null;
+      if (cell >= 10000) return null;
+      sawSmallInt = true;
+    }
+  }
+  if (!sawSmallInt) return null;
+  return (
+    'Warning: applying DATE/DATE_TIME format to cells holding small integers (< 10000) ' +
+    'will render them as dates near 1899-12-30 because Sheets interprets numeric values as ' +
+    'day-serials from that epoch. If those integers are ordinals (1, 2, 3, ...) and not ' +
+    'day offsets, this is almost certainly not what you want. Pass force:true to suppress ' +
+    'this warning, or convert the cells to real dates / strings first.'
+  );
+}
+
 export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_list_tabs', {
@@ -255,20 +303,29 @@ export function registerExtraSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_number_format', {
-    description: 'Set number format on a range (currency, percentage, date, etc.).',
+    description: 'Set number format on a range (currency, percentage, date, etc.). When type is DATE or DATE_TIME, the target range is peeked first; if every numeric cell is a small integer (< 10000), a warning is prepended to the response because Sheets will render those as 1899/1900 day-serials. Pass force:true to skip the check.',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to format (e.g. Sheet1!A1:A10)'),
-      type: z.string().optional().describe('Format type: NUMBER, CURRENCY, PERCENT, DATE, TIME, SCIENTIFIC, etc.'),
+      type: z.string().optional().describe('Format type: NUMBER, CURRENCY, PERCENT, DATE, DATE_TIME, TIME, SCIENTIFIC, etc.'),
       pattern: z.string().optional().describe('Custom format pattern (e.g. "#,##0.00", "yyyy-mm-dd")'),
+      force: z.boolean().optional().describe('Skip the DATE/DATE_TIME small-integer warning check'),
       account: accountParam,
     },
-  }, async ({ spreadsheetId, range, type, pattern, account }) => {
+  }, async ({ spreadsheetId, range, type, pattern, force, account }) => {
+    const isDateType = type === 'DATE' || type === 'DATE_TIME';
+    const warning = isDateType && !force
+      ? await checkDateFormatTarget(spreadsheetId, range, account)
+      : null;
     const args = ['sheets', 'number-format', spreadsheetId, range];
     if (type) args.push(`--type=${type}`);
     if (pattern) args.push(`--pattern=${pattern}`);
-    return runOrDiagnose(args, { account });
+    const result = await runOrDiagnose(args, { account });
+    if (warning) {
+      return { content: [{ type: 'text' as const, text: `${warning}\n\n${result.content[0].text}` }] };
+    }
+    return result;
   });
 
   server.registerTool('gog_sheets_read_format', {

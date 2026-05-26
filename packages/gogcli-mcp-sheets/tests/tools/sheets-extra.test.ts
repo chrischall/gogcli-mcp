@@ -314,6 +314,181 @@ describe('gog_sheets_number_format', () => {
     await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1', type: 'CURRENCY', pattern: '#,##0.00' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'number-format', 'sid', 'A1', '--type=CURRENCY', '--pattern=#,##0.00'], { account: undefined });
   });
+
+  // Issue #43: warn when DATE/DATE_TIME format applied to small integers (silent 1899/1900 render).
+  describe('DATE/DATE_TIME small-integer warning', () => {
+    it('emits a warning when DATE applied to a range of small integers', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText(JSON.stringify({ range: 'Sheet1!A1:A3', values: [[1], [2], [3]] }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:A3', type: 'DATE' });
+      // Peek call goes out first.
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['sheets', 'get', 'sid', 'Sheet1!A1:A3', '--render=UNFORMATTED_VALUE'],
+        { account: undefined },
+      );
+      // The format call still happens (warning is non-blocking).
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['sheets', 'number-format', 'sid', 'Sheet1!A1:A3', '--type=DATE'],
+        { account: undefined },
+      );
+      const text = result.content[0].text;
+      expect(text).toMatch(/warning/i);
+      expect(text).toMatch(/1899|1900|day-serial|small integer/i);
+      expect(text).toMatch(/force/);
+    });
+
+    it('also warns for DATE_TIME', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText(JSON.stringify({ range: 'Sheet1!A1:A2', values: [[5], [7]] }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:A2', type: 'DATE_TIME' });
+      expect(result.content[0].text).toMatch(/warning/i);
+    });
+
+    it('does not peek or warn when force:true', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{"ok":true}'));
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:A3', type: 'DATE', force: true });
+      // Only the format call should fire — no peek.
+      expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['sheets', 'number-format', 'sid', 'Sheet1!A1:A3', '--type=DATE'],
+        { account: undefined },
+      );
+      expect(result.content[0].text).not.toMatch(/warning/i);
+    });
+
+    it('does not peek when type is not DATE/DATE_TIME', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{"ok":true}'));
+      await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'CURRENCY' });
+      expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['sheets', 'number-format', 'sid', 'A1:A3', '--type=CURRENCY'],
+        { account: undefined },
+      );
+    });
+
+    it('does not warn when values include a large integer (>=10000)', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          // 45000 is a real day-serial (year ~2023) — legitimate date value.
+          return toText(JSON.stringify({ range: 'A1:A2', values: [[1], [45000]] }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
+      expect(result.content[0].text).not.toMatch(/warning/i);
+    });
+
+    it('does not warn when values include non-integer numbers', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText(JSON.stringify({ range: 'A1:A2', values: [[1], [2.5]] }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
+      expect(result.content[0].text).not.toMatch(/warning/i);
+    });
+
+    it('does not warn when range has no values (missing values key)', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText(JSON.stringify({ range: 'A1:A3' }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+      expect(result.content[0].text).not.toMatch(/warning/i);
+    });
+
+    it('does not warn when range has empty values array', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText(JSON.stringify({ range: 'A1:A3', values: [] }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+      expect(result.content[0].text).not.toMatch(/warning/i);
+    });
+
+    it('does not warn when values are strings', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText(JSON.stringify({ range: 'A1:A2', values: [['hello'], ['world']] }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
+      expect(result.content[0].text).not.toMatch(/warning/i);
+    });
+
+    it('ignores null and empty cells when deciding to warn', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          // Real-world: nulls/empty strings interspersed with the ordinal ints.
+          return toText(JSON.stringify({ range: 'A1:A4', values: [[1], [null], [''], [3]] }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A4', type: 'DATE' });
+      expect(result.content[0].text).toMatch(/warning/i);
+    });
+
+    it('proceeds with format when peek fails (does not block)', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText('Error: something went wrong');
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+      // Format call should still happen.
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['sheets', 'number-format', 'sid', 'A1:A3', '--type=DATE'],
+        { account: undefined },
+      );
+      // No warning emitted when peek didn't yield clear evidence.
+      expect(result.content[0].text).not.toMatch(/warning/i);
+    });
+
+    it('forwards account on both peek and format calls', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText(JSON.stringify({ range: 'A1', values: [[1]] }));
+        }
+        return toText('{}');
+      });
+      await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1', type: 'DATE', account: 'a@b.com' });
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['sheets', 'get', 'sid', 'A1', '--render=UNFORMATTED_VALUE'],
+        { account: 'a@b.com' },
+      );
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['sheets', 'number-format', 'sid', 'A1', '--type=DATE'],
+        { account: 'a@b.com' },
+      );
+    });
+  });
 });
 
 // 12. read-format
