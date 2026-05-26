@@ -1,12 +1,12 @@
 {
-  ".": "2.0.13",
-  "packages/gogcli-mcp": "2.0.13",
-  "packages/gogcli-mcp-calendar": "2.0.13",
-  "packages/gogcli-mcp-classroom": "2.0.13",
-  "packages/gogcli-mcp-contacts": "2.0.13",
-  "packages/gogcli-mcp-docs": "2.0.13",
-  "packages/gogcli-mcp-drive": "2.0.13",
-  "packages/gogcli-mcp-gmail": "2.0.13",
-  "packages/gogcli-mcp-sheets": "2.0.13",
-  "packages/gogcli-mcp-slides": "2.0.13"
+  ".": "2.1.0",
+  "packages/gogcli-mcp": "2.1.0",
+  "packages/gogcli-mcp-calendar": "2.1.0",
+  "packages/gogcli-mcp-classroom": "2.1.0",
+  "packages/gogcli-mcp-contacts": "2.1.0",
+  "packages/gogcli-mcp-docs": "2.1.0",
+  "packages/gogcli-mcp-drive": "2.1.0",
+  "packages/gogcli-mcp-gmail": "2.1.0",
+  "packages/gogcli-mcp-sheets": "2.1.0",
+  "packages/gogcli-mcp-slides": "2.1.0"
 }

@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.chrischall/gogcli-mcp",
-  "description": "Google Sheets (and more) for Claude via gogcli \u2014 read, write, and manage spreadsheets",
+  "description": "Google Sheets (and more) for Claude via gogcli — read, write, and manage spreadsheets",
   "repository": {
     "url": "https://github.com/chrischall/gogcli-mcp",
     "source": "github",
     "subfolder": "packages/gogcli-mcp"
   },
-  "version": "2.0.3",
+  "version": "2.1.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "gogcli-mcp",
-      "version": "2.0.3",
+      "version": "2.1.0",
       "transport": {
         "type": "stdio"
       },
