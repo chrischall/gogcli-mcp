@@ -120,7 +120,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_insert', {
-    description: 'Insert rows or columns into a sheet.',
+    description: 'Insert rows or columns into a sheet. With after:false (default), the new dimension lands at start. With after:true, the new dimension lands at start+1 (the existing dimension at start is preserved).',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
@@ -128,11 +128,16 @@ export function registerExtraSheetsTools(server: McpServer): void {
       dimension: z.string().describe('Dimension to insert: ROWS or COLUMNS'),
       start: z.number().describe('Start index (0-based)'),
       count: z.number().optional().describe('Number of rows/columns to insert (default: 1)'),
-      after: z.boolean().optional().describe('Insert after the start index instead of before'),
+      after: z.boolean().optional().describe('Insert after the start index instead of before. With after:true the new dimension lands at start+1, leaving the existing dimension at start untouched.'),
       account: accountParam,
     },
   }, async ({ spreadsheetId, sheet, dimension, start, count, after, account }) => {
-    const args = ['sheets', 'insert', spreadsheetId, sheet, dimension, String(start)];
+    // The underlying `gog sheets insert` treats `start` as 1-based with `--after` shifting +1.
+    // To honor our 0-based `start` and make `after:true` actually shift the insertion to start+1
+    // (issue #42), we send `start+1` when `after:true`. With after:false the CLI's `start-1`
+    // conversion lands the insertion at our 0-based start.
+    const effectiveStart = after ? start + 1 : start;
+    const args = ['sheets', 'insert', spreadsheetId, sheet, dimension, String(effectiveStart)];
     if (count !== undefined) args.push(`--count=${count}`);
     if (after) args.push('--after');
     return runOrDiagnose(args, { account });
