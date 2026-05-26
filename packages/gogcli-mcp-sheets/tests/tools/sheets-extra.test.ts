@@ -119,11 +119,21 @@ describe('gog_sheets_insert', () => {
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'Sheet1', 'ROWS', '5'], { account: undefined });
   });
 
-  it('includes --count and --after when provided', async () => {
+  it('shifts start by +1 when after:true so the new dimension lands AFTER start', async () => {
+    // Issue #42: with after:true, start=0 means "insert after index 0" — i.e. land at index 1.
+    // The MCP must compensate for the CLI's 1-based interpretation by passing start+1.
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'COLUMNS', start: 0, count: 3, after: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'COLUMNS', '0', '--count=3', '--after'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'COLUMNS', '1', '--count=3', '--after'], { account: undefined });
+  });
+
+  it('issue #42 acceptance: start=28, after:true leaves column 28 untouched (insertion lands at 29)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'COLUMNS', start: 28, after: true, count: 1 });
+    // CLI is 1-based; with --after CLI uses startIndex = c.Start, so passing 29 → API startIndex=29.
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'COLUMNS', '29', '--count=1', '--after'], { account: undefined });
   });
 
   it('includes --count=0 when count is 0', async () => {
@@ -133,7 +143,7 @@ describe('gog_sheets_insert', () => {
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '0', '--count=0'], { account: undefined });
   });
 
-  it('omits --after when false', async () => {
+  it('omits --after and does not shift start when after:false', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, after: false });
