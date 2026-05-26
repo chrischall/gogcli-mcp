@@ -367,6 +367,19 @@ describe('gog_sheets_number_format', () => {
       expect(result.content[0].text).not.toMatch(/warning/i);
     });
 
+    it('peeks and warns when force:false is passed explicitly (round-trips the no-force path)', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText(JSON.stringify({ range: 'A1:A3', values: [[1], [2], [3]] }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE', force: false });
+      expect(lib.runOrDiagnose).toHaveBeenCalledTimes(2);
+      expect(result.content[0].text).toMatch(/warning/i);
+    });
+
     it('does not peek when type is not DATE/DATE_TIME', async () => {
       const handlers = setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{"ok":true}'));
@@ -388,6 +401,18 @@ describe('gog_sheets_number_format', () => {
         return toText('{"ok":true}');
       });
       const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
+      expect(result.content[0].text).not.toMatch(/warning/i);
+    });
+
+    it('does not warn when values include a negative integer (deltas/error codes, not day-serials)', async () => {
+      const handlers = setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+        if (args[1] === 'get') {
+          return toText(JSON.stringify({ range: 'A1:A3', values: [[1], [-5], [3]] }));
+        }
+        return toText('{"ok":true}');
+      });
+      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
       expect(result.content[0].text).not.toMatch(/warning/i);
     });
 

@@ -52,6 +52,7 @@ async function checkDateFormatTarget(
       if (cell === null || cell === undefined || cell === '') continue;
       if (typeof cell !== 'number') return null;
       if (!Number.isInteger(cell)) return null;
+      if (cell < 0) return null;
       if (cell >= 10000) return null;
       sawSmallInt = true;
     }
