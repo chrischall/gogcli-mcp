@@ -150,7 +150,7 @@
     },
     {
       "name": "gog_sheets_number_format",
-      "description": "Set number format on a range (currency, percentage, date, etc.)."
+      "description": "Set number format on a range (currency, percentage, date, etc.). When type is DATE or DATE_TIME, peeks the target range first and warns if every numeric cell is a small integer (< 10000) — Sheets would render those as 1899/1900 day-serials. Pass force:true to skip the check."
     },
     {
       "name": "gog_sheets_read_format",
