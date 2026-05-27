@@ -7,6 +7,6 @@
   "packages/gogcli-mcp-docs": "2.1.0",
   "packages/gogcli-mcp-drive": "2.1.0",
   "packages/gogcli-mcp-gmail": "2.1.0",
-  "packages/gogcli-mcp-sheets": "2.1.0",
+  "packages/gogcli-mcp-sheets": "2.2.0",
   "packages/gogcli-mcp-slides": "2.1.0"
 }
