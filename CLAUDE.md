@@ -120,30 +120,18 @@ npm test --workspace=packages/gogcli-mcp -- runner  # single file
 
 **Single source of truth:** root `package.json` → `"version"`. All workspaces share it. The build script (`scripts/bundle.js`) injects it into bundles at build time via `--define:GOGCLI_VERSION`.
 
-Files that store the version (kept in sync automatically):
+Files that store the version, bumped in one release PR:
 
-1. Root `package.json` + every `packages/*/package.json` (synced by `scripts/bump.js` via `npm version --workspaces`).
-2. Every `packages/*/manifest.json` (synced by `scripts/bump.js`).
-3. Every `packages/*/server.json` and `packages/*/.claude-plugin/{plugin,marketplace}.json` (synced inside the Release workflow at tag time).
+1. Root `package.json` and every `packages/*/package.json` are kept in sync by release-please's **`node-workspace`** plugin (no `extra-files` entry needed for these).
+2. Other version-bearing files — `manifest.json`, `server.json`, `.claude-plugin/{plugin,marketplace}.json` — are declared as `extra-files` per package in `release-please-config.json`. Not every package ships every asset; e.g. `gogcli-mcp-contacts` and `gogcli-mcp-gmail` only list `manifest.json` in their `extra-files` block.
 
 ### Important
 
-Do NOT manually bump versions or create tags unless the user explicitly asks. Versioning is handled by the **Tag & Bump** GitHub Action (`.github/workflows/tag-and-bump.yml`).
+Do NOT manually bump versions or create tags unless the user explicitly asks. release-please owns versioning.
 
 ### Release workflow
 
-Main is always one version ahead of the latest tag. To release:
-
-```bash
-gh workflow run tag-and-bump.yml --ref main
-```
-
-The action:
-1. Runs CI (build + test on Node 22).
-2. Tags the current commit `v<version>`.
-3. `npm run bump` patches root + all workspaces + manifest.json files.
-4. Commits, pushes main, then pushes the tag (requires `RELEASE_PAT`, not `GITHUB_TOKEN`, so the tag push triggers the next workflow).
-5. The tag push triggers the **Release** workflow (`release.yml`): syncs versions across JSON files, builds `.mcpb` bundles, packages `.skill` files, publishes every package to npm via OIDC trusted publishing, publishes each `server.json` to the MCP Registry, publishes skills to ClawHub, and creates a GitHub Release with `scripts/changelog.js` output + `.mcpb`/`.skill` assets attached.
+release-please (`.github/workflows/release-please.yml`) opens / updates a single combined release PR whenever Conventional-Commit-style commits accumulate on `main` (`feat:`, `fix:`, etc.). Merging the release PR creates one `v<NEXT>` tag for all sub-packages (linked-versions); the second job in the same workflow then builds `.mcpb` bundles + `.skill` files, publishes every sub-package to npm via Trusted-Publisher OIDC, publishes each `server.json` to the MCP Registry, publishes skills to ClawHub (when `CLAWHUB_TOKEN` is set), and attaches all artifacts to the GitHub Release release-please authored.
 
 <!-- pr-workflow:v1 -->
 ## Pull requests & release notes
