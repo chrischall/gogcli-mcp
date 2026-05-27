@@ -120,11 +120,10 @@ npm test --workspace=packages/gogcli-mcp -- runner  # single file
 
 **Single source of truth:** root `package.json` → `"version"`. All workspaces share it. The build script (`scripts/bundle.js`) injects it into bundles at build time via `--define:GOGCLI_VERSION`.
 
-Files that store the version, all listed in `release-please-config.json` as `extra-files` and bumped in one release PR:
+Files that store the version, bumped in one release PR:
 
-1. Root `package.json` + every `packages/*/package.json` (release-please node-workspace plugin keeps them linked).
-2. Every `packages/*/manifest.json`.
-3. Every `packages/*/server.json` and `packages/*/.claude-plugin/{plugin,marketplace}.json`.
+1. Root `package.json` and every `packages/*/package.json` are kept in sync by release-please's **`node-workspace`** plugin (no `extra-files` entry needed for these).
+2. Other version-bearing files — `manifest.json`, `server.json`, `.claude-plugin/{plugin,marketplace}.json` — are declared as `extra-files` per package in `release-please-config.json`. Not every package ships every asset; e.g. `gogcli-mcp-contacts` and `gogcli-mcp-gmail` only list `manifest.json` in their `extra-files` block.
 
 ### Important
 
