@@ -485,11 +485,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_batch_update', {
-    description: 'Update values in multiple ranges with one Sheets API request. dataJson is a JSON array of {range, values} objects (or "@/path/to/file.json"). Atomic — either all ranges update or none do.',
+    description: 'Update values in multiple ranges with one Sheets API request. dataJson is a JSON array of {range, values} objects — pass it inline as a literal JSON string. Atomic — either all ranges update or none do. (The CLI also accepts "@/path/to/file.json", but that file is read on the gog server\'s filesystem, not the caller\'s, so inline JSON is the right form for remote MCP callers.)',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
-      dataJson: z.string().describe('Value ranges as JSON array, or @file (e.g. [{"range":"Sheet1!A1:B2","values":[["a","b"]]}])'),
+      dataJson: z.string().describe('Value ranges as an inline JSON array, e.g. [{"range":"Sheet1!A1:B2","values":[["a","b"]]}]. (An "@/path" form is read on the gog server filesystem, not yours — inline the JSON instead.)'),
       input: z.enum(['RAW', 'USER_ENTERED']).optional().describe('Value input option (default: USER_ENTERED)'),
       includeValuesInResponse: z.boolean().optional().describe('Include updated values in the response'),
       responseRender: z.enum(['FORMATTED_VALUE', 'UNFORMATTED_VALUE', 'FORMULA']).optional().describe('Response value render option'),
