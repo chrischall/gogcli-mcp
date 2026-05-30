@@ -13,7 +13,7 @@ export {
   registerSlidesTools,
   registerTasksTools,
 } from './server.js';
-export { run } from './runner.js';
+export { run, MIN_GOG_VERSION } from './runner.js';
 export type { RunOptions, Spawner } from './runner.js';
 export {
   accountParam,

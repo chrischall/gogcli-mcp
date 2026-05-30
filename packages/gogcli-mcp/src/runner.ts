@@ -17,6 +17,14 @@ export interface RunOptions {
 
 const TIMEOUT_MS = 30_000;
 
+// Minimum gogcli (`gog`) binary version this wrapper's tools assume. Some tools
+// pass flags/subcommands that only exist in newer gog, so bump this whenever a
+// change starts relying on a newer gog feature — and label that PR `gogcli-bump`
+// so the requirement change is surfaced in the release notes (see
+// .github/release.yml). This is the single source of truth for the required
+// version; keep the README/CLAUDE.md mention in sync.
+export const MIN_GOG_VERSION = '0.18.0';
+
 // Treat unresolved .mcpb placeholders ("${user_config.gog_path}") and empty
 // strings the same as an unset env var. When an optional .mcpb user_config
 // field is left blank, some clients pass the literal placeholder text through
