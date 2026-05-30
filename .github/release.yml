@@ -16,6 +16,11 @@ changelog:
       - github-actions
       - github-actions[bot]
   categories:
+    # Listed first so a change to the minimum required gog version stands out.
+    # Apply `gogcli-bump` to any PR that raises MIN_GOG_VERSION (see runner.ts).
+    - title: ⚠️ Required gogcli version
+      labels:
+        - gogcli-bump
     - title: Features
       labels:
         - enhancement

@@ -76,6 +76,10 @@ GOG_PATH=<path>       # absolute path to the gog binary; defaults to `gog` on PA
 
 `runner.ts` treats unresolved `.mcpb` placeholders (`${user_config.xxx}`) and empty strings as unset — useful for desktop clients that pass blank user-config fields through literally.
 
+### Required gog version
+
+`runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.18.0**.
+
 ## Tool placement
 
 The split between base and sub-package extras matters:
@@ -142,6 +146,7 @@ For every PR, apply exactly one label so it lands in the right release-notes sec
 
 | Label                | Section in release notes |
 |----------------------|--------------------------|
+| `gogcli-bump`        | ⚠️ Required gogcli version (raises `MIN_GOG_VERSION`) |
 | `enhancement`        | Features                 |
 | `bug`                | Bug Fixes                |
 | `security`           | Security                 |
