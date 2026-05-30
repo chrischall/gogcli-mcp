@@ -175,4 +175,30 @@ describe('runOrDiagnose', () => {
     expect(result.content[0].text).toContain('transient');
     expect(result.content[0].text).not.toContain('Configured accounts');
   });
+
+  it('appends grid-limit hint pointing at gog_sheets_insert', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('Range (Sheet1!AP1:AW1) exceeds grid limits. Max rows: 1000, max columns: 41'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['sheets', 'update', 'abc', 'AP1'], {});
+    expect(result.content[0].text).toContain('exceeds grid limits');
+    expect(result.content[0].text).toContain('gog_sheets_insert');
+  });
+
+  it('does not append grid-limit hint on unrelated errors', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('Spreadsheet not found'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
+    expect(result.content[0].text).not.toContain('gog_sheets_insert');
+  });
+
+  it('keeps grid-limit hint when auth list also fails', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('exceeds grid limits. Max rows: 1000, max columns: 41'))
+      .mockRejectedValueOnce(new Error('auth list failed'));
+    const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
+    expect(result.content[0].text).toContain('gog_sheets_insert');
+    expect(result.content[0].text).not.toContain('Configured accounts');
+  });
 });

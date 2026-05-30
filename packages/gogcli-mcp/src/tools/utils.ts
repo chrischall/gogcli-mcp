@@ -100,6 +100,11 @@ const AUTH_ERROR_PATTERN = /\b(401|unauthorized|token.*(expired|revoked)|invalid
 const TRANSIENT_ERROR_PATTERN =
   /\b429\b|\b5\d\d\b|\bquota\b|rateLimit|\bDEADLINE_EXCEEDED\b/i;
 
+// gogcli rejects writes whose range falls outside the sheet's current grid
+// (e.g. writing to column AP on a 41-column sheet) with a "exceeds grid limits"
+// error and no remediation. Point the caller at the tool that grows the grid.
+const GRID_LIMIT_ERROR_PATTERN = /exceeds grid limits/i;
+
 const AUTH_HINT =
   '\n\nAuthentication may have expired. Use gog_auth_add to re-authorize the account. ' +
   'Ask the user if they would like to re-authenticate.';
@@ -107,6 +112,10 @@ const AUTH_HINT =
 const TRANSIENT_HINT =
   '\n\nThis error is often transient. Retry the same call before trying a different approach ' +
   '(do not fall back to smaller writes or row-by-row operations).';
+
+const GRID_LIMIT_HINT =
+  '\n\nThe target range is outside the sheet\'s current grid. Add the missing rows or columns ' +
+  'first with gog_sheets_insert (dimension: rows or cols), then retry the write.';
 
 export async function runOrDiagnose(
   args: string[],
@@ -119,7 +128,14 @@ export async function runOrDiagnose(
     const errText = base.content[0].text;
     const isAuthError = AUTH_ERROR_PATTERN.test(errText);
     const isTransientError = !isAuthError && TRANSIENT_ERROR_PATTERN.test(errText);
-    const hint = isAuthError ? AUTH_HINT : isTransientError ? TRANSIENT_HINT : '';
+    const isGridLimitError = GRID_LIMIT_ERROR_PATTERN.test(errText);
+    const hint = isAuthError
+      ? AUTH_HINT
+      : isTransientError
+        ? TRANSIENT_HINT
+        : isGridLimitError
+          ? GRID_LIMIT_HINT
+          : '';
     try {
       const accounts = await run(['auth', 'list']);
       return toText(`${errText}\n\nConfigured accounts:\n${accounts}${hint}`);
