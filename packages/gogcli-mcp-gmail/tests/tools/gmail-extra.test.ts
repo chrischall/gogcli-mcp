@@ -748,3 +748,291 @@ describe('gog_gmail_autoreply', () => {
     );
   });
 });
+
+describe('gog_gmail_messages_search', () => {
+  it('calls runOrDiagnose with just the query', async () => {
+    await handlers.get('gog_gmail_messages_search')!({ query: 'from:alice' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'messages', 'search', 'from:alice'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all flags when provided', async () => {
+    await handlers.get('gog_gmail_messages_search')!({
+      query: 'is:unread',
+      max: 10,
+      page: 'tok',
+      all: true,
+      includeBody: true,
+      full: true,
+      bodyFormat: 'html',
+      account: 'me@x.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'messages', 'search', 'is:unread', '--max=10', '--page=tok', '--all', '--include-body', '--full', '--body-format=html'],
+      { account: 'me@x.com' },
+    );
+  });
+
+  it('omits flags when false/absent', async () => {
+    await handlers.get('gog_gmail_messages_search')!({ query: 'x', all: false, includeBody: false, full: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'messages', 'search', 'x'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_labels_style', () => {
+  it('calls runOrDiagnose with just the label', async () => {
+    await handlers.get('gog_gmail_labels_style')!({ labelIdOrName: 'Work' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'labels', 'style', 'Work'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all style flags when provided', async () => {
+    await handlers.get('gog_gmail_labels_style')!({
+      labelIdOrName: 'Work',
+      backgroundColor: '#000000',
+      textColor: '#ffffff',
+      labelListVisibility: 'labelHide',
+      messageListVisibility: 'hide',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'labels', 'style', 'Work', '--background-color=#000000', '--text-color=#ffffff', '--label-list-visibility=labelHide', '--message-list-visibility=hide'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_vacation_get', () => {
+  it('calls runOrDiagnose', async () => {
+    await handlers.get('gog_gmail_vacation_get')!({ account: 'me@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'vacation', 'get'],
+      { account: 'me@x.com' },
+    );
+  });
+});
+
+describe('gog_gmail_vacation_update', () => {
+  it('calls runOrDiagnose with no flags', async () => {
+    await handlers.get('gog_gmail_vacation_update')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'vacation', 'update'],
+      { account: undefined },
+    );
+  });
+
+  it('enables with subject/body/start/end and scoping', async () => {
+    await handlers.get('gog_gmail_vacation_update')!({
+      enable: true,
+      subject: 'Away',
+      body: '<p>OOO</p>',
+      start: '2024-12-20T00:00:00Z',
+      end: '2024-12-31T23:59:59Z',
+      contactsOnly: true,
+      domainOnly: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'vacation', 'update', '--enable', '--subject=Away', '--body=<p>OOO</p>', '--start=2024-12-20T00:00:00Z', '--end=2024-12-31T23:59:59Z', '--contacts-only', '--domain-only'],
+      { account: undefined },
+    );
+  });
+
+  it('disables the responder', async () => {
+    await handlers.get('gog_gmail_vacation_update')!({ disable: true, enable: false, contactsOnly: false, domainOnly: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'vacation', 'update', '--disable'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_filters_list', () => {
+  it('calls runOrDiagnose', async () => {
+    await handlers.get('gog_gmail_filters_list')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'filters', 'list'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_filters_get', () => {
+  it('calls runOrDiagnose with the filter ID', async () => {
+    await handlers.get('gog_gmail_filters_get')!({ filterId: 'f1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'filters', 'get', 'f1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_filters_create', () => {
+  it('calls runOrDiagnose with no flags', async () => {
+    await handlers.get('gog_gmail_filters_create')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'filters', 'create'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all criteria and actions when provided', async () => {
+    await handlers.get('gog_gmail_filters_create')!({
+      from: 'alice@x.com',
+      to: 'me@x.com',
+      subject: 'Report',
+      query: 'has:attachment',
+      hasAttachment: true,
+      addLabel: 'Reports',
+      removeLabel: 'INBOX',
+      archive: true,
+      markRead: true,
+      star: true,
+      important: true,
+      trash: true,
+      neverSpam: true,
+      forward: 'fwd@x.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'filters', 'create', '--from=alice@x.com', '--to=me@x.com', '--subject=Report', '--query=has:attachment', '--has-attachment', '--add-label=Reports', '--remove-label=INBOX', '--archive', '--mark-read', '--star', '--important', '--trash', '--never-spam', '--forward=fwd@x.com'],
+      { account: undefined },
+    );
+  });
+
+  it('omits boolean flags when false', async () => {
+    await handlers.get('gog_gmail_filters_create')!({
+      from: 'a@x.com',
+      hasAttachment: false,
+      archive: false,
+      markRead: false,
+      star: false,
+      important: false,
+      trash: false,
+      neverSpam: false,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'filters', 'create', '--from=a@x.com'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_filters_delete', () => {
+  it('calls runOrDiagnose with the filter ID', async () => {
+    await handlers.get('gog_gmail_filters_delete')!({ filterId: 'f1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'filters', 'delete', 'f1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_sendas_list', () => {
+  it('calls runOrDiagnose', async () => {
+    await handlers.get('gog_gmail_sendas_list')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'list'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_sendas_get', () => {
+  it('calls runOrDiagnose with the email', async () => {
+    await handlers.get('gog_gmail_sendas_get')!({ email: 'alias@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'get', 'alias@x.com'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_sendas_create', () => {
+  it('calls runOrDiagnose with just the email', async () => {
+    await handlers.get('gog_gmail_sendas_create')!({ email: 'alias@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'create', 'alias@x.com'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all flags when provided', async () => {
+    await handlers.get('gog_gmail_sendas_create')!({
+      email: 'alias@x.com',
+      displayName: 'Alias',
+      replyTo: 'reply@x.com',
+      signature: '<p>sig</p>',
+      treatAsAlias: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'create', 'alias@x.com', '--display-name=Alias', '--reply-to=reply@x.com', '--signature=<p>sig</p>', '--treat-as-alias'],
+      { account: undefined },
+    );
+  });
+
+  it('omits treatAsAlias when false', async () => {
+    await handlers.get('gog_gmail_sendas_create')!({ email: 'alias@x.com', treatAsAlias: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'create', 'alias@x.com'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_sendas_update', () => {
+  it('calls runOrDiagnose with just the email', async () => {
+    await handlers.get('gog_gmail_sendas_update')!({ email: 'alias@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'update', 'alias@x.com'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all flags when provided', async () => {
+    await handlers.get('gog_gmail_sendas_update')!({
+      email: 'alias@x.com',
+      displayName: 'Alias',
+      replyTo: 'reply@x.com',
+      signature: '<p>sig</p>',
+      treatAsAlias: true,
+      makeDefault: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'update', 'alias@x.com', '--display-name=Alias', '--reply-to=reply@x.com', '--signature=<p>sig</p>', '--treat-as-alias', '--make-default'],
+      { account: undefined },
+    );
+  });
+
+  it('omits boolean flags when false', async () => {
+    await handlers.get('gog_gmail_sendas_update')!({ email: 'alias@x.com', treatAsAlias: false, makeDefault: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'update', 'alias@x.com'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_sendas_delete', () => {
+  it('calls runOrDiagnose with the email', async () => {
+    await handlers.get('gog_gmail_sendas_delete')!({ email: 'alias@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'delete', 'alias@x.com'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_sendas_verify', () => {
+  it('calls runOrDiagnose with the email', async () => {
+    await handlers.get('gog_gmail_sendas_verify')!({ email: 'alias@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'sendas', 'verify', 'alias@x.com'],
+      { account: undefined },
+    );
+  });
+});

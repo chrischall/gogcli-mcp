@@ -172,6 +172,54 @@
     {
       "name": "gog_drive_comments_reopen",
       "description": "Reopen a previously resolved comment"
+    },
+    {
+      "name": "gog_drive_du",
+      "description": "Summarize Drive folder sizes (disk-usage style)"
+    },
+    {
+      "name": "gog_drive_tree",
+      "description": "Print a read-only folder tree"
+    },
+    {
+      "name": "gog_drive_changes_start_token",
+      "description": "Get a Drive changes start page token for sync/automation"
+    },
+    {
+      "name": "gog_drive_changes_list",
+      "description": "List Drive changes since a page token"
+    },
+    {
+      "name": "gog_drive_labels_list",
+      "description": "List Drive label schemas"
+    },
+    {
+      "name": "gog_drive_labels_get",
+      "description": "Get a single Drive label schema by name"
+    },
+    {
+      "name": "gog_drive_labels_file_list",
+      "description": "List labels applied to a Drive file"
+    },
+    {
+      "name": "gog_drive_labels_file_apply",
+      "description": "Apply or update a label (with field values) on a Drive file"
+    },
+    {
+      "name": "gog_drive_labels_file_remove",
+      "description": "Remove a label from a Drive file"
+    },
+    {
+      "name": "gog_drive_activity",
+      "description": "Query the Drive Activity API for audit events"
+    },
+    {
+      "name": "gog_drive_audit_sharing",
+      "description": "Audit Drive sharing for public/external permissions (no mutation)"
+    },
+    {
+      "name": "gog_drive_audit_user",
+      "description": "Audit Drive permissions granted to a specific user (no mutation)"
     }
   ],
   "compatibility": {

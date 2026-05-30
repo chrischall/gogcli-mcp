@@ -113,6 +113,34 @@
     {
       "name": "gog_people_raw",
       "description": "Dump raw People API JSON for a person"
+    },
+    {
+      "name": "gog_contacts_update",
+      "description": "Update an existing contact (empty string clears a field)"
+    },
+    {
+      "name": "gog_contacts_delete",
+      "description": "Delete a contact by resource name"
+    },
+    {
+      "name": "gog_contacts_export",
+      "description": "Export contacts as vCard (.vcf)"
+    },
+    {
+      "name": "gog_contacts_dedupe",
+      "description": "Find likely duplicate contacts (preview only)"
+    },
+    {
+      "name": "gog_contacts_directory_list",
+      "description": "List people from the Workspace directory"
+    },
+    {
+      "name": "gog_contacts_other_list",
+      "description": "List auto-collected other contacts"
+    },
+    {
+      "name": "gog_contacts_other_search",
+      "description": "Search auto-collected other contacts"
     }
   ],
   "compatibility": {

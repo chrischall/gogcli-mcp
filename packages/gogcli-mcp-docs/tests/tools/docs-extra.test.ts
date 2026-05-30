@@ -799,3 +799,107 @@ describe('gog_docs_comments_reopen', () => {
     );
   });
 });
+
+// --- gog_docs_add_tab ---
+
+describe('gog_docs_add_tab', () => {
+  it('calls runOrDiagnose with only docId when no flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_add_tab')!({ docId: 'abc' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'add-tab', 'abc'], { account: undefined });
+  });
+
+  it('includes all flags when provided', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_add_tab')!({
+      docId: 'abc',
+      title: 'Notes',
+      index: 2,
+      parentTab: 'Intro',
+      iconEmoji: '📌',
+      account: 'a@b.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'add-tab', 'abc', '--title=Notes', '--index=2', '--parent-tab=Intro', '--icon-emoji=📌'],
+      { account: 'a@b.com' },
+    );
+  });
+
+  it('includes --index when zero', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_add_tab')!({ docId: 'abc', index: 0 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'add-tab', 'abc', '--index=0'],
+      { account: undefined },
+    );
+  });
+});
+
+// --- gog_docs_rename_tab ---
+
+describe('gog_docs_rename_tab', () => {
+  it('calls runOrDiagnose with tab and title', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_rename_tab')!({ docId: 'abc', tab: 'Old', title: 'New' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'rename-tab', 'abc', '--tab=Old', '--title=New'],
+      { account: undefined },
+    );
+  });
+
+  it('forwards account override', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_rename_tab')!({ docId: 'abc', tab: 't1', title: 'New', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'rename-tab', 'abc', '--tab=t1', '--title=New'],
+      { account: 'a@b.com' },
+    );
+  });
+});
+
+// --- gog_docs_delete_tab ---
+
+describe('gog_docs_delete_tab', () => {
+  it('calls runOrDiagnose with tab', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_delete_tab')!({ docId: 'abc', tab: 'Old' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'delete-tab', 'abc', '--tab=Old'],
+      { account: undefined },
+    );
+  });
+
+  it('forwards account override', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_delete_tab')!({ docId: 'abc', tab: 't1', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'delete-tab', 'abc', '--tab=t1'],
+      { account: 'a@b.com' },
+    );
+  });
+});
+
+// --- gog_docs_clear ---
+
+describe('gog_docs_clear', () => {
+  it('calls runOrDiagnose with docId', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_clear')!({ docId: 'abc' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'clear', 'abc'], { account: undefined });
+  });
+
+  it('forwards account override', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_clear')!({ docId: 'abc', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'clear', 'abc'], { account: 'a@b.com' });
+  });
+});

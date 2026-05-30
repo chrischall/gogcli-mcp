@@ -204,6 +204,62 @@
     {
       "name": "gog_gmail_autoreply",
       "description": "Reply once to all messages matching a Gmail search query"
+    },
+    {
+      "name": "gog_gmail_messages_search",
+      "description": "Search individual messages (not threads) using Gmail query syntax"
+    },
+    {
+      "name": "gog_gmail_labels_style",
+      "description": "Change a user label's color or visibility"
+    },
+    {
+      "name": "gog_gmail_vacation_get",
+      "description": "Get the current vacation responder settings"
+    },
+    {
+      "name": "gog_gmail_vacation_update",
+      "description": "Enable, disable, or update the vacation responder"
+    },
+    {
+      "name": "gog_gmail_filters_list",
+      "description": "List all Gmail filters"
+    },
+    {
+      "name": "gog_gmail_filters_get",
+      "description": "Get a single Gmail filter's criteria and actions"
+    },
+    {
+      "name": "gog_gmail_filters_create",
+      "description": "Create a Gmail filter with match criteria and actions"
+    },
+    {
+      "name": "gog_gmail_filters_delete",
+      "description": "Delete a Gmail filter by ID"
+    },
+    {
+      "name": "gog_gmail_sendas_list",
+      "description": "List all send-as aliases for the account"
+    },
+    {
+      "name": "gog_gmail_sendas_get",
+      "description": "Get details of a single send-as alias"
+    },
+    {
+      "name": "gog_gmail_sendas_create",
+      "description": "Create a send-as alias"
+    },
+    {
+      "name": "gog_gmail_sendas_update",
+      "description": "Update a send-as alias or make it the default"
+    },
+    {
+      "name": "gog_gmail_sendas_delete",
+      "description": "Delete a send-as alias"
+    },
+    {
+      "name": "gog_gmail_sendas_verify",
+      "description": "Resend the verification email for a send-as alias"
     }
   ],
   "compatibility": {

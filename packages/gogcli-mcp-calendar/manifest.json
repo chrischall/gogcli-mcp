@@ -103,6 +103,34 @@
       "description": "Run any gog calendar subcommand (escape hatch)"
     },
     {
+      "name": "gog_calendar_calendars",
+      "description": "List the calendars in your calendar list"
+    },
+    {
+      "name": "gog_calendar_search",
+      "description": "Full-text search for events with optional time filters"
+    },
+    {
+      "name": "gog_calendar_freebusy",
+      "description": "Query free/busy intervals for one or more calendars"
+    },
+    {
+      "name": "gog_calendar_colors",
+      "description": "Show the available calendar and event color palette"
+    },
+    {
+      "name": "gog_calendar_acl",
+      "description": "List the access control list (sharing rules) for a calendar"
+    },
+    {
+      "name": "gog_calendar_move",
+      "description": "Move an event to another calendar"
+    },
+    {
+      "name": "gog_calendar_out_of_office",
+      "description": "Create an Out of Office event that auto-declines invitations"
+    },
+    {
       "name": "gog_meet_create",
       "description": "Create a Google Meet space"
     },
