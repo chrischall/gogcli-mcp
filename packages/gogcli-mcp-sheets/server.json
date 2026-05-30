@@ -7,12 +7,12 @@
     "source": "github",
     "subfolder": "packages/gogcli-mcp-sheets"
   },
-  "version": "2.1.0",
+  "version": "2.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "gogcli-mcp-sheets",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "transport": {
         "type": "stdio"
       },
