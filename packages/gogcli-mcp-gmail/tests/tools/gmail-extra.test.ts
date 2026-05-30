@@ -223,6 +223,72 @@ describe('gog_gmail_thread_get', () => {
       { account: undefined },
     );
   });
+
+  const THREAD = JSON.stringify({
+    downloaded: false,
+    thread: {
+      id: 't1',
+      messages: [
+        { id: 'm1', threadId: 't1', internalDate: '1', labelIds: ['INBOX'], snippet: 'first', payload: { headers: [{ name: 'From', value: 'a@x.com' }, { name: 'Subject', value: 'Hi' }, { name: 'X-Spam', value: 'no' }], body: { data: 'AAAA' } } },
+        { id: 'm2', threadId: 't1', internalDate: '2', labelIds: ['INBOX'], snippet: 'second', payload: { headers: [{ name: 'From', value: 'b@x.com' }] } },
+        { id: 'm3', threadId: 't1', internalDate: '3', labelIds: ['SENT'], snippet: 'third' },
+      ],
+    },
+  });
+
+  it('does not transform the output when no paging params are given', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText(THREAD));
+    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1' });
+    expect(result.content[0].text).toBe(THREAD);
+  });
+
+  it('latestN returns only the last N messages', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText(THREAD));
+    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', latestN: 2 });
+    // latestN is wrapper-side; no CLI flag is added
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls[0]![0]).toEqual(['gmail', 'thread', 'get', 't1']);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.thread.messages.map((m: { id: string }) => m.id)).toEqual(['m2', 'm3']);
+  });
+
+  it('snippetsOnly returns per-message headers and snippet without bodies', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText(THREAD));
+    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', snippetsOnly: true });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.thread.messages).toHaveLength(3);
+    const m1 = parsed.thread.messages[0];
+    expect(m1.snippet).toBe('first');
+    expect(m1.headers).toEqual({ From: 'a@x.com', Subject: 'Hi' }); // X-Spam dropped
+    expect(m1.payload).toBeUndefined();
+    // a message with no payload yields empty headers without throwing
+    expect(parsed.thread.messages[2].headers).toEqual({});
+  });
+
+  it('combines latestN and snippetsOnly', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText(THREAD));
+    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', latestN: 1, snippetsOnly: true });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.thread.messages).toHaveLength(1);
+    expect(parsed.thread.messages[0].id).toBe('m3');
+  });
+
+  it('returns the raw result when the payload is not JSON', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('not json'));
+    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', latestN: 2 });
+    expect(result.content[0].text).toBe('not json');
+  });
+
+  it('returns the raw result when there is no messages array', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('{"thread":{}}'));
+    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', snippetsOnly: true });
+    expect(result.content[0].text).toBe('{"thread":{}}');
+  });
+
+  it('returns the raw result when there is no thread object', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('{}'));
+    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', latestN: 1 });
+    expect(result.content[0].text).toBe('{}');
+  });
 });
 
 describe('gog_gmail_thread_modify', () => {
@@ -430,6 +496,53 @@ describe('gog_gmail_drafts_create', () => {
       { account: undefined },
     );
   });
+
+  it('skips recipient flags when omitRecipients is true, even if to/cc/bcc are supplied', async () => {
+    await handlers.get('gog_gmail_drafts_create')!({
+      to: 'a@b.com', cc: 'cc@x.com', bcc: 'bcc@x.com',
+      subject: 'Hi', body: 'Hello', omitRecipients: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'create', '--subject=Hi', '--body=Hello'],
+      { account: undefined },
+    );
+  });
+
+  it('returnFull re-fetches and returns the full stored draft', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(toText('{"draftId":"d9","message":{"id":"m9"}}'))
+      .mockResolvedValueOnce(toText('{"id":"d9","message":{"subject":"Hi","body":"Hello"}}'));
+    const result = await handlers.get('gog_gmail_drafts_create')!({
+      subject: 'Hi', body: 'Hello', returnFull: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(1,
+      ['gmail', 'drafts', 'create', '--subject=Hi', '--body=Hello'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(2,
+      ['gmail', 'drafts', 'get', 'd9'], { account: undefined });
+    expect(result.content[0].text).toContain('"subject":"Hi"');
+  });
+
+  it('returnFull does not push --return-full to the CLI', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(toText('{"draftId":"d9"}'))
+      .mockResolvedValueOnce(toText('{}'));
+    await handlers.get('gog_gmail_drafts_create')!({ subject: 'Hi', body: 'Hello', returnFull: true });
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls[0]![0]).not.toContain('--return-full');
+  });
+
+  it('returnFull returns the write result when output is not parseable JSON', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('not json'));
+    const result = await handlers.get('gog_gmail_drafts_create')!({ subject: 'Hi', body: 'Hello', returnFull: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+    expect(result.content[0].text).toBe('not json');
+  });
+
+  it('returnFull returns the write result when no draftId is present', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('{"message":{"id":"m9"}}'));
+    const result = await handlers.get('gog_gmail_drafts_create')!({ subject: 'Hi', body: 'Hello', returnFull: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+    expect(result.content[0].text).toBe('{"message":{"id":"m9"}}');
+  });
 });
 
 describe('gog_gmail_drafts_update', () => {
@@ -457,11 +570,49 @@ describe('gog_gmail_drafts_update', () => {
       { account: undefined },
     );
   });
+
+  it('skips recipient flags when omitRecipients is true', async () => {
+    await handlers.get('gog_gmail_drafts_update')!({
+      draftId: 'd1', to: 'a@b.com', subject: 'S', body: 'B', omitRecipients: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'update', 'd1', '--subject=S', '--body=B'],
+      { account: undefined },
+    );
+  });
+
+  it('returnFull re-fetches the draft by its known id', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(toText('{"draftId":"d1"}'))
+      .mockResolvedValueOnce(toText('{"id":"d1","message":{"subject":"S"}}'));
+    const result = await handlers.get('gog_gmail_drafts_update')!({
+      draftId: 'd1', subject: 'S', body: 'B', returnFull: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(2,
+      ['gmail', 'drafts', 'get', 'd1'], { account: undefined });
+    expect(result.content[0].text).toContain('"subject":"S"');
+  });
 });
 
 describe('gog_gmail_drafts_delete', () => {
   it('calls runOrDiagnose with draftId', async () => {
     await handlers.get('gog_gmail_drafts_delete')!({ draftId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'delete', 'd1'],
+      { account: undefined },
+    );
+  });
+
+  it('appends --force when force is true', async () => {
+    await handlers.get('gog_gmail_drafts_delete')!({ draftId: 'd1', force: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'delete', 'd1', '--force'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --force when force is false', async () => {
+    await handlers.get('gog_gmail_drafts_delete')!({ draftId: 'd1', force: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'delete', 'd1'],
       { account: undefined },

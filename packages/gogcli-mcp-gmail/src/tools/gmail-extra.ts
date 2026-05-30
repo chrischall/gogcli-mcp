@@ -1,6 +1,62 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, toText, type ToolResult } from '../../../gogcli-mcp/src/lib.js';
+
+type GmailHeader = { name?: string; value?: string };
+type GmailMessage = {
+  id?: string;
+  threadId?: string;
+  internalDate?: string;
+  labelIds?: string[];
+  snippet?: string;
+  payload?: { headers?: GmailHeader[] };
+};
+
+// Headers worth keeping in a snippets-only thread view.
+const SNIPPET_HEADERS = ['From', 'To', 'Cc', 'Subject', 'Date'];
+
+// Reduce a full Gmail message to a lightweight overview: id/labels/snippet plus
+// the key envelope headers, dropping the raw MIME payload that dominates the
+// size of a thread fetch.
+function summarizeMessage(m: GmailMessage): Record<string, unknown> {
+  const rawHeaders = m.payload?.headers;
+  const headers: Record<string, string | undefined> = {};
+  if (Array.isArray(rawHeaders)) {
+    for (const h of rawHeaders) {
+      if (SNIPPET_HEADERS.includes(h.name as string)) headers[h.name as string] = h.value;
+    }
+  }
+  return {
+    id: m.id,
+    threadId: m.threadId,
+    internalDate: m.internalDate,
+    labelIds: m.labelIds,
+    snippet: m.snippet,
+    headers,
+  };
+}
+
+// Wrapper-side trim of a `gog gmail thread get` JSON result: keep only the last
+// `latestN` messages and/or reduce each to a snippet view. gog has no native
+// message-limit flag, so this is done by post-processing its output. Any
+// non-JSON output (an error, an unexpected shape) is passed through untouched.
+function trimThread(
+  result: ToolResult,
+  latestN: number | undefined,
+  snippetsOnly: boolean | undefined,
+): ToolResult {
+  try {
+    const parsed = JSON.parse(result.content[0].text) as { thread?: { messages?: unknown[] } };
+    const messages = parsed.thread?.messages;
+    if (!Array.isArray(messages)) return result;
+    let trimmed: unknown[] = messages;
+    if (latestN !== undefined) trimmed = trimmed.slice(-latestN);
+    if (snippetsOnly) trimmed = trimmed.map((m) => summarizeMessage(m as GmailMessage));
+    return toText(JSON.stringify({ ...parsed, thread: { ...parsed.thread, messages: trimmed } }));
+  } catch {
+    return result;
+  }
+}
 
 export function registerExtraGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_raw', {
@@ -152,23 +208,27 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_thread_get', {
-    description: 'Get a Gmail thread with all messages, optionally downloading attachments and sanitizing content for agent consumption.',
+    description: 'Get a Gmail thread with all messages. For long threads that overflow context, use latestN to fetch only the most recent messages and/or snippetsOnly for a lightweight per-message headers+snippet view; sanitizeContent strips raw payloads/HTML and is the biggest size reducer when you do need bodies.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       threadId: z.string().describe('Gmail thread ID'),
       download: z.boolean().optional().describe('Download all attachments'),
       full: z.boolean().optional().describe('Show full message bodies'),
-      sanitizeContent: z.boolean().optional().describe('Strip HTML, remove URLs, omit raw payloads from JSON'),
+      sanitizeContent: z.boolean().optional().describe('Strip HTML, remove URLs, omit raw payloads from JSON (largest payload-size reduction)'),
+      latestN: z.number().int().positive().optional().describe('Return only the most recent N messages in the thread (wrapper-side trim; avoids overflowing context on long threads)'),
+      snippetsOnly: z.boolean().optional().describe('Reduce each message to its id, labels, snippet, and key headers (From/To/Cc/Subject/Date), dropping full bodies'),
       outDir: z.string().optional().describe('Directory to write attachments to (default: current directory)'),
       account: accountParam,
     },
-  }, async ({ threadId, download, full, sanitizeContent, outDir, account }) => {
+  }, async ({ threadId, download, full, sanitizeContent, latestN, snippetsOnly, outDir, account }) => {
     const args = ['gmail', 'thread', 'get', threadId];
     if (download) args.push('--download');
     if (full) args.push('--full');
     if (sanitizeContent) args.push('--sanitize-content');
     if (outDir) args.push(`--out-dir=${outDir}`);
-    return runOrDiagnose(args, { account });
+    const result = await runOrDiagnose(args, { account });
+    if (latestN === undefined && !snippetsOnly) return result;
+    return trimThread(result, latestN, snippetsOnly);
   });
 
   server.registerTool('gog_gmail_thread_modify', {
@@ -316,6 +376,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     quote: z.boolean().optional().describe('Include quoted original message in reply (requires replyToMessageId)'),
     attach: z.array(z.string()).optional().describe('Attachment file paths (repeatable)'),
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
+    omitRecipients: z.boolean().optional().describe('Create the draft with no recipients even if to/cc/bcc are supplied — an accidental-send guard. Populate recipients in a later update before sending.'),
+    returnFull: z.boolean().optional().describe('After writing, re-fetch and return the full stored draft (subject, body, recipients) instead of just the write acknowledgement. Costs one extra read.'),
     account: accountParam,
   };
 
@@ -331,12 +393,15 @@ export function registerExtraGmailTools(server: McpServer): void {
     quote?: boolean;
     attach?: string[];
     from?: string;
+    omitRecipients?: boolean;
   };
 
   function appendDraftFlags(args: string[], f: DraftFlags): void {
-    if (f.to) args.push(`--to=${f.to}`);
-    if (f.cc) args.push(`--cc=${f.cc}`);
-    if (f.bcc) args.push(`--bcc=${f.bcc}`);
+    if (!f.omitRecipients) {
+      if (f.to) args.push(`--to=${f.to}`);
+      if (f.cc) args.push(`--cc=${f.cc}`);
+      if (f.bcc) args.push(`--bcc=${f.bcc}`);
+    }
     args.push(`--subject=${f.subject}`);
     args.push(`--body=${f.body}`);
     if (f.bodyHtml) args.push(`--body-html=${f.bodyHtml}`);
@@ -347,13 +412,38 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (f.from) args.push(`--from=${f.from}`);
   }
 
+  // Run a draft write, then — when returnFull is set — re-fetch the stored
+  // draft so the caller can verify subject/body/recipients persisted without a
+  // separate gog_gmail_drafts_get round trip. For updates the id is known up
+  // front; for creates it's read from the write response's draftId. Degrades to
+  // the raw write result if the id can't be determined.
+  async function writeDraft(
+    args: string[],
+    account: string | undefined,
+    returnFull: boolean | undefined,
+    knownDraftId?: string,
+  ): Promise<ToolResult> {
+    const result = await runOrDiagnose(args, { account });
+    if (!returnFull) return result;
+    let draftId = knownDraftId;
+    if (!draftId) {
+      try {
+        draftId = (JSON.parse(result.content[0].text) as { draftId?: string }).draftId;
+      } catch {
+        return result;
+      }
+    }
+    if (!draftId) return result;
+    return runOrDiagnose(['gmail', 'drafts', 'get', draftId], { account });
+  }
+
   server.registerTool('gog_gmail_drafts_create', {
-    description: 'Create a new Gmail draft.',
+    description: 'Create a new Gmail draft. Recipients (to/cc/bcc) are optional; omit them (or set omitRecipients) to create a recipient-less draft as an accidental-send guard.',
     inputSchema: draftWriteSchema,
-  }, async ({ account, ...flags }) => {
+  }, async ({ account, returnFull, ...flags }) => {
     const args = ['gmail', 'drafts', 'create'];
     appendDraftFlags(args, flags);
-    return runOrDiagnose(args, { account });
+    return writeDraft(args, account, returnFull);
   });
 
   server.registerTool('gog_gmail_drafts_update', {
@@ -363,21 +453,24 @@ export function registerExtraGmailTools(server: McpServer): void {
       draftId: z.string().describe('Draft ID'),
       ...draftWriteSchema,
     },
-  }, async ({ draftId, account, ...flags }) => {
+  }, async ({ draftId, account, returnFull, ...flags }) => {
     const args = ['gmail', 'drafts', 'update', draftId];
     appendDraftFlags(args, flags);
-    return runOrDiagnose(args, { account });
+    return writeDraft(args, account, returnFull, draftId);
   });
 
   server.registerTool('gog_gmail_drafts_delete', {
-    description: 'Delete a Gmail draft.',
+    description: 'Permanently delete a Gmail draft (not reversible — drafts do not go to Trash). Requires force:true to delete non-interactively.',
     annotations: { destructiveHint: true },
     inputSchema: {
       draftId: z.string().describe('Draft ID'),
+      force: z.boolean().optional().describe('Required to delete in this non-interactive context — without it the delete is refused as a safety guard.'),
       account: accountParam,
     },
-  }, async ({ draftId, account }) => {
-    return runOrDiagnose(['gmail', 'drafts', 'delete', draftId], { account });
+  }, async ({ draftId, account, force }) => {
+    const args = ['gmail', 'drafts', 'delete', draftId];
+    if (force) args.push('--force');
+    return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_gmail_drafts_send', {

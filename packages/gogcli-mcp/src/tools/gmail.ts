@@ -4,7 +4,7 @@ import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
 export function registerGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_search', {
-    description: 'Search Gmail threads using Gmail query syntax (e.g. "from:alice subject:invoice is:unread").',
+    description: 'Search Gmail threads using Gmail query syntax (e.g. "from:alice subject:invoice is:unread"). The query is passed verbatim to Gmail; a bare name token (from:alison) matches per Gmail\'s own heuristics, a full address (from:alison@example.com) is exact. To match a contact across several addresses, OR them: from:(a@x.com OR b@y.com).',
     annotations: { readOnlyHint: true },
     inputSchema: {
       query: z.string().describe('Gmail search query'),
