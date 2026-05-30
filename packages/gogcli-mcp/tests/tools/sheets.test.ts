@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerSheetsTools } from '../../src/tools/sheets.js';
 import * as runner from '../../src/runner.js';
 import { setupHandlers as setupHandlersBase, type ToolHandler } from '../helpers/test-harness.js';
@@ -84,6 +85,135 @@ describe('gog_sheets_update', () => {
     const result = await handlers.get('gog_sheets_update')!({ spreadsheetId: 'bad', range: 'A1', values: [['x']] });
     expect(result.content[0].text).toBe('Error: Update failed');
   });
+
+  it('appends --dry-run when dry_run is true', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"dryRun":true}');
+    const handlers = setupHandlers();
+    const values = [['x']];
+    await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1', values, dry_run: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['sheets', 'update', 'sid', 'A1', `--values-json=${JSON.stringify(values)}`, '--dry-run'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --dry-run when dry_run is false or unset', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1', values: [['x']], dry_run: false });
+    expect(vi.mocked(runner.run).mock.calls[0]![0]).not.toContain('--dry-run');
+  });
+});
+
+describe('gog_sheets_update fail_if_not_empty guard', () => {
+  it('aborts the write when the target range already holds data', async () => {
+    vi.mocked(runner.run).mockResolvedValueOnce('{"values":[["existing"]]}');
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true,
+    });
+    // Only the read happened — no update call.
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', 'sid', 'A1:A1'], { account: undefined });
+    expect(result.content[0].text).toContain('Write aborted');
+    expect(result.content[0].text).toContain('A1:A1');
+    expect(result.content[0].text).toContain('1 cell');
+  });
+
+  it('proceeds with the write when the target range is empty', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce('{}')
+      .mockResolvedValueOnce('{"updatedCells":1}');
+    const handlers = setupHandlers();
+    const values = [['new']];
+    const result = await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'A1', values, fail_if_not_empty: true,
+    });
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(runner.run).mock.calls[1]![0]).toEqual(
+      ['sheets', 'update', 'sid', 'A1', `--values-json=${JSON.stringify(values)}`],
+    );
+    expect(result.content[0].text).toBe('{"updatedCells":1}');
+  });
+
+  it('expands an anchor cell to the full written area before reading', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce('{}')
+      .mockResolvedValueOnce('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'Sheet1!A1',
+      values: [['a', 'b'], ['c', 'd'], ['e', 'f']], fail_if_not_empty: true,
+    });
+    expect(vi.mocked(runner.run).mock.calls[0]![0]).toEqual(['sheets', 'get', 'sid', 'Sheet1!A1:B3']);
+  });
+
+  it('aborts without writing and diagnoses the error when the verification read fails', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('read boom')) // the verification get
+      .mockResolvedValueOnce('{"accounts":[{"email":"u@x.com"}]}'); // diagnose -> auth list
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true,
+    });
+    // get + auth list (for diagnosis), but the update is never attempted
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(runner.run).mock.calls.some((c) => c[0][1] === 'update')).toBe(false);
+    expect(result.content[0].text).toContain('Error: read boom');
+    expect(result.content[0].text).toContain('Configured accounts:');
+  });
+
+  it('surfaces the re-auth hint when the verification read fails with an auth error', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('Request failed with status 401'))
+      .mockResolvedValueOnce('{"accounts":[{"email":"u@x.com"}]}');
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'A1', values: [['x']], fail_if_not_empty: true,
+    });
+    expect(result.content[0].text).toContain('gog_auth_add');
+  });
+
+  it('aborts when emptiness cannot be verified from unparseable output', async () => {
+    vi.mocked(runner.run).mockResolvedValueOnce('not json');
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true,
+    });
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(result.content[0].text).toContain('could not be verified');
+  });
+
+  it('still honors dry_run after the guard passes', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce('{}')
+      .mockResolvedValueOnce('{"dryRun":true}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true, dry_run: true,
+    });
+    expect(vi.mocked(runner.run).mock.calls[1]![0]).toContain('--dry-run');
+  });
+
+  it('skips the guard read when values has no rows', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'A1', values: [], fail_if_not_empty: true,
+    });
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runner.run).mock.calls[0]![0]![1]).toBe('update');
+  });
+
+  it('skips the guard read when rows have no columns', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'A1', values: [[]], fail_if_not_empty: true,
+    });
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runner.run).mock.calls[0]![0]![1]).toBe('update');
+  });
 });
 
 describe('gog_sheets_append', () => {
@@ -104,6 +234,17 @@ describe('gog_sheets_append', () => {
     const result = await handlers.get('gog_sheets_append')!({ spreadsheetId: 'bad', range: 'A1', values: [['x']] });
     expect(result.content[0].text).toBe('Error: Append failed');
   });
+
+  it('appends --dry-run when dry_run is true', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"dryRun":true}');
+    const handlers = setupHandlers();
+    const values = [['x']];
+    await handlers.get('gog_sheets_append')!({ spreadsheetId: 'sid', range: 'Sheet1!A:A', values, dry_run: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['sheets', 'append', 'sid', 'Sheet1!A:A', `--values-json=${JSON.stringify(values)}`, '--dry-run'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_sheets_clear', () => {
@@ -120,9 +261,30 @@ describe('gog_sheets_clear', () => {
     const result = await handlers.get('gog_sheets_clear')!({ spreadsheetId: 'bad', range: 'A1' });
     expect(result.content[0].text).toBe('Error: Clear failed');
   });
+
+  it('appends --dry-run when dry_run is true', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"dryRun":true}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_clear')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:Z100', dry_run: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['sheets', 'clear', 'sid', 'Sheet1!A1:Z100', '--dry-run'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_sheets_metadata', () => {
+  it('advertises grid dimensions in its description', () => {
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const configs = new Map<string, { description?: string }>();
+    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
+      configs.set(name, config as { description?: string });
+      return undefined as never;
+    });
+    registerSheetsTools(server);
+    expect(configs.get('gog_sheets_metadata')!.description).toMatch(/grid dimensions|rowCount|columnCount/i);
+  });
+
   it('calls run with spreadsheetId only', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"title":"My Sheet","sheets":[{"title":"Sheet1"}]}');
     const handlers = setupHandlers();
