@@ -148,14 +148,30 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
     expect(vi.mocked(runner.run).mock.calls[0]![0]).toEqual(['sheets', 'get', 'sid', 'Sheet1!A1:B3']);
   });
 
-  it('aborts without writing when the verification read fails', async () => {
-    vi.mocked(runner.run).mockRejectedValueOnce(new Error('read boom'));
+  it('aborts without writing and diagnoses the error when the verification read fails', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('read boom')) // the verification get
+      .mockResolvedValueOnce('{"accounts":[{"email":"u@x.com"}]}'); // diagnose -> auth list
     const handlers = setupHandlers();
     const result = await handlers.get('gog_sheets_update')!({
       spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true,
     });
-    expect(runner.run).toHaveBeenCalledTimes(1);
-    expect(result.content[0].text).toBe('Error: read boom');
+    // get + auth list (for diagnosis), but the update is never attempted
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(runner.run).mock.calls.some((c) => c[0][1] === 'update')).toBe(false);
+    expect(result.content[0].text).toContain('Error: read boom');
+    expect(result.content[0].text).toContain('Configured accounts:');
+  });
+
+  it('surfaces the re-auth hint when the verification read fails with an auth error', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('Request failed with status 401'))
+      .mockResolvedValueOnce('{"accounts":[{"email":"u@x.com"}]}');
+    const handlers = setupHandlers();
+    const result = await handlers.get('gog_sheets_update')!({
+      spreadsheetId: 'sid', range: 'A1', values: [['x']], fail_if_not_empty: true,
+    });
+    expect(result.content[0].text).toContain('gog_auth_add');
   });
 
   it('aborts when emptiness cannot be verified from unparseable output', async () => {

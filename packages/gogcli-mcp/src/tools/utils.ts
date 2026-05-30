@@ -117,6 +117,53 @@ const GRID_LIMIT_HINT =
   '\n\nThe target range is outside the sheet\'s current grid. Add the missing rows or columns ' +
   'first with gog_sheets_insert (dimension: rows or cols), then retry the write.';
 
+// Reduce `gog auth list --json` output to just the configured email addresses.
+// The raw JSON also carries OAuth scopes, the Google subject id, and creation
+// timestamps — none of which belong in an error surfaced to the model, and
+// which were previously echoed verbatim on every failure. Falls back to the
+// trimmed raw text if the output isn't the expected JSON shape (e.g. a plain
+// email string), so unexpected output still degrades gracefully.
+export function formatAccountList(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { accounts?: unknown };
+    if (Array.isArray(parsed?.accounts)) {
+      return parsed.accounts
+        .map((a) => (a as { email?: string })?.email)
+        .filter(Boolean)
+        .join('\n');
+    }
+  } catch {
+    // not JSON — fall through to the raw text
+  }
+  return raw.trim();
+}
+
+// Turn a thrown error into a diagnosed ToolResult: the error text, an
+// actionable hint when the failure class is recognised (auth / transient /
+// off-grid write), and the list of configured accounts. Callers that need to
+// surface a failure without going through runOrDiagnose (e.g. a pre-write
+// verification read that must abort) can reuse this so the error keeps the
+// same diagnostic quality as everywhere else.
+export async function diagnose(err: unknown): Promise<ToolResult> {
+  const errText = toError(err).content[0].text;
+  const isAuthError = AUTH_ERROR_PATTERN.test(errText);
+  const isTransientError = !isAuthError && TRANSIENT_ERROR_PATTERN.test(errText);
+  const isGridLimitError = GRID_LIMIT_ERROR_PATTERN.test(errText);
+  const hint = isAuthError
+    ? AUTH_HINT
+    : isTransientError
+      ? TRANSIENT_HINT
+      : isGridLimitError
+        ? GRID_LIMIT_HINT
+        : '';
+  try {
+    const accounts = formatAccountList(await run(['auth', 'list']));
+    return toText(`${errText}\n\nConfigured accounts:\n${accounts || '(none)'}${hint}`);
+  } catch {
+    return toText(`${errText}${hint}`);
+  }
+}
+
 export async function runOrDiagnose(
   args: string[],
   options: { account?: string },
@@ -124,23 +171,6 @@ export async function runOrDiagnose(
   try {
     return toText(await run(args, options));
   } catch (err) {
-    const base = toError(err);
-    const errText = base.content[0].text;
-    const isAuthError = AUTH_ERROR_PATTERN.test(errText);
-    const isTransientError = !isAuthError && TRANSIENT_ERROR_PATTERN.test(errText);
-    const isGridLimitError = GRID_LIMIT_ERROR_PATTERN.test(errText);
-    const hint = isAuthError
-      ? AUTH_HINT
-      : isTransientError
-        ? TRANSIENT_HINT
-        : isGridLimitError
-          ? GRID_LIMIT_HINT
-          : '';
-    try {
-      const accounts = await run(['auth', 'list']);
-      return toText(`${errText}\n\nConfigured accounts:\n${accounts}${hint}`);
-    } catch {
-      return toText(`${errText}${hint}`);
-    }
+    return diagnose(err);
   }
 }

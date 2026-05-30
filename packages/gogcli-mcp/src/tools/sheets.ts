@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { run } from '../runner.js';
-import { accountParam, runOrDiagnose, registerRunTool, toText, toError } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool, toText, diagnose } from './utils.js';
 import { expandAnchorRange, countNonEmptyCells } from './sheets-a1.js';
 
 // Cell value type: matches what gog sheets --values-json accepts (passed
@@ -52,8 +52,10 @@ export function registerSheetsTools(server: McpServer): void {
       try {
         existing = await run(['sheets', 'get', spreadsheetId, readRange], { account });
       } catch (err) {
-        // Couldn't read the target — refuse to write rather than risk an overwrite.
-        return toError(err);
+        // Couldn't read the target — refuse to write rather than risk an
+        // overwrite, and diagnose the read failure (auth/transient/etc.) the
+        // same way runOrDiagnose would, since this path bypasses it.
+        return diagnose(err);
       }
       const occupied = countNonEmptyCells(existing);
       if (occupied !== 0) {
@@ -62,8 +64,7 @@ export function registerSheetsTools(server: McpServer): void {
           : `already contains data in ${occupied} cell(s)`;
         return toText(
           `Write aborted (fail_if_not_empty): target range ${readRange} ${detail}. ` +
-          'Re-run without fail_if_not_empty to overwrite, clear it first with gog_sheets_clear, ' +
-          'or set dry_run to preview.',
+          'Re-run without fail_if_not_empty to overwrite, or clear it first with gog_sheets_clear.',
         );
       }
     }
