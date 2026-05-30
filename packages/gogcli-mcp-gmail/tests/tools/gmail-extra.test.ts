@@ -229,7 +229,7 @@ describe('gog_gmail_thread_get', () => {
     thread: {
       id: 't1',
       messages: [
-        { id: 'm1', threadId: 't1', internalDate: '1', labelIds: ['INBOX'], snippet: 'first', payload: { headers: [{ name: 'From', value: 'a@x.com' }, { name: 'Subject', value: 'Hi' }, { name: 'X-Spam', value: 'no' }], body: { data: 'AAAA' } } },
+        { id: 'm1', threadId: 't1', internalDate: '1', labelIds: ['INBOX'], snippet: 'first', payload: { headers: [{ name: 'From', value: 'a@x.com' }, { name: 'Subject', value: 'Hi' }, { name: 'X-Spam', value: 'no' }, { value: 'orphan-no-name' }], body: { data: 'AAAA' } } },
         { id: 'm2', threadId: 't1', internalDate: '2', labelIds: ['INBOX'], snippet: 'second', payload: { headers: [{ name: 'From', value: 'b@x.com' }] } },
         { id: 'm3', threadId: 't1', internalDate: '3', labelIds: ['SENT'], snippet: 'third' },
       ],
@@ -591,6 +591,16 @@ describe('gog_gmail_drafts_update', () => {
     expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(2,
       ['gmail', 'drafts', 'get', 'd1'], { account: undefined });
     expect(result.content[0].text).toContain('"subject":"S"');
+  });
+
+  it('returnFull surfaces a failed update instead of re-fetching a stale draft', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('Error: update failed'));
+    const result = await handlers.get('gog_gmail_drafts_update')!({
+      draftId: 'd1', subject: 'S', body: 'B', returnFull: true,
+    });
+    // write failed (non-JSON) → no re-fetch; the error is surfaced
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+    expect(result.content[0].text).toBe('Error: update failed');
   });
 });
 

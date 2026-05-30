@@ -23,7 +23,7 @@ function summarizeMessage(m: GmailMessage): Record<string, unknown> {
   const headers: Record<string, string | undefined> = {};
   if (Array.isArray(rawHeaders)) {
     for (const h of rawHeaders) {
-      if (SNIPPET_HEADERS.includes(h.name as string)) headers[h.name as string] = h.value;
+      if (h.name && SNIPPET_HEADERS.includes(h.name)) headers[h.name] = h.value;
     }
   }
   return {
@@ -425,14 +425,17 @@ export function registerExtraGmailTools(server: McpServer): void {
   ): Promise<ToolResult> {
     const result = await runOrDiagnose(args, { account });
     if (!returnFull) return result;
-    let draftId = knownDraftId;
-    if (!draftId) {
-      try {
-        draftId = (JSON.parse(result.content[0].text) as { draftId?: string }).draftId;
-      } catch {
-        return result;
-      }
+    // The write must have returned a JSON acknowledgement before we re-fetch.
+    // A failed write (an error ToolResult, not JSON) is surfaced as-is rather
+    // than masked by re-fetching the unchanged draft — this matters for the
+    // update path, where a known draftId would otherwise re-fetch a stale draft.
+    let parsed: { draftId?: string };
+    try {
+      parsed = JSON.parse(result.content[0].text) as { draftId?: string };
+    } catch {
+      return result;
     }
+    const draftId = knownDraftId ?? parsed.draftId;
     if (!draftId) return result;
     return runOrDiagnose(['gmail', 'drafts', 'get', draftId], { account });
   }
