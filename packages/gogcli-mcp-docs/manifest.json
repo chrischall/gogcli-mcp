@@ -128,6 +128,22 @@
       "description": "List all tabs in a Google Doc."
     },
     {
+      "name": "gog_docs_add_tab",
+      "description": "Add a tab to a Google Doc (title, position, parent, emoji icon)."
+    },
+    {
+      "name": "gog_docs_rename_tab",
+      "description": "Rename a tab in a Google Doc."
+    },
+    {
+      "name": "gog_docs_delete_tab",
+      "description": "Delete a tab and its content from a Google Doc."
+    },
+    {
+      "name": "gog_docs_clear",
+      "description": "Clear all content from a Google Doc, leaving an empty document."
+    },
+    {
       "name": "gog_docs_sed",
       "description": "Stream-edit a Google Doc with sed-like regex expressions (s/find/replace/ syntax)."
     },

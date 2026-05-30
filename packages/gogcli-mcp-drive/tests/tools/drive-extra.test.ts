@@ -254,3 +254,315 @@ describe('gog_drive_comments_reopen', () => {
     );
   });
 });
+
+// --- gog 0.19.0 ---
+
+describe('gog_drive_du', () => {
+  it('calls runOrDiagnose with no flags', async () => {
+    await handlers.get('gog_drive_du')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'du'], { account: undefined });
+  });
+
+  it('passes all flags', async () => {
+    await handlers.get('gog_drive_du')!({
+      parent: 'folder1', depth: 3, max: 20, sort: 'files', order: 'asc', noAllDrives: true, account: 'a@b.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'du', '--parent=folder1', '--depth=3', '--max=20', '--sort=files', '--order=asc', '--no-all-drives'],
+      { account: 'a@b.com' },
+    );
+  });
+
+  it('handles depth/max=0 and omits noAllDrives when false', async () => {
+    await handlers.get('gog_drive_du')!({ depth: 0, max: 0, noAllDrives: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'du', '--depth=0', '--max=0'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_drive_tree', () => {
+  it('calls runOrDiagnose with no flags', async () => {
+    await handlers.get('gog_drive_tree')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'tree'], { account: undefined });
+  });
+
+  it('passes all flags', async () => {
+    await handlers.get('gog_drive_tree')!({ parent: 'folder1', depth: 4, max: 100, noAllDrives: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'tree', '--parent=folder1', '--depth=4', '--max=100', '--no-all-drives'],
+      { account: undefined },
+    );
+  });
+
+  it('handles depth=0 and omits noAllDrives when false', async () => {
+    await handlers.get('gog_drive_tree')!({ depth: 0, noAllDrives: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'tree', '--depth=0'], { account: undefined });
+  });
+});
+
+describe('gog_drive_changes_start_token', () => {
+  it('calls runOrDiagnose with no flags', async () => {
+    await handlers.get('gog_drive_changes_start_token')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'changes', 'start-token'], { account: undefined });
+  });
+
+  it('passes --drive when provided', async () => {
+    await handlers.get('gog_drive_changes_start_token')!({ drive: 'd1', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'changes', 'start-token', '--drive=d1'],
+      { account: 'a@b.com' },
+    );
+  });
+});
+
+describe('gog_drive_changes_list', () => {
+  it('calls runOrDiagnose with token only', async () => {
+    await handlers.get('gog_drive_changes_list')!({ token: 'tok1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'changes', 'list', '--token=tok1'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all flags', async () => {
+    await handlers.get('gog_drive_changes_list')!({
+      token: 'tok1', max: 50, page: 'p2', all: true, includeRemoved: true, drive: 'd1',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'changes', 'list', '--token=tok1', '--max=50', '--page=p2', '--all', '--include-removed', '--drive=d1'],
+      { account: undefined },
+    );
+  });
+
+  it('omits boolean flags when false', async () => {
+    await handlers.get('gog_drive_changes_list')!({ token: 'tok1', all: false, includeRemoved: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'changes', 'list', '--token=tok1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_drive_labels_list', () => {
+  it('calls runOrDiagnose with no flags', async () => {
+    await handlers.get('gog_drive_labels_list')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'labels', 'list'], { account: undefined });
+  });
+
+  it('passes all flags', async () => {
+    await handlers.get('gog_drive_labels_list')!({
+      language: 'en', view: 'LABEL_VIEW_FULL', minimumRole: 'APPLIER', publishedOnly: true, adminAccess: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'labels', 'list', '--language=en', '--view=LABEL_VIEW_FULL', '--minimum-role=APPLIER', '--published-only', '--admin-access'],
+      { account: undefined },
+    );
+  });
+
+  it('omits boolean flags when false', async () => {
+    await handlers.get('gog_drive_labels_list')!({ publishedOnly: false, adminAccess: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'labels', 'list'], { account: undefined });
+  });
+});
+
+describe('gog_drive_labels_get', () => {
+  it('calls runOrDiagnose with name only', async () => {
+    await handlers.get('gog_drive_labels_get')!({ name: 'labels/abc' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'labels', 'get', 'labels/abc'], { account: undefined });
+  });
+
+  it('passes all flags', async () => {
+    await handlers.get('gog_drive_labels_get')!({
+      name: 'labels/abc', language: 'en', view: 'LABEL_VIEW_BASIC', adminAccess: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'labels', 'get', 'labels/abc', '--language=en', '--view=LABEL_VIEW_BASIC', '--admin-access'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --admin-access when false', async () => {
+    await handlers.get('gog_drive_labels_get')!({ name: 'labels/abc', adminAccess: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'labels', 'get', 'labels/abc'], { account: undefined });
+  });
+});
+
+describe('gog_drive_labels_file_list', () => {
+  it('calls runOrDiagnose with fileId only', async () => {
+    await handlers.get('gog_drive_labels_file_list')!({ fileId: 'f1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'labels', 'file', 'list', 'f1'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --max and --page when provided', async () => {
+    await handlers.get('gog_drive_labels_file_list')!({ fileId: 'f1', max: 25, page: 'tok' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'labels', 'file', 'list', 'f1', '--max=25', '--page=tok'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_drive_labels_file_apply', () => {
+  it('calls runOrDiagnose with fileId and labelId only', async () => {
+    await handlers.get('gog_drive_labels_file_apply')!({ fileId: 'f1', labelId: 'l1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'labels', 'file', 'apply', 'f1', 'l1'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all repeatable field flags and fields-json', async () => {
+    await handlers.get('gog_drive_labels_file_apply')!({
+      fileId: 'f1',
+      labelId: 'l1',
+      text: ['t1=hello', 't2=world'],
+      selection: ['s1=c1,c2'],
+      integer: ['i1=42'],
+      date: ['d1=2026-01-01'],
+      user: ['u1=a@b.com'],
+      unset: ['x1', 'x2'],
+      fieldsJson: '{"f":"v"}',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'drive', 'labels', 'file', 'apply', 'f1', 'l1',
+        '--text=t1=hello', '--text=t2=world',
+        '--selection=s1=c1,c2',
+        '--integer=i1=42',
+        '--date=d1=2026-01-01',
+        '--user=u1=a@b.com',
+        '--unset=x1', '--unset=x2',
+        '--fields-json={"f":"v"}',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('omits empty arrays', async () => {
+    await handlers.get('gog_drive_labels_file_apply')!({
+      fileId: 'f1', labelId: 'l1', text: [], selection: [], integer: [], date: [], user: [], unset: [],
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'labels', 'file', 'apply', 'f1', 'l1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_drive_labels_file_remove', () => {
+  it('calls runOrDiagnose with fileId and labelId', async () => {
+    await handlers.get('gog_drive_labels_file_remove')!({ fileId: 'f1', labelId: 'l1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'labels', 'file', 'remove', 'f1', 'l1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_drive_activity', () => {
+  it('calls runOrDiagnose with no flags', async () => {
+    await handlers.get('gog_drive_activity')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'activity', 'query'], { account: undefined });
+  });
+
+  it('passes all flags', async () => {
+    await handlers.get('gog_drive_activity')!({
+      file: 'f1',
+      folder: 'fo1',
+      actions: 'edit,share',
+      from: '2026-01-01T00:00:00Z',
+      to: '2026-02-01T00:00:00Z',
+      filter: 'detail.action_detail_case:RENAME',
+      max: 25,
+      page: 'p2',
+      all: true,
+      consolidate: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'drive', 'activity', 'query',
+        '--file=f1', '--folder=fo1', '--actions=edit,share',
+        '--from=2026-01-01T00:00:00Z', '--to=2026-02-01T00:00:00Z',
+        '--filter=detail.action_detail_case:RENAME', '--max=25', '--page=p2', '--all', '--consolidate',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('omits boolean flags when false', async () => {
+    await handlers.get('gog_drive_activity')!({ all: false, consolidate: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'activity', 'query'], { account: undefined });
+  });
+});
+
+describe('gog_drive_audit_sharing', () => {
+  it('calls runOrDiagnose with no flags', async () => {
+    await handlers.get('gog_drive_audit_sharing')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'audit', 'sharing'], { account: undefined });
+  });
+
+  it('passes all flags', async () => {
+    await handlers.get('gog_drive_audit_sharing')!({
+      file: 'f1',
+      parent: 'fo1',
+      depth: 3,
+      max: 100,
+      internalDomain: ['example.com', 'corp.example.com'],
+      publicOnly: true,
+      externalOnly: true,
+      noAllDrives: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'drive', 'audit', 'sharing',
+        '--file=f1', '--parent=fo1', '--depth=3', '--max=100',
+        '--internal-domain=example.com', '--internal-domain=corp.example.com',
+        '--public-only', '--external-only', '--no-all-drives',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('handles depth/max=0, empty domains, and omits booleans when false', async () => {
+    await handlers.get('gog_drive_audit_sharing')!({
+      depth: 0, max: 0, internalDomain: [], publicOnly: false, externalOnly: false, noAllDrives: false,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'audit', 'sharing', '--depth=0', '--max=0'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_drive_audit_user', () => {
+  it('calls runOrDiagnose with user only', async () => {
+    await handlers.get('gog_drive_audit_user')!({ user: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'audit', 'user', 'a@b.com'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all flags', async () => {
+    await handlers.get('gog_drive_audit_user')!({
+      user: 'a@b.com', file: 'f1', parent: 'fo1', depth: 3, max: 100, noAllDrives: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'audit', 'user', 'a@b.com', '--file=f1', '--parent=fo1', '--depth=3', '--max=100', '--no-all-drives'],
+      { account: undefined },
+    );
+  });
+
+  it('handles depth/max=0 and omits noAllDrives when false', async () => {
+    await handlers.get('gog_drive_audit_user')!({ user: 'a@b.com', depth: 0, max: 0, noAllDrives: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'audit', 'user', 'a@b.com', '--depth=0', '--max=0'],
+      { account: undefined },
+    );
+  });
+});

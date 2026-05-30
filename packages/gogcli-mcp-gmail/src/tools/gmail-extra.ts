@@ -543,4 +543,237 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (allowSelf) args.push('--allow-self');
     return runOrDiagnose(args, { account });
   });
+
+  server.registerTool('gog_gmail_messages_search', {
+    description: 'Search individual messages (not threads) using Gmail query syntax. Returns one result per matching message.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      query: z.string().describe('Gmail search query (e.g. "from:alice is:unread has:attachment")'),
+      max: z.number().optional().describe('Max results'),
+      page: z.string().optional().describe('Page token'),
+      all: z.boolean().optional().describe('Fetch all pages'),
+      includeBody: z.boolean().optional().describe('Include the decoded message body in each result'),
+      full: z.boolean().optional().describe('Show full message bodies without truncation (implies includeBody)'),
+      bodyFormat: z.enum(['text', 'html']).optional().describe('Body format preference when includeBody is set'),
+      account: accountParam,
+    },
+  }, async ({ query, max, page, all, includeBody, full, bodyFormat, account }) => {
+    const args = ['gmail', 'messages', 'search', query];
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (page) args.push(`--page=${page}`);
+    if (all) args.push('--all');
+    if (includeBody) args.push('--include-body');
+    if (full) args.push('--full');
+    if (bodyFormat) args.push(`--body-format=${bodyFormat}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_gmail_labels_style', {
+    description: "Change a user label's color or visibility (background/text color from Gmail's palette, label-list and message-list visibility).",
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      labelIdOrName: z.string().describe('Label ID or name to restyle'),
+      backgroundColor: z.string().optional().describe("Background color from Gmail's label palette as #RRGGBB"),
+      textColor: z.string().optional().describe("Text color from Gmail's label palette as #RRGGBB"),
+      labelListVisibility: z.enum(['labelShow', 'labelShowIfUnread', 'labelHide']).optional().describe('Label-list visibility'),
+      messageListVisibility: z.enum(['show', 'hide']).optional().describe('Message-list visibility'),
+      account: accountParam,
+    },
+  }, async ({ labelIdOrName, backgroundColor, textColor, labelListVisibility, messageListVisibility, account }) => {
+    const args = ['gmail', 'labels', 'style', labelIdOrName];
+    if (backgroundColor) args.push(`--background-color=${backgroundColor}`);
+    if (textColor) args.push(`--text-color=${textColor}`);
+    if (labelListVisibility) args.push(`--label-list-visibility=${labelListVisibility}`);
+    if (messageListVisibility) args.push(`--message-list-visibility=${messageListVisibility}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_gmail_vacation_get', {
+    description: 'Get the current vacation responder (auto-reply) settings.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      account: accountParam,
+    },
+  }, async ({ account }) => {
+    return runOrDiagnose(['gmail', 'settings', 'vacation', 'get'], { account });
+  });
+
+  server.registerTool('gog_gmail_vacation_update', {
+    description: 'Update the vacation responder. Pass enable (with subject/body) to turn it on, or disable to turn it off; optional start/end RFC3339 times and contactsOnly/domainOnly scoping.',
+    inputSchema: {
+      enable: z.boolean().optional().describe('Enable the vacation responder'),
+      disable: z.boolean().optional().describe('Disable the vacation responder'),
+      subject: z.string().optional().describe('Subject line for the auto-reply'),
+      body: z.string().optional().describe('HTML body of the auto-reply message'),
+      start: z.string().optional().describe('Start time in RFC3339 format (e.g. 2024-12-20T00:00:00Z)'),
+      end: z.string().optional().describe('End time in RFC3339 format (e.g. 2024-12-31T23:59:59Z)'),
+      contactsOnly: z.boolean().optional().describe('Only respond to contacts'),
+      domainOnly: z.boolean().optional().describe('Only respond to senders in the same domain'),
+      account: accountParam,
+    },
+  }, async ({ enable, disable, subject, body, start, end, contactsOnly, domainOnly, account }) => {
+    const args = ['gmail', 'settings', 'vacation', 'update'];
+    if (enable) args.push('--enable');
+    if (disable) args.push('--disable');
+    if (subject) args.push(`--subject=${subject}`);
+    if (body) args.push(`--body=${body}`);
+    if (start) args.push(`--start=${start}`);
+    if (end) args.push(`--end=${end}`);
+    if (contactsOnly) args.push('--contacts-only');
+    if (domainOnly) args.push('--domain-only');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_gmail_filters_list', {
+    description: 'List all Gmail filters for the account.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      account: accountParam,
+    },
+  }, async ({ account }) => {
+    return runOrDiagnose(['gmail', 'settings', 'filters', 'list'], { account });
+  });
+
+  server.registerTool('gog_gmail_filters_get', {
+    description: 'Get the criteria and actions of a single Gmail filter by ID.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      filterId: z.string().describe('Filter ID'),
+      account: accountParam,
+    },
+  }, async ({ filterId, account }) => {
+    return runOrDiagnose(['gmail', 'settings', 'filters', 'get', filterId], { account });
+  });
+
+  server.registerTool('gog_gmail_filters_create', {
+    description: 'Create a Gmail filter. Specify match criteria (from/to/subject/query/hasAttachment) and one or more actions (label, archive, mark-read, star, important, trash, forward, never-spam).',
+    inputSchema: {
+      from: z.string().optional().describe('Match messages from this sender'),
+      to: z.string().optional().describe('Match messages to this recipient'),
+      subject: z.string().optional().describe('Match messages with this subject'),
+      query: z.string().optional().describe('Advanced Gmail search query for matching'),
+      hasAttachment: z.boolean().optional().describe('Match messages with attachments'),
+      addLabel: z.string().optional().describe('Label(s) to add to matching messages (comma-separated, name or ID)'),
+      removeLabel: z.string().optional().describe('Label(s) to remove from matching messages (comma-separated, name or ID)'),
+      archive: z.boolean().optional().describe('Archive matching messages (skip inbox)'),
+      markRead: z.boolean().optional().describe('Mark matching messages as read'),
+      star: z.boolean().optional().describe('Star matching messages'),
+      important: z.boolean().optional().describe('Mark as important'),
+      trash: z.boolean().optional().describe('Move matching messages to trash'),
+      neverSpam: z.boolean().optional().describe('Never mark as spam'),
+      forward: z.string().optional().describe('Forward to this email address (must be a verified forwarding address)'),
+      account: accountParam,
+    },
+  }, async ({ from, to, subject, query, hasAttachment, addLabel, removeLabel, archive, markRead, star, important, trash, neverSpam, forward, account }) => {
+    const args = ['gmail', 'settings', 'filters', 'create'];
+    if (from) args.push(`--from=${from}`);
+    if (to) args.push(`--to=${to}`);
+    if (subject) args.push(`--subject=${subject}`);
+    if (query) args.push(`--query=${query}`);
+    if (hasAttachment) args.push('--has-attachment');
+    if (addLabel) args.push(`--add-label=${addLabel}`);
+    if (removeLabel) args.push(`--remove-label=${removeLabel}`);
+    if (archive) args.push('--archive');
+    if (markRead) args.push('--mark-read');
+    if (star) args.push('--star');
+    if (important) args.push('--important');
+    if (trash) args.push('--trash');
+    if (neverSpam) args.push('--never-spam');
+    if (forward) args.push(`--forward=${forward}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_gmail_filters_delete', {
+    description: 'Delete a Gmail filter by ID.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      filterId: z.string().describe('Filter ID to delete'),
+      account: accountParam,
+    },
+  }, async ({ filterId, account }) => {
+    return runOrDiagnose(['gmail', 'settings', 'filters', 'delete', filterId], { account });
+  });
+
+  server.registerTool('gog_gmail_sendas_list', {
+    description: 'List all send-as aliases configured for the account.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      account: accountParam,
+    },
+  }, async ({ account }) => {
+    return runOrDiagnose(['gmail', 'settings', 'sendas', 'list'], { account });
+  });
+
+  server.registerTool('gog_gmail_sendas_get', {
+    description: 'Get details of a single send-as alias by its email address.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      email: z.string().describe('Send-as alias email address'),
+      account: accountParam,
+    },
+  }, async ({ email, account }) => {
+    return runOrDiagnose(['gmail', 'settings', 'sendas', 'get', email], { account });
+  });
+
+  server.registerTool('gog_gmail_sendas_create', {
+    description: 'Create a send-as alias. Newly added aliases generally require email verification before they can be used (see gog_gmail_sendas_verify).',
+    inputSchema: {
+      email: z.string().describe('Email address of the new send-as alias'),
+      displayName: z.string().optional().describe('Name that appears in the From field'),
+      replyTo: z.string().optional().describe('Reply-to address'),
+      signature: z.string().optional().describe('HTML signature for emails sent from this alias'),
+      treatAsAlias: z.boolean().optional().describe('Treat as alias (replies sent from Gmail web)'),
+      account: accountParam,
+    },
+  }, async ({ email, displayName, replyTo, signature, treatAsAlias, account }) => {
+    const args = ['gmail', 'settings', 'sendas', 'create', email];
+    if (displayName) args.push(`--display-name=${displayName}`);
+    if (replyTo) args.push(`--reply-to=${replyTo}`);
+    if (signature) args.push(`--signature=${signature}`);
+    if (treatAsAlias) args.push('--treat-as-alias');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_gmail_sendas_update', {
+    description: 'Update a send-as alias (display name, reply-to, signature, alias handling, or make it the default).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      email: z.string().describe('Send-as alias email address to update'),
+      displayName: z.string().optional().describe('Name that appears in the From field'),
+      replyTo: z.string().optional().describe('Reply-to address'),
+      signature: z.string().optional().describe('HTML signature'),
+      treatAsAlias: z.boolean().optional().describe('Treat as alias'),
+      makeDefault: z.boolean().optional().describe('Make this the default send-as address'),
+      account: accountParam,
+    },
+  }, async ({ email, displayName, replyTo, signature, treatAsAlias, makeDefault, account }) => {
+    const args = ['gmail', 'settings', 'sendas', 'update', email];
+    if (displayName) args.push(`--display-name=${displayName}`);
+    if (replyTo) args.push(`--reply-to=${replyTo}`);
+    if (signature) args.push(`--signature=${signature}`);
+    if (treatAsAlias) args.push('--treat-as-alias');
+    if (makeDefault) args.push('--make-default');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_gmail_sendas_delete', {
+    description: 'Delete a send-as alias by its email address.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      email: z.string().describe('Send-as alias email address to delete'),
+      account: accountParam,
+    },
+  }, async ({ email, account }) => {
+    return runOrDiagnose(['gmail', 'settings', 'sendas', 'delete', email], { account });
+  });
+
+  server.registerTool('gog_gmail_sendas_verify', {
+    description: 'Resend the verification email for a send-as alias that is pending verification.',
+    inputSchema: {
+      email: z.string().describe('Send-as alias email address to verify'),
+      account: accountParam,
+    },
+  }, async ({ email, account }) => {
+    return runOrDiagnose(['gmail', 'settings', 'sendas', 'verify', email], { account });
+  });
 }

@@ -414,4 +414,60 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
+
+  server.registerTool('gog_docs_add_tab', {
+    description: 'Add a tab to a Google Doc. Tabs partition a doc into independently-addressable sections (multi-tab docs). Optionally set the title, zero-based position, parent tab (for nesting), and an emoji icon.',
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      title: z.string().optional().describe('User-visible tab title'),
+      index: z.number().int().optional().describe('Zero-based tab position within the parent'),
+      parentTab: z.string().optional().describe('Parent tab title or ID to nest this tab under'),
+      iconEmoji: z.string().optional().describe('Emoji icon for the tab'),
+      account: accountParam,
+    },
+  }, async ({ docId, title, index, parentTab, iconEmoji, account }) => {
+    const args = ['docs', 'add-tab', docId];
+    if (title) args.push(`--title=${title}`);
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (parentTab) args.push(`--parent-tab=${parentTab}`);
+    if (iconEmoji) args.push(`--icon-emoji=${iconEmoji}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_rename_tab', {
+    description: 'Rename a tab in a Google Doc. Identify the existing tab by title or ID and give it a new title.',
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      tab: z.string().describe('Existing tab title or ID to rename'),
+      title: z.string().describe('New user-visible tab title'),
+      account: accountParam,
+    },
+  }, async ({ docId, tab, title, account }) => {
+    const args = ['docs', 'rename-tab', docId, `--tab=${tab}`, `--title=${title}`];
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_delete_tab', {
+    description: 'Delete a tab (and its content) from a Google Doc. Identify the tab by title or ID. This permanently removes the tab and everything in it.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      tab: z.string().describe('Existing tab title or ID to delete'),
+      account: accountParam,
+    },
+  }, async ({ docId, tab, account }) => {
+    const args = ['docs', 'delete-tab', docId, `--tab=${tab}`];
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_clear', {
+    description: 'Clear all content from a Google Doc, leaving an empty document. The doc itself is preserved (same ID/URL); only its body content is removed. To delete the whole doc instead, use gog_docs_trash.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      account: accountParam,
+    },
+  }, async ({ docId, account }) => {
+    return runOrDiagnose(['docs', 'clear', docId], { account });
+  });
 }

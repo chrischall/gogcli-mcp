@@ -214,4 +214,256 @@ export function registerExtraDriveTools(server: McpServer): void {
   }, async ({ fileId, commentId, account }) => {
     return runOrDiagnose(['drive', 'comments', 'reopen', fileId, commentId], { account });
   });
+
+  // --- gog 0.19.0 ---
+
+  server.registerTool('gog_drive_du', {
+    description: 'Summarize Drive folder sizes (disk-usage style) starting from a folder.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      parent: z.string().optional().describe('Folder ID to start from (default: root)'),
+      depth: z.number().optional().describe('Depth for folder totals (default: 1)'),
+      max: z.number().optional().describe('Max folders to return (0 = unlimited; default: 50)'),
+      sort: z.enum(['size', 'path', 'files']).optional().describe('Sort key (default: size)'),
+      order: z.enum(['asc', 'desc']).optional().describe('Sort order (default: desc)'),
+      noAllDrives: z.boolean().optional().describe('My Drive only — exclude shared drives (shared drives are included by default)'),
+      account: accountParam,
+    },
+  }, async ({ parent, depth, max, sort, order, noAllDrives, account }) => {
+    const args = ['drive', 'du'];
+    if (parent) args.push(`--parent=${parent}`);
+    if (depth !== undefined) args.push(`--depth=${depth}`);
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (sort) args.push(`--sort=${sort}`);
+    if (order) args.push(`--order=${order}`);
+    if (noAllDrives) args.push('--no-all-drives');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_tree', {
+    description: 'Print a read-only folder tree starting from a folder.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      parent: z.string().optional().describe('Folder ID to start from (default: root)'),
+      depth: z.number().optional().describe('Max depth (0 = unlimited; default: 2)'),
+      max: z.number().optional().describe('Max items to return (0 = unlimited; default: 0)'),
+      noAllDrives: z.boolean().optional().describe('My Drive only — exclude shared drives (shared drives are included by default)'),
+      account: accountParam,
+    },
+  }, async ({ parent, depth, max, noAllDrives, account }) => {
+    const args = ['drive', 'tree'];
+    if (parent) args.push(`--parent=${parent}`);
+    if (depth !== undefined) args.push(`--depth=${depth}`);
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (noAllDrives) args.push('--no-all-drives');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_changes_start_token', {
+    description: 'Get a Drive changes start page token — the cursor you pass to gog_drive_changes_list to enumerate changes since this point.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      drive: z.string().optional().describe('Shared drive ID for a shared-drive change log'),
+      account: accountParam,
+    },
+  }, async ({ drive, account }) => {
+    const args = ['drive', 'changes', 'start-token'];
+    if (drive) args.push(`--drive=${drive}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_changes_list', {
+    description: 'List Drive changes since a page token (for sync/automation). Get the initial token from gog_drive_changes_start_token; the response includes a newStartPageToken to persist for the next poll.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      token: z.string().describe('Start page token or next page token'),
+      max: z.number().optional().describe('Max results (default: 100)'),
+      page: z.string().optional().describe('Alias for token when continuing a page'),
+      all: z.boolean().optional().describe('Fetch all pages'),
+      includeRemoved: z.boolean().optional().describe('Include removed changes'),
+      drive: z.string().optional().describe('Shared drive ID for a shared-drive change log'),
+      account: accountParam,
+    },
+  }, async ({ token, max, page, all, includeRemoved, drive, account }) => {
+    const args = ['drive', 'changes', 'list', `--token=${token}`];
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (page) args.push(`--page=${page}`);
+    if (all) args.push('--all');
+    if (includeRemoved) args.push('--include-removed');
+    if (drive) args.push(`--drive=${drive}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_labels_list', {
+    description: 'List Drive label schemas available to the account.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      language: z.string().optional().describe('BCP-47 language code'),
+      view: z.enum(['LABEL_VIEW_BASIC', 'LABEL_VIEW_FULL']).optional().describe('Label view (default: LABEL_VIEW_BASIC)'),
+      minimumRole: z.string().optional().describe('Minimum role filter (e.g. READER, APPLIER, ORGANIZER)'),
+      publishedOnly: z.boolean().optional().describe('Only list published labels'),
+      adminAccess: z.boolean().optional().describe('Use admin access for Workspace admin accounts'),
+      account: accountParam,
+    },
+  }, async ({ language, view, minimumRole, publishedOnly, adminAccess, account }) => {
+    const args = ['drive', 'labels', 'list'];
+    if (language) args.push(`--language=${language}`);
+    if (view) args.push(`--view=${view}`);
+    if (minimumRole) args.push(`--minimum-role=${minimumRole}`);
+    if (publishedOnly) args.push('--published-only');
+    if (adminAccess) args.push('--admin-access');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_labels_get', {
+    description: 'Get a single Drive label schema by name (e.g. "labels/abc123").',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      name: z.string().describe('Label schema name (e.g. labels/abc123)'),
+      language: z.string().optional().describe('BCP-47 language code'),
+      view: z.enum(['LABEL_VIEW_BASIC', 'LABEL_VIEW_FULL']).optional().describe('Label view (default: LABEL_VIEW_FULL)'),
+      adminAccess: z.boolean().optional().describe('Use admin access for Workspace admin accounts'),
+      account: accountParam,
+    },
+  }, async ({ name, language, view, adminAccess, account }) => {
+    const args = ['drive', 'labels', 'get', name];
+    if (language) args.push(`--language=${language}`);
+    if (view) args.push(`--view=${view}`);
+    if (adminAccess) args.push('--admin-access');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_labels_file_list', {
+    description: 'List labels applied to a Drive file.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      fileId: z.string().describe('File ID'),
+      max: z.number().optional().describe('Max results (default: 100)'),
+      page: z.string().optional().describe('Page token'),
+      account: accountParam,
+    },
+  }, async ({ fileId, max, page, account }) => {
+    const args = ['drive', 'labels', 'file', 'list', fileId];
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (page) args.push(`--page=${page}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_labels_file_apply', {
+    description: 'Apply or update a label on a Drive file, optionally setting field values. Each field flag takes "fieldId=value" entries (repeatable). selection/integer/date/user values may be comma-separated within one entry for multi-valued fields.',
+    inputSchema: {
+      fileId: z.string().describe('File ID'),
+      labelId: z.string().describe('Label ID to apply'),
+      text: z.array(z.string()).optional().describe('Text fields as fieldId=value (repeatable)'),
+      selection: z.array(z.string()).optional().describe('Selection fields as fieldId=choiceId[,choiceId] (repeatable)'),
+      integer: z.array(z.string()).optional().describe('Integer fields as fieldId=123[,456] (repeatable)'),
+      date: z.array(z.string()).optional().describe('Date fields as fieldId=YYYY-MM-DD[,YYYY-MM-DD] (repeatable)'),
+      user: z.array(z.string()).optional().describe('User fields as fieldId=email[,email] (repeatable)'),
+      unset: z.array(z.string()).optional().describe('Field IDs to unset (repeatable)'),
+      fieldsJson: z.string().optional().describe('Simple JSON object of fieldId to string/number/bool/string-array values'),
+      account: accountParam,
+    },
+  }, async ({ fileId, labelId, text, selection, integer, date, user, unset, fieldsJson, account }) => {
+    const args = ['drive', 'labels', 'file', 'apply', fileId, labelId];
+    if (text) for (const t of text) args.push(`--text=${t}`);
+    if (selection) for (const s of selection) args.push(`--selection=${s}`);
+    if (integer) for (const i of integer) args.push(`--integer=${i}`);
+    if (date) for (const d of date) args.push(`--date=${d}`);
+    if (user) for (const u of user) args.push(`--user=${u}`);
+    if (unset) for (const u of unset) args.push(`--unset=${u}`);
+    if (fieldsJson) args.push(`--fields-json=${fieldsJson}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_labels_file_remove', {
+    description: 'Remove a label from a Drive file.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      fileId: z.string().describe('File ID'),
+      labelId: z.string().describe('Label ID to remove'),
+      account: accountParam,
+    },
+  }, async ({ fileId, labelId, account }) => {
+    return runOrDiagnose(['drive', 'labels', 'file', 'remove', fileId, labelId], { account });
+  });
+
+  server.registerTool('gog_drive_activity', {
+    description: 'Query the Drive Activity API for audit events (edits, creates, deletes, moves, shares, etc.) scoped to a file or folder and/or time range.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      file: z.string().optional().describe('Drive file ID to query'),
+      folder: z.string().optional().describe('Drive folder ID; includes descendants'),
+      actions: z.string().optional().describe('Comma-separated action filters: edit,create,delete,move,rename,restore,comment,share,label,dlp,reference,settings'),
+      from: z.string().optional().describe('Lower activity time bound (RFC3339)'),
+      to: z.string().optional().describe('Upper activity time bound (RFC3339)'),
+      filter: z.string().optional().describe('Raw Drive Activity filter expression appended with AND'),
+      max: z.number().optional().describe('Page size (default: 10)'),
+      page: z.string().optional().describe('Page token'),
+      all: z.boolean().optional().describe('Fetch all pages'),
+      consolidate: z.boolean().optional().describe('Use Drive Activity legacy consolidation strategy'),
+      account: accountParam,
+    },
+  }, async ({ file, folder, actions, from, to, filter, max, page, all, consolidate, account }) => {
+    const args = ['drive', 'activity', 'query'];
+    if (file) args.push(`--file=${file}`);
+    if (folder) args.push(`--folder=${folder}`);
+    if (actions) args.push(`--actions=${actions}`);
+    if (from) args.push(`--from=${from}`);
+    if (to) args.push(`--to=${to}`);
+    if (filter) args.push(`--filter=${filter}`);
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (page) args.push(`--page=${page}`);
+    if (all) args.push('--all');
+    if (consolidate) args.push('--consolidate');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_audit_sharing', {
+    description: 'Audit Drive sharing without mutation — find public (anyone-with-link) or external permissions across a folder tree or a single file.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      file: z.string().optional().describe('Audit one file ID instead of a folder tree'),
+      parent: z.string().optional().describe('Folder ID to scan (default: root)'),
+      depth: z.number().optional().describe('Max folder depth (0 = unlimited; default: 2)'),
+      max: z.number().optional().describe('Max files/folders to scan (0 = unlimited; default: 500)'),
+      internalDomain: z.array(z.string()).optional().describe('Domains treated as internal (defaults to account email domain)'),
+      publicOnly: z.boolean().optional().describe('Only report anyone-with-link/public permissions'),
+      externalOnly: z.boolean().optional().describe('Only report external user/group/domain permissions'),
+      noAllDrives: z.boolean().optional().describe('My Drive only — exclude shared drives (shared drives are included by default)'),
+      account: accountParam,
+    },
+  }, async ({ file, parent, depth, max, internalDomain, publicOnly, externalOnly, noAllDrives, account }) => {
+    const args = ['drive', 'audit', 'sharing'];
+    if (file) args.push(`--file=${file}`);
+    if (parent) args.push(`--parent=${parent}`);
+    if (depth !== undefined) args.push(`--depth=${depth}`);
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (internalDomain) for (const d of internalDomain) args.push(`--internal-domain=${d}`);
+    if (publicOnly) args.push('--public-only');
+    if (externalOnly) args.push('--external-only');
+    if (noAllDrives) args.push('--no-all-drives');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_audit_user', {
+    description: 'Audit Drive sharing without mutation — find permissions granted to a specific user across a folder tree or a single file.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      user: z.string().describe('User email to audit permissions for'),
+      file: z.string().optional().describe('Audit one file ID instead of a folder tree'),
+      parent: z.string().optional().describe('Folder ID to scan (default: root)'),
+      depth: z.number().optional().describe('Max folder depth (0 = unlimited; default: 2)'),
+      max: z.number().optional().describe('Max files/folders to scan (0 = unlimited; default: 500)'),
+      noAllDrives: z.boolean().optional().describe('My Drive only — exclude shared drives (shared drives are included by default)'),
+      account: accountParam,
+    },
+  }, async ({ user, file, parent, depth, max, noAllDrives, account }) => {
+    const args = ['drive', 'audit', 'user', user];
+    if (file) args.push(`--file=${file}`);
+    if (parent) args.push(`--parent=${parent}`);
+    if (depth !== undefined) args.push(`--depth=${depth}`);
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (noAllDrives) args.push('--no-all-drives');
+    return runOrDiagnose(args, { account });
+  });
 }

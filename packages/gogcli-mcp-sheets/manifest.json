@@ -207,6 +207,74 @@
     {
       "name": "gog_sheets_reorder_tab",
       "description": "Move a tab to a specific 0-based position."
+    },
+    {
+      "name": "gog_sheets_chart_list",
+      "description": "List embedded charts in a spreadsheet."
+    },
+    {
+      "name": "gog_sheets_chart_get",
+      "description": "Get a chart's full definition (spec + position) by chart ID."
+    },
+    {
+      "name": "gog_sheets_chart_create",
+      "description": "Create an embedded chart from a JSON ChartSpec."
+    },
+    {
+      "name": "gog_sheets_chart_update",
+      "description": "Replace a chart's spec by chart ID."
+    },
+    {
+      "name": "gog_sheets_chart_delete",
+      "description": "Delete a chart by chart ID."
+    },
+    {
+      "name": "gog_sheets_table_list",
+      "description": "List Google Sheets tables in a spreadsheet."
+    },
+    {
+      "name": "gog_sheets_table_get",
+      "description": "Get a Google Sheets table by table ID."
+    },
+    {
+      "name": "gog_sheets_table_create",
+      "description": "Create a Google Sheets table over a range with typed columns."
+    },
+    {
+      "name": "gog_sheets_table_append",
+      "description": "Append data rows to a table."
+    },
+    {
+      "name": "gog_sheets_table_clear",
+      "description": "Clear all data rows from a table."
+    },
+    {
+      "name": "gog_sheets_table_delete",
+      "description": "Delete a table by table ID."
+    },
+    {
+      "name": "gog_sheets_banding_list",
+      "description": "List alternating-color banded ranges."
+    },
+    {
+      "name": "gog_sheets_banding_set",
+      "description": "Apply alternating colors to a range."
+    },
+    {
+      "name": "gog_sheets_banding_clear",
+      "description": "Remove alternating-color banding by ID or for a whole sheet."
+    },
+    {
+      "name": "gog_sheets_conditional_format_list",
+      "description": "List conditional formatting rules."
+    },
+    {
+      "name": "gog_sheets_conditional_format_add",
+      "description": "Add a conditional formatting rule to a range."
+    },
+    {
+      "name": "gog_sheets_conditional_format_clear",
+      "description": "Remove conditional formatting rules from a sheet."
     }
   ],
   "compatibility": {

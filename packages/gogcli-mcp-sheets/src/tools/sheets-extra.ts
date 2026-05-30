@@ -520,4 +520,262 @@ export function registerExtraSheetsTools(server: McpServer): void {
       { account },
     );
   });
+
+  // ---- Charts (gog 0.19.0) ----
+
+  server.registerTool('gog_sheets_chart_list', {
+    description: 'List embedded charts in a spreadsheet (chartId, type, position).',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, account }) => {
+    return runOrDiagnose(['sheets', 'chart', 'list', spreadsheetId], { account });
+  });
+
+  server.registerTool('gog_sheets_chart_get', {
+    description: 'Get the full definition (spec + position) of a single chart by its numeric chart ID.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      chartId: z.string().describe('Numeric chart ID (from gog_sheets_chart_list)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, chartId, account }) => {
+    return runOrDiagnose(['sheets', 'chart', 'get', spreadsheetId, chartId], { account });
+  });
+
+  server.registerTool('gog_sheets_chart_create', {
+    description: 'Create an embedded chart from a JSON spec. specJson is a Sheets API ChartSpec (or full EmbeddedChart) — inline or @/path/to/file.json. Anchor the chart with sheet + anchor (A1 cell), and optionally size it with width/height pixels.',
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      specJson: z.string().describe('ChartSpec or EmbeddedChart JSON (inline or @file)'),
+      sheet: z.string().optional().describe('Sheet name for the anchor (resolved to sheetId)'),
+      anchor: z.string().optional().describe('Anchor cell in A1 notation (e.g. A1, E10)'),
+      width: z.number().optional().describe('Chart width in pixels (default: 600)'),
+      height: z.number().optional().describe('Chart height in pixels (default: 371)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, specJson, sheet, anchor, width, height, account }) => {
+    const args = ['sheets', 'chart', 'create', spreadsheetId, `--spec-json=${specJson}`];
+    if (sheet) args.push(`--sheet=${sheet}`);
+    if (anchor) args.push(`--anchor=${anchor}`);
+    if (width !== undefined) args.push(`--width=${width}`);
+    if (height !== undefined) args.push(`--height=${height}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_chart_update', {
+    description: 'Replace a chart spec by chart ID. specJson is a Sheets API ChartSpec (or full EmbeddedChart) — inline or @/path/to/file.json.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      chartId: z.string().describe('Numeric chart ID to update'),
+      specJson: z.string().describe('ChartSpec or EmbeddedChart JSON (inline or @file)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, chartId, specJson, account }) => {
+    return runOrDiagnose(
+      ['sheets', 'chart', 'update', spreadsheetId, chartId, `--spec-json=${specJson}`],
+      { account },
+    );
+  });
+
+  server.registerTool('gog_sheets_chart_delete', {
+    description: 'Delete a chart by its numeric chart ID.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      chartId: z.string().describe('Numeric chart ID to delete'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, chartId, account }) => {
+    return runOrDiagnose(['sheets', 'chart', 'delete', spreadsheetId, chartId], { account });
+  });
+
+  // ---- Tables (gog 0.19.0) ----
+
+  server.registerTool('gog_sheets_table_list', {
+    description: 'List Google Sheets tables in a spreadsheet (tableId, name, range).',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, account }) => {
+    return runOrDiagnose(['sheets', 'table', 'list', spreadsheetId], { account });
+  });
+
+  server.registerTool('gog_sheets_table_get', {
+    description: 'Get a single Google Sheets table (definition + columns) by its table ID.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      tableId: z.string().describe('Table ID (from gog_sheets_table_list)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, tableId, account }) => {
+    return runOrDiagnose(['sheets', 'table', 'get', spreadsheetId, tableId], { account });
+  });
+
+  server.registerTool('gog_sheets_table_create', {
+    description: 'Create a Google Sheets table over a range. columnsJson is a JSON array of column definitions (each {columnName, columnType?}); valid columnType values: TEXT, DOUBLE, BOOLEAN, DATE, DROPDOWN. Inline JSON or @/path/to/file.json.',
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      range: z.string().describe('Range the table covers (e.g. Sheet1!A1:D20)'),
+      name: z.string().describe('Table name'),
+      columnsJson: z.string().describe('Column definitions as JSON array or @file (columnName + optional columnType)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, range, name, columnsJson, account }) => {
+    return runOrDiagnose(
+      ['sheets', 'table', 'create', spreadsheetId, range, `--name=${name}`, `--columns-json=${columnsJson}`],
+      { account },
+    );
+  });
+
+  server.registerTool('gog_sheets_table_append', {
+    description: 'Append data rows to a table. valuesJson is a JSON 2D array of row values.',
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      tableId: z.string().describe('Table ID to append to'),
+      valuesJson: z.string().describe('Values as JSON 2D array (e.g. [["a",1],["b",2]])'),
+      input: z.enum(['RAW', 'USER_ENTERED']).optional().describe('Value input option (default: USER_ENTERED)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, tableId, valuesJson, input, account }) => {
+    const args = ['sheets', 'table', 'append', spreadsheetId, tableId, `--values-json=${valuesJson}`];
+    if (input) args.push(`--input=${input}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_table_clear', {
+    description: 'Clear all data rows from a table (keeps the table and its columns).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      tableId: z.string().describe('Table ID to clear'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, tableId, account }) => {
+    return runOrDiagnose(['sheets', 'table', 'clear', spreadsheetId, tableId], { account });
+  });
+
+  server.registerTool('gog_sheets_table_delete', {
+    description: 'Delete a table by its table ID.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      tableId: z.string().describe('Table ID to delete'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, tableId, account }) => {
+    return runOrDiagnose(['sheets', 'table', 'delete', spreadsheetId, tableId], { account });
+  });
+
+  // ---- Banding / alternating colors (gog 0.19.0) ----
+
+  server.registerTool('gog_sheets_banding_list', {
+    description: 'List alternating-color banded ranges. Optionally scope to a single sheet.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      sheet: z.string().optional().describe('Only list banding from this sheet'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, sheet, account }) => {
+    const args = ['sheets', 'banding', 'list', spreadsheetId];
+    if (sheet) args.push(`--sheet=${sheet}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_banding_set', {
+    description: 'Apply alternating colors to a range. Provide rowPropertiesJson and/or columnPropertiesJson — each a Sheets API BandingProperties JSON object ({headerColor, firstBandColor, secondBandColor, footerColor}). At least one is required.',
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      range: z.string().describe('Range to band (e.g. Sheet1!A1:D20)'),
+      rowPropertiesJson: z.string().optional().describe('BandingProperties JSON for row colors'),
+      columnPropertiesJson: z.string().optional().describe('BandingProperties JSON for column colors'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, range, rowPropertiesJson, columnPropertiesJson, account }) => {
+    const args = ['sheets', 'banding', 'set', spreadsheetId, range];
+    if (rowPropertiesJson) args.push(`--row-properties-json=${rowPropertiesJson}`);
+    if (columnPropertiesJson) args.push(`--column-properties-json=${columnPropertiesJson}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_banding_clear', {
+    description: 'Remove alternating-color banding. Pass id to remove a single banded range, or all:true with sheet to remove every banding on that sheet.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      id: z.number().optional().describe('Banded range ID to remove'),
+      all: z.boolean().optional().describe('Remove all banding from the sheet (requires sheet)'),
+      sheet: z.string().optional().describe('Sheet name (used with all:true)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, id, all, sheet, account }) => {
+    const args = ['sheets', 'banding', 'clear', spreadsheetId];
+    if (id !== undefined) args.push(`--id=${id}`);
+    if (all) args.push('--all');
+    if (sheet) args.push(`--sheet=${sheet}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  // ---- Conditional formatting (gog 0.19.0) ----
+
+  server.registerTool('gog_sheets_conditional_format_list', {
+    description: 'List conditional formatting rules. Optionally scope to a single sheet.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      sheet: z.string().optional().describe('Only list rules from this sheet'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, sheet, account }) => {
+    const args = ['sheets', 'conditional-format', 'list', spreadsheetId];
+    if (sheet) args.push(`--sheet=${sheet}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_conditional_format_add', {
+    description: 'Add a conditional formatting rule to a range. type picks the condition; expr is its value/formula (omit for blank/not-blank). formatJson is the CellFormat to apply when the condition matches (inline or @file). Use formatFields to force-send zero/false fields (e.g. backgroundColor,textFormat.bold).',
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      range: z.string().describe('Range the rule applies to (e.g. Sheet1!A1:A100)'),
+      type: z.enum([
+        'text-eq', 'text-contains', 'text-starts-with', 'text-ends-with',
+        'number-eq', 'number-gt', 'number-gte', 'number-lt', 'number-lte',
+        'blank', 'not-blank', 'custom-formula',
+      ]).describe('Rule type'),
+      formatJson: z.string().describe('CellFormat JSON to apply when the condition matches (inline or @file)'),
+      expr: z.string().optional().describe('Expression value or custom formula (omit for blank/not-blank)'),
+      formatFields: z.string().optional().describe('Format field mask for force-sending zero/false fields (e.g. backgroundColor,textFormat.bold)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, range, type, formatJson, expr, formatFields, account }) => {
+    const args = ['sheets', 'conditional-format', 'add', spreadsheetId, range, `--type=${type}`, `--format-json=${formatJson}`];
+    if (expr !== undefined) args.push(`--expr=${expr}`);
+    if (formatFields) args.push(`--format-fields=${formatFields}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_conditional_format_clear', {
+    description: 'Remove conditional formatting rules from a sheet. Pass index to remove a single rule by its 0-based index, or all:true to remove every rule on the sheet.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      sheet: z.string().describe('Sheet name to clear rules from'),
+      index: z.number().optional().describe('0-based rule index to remove'),
+      all: z.boolean().optional().describe('Remove all conditional formatting rules from the sheet'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, sheet, index, all, account }) => {
+    const args = ['sheets', 'conditional-format', 'clear', spreadsheetId, `--sheet=${sheet}`];
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (all) args.push('--all');
+    return runOrDiagnose(args, { account });
+  });
 }
