@@ -153,7 +153,12 @@ For every PR, apply exactly one label so it lands in the right release-notes sec
 | *(none / unmatched)* | Other Changes            |
 | `ignore-for-release` | Hidden from notes        |
 
-The **PR title** becomes the bullet — write it like a user-facing changelog entry (`ck_set_session: refuse stale refresh tokens`), not internal shorthand (`auth tweaks`). Conventional-commit prefixes (`feat:`, `fix:`, `chore:`) are still fine in commit messages, but the PR title should read clean.
+**The PR title MUST be a Conventional Commit** (`fix(security): refuse stale refresh tokens`, `feat(sheets): add dry-run write guard`), not internal shorthand (`auth tweaks`). This matters twice over:
+
+1. **release-please reads the PR title.** Because the repo squash-merges only (see [How PRs merge](#how-prs-merge)), the PR title *becomes the squash commit's subject line* — and that subject is the only thing release-please parses to decide the version bump and CHANGELOG section. A title without a `feat:`/`fix:`/`docs:`/etc. type is invisible to release-please: it bumps nothing, adds no changelog entry, and the change never gets published. Conventional prefixes in *individual commit messages* don't help — squash discards them; only the PR title survives.
+2. **It's also the GitHub release-notes bullet** (`generate_release_notes`), sectioned by the label above. A clean, user-facing conventional title reads fine in both places.
+
+So: put the conventional type in the **title**, keep it user-facing, and apply the matching label.
 
 ### How PRs merge
 
