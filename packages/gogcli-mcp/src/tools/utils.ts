@@ -5,7 +5,8 @@ import { run } from '../runner.js';
 export type ToolResult = { content: [{ type: 'text'; text: string }] };
 
 export const accountParam = z.string().optional().describe(
-  'Google account email to use (overrides GOG_ACCOUNT env var)',
+  'Google account email to use, e.g. you@gmail.com — must be the full address, not a bare username. ' +
+  'Overrides the GOG_ACCOUNT env var. Omit to use the single configured account.',
 );
 
 // Canonical ID descriptors. Use these instead of redefining the same
