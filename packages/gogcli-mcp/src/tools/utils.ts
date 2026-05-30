@@ -108,6 +108,27 @@ const TRANSIENT_HINT =
   '\n\nThis error is often transient. Retry the same call before trying a different approach ' +
   '(do not fall back to smaller writes or row-by-row operations).';
 
+// Reduce `gog auth list --json` output to just the configured email addresses.
+// The raw JSON also carries OAuth scopes, the Google subject id, and creation
+// timestamps — none of which belong in an error surfaced to the model, and
+// which were previously echoed verbatim on every failure. Falls back to the
+// trimmed raw text if the output isn't the expected JSON shape (e.g. a plain
+// email string), so unexpected output still degrades gracefully.
+export function formatAccountList(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { accounts?: unknown };
+    if (Array.isArray(parsed?.accounts)) {
+      return parsed.accounts
+        .map((a) => (a as { email?: string })?.email)
+        .filter(Boolean)
+        .join('\n');
+    }
+  } catch {
+    // not JSON — fall through to the raw text
+  }
+  return raw.trim();
+}
+
 export async function runOrDiagnose(
   args: string[],
   options: { account?: string },
@@ -121,7 +142,7 @@ export async function runOrDiagnose(
     const isTransientError = !isAuthError && TRANSIENT_ERROR_PATTERN.test(errText);
     const hint = isAuthError ? AUTH_HINT : isTransientError ? TRANSIENT_HINT : '';
     try {
-      const accounts = await run(['auth', 'list']);
+      const accounts = formatAccountList(await run(['auth', 'list']));
       return toText(`${errText}\n\nConfigured accounts:\n${accounts}${hint}`);
     } catch {
       return toText(`${errText}${hint}`);

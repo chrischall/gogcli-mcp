@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as runner from '../../src/runner.js';
-import { runOrDiagnose, pushPaginationFlags } from '../../src/tools/utils.js';
+import { runOrDiagnose, pushPaginationFlags, formatAccountList } from '../../src/tools/utils.js';
 
 vi.mock('../../src/runner.js');
 
@@ -40,6 +40,53 @@ describe('pushPaginationFlags', () => {
   });
 });
 
+describe('formatAccountList', () => {
+  const AUTH_LIST_JSON = JSON.stringify({
+    accounts: [
+      {
+        email: 'chris.c.hall@gmail.com',
+        subject: '109876543210987654321',
+        client: 'default',
+        services: ['gmail', 'drive'],
+        scopes: ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/drive'],
+        created_at: '2026-01-02T03:04:05Z',
+      },
+    ],
+  });
+
+  it('reduces gog auth list JSON to email addresses only', () => {
+    const out = formatAccountList(AUTH_LIST_JSON);
+    expect(out).toBe('chris.c.hall@gmail.com');
+    // none of the sensitive fields leak through
+    expect(out).not.toContain('scopes');
+    expect(out).not.toContain('gmail.modify');
+    expect(out).not.toContain('109876543210987654321');
+    expect(out).not.toContain('created_at');
+  });
+
+  it('joins multiple account emails with newlines', () => {
+    const out = formatAccountList(JSON.stringify({ accounts: [{ email: 'a@x.com' }, { email: 'b@y.com' }] }));
+    expect(out).toBe('a@x.com\nb@y.com');
+  });
+
+  it('skips accounts with no email', () => {
+    const out = formatAccountList(JSON.stringify({ accounts: [{ email: 'a@x.com' }, { client: 'other' }] }));
+    expect(out).toBe('a@x.com');
+  });
+
+  it('falls back to the trimmed raw text when not parseable JSON', () => {
+    expect(formatAccountList('  user@gmail.com\n')).toBe('user@gmail.com');
+  });
+
+  it('falls back to raw text when JSON has no accounts array', () => {
+    expect(formatAccountList('{"foo":1}')).toBe('{"foo":1}');
+  });
+
+  it('falls back to raw text when parsed JSON is null', () => {
+    expect(formatAccountList('null')).toBe('null');
+  });
+});
+
 describe('runOrDiagnose', () => {
   it('returns output text on success', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"ok":true}');
@@ -56,6 +103,27 @@ describe('runOrDiagnose', () => {
       'Error: Doc not found\n\nConfigured accounts:\nuser@gmail.com',
     );
     expect(result.content[0].text).not.toContain('gog_auth_add');
+  });
+
+  it('redacts scopes/subject/timestamps from the configured-accounts block', async () => {
+    const authListJson = JSON.stringify({
+      accounts: [{
+        email: 'chris.c.hall@gmail.com',
+        subject: '109876543210987654321',
+        scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+        created_at: '2026-01-02T03:04:05Z',
+      }],
+    });
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('refusing to delete gmail draft r123 without --force (non-interactive)'))
+      .mockResolvedValueOnce(authListJson);
+    const result = await runOrDiagnose(['gmail', 'drafts', 'delete', 'r123'], {});
+    const text = result.content[0].text;
+    expect(text).toContain('Configured accounts:\nchris.c.hall@gmail.com');
+    expect(text).not.toContain('scopes');
+    expect(text).not.toContain('gmail.modify');
+    expect(text).not.toContain('109876543210987654321');
+    expect(text).not.toContain('created_at');
   });
 
   it('appends re-auth hint on 401 error', async () => {
