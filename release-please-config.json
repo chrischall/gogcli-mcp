@@ -1,150 +1,300 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "pull-request-title-pattern": "chore: release ${version}",
-  "group-pull-request-title-pattern": "chore: release ${version}",
-  "packages": {
-    ".": {
-      "release-type": "node",
-      "component": "gogcli-mcp-root"
-    },
-    "packages/gogcli-mcp": {
-      "package-name": "gogcli-mcp",
-      "release-type": "node",
-      "component": "gogcli-mcp",
-      "extra-files": [
-        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
-        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
-      ]
-    },
-    "packages/gogcli-mcp-calendar": {
-      "package-name": "gogcli-mcp-calendar",
-      "release-type": "node",
-      "component": "gogcli-mcp-calendar",
-      "extra-files": [
-        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" }
-      ]
-    },
-    "packages/gogcli-mcp-classroom": {
-      "package-name": "gogcli-mcp-classroom",
-      "release-type": "node",
-      "component": "gogcli-mcp-classroom",
-      "extra-files": [
-        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
-        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
-      ]
-    },
-    "packages/gogcli-mcp-contacts": {
-      "package-name": "gogcli-mcp-contacts",
-      "release-type": "node",
-      "component": "gogcli-mcp-contacts",
-      "extra-files": [
-        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" }
-      ]
-    },
-    "packages/gogcli-mcp-docs": {
-      "package-name": "gogcli-mcp-docs",
-      "release-type": "node",
-      "component": "gogcli-mcp-docs",
-      "extra-files": [
-        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
-        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
-      ]
-    },
-    "packages/gogcli-mcp-drive": {
-      "package-name": "gogcli-mcp-drive",
-      "release-type": "node",
-      "component": "gogcli-mcp-drive",
-      "extra-files": [
-        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
-        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
-      ]
-    },
-    "packages/gogcli-mcp-gmail": {
-      "package-name": "gogcli-mcp-gmail",
-      "release-type": "node",
-      "component": "gogcli-mcp-gmail",
-      "extra-files": [
-        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" }
-      ]
-    },
-    "packages/gogcli-mcp-sheets": {
-      "package-name": "gogcli-mcp-sheets",
-      "release-type": "node",
-      "component": "gogcli-mcp-sheets",
-      "extra-files": [
-        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
-        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
-      ]
-    },
-    "packages/gogcli-mcp-slides": {
-      "package-name": "gogcli-mcp-slides",
-      "release-type": "node",
-      "component": "gogcli-mcp-slides",
-      "extra-files": [
-        { "type": "json", "path": "manifest.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "server.json", "jsonpath": "$.packages[*].version" },
-        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.plugins[*].version" },
-        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
-      ]
-    }
-  },
-  "plugins": [
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "changelog-sections": [
     {
-      "type": "node-workspace",
-      "merge": false
+      "type": "feat",
+      "section": "Features"
     },
     {
-      "type": "linked-versions",
-      "groupName": "gogcli-mcp",
-      "components": [
-        "gogcli-mcp-root",
-        "gogcli-mcp",
-        "gogcli-mcp-calendar",
-        "gogcli-mcp-classroom",
-        "gogcli-mcp-contacts",
-        "gogcli-mcp-docs",
-        "gogcli-mcp-drive",
-        "gogcli-mcp-gmail",
-        "gogcli-mcp-sheets",
-        "gogcli-mcp-slides"
-      ]
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "revert",
+      "section": "Reverts"
+    },
+    {
+      "type": "refactor",
+      "section": "Refactor"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "Build",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "CI",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Chores",
+      "hidden": true
     }
   ],
-  "separate-pull-requests": false,
-  "include-component-in-tag": false,
-  "include-v-in-tag": true,
-  "changelog-sections": [
-    { "type": "feat", "section": "Features" },
-    { "type": "fix", "section": "Bug Fixes" },
-    { "type": "perf", "section": "Performance" },
-    { "type": "revert", "section": "Reverts" },
-    { "type": "refactor", "section": "Refactor" },
-    { "type": "docs", "section": "Documentation" },
-    { "type": "test", "section": "Tests", "hidden": true },
-    { "type": "build", "section": "Build", "hidden": true },
-    { "type": "ci", "section": "CI", "hidden": true },
-    { "type": "chore", "section": "Chores", "hidden": true }
-  ]
+  "packages": {
+    ".": {
+      "package-name": "gogcli-mcp-monorepo",
+      "release-type": "node",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp/manifest.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp/server.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp/server.json",
+          "jsonpath": "$.packages[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp/.claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp/.claude-plugin/marketplace.json",
+          "jsonpath": "$.metadata.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-calendar/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-calendar/manifest.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-classroom/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-classroom/manifest.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-classroom/server.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-classroom/server.json",
+          "jsonpath": "$.packages[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-classroom/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-classroom/.claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-classroom/.claude-plugin/marketplace.json",
+          "jsonpath": "$.metadata.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-contacts/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-contacts/manifest.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-docs/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-docs/manifest.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-docs/server.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-docs/server.json",
+          "jsonpath": "$.packages[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-docs/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-docs/.claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-docs/.claude-plugin/marketplace.json",
+          "jsonpath": "$.metadata.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-drive/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-drive/manifest.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-drive/server.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-drive/server.json",
+          "jsonpath": "$.packages[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-drive/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-drive/.claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-drive/.claude-plugin/marketplace.json",
+          "jsonpath": "$.metadata.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-gmail/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-gmail/manifest.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-sheets/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-sheets/manifest.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-sheets/server.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-sheets/server.json",
+          "jsonpath": "$.packages[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-sheets/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-sheets/.claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-sheets/.claude-plugin/marketplace.json",
+          "jsonpath": "$.metadata.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-slides/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-slides/manifest.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-slides/server.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-slides/server.json",
+          "jsonpath": "$.packages[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-slides/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-slides/.claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[*].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/gogcli-mcp-slides/.claude-plugin/marketplace.json",
+          "jsonpath": "$.metadata.version"
+        }
+      ]
+    }
+  }
 }
