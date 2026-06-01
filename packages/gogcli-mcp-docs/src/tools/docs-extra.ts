@@ -434,7 +434,7 @@ export function registerExtraDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_cell_update', {
-    description: 'Replace (or append to) the content of a single table cell, addressed by table / row / column — non-destructive to the rest of the table, unlike index-based edits that shift on every change. Provide content inline or read it from contentFile.',
+    description: 'Replace (or append to) the content of a single table cell, addressed by table / row / column — non-destructive to the rest of the table, unlike index-based edits that shift on every change. Provide content inline or read it from contentFile. Note: row/col/tableIndex are 1-based here; the sibling gog_docs_cell_style uses 0-based addressing.',
     annotations: { destructiveHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
@@ -460,7 +460,7 @@ export function registerExtraDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_cell_style', {
-    description: 'Apply background color and/or inline text styling (bold, italic, underline, colors) to one or more table cells, addressed by 0-based row/column with optional spans. Sibling to gog_docs_cell_update, which changes cell content rather than styling.',
+    description: 'Apply background color and/or inline text styling (bold, italic, underline, colors) to one or more table cells, addressed by 0-based row/column with optional spans. Sibling to gog_docs_cell_update, which changes cell content rather than styling. Note: row/col/tableIndex are 0-based here; gog_docs_cell_update uses 1-based addressing.',
     annotations: { destructiveHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
