@@ -129,11 +129,10 @@ jobs:
       # ─── modelcontextprotocol/registry — one publish per sub-package ───
       # PulseMCP auto-ingests from here weekly.
       - name: Install mcp-publisher
-        run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+        uses: chrischall/mcp-utils/.github/actions/install-mcp-publisher@main
 
       - name: Authenticate to MCP Registry (OIDC)
-        run: ./mcp-publisher login github-oidc
+        run: mcp-publisher login github-oidc
 
       - name: Publish each sub-package to MCP Registry
         run: |
@@ -141,7 +140,7 @@ jobs:
             PKG_DIR="${PKG_DIR%/}"
             if [ -f "${PKG_DIR}/server.json" ]; then
               echo "Publishing $(basename "$PKG_DIR") to MCP Registry..."
-              (cd "${PKG_DIR}" && ../../mcp-publisher publish)
+              (cd "${PKG_DIR}" && mcp-publisher publish)
             fi
           done
 
