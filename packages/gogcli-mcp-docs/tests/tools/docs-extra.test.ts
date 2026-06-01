@@ -378,6 +378,36 @@ describe('gog_docs_update', () => {
     await handlers.get('gog_docs_update')!({ docId: 'abc' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'update', 'abc'], { account: undefined });
   });
+
+  it('includes --replace-range when provided', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_update')!({ docId: 'abc', text: 'new', replaceRange: '25:40' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'update', 'abc', '--text=new', '--replace-range=25:40'],
+      { account: undefined },
+    );
+  });
+
+  it('includes --markdown when true', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_update')!({ docId: 'abc', text: '# Heading', markdown: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'update', 'abc', '--text=# Heading', '--markdown'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --markdown when false', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_update')!({ docId: 'abc', text: 'hi', markdown: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'update', 'abc', '--text=hi'],
+      { account: undefined },
+    );
+  });
 });
 
 // --- Dedicated comment tools ---
@@ -740,6 +770,160 @@ describe('gog_docs_page_layout', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_docs_page_layout')!({ docId: 'd1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'page-layout', 'd1'], { account: undefined });
+  });
+
+  it('passes --page-size, page dimensions and all margins', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_page_layout')!({
+      docId: 'd1', layout: 'pages', pageSize: 'A4', pageWidth: '8.5in', pageHeight: '11in',
+      marginTop: '1in', marginBottom: '1in', marginLeft: '0.75in', marginRight: '0.75in',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'page-layout', 'd1', '--layout=pages', '--page-size=A4', '--page-width=8.5in',
+        '--page-height=11in', '--margin-top=1in', '--margin-bottom=1in', '--margin-left=0.75in', '--margin-right=0.75in'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_cell_update', () => {
+  it('passes required --row and --col', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_cell_update')!({ docId: 'd1', row: 2, col: 3, content: 'hi' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cell-update', 'd1', '--row=2', '--col=3', '--content=hi'],
+      { account: undefined },
+    );
+  });
+
+  it('supports empty-string content, --content-file, --append, --format, --table-index and --tab', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_cell_update')!({
+      docId: 'd1', row: 1, col: 1, content: '', contentFile: '/tmp/c.md', append: true,
+      format: 'plain', tableIndex: -1, tab: 'Tab2',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cell-update', 'd1', '--row=1', '--col=1', '--content=', '--content-file=/tmp/c.md',
+        '--append', '--format=plain', '--table-index=-1', '--tab=Tab2'],
+      { account: undefined },
+    );
+  });
+
+  it('omits content when not provided and forwards account', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_cell_update')!({ docId: 'd1', row: 1, col: 2, account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cell-update', 'd1', '--row=1', '--col=2'],
+      { account: 'a@b.com' },
+    );
+  });
+});
+
+describe('gog_docs_cell_style', () => {
+  it('passes required --row and --col', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_cell_style')!({ docId: 'd1', row: 0, col: 0 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cell-style', 'd1', '--row=0', '--col=0'],
+      { account: undefined },
+    );
+  });
+
+  it('passes spans, colors and text styling', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_cell_style')!({
+      docId: 'd1', row: 1, col: 2, rowSpan: 2, colSpan: 3, backgroundColor: '#eee',
+      textColor: '#111', bold: true, italic: true, underline: true, tableIndex: 1, tab: 'T',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cell-style', 'd1', '--row=1', '--col=2', '--row-span=2', '--col-span=3',
+        '--background-color=#eee', '--text-color=#111', '--bold', '--italic', '--underline',
+        '--table-index=1', '--tab=T'],
+      { account: undefined },
+    );
+  });
+
+  it('omits text styling flags when false', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_cell_style')!({ docId: 'd1', row: 0, col: 0, bold: false, italic: false, underline: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cell-style', 'd1', '--row=0', '--col=0'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_insert_image', () => {
+  it('passes required --file and defaults', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_image')!({ docId: 'd1', file: '/tmp/pic.png' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-image', 'd1', '--file=/tmp/pic.png'],
+      { account: undefined },
+    );
+  });
+
+  it('passes placement, sizing, naming and restriction handling', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_image')!({
+      docId: 'd1', file: '/tmp/pic.png', at: '{{logo}}', width: 200, height: 100,
+      name: 'logo.png', parent: 'folder1', onRestricted: 'link', tab: 'T',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-image', 'd1', '--file=/tmp/pic.png', '--at={{logo}}', '--width=200',
+        '--height=100', '--name=logo.png', '--parent=folder1', '--on-restricted=link', '--tab=T'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_insert_person', () => {
+  it('passes required --email', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_person')!({ docId: 'd1', email: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-person', 'd1', '--email=a@b.com'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --index, --at-end and --tab', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_person')!({ docId: 'd1', email: 'a@b.com', index: 0, atEnd: true, tab: 'T' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-person', 'd1', '--email=a@b.com', '--index=0', '--at-end', '--tab=T'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_insert_date_chip', () => {
+  it('omits all optional flags by default', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_date_chip')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'insert-date-chip', 'd1'], { account: undefined });
+  });
+
+  it('passes --date, --format, --index and --at-end', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_date_chip')!({ docId: 'd1', date: '2026-06-01', format: 'iso', index: 5, atEnd: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-date-chip', 'd1', '--date=2026-06-01', '--format=iso', '--index=5', '--at-end'],
+      { account: undefined },
+    );
   });
 });
 

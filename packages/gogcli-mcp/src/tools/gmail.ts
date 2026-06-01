@@ -9,11 +9,13 @@ export function registerGmailTools(server: McpServer): void {
     inputSchema: {
       query: z.string().describe('Gmail search query'),
       max: z.number().int().optional().describe('Max results to return (default: 10)'),
+      fromContact: z.string().optional().describe('Resolve a Google Contact (name or email) to its addresses and AND a from:(addr OR addr) clause onto the query — saves looking the contact up first when you only know who, not which address.'),
       account: accountParam,
     },
-  }, async ({ query, max, account }) => {
+  }, async ({ query, max, fromContact, account }) => {
     const args = ['gmail', 'search', query];
     if (max !== undefined) args.push(`--max=${max}`);
+    if (fromContact) args.push(`--from-contact=${fromContact}`);
     return runOrDiagnose(args, { account });
   });
 

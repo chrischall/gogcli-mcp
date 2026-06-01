@@ -206,6 +206,26 @@
     {
       "name": "gog_docs_insert_table",
       "description": "Insert a native Google Docs table with given dimensions, optionally populated from a JSON 2D array."
+    },
+    {
+      "name": "gog_docs_cell_update",
+      "description": "Replace or append the content of a single table cell, addressed by table/row/column."
+    },
+    {
+      "name": "gog_docs_cell_style",
+      "description": "Apply background color and inline text styling to one or more table cells."
+    },
+    {
+      "name": "gog_docs_insert_image",
+      "description": "Upload a local image and insert it into a Google Doc."
+    },
+    {
+      "name": "gog_docs_insert_person",
+      "description": "Insert a native Google Docs person smart chip for an email address."
+    },
+    {
+      "name": "gog_docs_insert_date_chip",
+      "description": "Insert a native Google Docs date smart chip."
     }
   ],
   "compatibility": {
