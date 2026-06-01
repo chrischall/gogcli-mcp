@@ -129,7 +129,7 @@ jobs:
       # ─── modelcontextprotocol/registry — one publish per sub-package ───
       # PulseMCP auto-ingests from here weekly.
       - name: Install mcp-publisher
-        uses: chrischall/mcp-utils/.github/actions/install-mcp-publisher@main
+        uses: chrischall/mcp-utils/.github/actions/install-mcp-publisher@v0.2.1
 
       - name: Authenticate to MCP Registry (OIDC)
         run: mcp-publisher login github-oidc
