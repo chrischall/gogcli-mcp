@@ -149,6 +149,43 @@ describe('gog_sheets_insert', () => {
     await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, after: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '0'], { account: undefined });
   });
+
+  it('passes --inherit-from-before=true when set', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 5, after: true, inheritFromBefore: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '6', '--after', '--inherit-from-before=true'], { account: undefined });
+  });
+
+  it('passes --inherit-from-before=false to inherit from the following neighbor', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 5, after: true, inheritFromBefore: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '6', '--after', '--inherit-from-before=false'], { account: undefined });
+  });
+});
+
+describe('gog_sheets_copy_paste', () => {
+  it('calls runOrDiagnose with required source/dest', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_copy_paste')!({ spreadsheetId: 'sid', source: 'Sheet1!A2:H71', dest: 'Sheet1!A2:H120' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', 'sid', 'Sheet1!A2:H71', 'Sheet1!A2:H120'], { account: undefined });
+  });
+
+  it('appends --type and --transpose when provided', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_copy_paste')!({ spreadsheetId: 'sid', source: 'A1:B2', dest: 'D1:E2', type: 'FORMULA', transpose: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', 'sid', 'A1:B2', 'D1:E2', '--type=FORMULA', '--transpose'], { account: undefined });
+  });
+
+  it('forwards account', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_copy_paste')!({ spreadsheetId: 'sid', source: 'A1', dest: 'B1', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', 'sid', 'A1', 'B1'], { account: 'a@b.com' });
+  });
 });
 
 // 8. merge

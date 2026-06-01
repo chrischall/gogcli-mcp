@@ -30,6 +30,13 @@ describe('gog_gmail_search', () => {
     const result = await handlers.get('gog_gmail_search')!({ query: 'test' });
     expect(result.content[0].text).toBe('Error: Search failed');
   });
+
+  it('appends --from-contact flag when provided', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_gmail_search')!({ query: 'subject:invoice', fromContact: 'Alice' });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'subject:invoice', '--from-contact=Alice'], { account: undefined });
+  });
 });
 
 describe('gog_gmail_get', () => {

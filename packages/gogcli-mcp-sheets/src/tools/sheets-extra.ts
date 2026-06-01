@@ -178,9 +178,10 @@ export function registerExtraSheetsTools(server: McpServer): void {
       start: z.number().describe('Start index (0-based)'),
       count: z.number().optional().describe('Number of rows/columns to insert (default: 1)'),
       after: z.boolean().optional().describe('Insert after the start index instead of before. With after:true the new dimension lands at start+1, leaving the existing dimension at start untouched.'),
+      inheritFromBefore: z.boolean().optional().describe('Inherit number format / styling from the row/column before the insertion. Defaults to true with after:true, false otherwise; pass false to inherit from the row/column after the insertion instead. Cannot inherit from before when inserting at the first row/column.'),
       account: accountParam,
     },
-  }, async ({ spreadsheetId, sheet, dimension, start, count, after, account }) => {
+  }, async ({ spreadsheetId, sheet, dimension, start, count, after, inheritFromBefore, account }) => {
     // The underlying `gog sheets insert` treats `start` as 1-based with `--after` shifting +1.
     // To honor our 0-based `start` and make `after:true` actually shift the insertion to start+1
     // (issue #42), we send `start+1` when `after:true`. With after:false the CLI's `start-1`
@@ -189,6 +190,25 @@ export function registerExtraSheetsTools(server: McpServer): void {
     const args = ['sheets', 'insert', spreadsheetId, sheet, dimension, String(effectiveStart)];
     if (count !== undefined) args.push(`--count=${count}`);
     if (after) args.push('--after');
+    if (inheritFromBefore !== undefined) args.push(`--inherit-from-before=${inheritFromBefore}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_copy_paste', {
+    description: 'Copy a source range\'s values/formulas/format to a destination range via the Sheets CopyPasteRequest. A destination larger than the source tiles the source to fill it — the canonical way to fill formulas down or across with relative references adjusted (aliases: fill, copy-range). Use type to control what is pasted (NORMAL pastes everything; FORMULA fills formulas with adjusted references; VALUES/FORMAT/etc. paste only that aspect).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      source: z.string().describe('Source range (e.g. Sheet1!A2:H71)'),
+      dest: z.string().describe('Destination range (e.g. Sheet1!A2:H120). Larger than the source tiles/fills it.'),
+      type: z.enum(['NORMAL', 'VALUES', 'FORMAT', 'FORMULA', 'NO_BORDERS', 'DATA_VALIDATION', 'CONDITIONAL_FORMATTING']).optional().describe('Paste type (default: NORMAL pastes everything)'),
+      transpose: z.boolean().optional().describe('Paste transposed (swap rows and columns)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, source, dest, type, transpose, account }) => {
+    const args = ['sheets', 'copy-paste', spreadsheetId, source, dest];
+    if (type) args.push(`--type=${type}`);
+    if (transpose) args.push('--transpose');
     return runOrDiagnose(args, { account });
   });
 

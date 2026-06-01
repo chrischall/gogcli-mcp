@@ -253,15 +253,19 @@ export function registerExtraDocsTools(server: McpServer): void {
       text: z.string().optional().describe('Text content to write'),
       file: z.string().optional().describe('Path to a file whose content to use'),
       index: z.number().optional().describe('Character index to insert at'),
+      replaceRange: z.string().optional().describe('Replace a UTF-16 Docs API range START:END (e.g. "25:40") instead of inserting at index. The replacement text/file content overwrites the range.'),
+      markdown: z.boolean().optional().describe('Convert markdown in the text/file to Google Docs formatting (headings, bold, lists, etc.) instead of inserting it literally.'),
       tabId: z.string().optional().describe('Tab ID for multi-tab docs'),
       pageless: z.boolean().optional().describe('Set document to pageless format'),
       account: accountParam,
     },
-  }, async ({ docId, text, file, index, tabId, pageless, account }) => {
+  }, async ({ docId, text, file, index, replaceRange, markdown, tabId, pageless, account }) => {
     const args = ['docs', 'update', docId];
     if (text) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
     if (index !== undefined) args.push(`--index=${index}`);
+    if (replaceRange) args.push(`--replace-range=${replaceRange}`);
+    if (markdown) args.push('--markdown');
     if (tabId) args.push(`--tab-id=${tabId}`);
     if (pageless) args.push('--pageless');
     return runOrDiagnose(args, { account });
@@ -385,11 +389,25 @@ export function registerExtraDocsTools(server: McpServer): void {
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       layout: z.enum(['pageless', 'pages']).optional().describe('Page layout (default: pageless)'),
+      pageSize: z.enum(['A4', 'A5', 'Letter', 'Legal', 'Tabloid']).optional().describe('Named page size preset (only applies in paged layout)'),
+      pageWidth: z.string().optional().describe('Page width (points by default; supports pt, in, cm, mm — e.g. "8.5in")'),
+      pageHeight: z.string().optional().describe('Page height (points by default; supports pt, in, cm, mm)'),
+      marginTop: z.string().optional().describe('Top page margin (points by default; supports pt, in, cm, mm)'),
+      marginBottom: z.string().optional().describe('Bottom page margin (points by default; supports pt, in, cm, mm)'),
+      marginLeft: z.string().optional().describe('Left page margin (points by default; supports pt, in, cm, mm)'),
+      marginRight: z.string().optional().describe('Right page margin (points by default; supports pt, in, cm, mm)'),
       account: accountParam,
     },
-  }, async ({ docId, layout, account }) => {
+  }, async ({ docId, layout, pageSize, pageWidth, pageHeight, marginTop, marginBottom, marginLeft, marginRight, account }) => {
     const args = ['docs', 'page-layout', docId];
     if (layout) args.push(`--layout=${layout}`);
+    if (pageSize) args.push(`--page-size=${pageSize}`);
+    if (pageWidth) args.push(`--page-width=${pageWidth}`);
+    if (pageHeight) args.push(`--page-height=${pageHeight}`);
+    if (marginTop) args.push(`--margin-top=${marginTop}`);
+    if (marginBottom) args.push(`--margin-bottom=${marginBottom}`);
+    if (marginLeft) args.push(`--margin-left=${marginLeft}`);
+    if (marginRight) args.push(`--margin-right=${marginRight}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -411,6 +429,132 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
     if (valuesJson !== undefined) args.push(`--values-json=${valuesJson}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_cell_update', {
+    description: 'Replace (or append to) the content of a single table cell, addressed by table / row / column — non-destructive to the rest of the table, unlike index-based edits that shift on every change. Provide content inline or read it from contentFile.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      row: z.number().int().describe('1-based row number'),
+      col: z.number().int().describe('1-based column number'),
+      content: z.string().optional().describe('Replacement content (omit when using contentFile)'),
+      contentFile: z.string().optional().describe('Read replacement content from a file instead of content'),
+      append: z.boolean().optional().describe('Append inside the cell instead of replacing existing cell content'),
+      format: z.enum(['markdown', 'plain']).optional().describe('Content format (default: markdown)'),
+      tableIndex: z.number().int().optional().describe('1-based table index in document order; negative counts from the end (default: 1)'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, row, col, content, contentFile, append, format, tableIndex, tab, account }) => {
+    const args = ['docs', 'cell-update', docId, `--row=${row}`, `--col=${col}`];
+    if (content !== undefined) args.push(`--content=${content}`);
+    if (contentFile) args.push(`--content-file=${contentFile}`);
+    if (append) args.push('--append');
+    if (format) args.push(`--format=${format}`);
+    if (tableIndex !== undefined) args.push(`--table-index=${tableIndex}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_cell_style', {
+    description: 'Apply background color and/or inline text styling (bold, italic, underline, colors) to one or more table cells, addressed by 0-based row/column with optional spans. Sibling to gog_docs_cell_update, which changes cell content rather than styling.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      row: z.number().int().describe('0-based row number'),
+      col: z.number().int().describe('0-based column number'),
+      rowSpan: z.number().int().optional().describe('Number of rows to style (default: 1)'),
+      colSpan: z.number().int().optional().describe('Number of columns to style (default: 1)'),
+      backgroundColor: z.string().optional().describe('Cell background color as #RRGGBB or #RGB'),
+      textColor: z.string().optional().describe('Text color as #RRGGBB or #RGB'),
+      bold: z.boolean().optional().describe('Set cell text bold'),
+      italic: z.boolean().optional().describe('Set cell text italic'),
+      underline: z.boolean().optional().describe('Set cell text underline'),
+      tableIndex: z.number().int().optional().describe('0-based table index in document order (default: 0)'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, row, col, rowSpan, colSpan, backgroundColor, textColor, bold, italic, underline, tableIndex, tab, account }) => {
+    const args = ['docs', 'cell-style', docId, `--row=${row}`, `--col=${col}`];
+    if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
+    if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
+    if (backgroundColor) args.push(`--background-color=${backgroundColor}`);
+    if (textColor) args.push(`--text-color=${textColor}`);
+    if (bold) args.push('--bold');
+    if (italic) args.push('--italic');
+    if (underline) args.push('--underline');
+    if (tableIndex !== undefined) args.push(`--table-index=${tableIndex}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_insert_image', {
+    description: 'Upload a local image (PNG, JPEG, or GIF) and insert it into a Google Doc. The image is uploaded to Drive, temporarily shared so Docs can fetch it, inserted, then the public permission is revoked. Replaces placeholder text (at) or appends at end-of-doc.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      file: z.string().describe('Local PNG, JPEG, or GIF image to upload and insert'),
+      at: z.string().optional().describe('Placeholder text to replace, or "end" to append (default: end)'),
+      width: z.number().optional().describe('Image width in points (default: 468)'),
+      height: z.number().optional().describe('Image height in points (optional; width-only preserves aspect ratio)'),
+      name: z.string().optional().describe('Override the uploaded Drive filename'),
+      parent: z.string().optional().describe('Drive folder ID for the uploaded image'),
+      onRestricted: z.enum(['error', 'link']).optional().describe('If public sharing is blocked: error out, or fall back to a linked image (default: error)'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, file, at, width, height, name, parent, onRestricted, tab, account }) => {
+    const args = ['docs', 'insert-image', docId, `--file=${file}`];
+    if (at) args.push(`--at=${at}`);
+    if (width !== undefined) args.push(`--width=${width}`);
+    if (height !== undefined) args.push(`--height=${height}`);
+    if (name) args.push(`--name=${name}`);
+    if (parent) args.push(`--parent=${parent}`);
+    if (onRestricted) args.push(`--on-restricted=${onRestricted}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_insert_person', {
+    description: 'Insert a native Google Docs person smart chip (the interactive @-mention chip) for an email address, at a character index or end-of-doc.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      email: z.string().describe('Email address for the person chip'),
+      index: z.number().int().optional().describe('Character index to insert at. Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Insert at end-of-doc/tab (mutually exclusive with index)'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, email, index, atEnd, tab, account }) => {
+    const args = ['docs', 'insert-person', docId, `--email=${email}`];
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_insert_date_chip', {
+    description: 'Insert a native Google Docs date smart chip, at a character index or end-of-doc.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      date: z.string().optional().describe('Date to insert as YYYY-MM-DD (default: today)'),
+      format: z.enum(['abbreviated', 'full', 'iso']).optional().describe('Date display format (default: abbreviated)'),
+      index: z.number().int().optional().describe('Character index to insert at. Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Insert at end-of-doc/tab (mutually exclusive with index)'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, date, format, index, atEnd, tab, account }) => {
+    const args = ['docs', 'insert-date-chip', docId];
+    if (date) args.push(`--date=${date}`);
+    if (format) args.push(`--format=${format}`);
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
