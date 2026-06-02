@@ -208,7 +208,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_thread_get', {
-    description: 'Get a Gmail thread with all messages. For long threads that overflow context, use latestN to fetch only the most recent messages and/or snippetsOnly for a lightweight per-message headers+snippet view; sanitizeContent strips raw payloads/HTML and is the biggest size reducer when you do need bodies.',
+    description: 'Get a Gmail thread with all messages. For long threads that overflow context, use latestN to fetch only the most recent messages and/or snippetsOnly for a lightweight per-message headers+snippet view; sanitizeContent strips raw payloads/HTML and is the biggest size reducer when you do need bodies. Note each message carries two distinct id concepts: the top-level `id` (the Gmail short hex message id — pass THIS as replyToMessageId to reply) and the `Message-Id` header (the RFC822 `<…@host>` value used in In-Reply-To/References) — don\'t confuse either with the `threadId`. To reply to the thread itself, pass the thread\'s id as replyToThreadId on gog_gmail_drafts_create.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       threadId: z.string().describe('Gmail thread ID'),
@@ -371,9 +371,10 @@ export function registerExtraGmailTools(server: McpServer): void {
     subject: z.string().describe('Subject'),
     body: z.string().describe('Body (plain text)'),
     bodyHtml: z.string().optional().describe('Body (HTML; optional)'),
-    replyToMessageId: z.string().optional().describe('Reply to Gmail message ID (sets In-Reply-To/References and thread)'),
+    replyToMessageId: z.string().optional().describe('Reply to a specific Gmail MESSAGE id — the short hex `id` field from gog_gmail_get / _search / _thread_get (e.g. 19e7593d77fd9636), NOT a thread id and NOT the RFC822 `<…@host>` Message-Id header. Anchors In-Reply-To/References to that exact message. To reply to a thread when you don\'t know the latest message, use replyToThreadId instead. If both are given, replyToMessageId wins.'),
+    replyToThreadId: z.string().optional().describe('Reply to a Gmail THREAD id — the wrapper resolves the thread\'s most recent message and anchors the reply (In-Reply-To/References) to it. This is what "reply to this thread" almost always means. Mutually exclusive with replyToMessageId (which wins if both are set). Thread ids and message ids are both 16-hex strings and easy to confuse — use this param, not replyToMessageId, when the id came from a thread.'),
     replyTo: z.string().optional().describe('Reply-To header address'),
-    quote: z.boolean().optional().describe('Include quoted original message in reply (requires replyToMessageId)'),
+    quote: z.boolean().optional().describe('Include quoted original message in reply (requires replyToMessageId or replyToThreadId)'),
     attach: z.array(z.string()).optional().describe('Attachment file paths (repeatable)'),
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     omitRecipients: z.boolean().optional().describe('Create the draft with no recipients even if to/cc/bcc are supplied — an accidental-send guard. Populate recipients in a later update before sending.'),
@@ -412,6 +413,40 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (f.from) args.push(`--from=${f.from}`);
   }
 
+  // Resolve the effective reply target for a draft write. A draft can only
+  // thread off a specific MESSAGE id, but callers usually have a THREAD id and
+  // mean "reply to this thread". gog's `drafts create/update` has no --thread-id
+  // (unlike `gmail send`), so we resolve thread -> latest message here and pass
+  // that message id — gog then sets In-Reply-To/References from its RFC822
+  // Message-Id. replyToMessageId always wins; when only a thread id is given we
+  // fetch the thread and reply to its most recent message. Returns either the
+  // resolved message id (possibly undefined when neither was supplied) or an
+  // error ToolResult that the handler surfaces instead of writing a
+  // mis-threaded draft. (When upstream adds --thread-id to drafts — openclaw/
+  // gogcli#673 — this can pass it through directly with no MCP surface change.)
+  async function resolveReplyTarget(
+    replyToMessageId: string | undefined,
+    replyToThreadId: string | undefined,
+    account: string | undefined,
+  ): Promise<{ messageId?: string } | { error: ToolResult }> {
+    if (replyToMessageId) return { messageId: replyToMessageId };
+    if (!replyToThreadId) return { messageId: undefined };
+    const threadResult = await runOrDiagnose(['gmail', 'thread', 'get', replyToThreadId], { account });
+    let parsed: { thread?: { messages?: GmailMessage[] } };
+    try {
+      parsed = JSON.parse(threadResult.content[0].text) as { thread?: { messages?: GmailMessage[] } };
+    } catch {
+      // Non-JSON output means the thread fetch itself errored — surface it.
+      return { error: threadResult };
+    }
+    const messages = parsed.thread?.messages;
+    const latest = Array.isArray(messages) ? messages[messages.length - 1] : undefined;
+    if (!latest?.id) {
+      return { error: toText(`Error: thread ${replyToThreadId} has no message to reply to`) };
+    }
+    return { messageId: latest.id };
+  }
+
   // Run a draft write, then — when returnFull is set — re-fetch the stored
   // draft so the caller can verify subject/body/recipients persisted without a
   // separate gog_gmail_drafts_get round trip. For updates the id is known up
@@ -441,24 +476,28 @@ export function registerExtraGmailTools(server: McpServer): void {
   }
 
   server.registerTool('gog_gmail_drafts_create', {
-    description: 'Create a new Gmail draft. Recipients (to/cc/bcc) are optional; omit them (or set omitRecipients) to create a recipient-less draft as an accidental-send guard.',
+    description: 'Create a new Gmail draft. Recipients (to/cc/bcc) are optional; omit them (or set omitRecipients) to create a recipient-less draft as an accidental-send guard. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) — don\'t pass a thread id into replyToMessageId, which mis-threads silently.',
     inputSchema: draftWriteSchema,
-  }, async ({ account, returnFull, ...flags }) => {
+  }, async ({ account, returnFull, replyToThreadId, ...flags }) => {
+    const resolved = await resolveReplyTarget(flags.replyToMessageId, replyToThreadId, account);
+    if ('error' in resolved) return resolved.error;
     const args = ['gmail', 'drafts', 'create'];
-    appendDraftFlags(args, flags);
+    appendDraftFlags(args, { ...flags, replyToMessageId: resolved.messageId });
     return writeDraft(args, account, returnFull);
   });
 
   server.registerTool('gog_gmail_drafts_update', {
-    description: 'Update an existing Gmail draft.',
+    description: 'Update an existing Gmail draft. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) over passing a thread id into replyToMessageId.',
     annotations: { destructiveHint: true },
     inputSchema: {
       draftId: z.string().describe('Draft ID'),
       ...draftWriteSchema,
     },
-  }, async ({ draftId, account, returnFull, ...flags }) => {
+  }, async ({ draftId, account, returnFull, replyToThreadId, ...flags }) => {
+    const resolved = await resolveReplyTarget(flags.replyToMessageId, replyToThreadId, account);
+    if ('error' in resolved) return resolved.error;
     const args = ['gmail', 'drafts', 'update', draftId];
-    appendDraftFlags(args, flags);
+    appendDraftFlags(args, { ...flags, replyToMessageId: resolved.messageId });
     return writeDraft(args, account, returnFull, draftId);
   });
 
