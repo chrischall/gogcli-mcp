@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.1](https://github.com/chrischall/gogcli-mcp/compare/v2.4.0...v2.4.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* **gmail:** add replyToThreadId so draft replies thread to the right message ([#75](https://github.com/chrischall/gogcli-mcp/issues/75)) ([0de0ac6](https://github.com/chrischall/gogcli-mcp/commit/0de0ac6fb8d95763d741049b30c4a1e7ade56ac3))
+
 ## [2.4.0](https://github.com/chrischall/gogcli-mcp/compare/v2.3.0...v2.4.0) (2026-06-01)
 
 

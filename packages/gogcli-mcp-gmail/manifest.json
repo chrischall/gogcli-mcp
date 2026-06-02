@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "gogcli-mcp-gmail",
   "display_name": "gogcli (Gmail)",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Extended Gmail for Claude via gogcli — auth + full Gmail support (threads, labels, drafts, attachments, forward, autoreply, bulk operations)",
   "author": {
     "name": "Chris Hall",
