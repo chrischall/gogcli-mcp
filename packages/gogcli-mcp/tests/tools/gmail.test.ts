@@ -96,6 +96,25 @@ describe('gog_gmail_send', () => {
     );
   });
 
+  it('appends one --attach flag per file path', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_gmail_send')!({
+      to: 'bob@example.com',
+      subject: 'Evidence',
+      body: 'See attached',
+      attach: ['/tmp/shot.png', '/tmp/notes.pdf'],
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', 'send',
+        '--to=bob@example.com', '--subject=Evidence', '--body=See attached',
+        '--attach=/tmp/shot.png', '--attach=/tmp/notes.pdf',
+      ],
+      { account: undefined },
+    );
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Send failed'));
     const handlers = setupHandlers();
