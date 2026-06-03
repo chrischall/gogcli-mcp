@@ -44,14 +44,16 @@ export function registerGmailTools(server: McpServer): void {
       bcc: z.string().optional().describe('BCC recipients, comma-separated'),
       replyToMessageId: z.string().optional().describe('Message ID to reply to'),
       threadId: z.string().optional().describe('Thread ID to reply within'),
+      attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Each file is read on the gog server (not this client), base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment. Keep the total under Gmail\'s ~35 MB inline-upload limit.'),
       account: accountParam,
     },
-  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, account }) => {
+  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, attach, account }) => {
     const args = ['gmail', 'send', `--to=${to}`, `--subject=${subject}`, `--body=${body}`];
     if (cc) args.push(`--cc=${cc}`);
     if (bcc) args.push(`--bcc=${bcc}`);
     if (replyToMessageId) args.push(`--reply-to-message-id=${replyToMessageId}`);
     if (threadId) args.push(`--thread-id=${threadId}`);
+    if (attach) for (const path of attach) args.push(`--attach=${path}`);
     return runOrDiagnose(args, { account });
   });
 

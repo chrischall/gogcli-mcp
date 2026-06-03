@@ -375,7 +375,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyToThreadId: z.string().optional().describe('Reply to a Gmail THREAD id — the wrapper resolves the thread\'s most recent message and anchors the reply (In-Reply-To/References) to it. This is what "reply to this thread" almost always means. Mutually exclusive with replyToMessageId (which wins if both are set). Thread ids and message ids are both 16-hex strings and easy to confuse — use this param, not replyToMessageId, when the id came from a thread.'),
     replyTo: z.string().optional().describe('Reply-To header address'),
     quote: z.boolean().optional().describe('Include quoted original message in reply (requires replyToMessageId or replyToThreadId)'),
-    attach: z.array(z.string()).optional().describe('Attachment file paths (repeatable)'),
+    attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Read on the gog server, base64-encoded with a MIME type inferred from the extension. NOTE on update: gog rebuilds the draft from scratch, so omitting attach on gog_gmail_drafts_update DROPS any files already attached — re-supply the full list to keep them (replace semantics, not merge).'),
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     omitRecipients: z.boolean().optional().describe('Create the draft with no recipients even if to/cc/bcc are supplied — an accidental-send guard. Populate recipients in a later update before sending.'),
     returnFull: z.boolean().optional().describe('After writing, re-fetch and return the full stored draft (subject, body, recipients) instead of just the write acknowledgement. Costs one extra read.'),
@@ -487,7 +487,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_drafts_update', {
-    description: 'Update an existing Gmail draft. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) over passing a thread id into replyToMessageId.',
+    description: 'Update an existing Gmail draft. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) over passing a thread id into replyToMessageId. Attachments use replace semantics: gog rebuilds the draft, so omitting attach drops any previously-attached files — re-supply them to keep them.',
     annotations: { destructiveHint: true },
     inputSchema: {
       draftId: z.string().describe('Draft ID'),
