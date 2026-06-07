@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.0](https://github.com/chrischall/gogcli-mcp/compare/v2.4.1...v2.5.0) (2026-06-07)
+
+
+### Features
+
+* **gmail:** add attachments (attach) to gog_gmail_send ([#80](https://github.com/chrischall/gogcli-mcp/issues/80)) ([2155f91](https://github.com/chrischall/gogcli-mcp/commit/2155f9115b81e22cfd9b762c7ba0f69f73b42d04))
+* **tools:** catch up to gog v0.22.0 — drafts threading, code style, comment --since ([#85](https://github.com/chrischall/gogcli-mcp/issues/85)) ([3f455d6](https://github.com/chrischall/gogcli-mcp/commit/3f455d61eebc0a729adbcaacb7bc4e16d3ddacfe))
+
 ## [2.4.1](https://github.com/chrischall/gogcli-mcp/compare/v2.4.0...v2.4.1) (2026-06-02)
 
 
