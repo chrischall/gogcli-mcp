@@ -446,6 +446,53 @@ describe('gog_docs_comments_list', () => {
       { account: 'other@gmail.com' },
     );
   });
+
+  // gog 0.22.0 adds --since; pagination flags were already supported by gog.
+  it('includes --since and pagination flags when set', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_comments_list')!({
+      docId: 'abc', includeResolved: true, since: '2026-06-01T00:00:00Z', max: 10, page: 'tok', all: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'comments', 'list', 'abc', '--include-resolved', '--since=2026-06-01T00:00:00Z', '--max=10', '--page=tok', '--all'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_table_column_width', () => {
+  it('sets a fixed column width', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_table_column_width')!({
+      docId: 'd1', col: 2, width: 120, tableIndex: 1, tab: 'Body',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'table-column-width', 'd1', '--col=2', '--width=120', '--table-index=1', '--tab=Body'],
+      { account: undefined },
+    );
+  });
+
+  it('resets all columns to even distribution', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_table_column_width')!({ docId: 'd1', evenlyDistributed: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'table-column-width', 'd1', '--evenly-distributed'],
+      { account: undefined },
+    );
+  });
+
+  it('forwards account override', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_table_column_width')!({ docId: 'd1', col: 1, width: 80, account: 'other@gmail.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'table-column-width', 'd1', '--col=1', '--width=80'],
+      { account: 'other@gmail.com' },
+    );
+  });
 });
 
 describe('gog_docs_comments_get', () => {
@@ -715,6 +762,17 @@ describe('gog_docs_format', () => {
     await handlers.get('gog_docs_format')!({ docId: 'd1', headingLevel: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['docs', 'format', 'd1', '--heading-level=0'],
+      { account: undefined },
+    );
+  });
+
+  // gog 0.22.0
+  it('passes --code when code is true', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({ docId: 'd1', match: 'snippet', code: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--match=snippet', '--code'],
       { account: undefined },
     );
   });

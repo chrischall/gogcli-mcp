@@ -545,83 +545,38 @@ describe('gog_gmail_drafts_create', () => {
   });
 });
 
-describe('gmail draft reply threading (replyToThreadId resolution)', () => {
-  const threadJson = (ids: (string | undefined)[]) =>
-    toText(JSON.stringify({ thread: { messages: ids.map((id) => (id ? { id } : {})) } }));
-
-  it('resolves replyToThreadId to the thread\'s latest message id on create', async () => {
-    vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
-      if (args[1] === 'thread' && args[2] === 'get') return threadJson(['m1', 'm2', 'mLatest']);
-      return toText('{"draftId":"d1"}');
-    });
+describe('gmail draft reply threading (native --thread-id)', () => {
+  it('passes replyToThreadId straight through as --thread-id on create (no thread fetch)', async () => {
     await handlers.get('gog_gmail_drafts_create')!({
       subject: 'Re: roof', body: 'Sounds good', replyToThreadId: '19dffe06f9668b28', account: 'me@x.com',
     });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'thread', 'get', '19dffe06f9668b28'], { account: 'me@x.com' });
+    // gog resolves the thread's latest-message headers itself — no extra fetch.
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'create', '--subject=Re: roof', '--body=Sounds good', '--reply-to-message-id=mLatest'],
+      ['gmail', 'drafts', 'create', '--subject=Re: roof', '--body=Sounds good', '--thread-id=19dffe06f9668b28'],
       { account: 'me@x.com' },
     );
   });
 
-  it('resolves replyToThreadId on update too', async () => {
-    vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
-      if (args[1] === 'thread' && args[2] === 'get') return threadJson(['a', 'b']);
-      return toText('{"draftId":"d1"}');
-    });
+  it('passes replyToThreadId as --thread-id on update', async () => {
     await handlers.get('gog_gmail_drafts_update')!({
       draftId: 'd1', subject: 'S', body: 'B', replyToThreadId: 't1',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', 'd1', '--subject=S', '--body=B', '--reply-to-message-id=b'],
+      ['gmail', 'drafts', 'update', 'd1', '--subject=S', '--body=B', '--thread-id=t1'],
       { account: undefined },
     );
   });
 
-  it('replyToMessageId wins when both ids are supplied (no thread fetch)', async () => {
+  it('replyToMessageId wins when both ids are supplied (no --thread-id)', async () => {
     await handlers.get('gog_gmail_drafts_create')!({
       subject: 'S', body: 'B', replyToMessageId: 'mExplicit', replyToThreadId: 't1',
     });
-    // Only the create call — the thread was never fetched.
     expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'create', '--subject=S', '--body=B', '--reply-to-message-id=mExplicit'],
       { account: undefined },
     );
-  });
-
-  it('surfaces the thread-fetch error and does not write a mis-threaded draft', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('Error: thread t1 not found'));
-    const result = await handlers.get('gog_gmail_drafts_create')!({
-      subject: 'S', body: 'B', replyToThreadId: 't1',
-    });
-    expect(result.content[0].text).toBe('Error: thread t1 not found');
-    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1); // only the thread fetch; no create
-  });
-
-  it('errors when the thread has no message to reply to', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText(JSON.stringify({ thread: { messages: [] } })));
-    const result = await handlers.get('gog_gmail_drafts_create')!({
-      subject: 'S', body: 'B', replyToThreadId: 't1',
-    });
-    expect(result.content[0].text).toBe('Error: thread t1 has no message to reply to');
-    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
-  });
-
-  it('errors when the thread payload has no messages array', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('{}'));
-    const result = await handlers.get('gog_gmail_drafts_create')!({
-      subject: 'S', body: 'B', replyToThreadId: 't1',
-    });
-    expect(result.content[0].text).toBe('Error: thread t1 has no message to reply to');
-  });
-
-  it('errors when the latest message has no id', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(threadJson(['m1', undefined]));
-    const result = await handlers.get('gog_gmail_drafts_create')!({
-      subject: 'S', body: 'B', replyToThreadId: 't1',
-    });
-    expect(result.content[0].text).toBe('Error: thread t1 has no message to reply to');
   });
 });
 
@@ -657,6 +612,16 @@ describe('gog_gmail_drafts_update', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'update', 'd1', '--subject=S', '--body=B'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --clear-attachments when clearAttachments is true', async () => {
+    await handlers.get('gog_gmail_drafts_update')!({
+      draftId: 'd1', subject: 'S', body: 'B', clearAttachments: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'update', 'd1', '--subject=S', '--body=B', '--clear-attachments'],
       { account: undefined },
     );
   });

@@ -372,10 +372,10 @@ export function registerExtraGmailTools(server: McpServer): void {
     body: z.string().describe('Body (plain text)'),
     bodyHtml: z.string().optional().describe('Body (HTML; optional)'),
     replyToMessageId: z.string().optional().describe('Reply to a specific Gmail MESSAGE id — the short hex `id` field from gog_gmail_get / _search / _thread_get (e.g. 19e7593d77fd9636), NOT a thread id and NOT the RFC822 `<…@host>` Message-Id header. Anchors In-Reply-To/References to that exact message. To reply to a thread when you don\'t know the latest message, use replyToThreadId instead. If both are given, replyToMessageId wins.'),
-    replyToThreadId: z.string().optional().describe('Reply to a Gmail THREAD id — the wrapper resolves the thread\'s most recent message and anchors the reply (In-Reply-To/References) to it. This is what "reply to this thread" almost always means. Mutually exclusive with replyToMessageId (which wins if both are set). Thread ids and message ids are both 16-hex strings and easy to confuse — use this param, not replyToMessageId, when the id came from a thread.'),
+    replyToThreadId: z.string().optional().describe('Reply to a Gmail THREAD id — passed to gog as --thread-id, which threads the draft using the thread\'s latest-message headers (In-Reply-To/References). This is what "reply to this thread" almost always means. Mutually exclusive with replyToMessageId (which wins if both are set). Thread ids and message ids are both 16-hex strings and easy to confuse — use this param, not replyToMessageId, when the id came from a thread.'),
     replyTo: z.string().optional().describe('Reply-To header address'),
     quote: z.boolean().optional().describe('Include quoted original message in reply (requires replyToMessageId or replyToThreadId)'),
-    attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Read on the gog server, base64-encoded with a MIME type inferred from the extension. NOTE on update: gog rebuilds the draft from scratch, so omitting attach on gog_gmail_drafts_update DROPS any files already attached — re-supply the full list to keep them (replace semantics, not merge).'),
+    attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Read on the gog server, base64-encoded with a MIME type inferred from the extension. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all).'),
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     omitRecipients: z.boolean().optional().describe('Create the draft with no recipients even if to/cc/bcc are supplied — an accidental-send guard. Populate recipients in a later update before sending.'),
     returnFull: z.boolean().optional().describe('After writing, re-fetch and return the full stored draft (subject, body, recipients) instead of just the write acknowledgement. Costs one extra read.'),
@@ -390,6 +390,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     body: string;
     bodyHtml?: string;
     replyToMessageId?: string;
+    replyToThreadId?: string;
     replyTo?: string;
     quote?: boolean;
     attach?: string[];
@@ -406,45 +407,15 @@ export function registerExtraGmailTools(server: McpServer): void {
     args.push(`--subject=${f.subject}`);
     args.push(`--body=${f.body}`);
     if (f.bodyHtml) args.push(`--body-html=${f.bodyHtml}`);
+    // A draft can reply to a specific message (--reply-to-message-id) or thread
+    // off the latest message in a thread (--thread-id, which gog resolves
+    // server-side). replyToMessageId wins when both are supplied.
     if (f.replyToMessageId) args.push(`--reply-to-message-id=${f.replyToMessageId}`);
+    else if (f.replyToThreadId) args.push(`--thread-id=${f.replyToThreadId}`);
     if (f.replyTo) args.push(`--reply-to=${f.replyTo}`);
     if (f.quote) args.push('--quote');
     if (f.attach) for (const path of f.attach) args.push(`--attach=${path}`);
     if (f.from) args.push(`--from=${f.from}`);
-  }
-
-  // Resolve the effective reply target for a draft write. A draft can only
-  // thread off a specific MESSAGE id, but callers usually have a THREAD id and
-  // mean "reply to this thread". gog's `drafts create/update` has no --thread-id
-  // (unlike `gmail send`), so we resolve thread -> latest message here and pass
-  // that message id — gog then sets In-Reply-To/References from its RFC822
-  // Message-Id. replyToMessageId always wins; when only a thread id is given we
-  // fetch the thread and reply to its most recent message. Returns either the
-  // resolved message id (possibly undefined when neither was supplied) or an
-  // error ToolResult that the handler surfaces instead of writing a
-  // mis-threaded draft. (When upstream adds --thread-id to drafts — openclaw/
-  // gogcli#673 — this can pass it through directly with no MCP surface change.)
-  async function resolveReplyTarget(
-    replyToMessageId: string | undefined,
-    replyToThreadId: string | undefined,
-    account: string | undefined,
-  ): Promise<{ messageId?: string } | { error: ToolResult }> {
-    if (replyToMessageId) return { messageId: replyToMessageId };
-    if (!replyToThreadId) return { messageId: undefined };
-    const threadResult = await runOrDiagnose(['gmail', 'thread', 'get', replyToThreadId], { account });
-    let parsed: { thread?: { messages?: GmailMessage[] } };
-    try {
-      parsed = JSON.parse(threadResult.content[0].text) as { thread?: { messages?: GmailMessage[] } };
-    } catch {
-      // Non-JSON output means the thread fetch itself errored — surface it.
-      return { error: threadResult };
-    }
-    const messages = parsed.thread?.messages;
-    const latest = Array.isArray(messages) ? messages[messages.length - 1] : undefined;
-    if (!latest?.id) {
-      return { error: toText(`Error: thread ${replyToThreadId} has no message to reply to`) };
-    }
-    return { messageId: latest.id };
   }
 
   // Run a draft write, then — when returnFull is set — re-fetch the stored
@@ -478,26 +449,24 @@ export function registerExtraGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_drafts_create', {
     description: 'Create a new Gmail draft. Recipients (to/cc/bcc) are optional; omit them (or set omitRecipients) to create a recipient-less draft as an accidental-send guard. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) — don\'t pass a thread id into replyToMessageId, which mis-threads silently.',
     inputSchema: draftWriteSchema,
-  }, async ({ account, returnFull, replyToThreadId, ...flags }) => {
-    const resolved = await resolveReplyTarget(flags.replyToMessageId, replyToThreadId, account);
-    if ('error' in resolved) return resolved.error;
+  }, async ({ account, returnFull, ...flags }) => {
     const args = ['gmail', 'drafts', 'create'];
-    appendDraftFlags(args, { ...flags, replyToMessageId: resolved.messageId });
+    appendDraftFlags(args, flags);
     return writeDraft(args, account, returnFull);
   });
 
   server.registerTool('gog_gmail_drafts_update', {
-    description: 'Update an existing Gmail draft. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) over passing a thread id into replyToMessageId. Attachments use replace semantics: gog rebuilds the draft, so omitting attach drops any previously-attached files — re-supply them to keep them.',
+    description: 'Update an existing Gmail draft. For replies, prefer replyToThreadId (threads off the thread\'s latest message) or replyToMessageId (a specific message) over passing a thread id into replyToMessageId. Attachment semantics: supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them; set clearAttachments to remove all.',
     annotations: { destructiveHint: true },
     inputSchema: {
       draftId: z.string().describe('Draft ID'),
       ...draftWriteSchema,
+      clearAttachments: z.boolean().optional().describe('Remove all attachments from the draft. By default, omitting attach preserves the draft\'s existing attachments; this intentionally clears them. Ignored if attach is also supplied (attach replaces).'),
     },
-  }, async ({ draftId, account, returnFull, replyToThreadId, ...flags }) => {
-    const resolved = await resolveReplyTarget(flags.replyToMessageId, replyToThreadId, account);
-    if ('error' in resolved) return resolved.error;
+  }, async ({ draftId, account, returnFull, clearAttachments, ...flags }) => {
     const args = ['gmail', 'drafts', 'update', draftId];
-    appendDraftFlags(args, { ...flags, replyToMessageId: resolved.messageId });
+    appendDraftFlags(args, flags);
+    if (clearAttachments) args.push('--clear-attachments');
     return writeDraft(args, account, returnFull, draftId);
   });
 

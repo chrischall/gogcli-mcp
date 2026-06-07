@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_download', {
@@ -122,10 +122,17 @@ export function registerExtraDriveTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       fileId: z.string().describe('File ID'),
+      since: z.string().optional().describe('Only return comments modified at or after this RFC3339 timestamp (e.g. 2026-06-01T00:00:00Z)'),
+      includeQuoted: z.boolean().optional().describe('Include the quoted content each comment is anchored to'),
+      ...paginationParams,
       account: accountParam,
     },
-  }, async ({ fileId, account }) => {
-    return runOrDiagnose(['drive', 'comments', 'list', fileId], { account });
+  }, async ({ fileId, since, includeQuoted, max, page, all, account }) => {
+    const args = ['drive', 'comments', 'list', fileId];
+    if (since) args.push(`--since=${since}`);
+    if (includeQuoted) args.push('--include-quoted');
+    pushPaginationFlags(args, { max, page, all });
+    return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_drive_comments_get', {
