@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_copy', {
@@ -103,6 +103,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       noUnderline: z.boolean().optional().describe('Clear underline'),
       strikethrough: z.boolean().optional().describe('Set strikethrough'),
       noStrikethrough: z.boolean().optional().describe('Clear strikethrough'),
+      code: z.boolean().optional().describe('Apply code style (Courier New monospace + grey background)'),
       alignment: z.enum(['left', 'center', 'right', 'justify', 'start', 'end', 'justified']).optional().describe('Paragraph alignment'),
       lineSpacing: z.number().optional().describe('Line spacing percentage (e.g. 100 for single, 150 for 1.5x, 200 for double)'),
       headingLevel: z.number().int().optional().describe('Set paragraph named style to HEADING_1..HEADING_6 (shortcut for namedStyle=HEADING_N)'),
@@ -124,6 +125,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       italic?: boolean; noItalic?: boolean;
       underline?: boolean; noUnderline?: boolean;
       strikethrough?: boolean; noStrikethrough?: boolean;
+      code?: boolean;
       alignment?: string;
       lineSpacing?: number;
       headingLevel?: number;
@@ -147,6 +149,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (a.noUnderline) argv.push('--no-underline');
     if (a.strikethrough) argv.push('--strikethrough');
     if (a.noStrikethrough) argv.push('--no-strikethrough');
+    if (a.code) argv.push('--code');
     if (a.alignment) argv.push(`--alignment=${a.alignment}`);
     if (a.lineSpacing !== undefined) argv.push(`--line-spacing=${a.lineSpacing}`);
     if (a.headingLevel !== undefined) argv.push(`--heading-level=${a.headingLevel}`);
@@ -279,11 +282,15 @@ export function registerExtraDocsTools(server: McpServer): void {
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       includeResolved: z.boolean().optional().describe('Include resolved comments (default: false, open only)'),
+      since: z.string().optional().describe('Only return comments modified at or after this RFC3339 timestamp (e.g. 2026-06-01T00:00:00Z)'),
+      ...paginationParams,
       account: accountParam,
     },
-  }, async ({ docId, includeResolved, account }) => {
+  }, async ({ docId, includeResolved, since, max, page, all, account }) => {
     const args = ['docs', 'comments', 'list', docId];
     if (includeResolved) args.push('--include-resolved');
+    if (since) args.push(`--since=${since}`);
+    pushPaginationFlags(args, { max, page, all });
     return runOrDiagnose(args, { account });
   });
 
@@ -363,6 +370,28 @@ export function registerExtraDocsTools(server: McpServer): void {
     },
   }, async ({ docId, commentId, account }) => {
     return runOrDiagnose(['docs', 'comments', 'reopen', docId, commentId], { account });
+  });
+
+  server.registerTool('gog_docs_table_column_width', {
+    description: 'Set a fixed width (in points) for a table column, or reset columns to Docs-managed even distribution. Target the table by 1-based index in document order (negative counts from the end) and the column by 1-based number. Pass evenlyDistributed without col to reset every column in the table.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      col: z.number().int().optional().describe('1-based column number. Omit with evenlyDistributed to reset all columns.'),
+      width: z.number().optional().describe('Fixed column width in points (minimum 5pt). Mutually exclusive with evenlyDistributed.'),
+      evenlyDistributed: z.boolean().optional().describe('Reset the selected column (or all columns when col is omitted) to Docs-managed equal width.'),
+      tableIndex: z.number().int().optional().describe('1-based table index in document order; negative counts from the end (default: 1)'),
+      tab: z.string().optional().describe('Target tab title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, col, width, evenlyDistributed, tableIndex, tab, account }) => {
+    const args = ['docs', 'table-column-width', docId];
+    if (col !== undefined) args.push(`--col=${col}`);
+    if (width !== undefined) args.push(`--width=${width}`);
+    if (evenlyDistributed) args.push('--evenly-distributed');
+    if (tableIndex !== undefined) args.push(`--table-index=${tableIndex}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_docs_insert_page_break', {

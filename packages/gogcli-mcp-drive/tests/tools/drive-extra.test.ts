@@ -152,6 +152,17 @@ describe('gog_drive_comments_list', () => {
       { account: undefined },
     );
   });
+
+  // gog 0.22.0 adds --since; --include-quoted and pagination were already supported by gog.
+  it('includes --since, --include-quoted and pagination flags when set', async () => {
+    await handlers.get('gog_drive_comments_list')!({
+      fileId: 'f1', since: '2026-06-01T00:00:00Z', includeQuoted: true, max: 5, page: 'tok', all: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'comments', 'list', 'f1', '--since=2026-06-01T00:00:00Z', '--include-quoted', '--max=5', '--page=tok', '--all'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_drive_comments_get', () => {

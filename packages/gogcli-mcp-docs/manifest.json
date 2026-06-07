@@ -196,6 +196,10 @@
       "description": "Reopen a previously resolved comment."
     },
     {
+      "name": "gog_docs_table_column_width",
+      "description": "Set a fixed table column width in points, or reset columns to Docs-managed even distribution."
+    },
+    {
       "name": "gog_docs_insert_page_break",
       "description": "Insert a Google Docs page break at a given index or at end-of-doc — the only path for multi-page deliverables."
     },
