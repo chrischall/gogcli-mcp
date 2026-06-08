@@ -8,6 +8,8 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   return {
     ...actual,
     runOrDiagnose: vi.fn(),
+    run: vi.fn(),
+    diagnose: vi.fn(),
   };
 });
 
@@ -980,11 +982,82 @@ describe('gog_sheets_table_clear', () => {
 
 // 35. table delete
 describe('gog_sheets_table_delete', () => {
-  it('calls runOrDiagnose with correct args', async () => {
+  it('keep_data=false deletes table (and data) directly with --force', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
-    await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'delete', 'sid', 't1'], { account: undefined });
+    await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1', keep_data: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'delete', 'sid', 't1', '--force'], { account: undefined });
+    expect(lib.run).not.toHaveBeenCalled();
+  });
+
+  it('keep_data (default) reads formulas, deletes, then restores the data', async () => {
+    vi.mocked(lib.run)
+      .mockResolvedValueOnce('{"table":{"a1":"Sheet1!A1:C2"}}')                     // table get
+      .mockResolvedValueOnce('{"values":[["Name","City","N"],["A","NYC","=1+1"]]}') // get --render=FORMULA
+      .mockResolvedValueOnce('{"deleted":{"tableId":"t1"}}')               // table delete
+      .mockResolvedValueOnce('{"updatedRows":2}');                         // update restore
+    const handlers = setupHandlers();
+    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1', account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(1, ['sheets', 'table', 'get', 'sid', 't1'], { account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(2, ['sheets', 'get', 'sid', 'Sheet1!A1:C2', '--render=FORMULA'], { account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(3, ['sheets', 'table', 'delete', 'sid', 't1', '--force'], { account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(4, ['sheets', 'update', 'sid', 'Sheet1!A1:C2', '--values-json=[["Name","City","N"],["A","NYC","=1+1"]]'], { account: 'a@b.com' });
+    expect(res.content[0].text).toContain('2 row');
+    expect(res.content[0].text).toContain('Sheet1!A1:C2');
+  });
+
+  it('keep_data with an empty table skips the restore write', async () => {
+    vi.mocked(lib.run)
+      .mockResolvedValueOnce('{"table":{"a1":"Sheet1!A1:C1"}}')   // table get
+      .mockResolvedValueOnce('{}')                        // get --render=FORMULA, no values key
+      .mockResolvedValueOnce('{"deleted":{}}');           // table delete
+    const handlers = setupHandlers();
+    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    expect(lib.run).toHaveBeenCalledTimes(3); // no update call
+    expect(res.content[0].text).toContain('0 row');
+  });
+
+  it('aborts without deleting when the table has no a1 range', async () => {
+    vi.mocked(lib.run).mockResolvedValueOnce('{"name":"Repro"}'); // table get, no a1
+    vi.mocked(lib.diagnose).mockResolvedValue(toText('diagnosed'));
+    const handlers = setupHandlers();
+    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    expect(lib.run).toHaveBeenCalledTimes(1); // only the read, no delete
+    expect(res.content[0].text).toBe('diagnosed');
+  });
+
+  it('aborts without deleting when the pre-delete read fails', async () => {
+    vi.mocked(lib.run).mockRejectedValueOnce(new Error('read boom')); // table get throws
+    vi.mocked(lib.diagnose).mockResolvedValue(toText('diagnosed read'));
+    const handlers = setupHandlers();
+    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    expect(lib.run).toHaveBeenCalledTimes(1);
+    expect(res.content[0].text).toBe('diagnosed read');
+  });
+
+  it('diagnoses a delete failure leaving the data intact', async () => {
+    vi.mocked(lib.run)
+      .mockResolvedValueOnce('{"table":{"a1":"Sheet1!A1:C2"}}')
+      .mockResolvedValueOnce('{"values":[["A"]]}')
+      .mockRejectedValueOnce(new Error('delete boom')); // table delete throws
+    vi.mocked(lib.diagnose).mockResolvedValue(toText('diagnosed delete'));
+    const handlers = setupHandlers();
+    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    expect(res.content[0].text).toBe('diagnosed delete');
+  });
+
+  it('surfaces the read-back values when restore fails after deletion', async () => {
+    vi.mocked(lib.run)
+      .mockResolvedValueOnce('{"table":{"a1":"Sheet1!A1:C2"}}')
+      .mockResolvedValueOnce('{"values":[["keepme"]]}')
+      .mockResolvedValueOnce('{"deleted":{}}')
+      .mockRejectedValueOnce(new Error('restore boom')); // update throws
+    const handlers = setupHandlers();
+    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    const text = res.content[0].text;
+    expect(text).toContain('restoring its data FAILED');
+    expect(text).toContain('keepme'); // the data is handed back for manual recovery
+    expect(text).toContain('restore boom');
   });
 });
 
@@ -1144,5 +1217,72 @@ describe('gog_sheets_conditional_format_clear', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_conditional_format_clear')!({ spreadsheetId: 'sid', sheet: 'Data', all: false, index: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', 'sid', '--sheet=Data', '--index=2'], { account: undefined });
+  });
+});
+
+// 49. snapshot (backup before destructive edits)
+describe('gog_sheets_snapshot', () => {
+  it('copies the spreadsheet to a named backup', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_snapshot')!({ spreadsheetId: 'sid', name: 'Backup A' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', 'sid', 'Backup A'], { account: undefined });
+  });
+
+  it('includes --parent and forwards account', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_snapshot')!({ spreadsheetId: 'sid', name: 'Backup A', parent: 'folder1', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', 'sid', 'Backup A', '--parent=folder1'], { account: 'a@b.com' });
+  });
+});
+
+// 50. set-links (batch HYPERLINK writer)
+describe('gog_sheets_set_links', () => {
+  it('writes one HYPERLINK formula per cell', async () => {
+    vi.mocked(lib.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    const res = await handlers.get('gog_sheets_set_links')!({
+      spreadsheetId: 'sid',
+      links: [
+        { cell: 'Sheet1!B2', url: 'https://x.test/a', text: 'Act A' },
+        { cell: 'Sheet1!B3', url: 'https://x.test/b', text: 'Act B' },
+      ],
+      account: 'a@b.com',
+    });
+    expect(lib.run).toHaveBeenNthCalledWith(1, ['sheets', 'update', 'sid', 'Sheet1!B2', '--values-json=[["=HYPERLINK(\\"https://x.test/a\\",\\"Act A\\")"]]'], { account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(2, ['sheets', 'update', 'sid', 'Sheet1!B3', '--values-json=[["=HYPERLINK(\\"https://x.test/b\\",\\"Act B\\")"]]'], { account: 'a@b.com' });
+    expect(res.content[0].text).toContain('2 of 2');
+  });
+
+  it('escapes double quotes in url and text', async () => {
+    vi.mocked(lib.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_set_links')!({
+      spreadsheetId: 'sid',
+      links: [{ cell: 'A1', url: 'https://x.test/?q="hi"', text: 'Say "hi"' }],
+    });
+    const arg = vi.mocked(lib.run).mock.calls[0][0][4] as string;
+    const formula = JSON.parse(arg.replace('--values-json=', ''))[0][0];
+    // Sheets formulas escape a double-quote by doubling it
+    expect(formula).toBe('=HYPERLINK("https://x.test/?q=""hi""","Say ""hi""")');
+  });
+
+  it('reports per-cell failures without aborting the rest', async () => {
+    vi.mocked(lib.run)
+      .mockResolvedValueOnce('{}')                       // first cell ok
+      .mockRejectedValueOnce(new Error('cell boom'));    // second cell fails
+    const handlers = setupHandlers();
+    const res = await handlers.get('gog_sheets_set_links')!({
+      spreadsheetId: 'sid',
+      links: [
+        { cell: 'A1', url: 'u1', text: 't1' },
+        { cell: 'A2', url: 'u2', text: 't2' },
+      ],
+    });
+    const text = res.content[0].text;
+    expect(text).toContain('1 of 2');
+    expect(text).toContain('A2');
+    expect(text).toContain('cell boom');
   });
 });

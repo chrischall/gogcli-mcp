@@ -181,6 +181,10 @@
       "description": "List hyperlinks in a range."
     },
     {
+      "name": "gog_sheets_set_links",
+      "description": "Set hyperlinks on one or more cells in a single call by writing =HYPERLINK(url, text) formulas."
+    },
+    {
       "name": "gog_sheets_named_ranges_list",
       "description": "List all named ranges in a spreadsheet."
     },
@@ -254,7 +258,11 @@
     },
     {
       "name": "gog_sheets_table_delete",
-      "description": "Delete a table by table ID."
+      "description": "Delete a Google Sheets table. By default preserves the table's cell values and formulas (emulates \"Convert to range\"); set keep_data=false to also wipe the data."
+    },
+    {
+      "name": "gog_sheets_snapshot",
+      "description": "Make a backup copy of an entire spreadsheet before a risky/destructive edit. Returns the copy's file ID and URL."
     },
     {
       "name": "gog_sheets_banding_list",

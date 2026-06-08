@@ -18,6 +18,7 @@ export type { RunOptions, Spawner } from './runner.js';
 export {
   accountParam,
   runOrDiagnose,
+  diagnose,
   toText,
   toError,
   ids,
