@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, toText, toError } from '../../../gogcli-mcp/src/lib.js';
 
 // Convert a CSS-style hex color ("#FFF5D9", "#FD9", "FFF5D9") to the
 // {red, green, blue} 0-1 float triple that Sheets API CellFormat expects.
@@ -683,15 +683,66 @@ export function registerExtraSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_table_delete', {
-    description: 'Delete a table by its table ID.',
+    description:
+      'Delete a Google Sheets table. WARNING: the underlying `gog`/Sheets behaviour is that deleting a table also DESTROYS every cell value in the table range — not just the table styling/columns. ' +
+      'By default this tool prevents that data loss by emulating the Sheets UI\'s "Convert to range": it reads the table\'s cells (values AND formulas) first, deletes the table, then restores the data into the now-plain range. ' +
+      'Formatting, banding, and data-validation dropdowns are still lost (gog cannot round-trip those yet). ' +
+      'Set keep_data=false to delete the table AND wipe its cell data (the raw destructive behaviour). To preserve everything, snapshot the whole spreadsheet first with gog_sheets_snapshot.',
     annotations: { destructiveHint: true },
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID to delete'),
+      keep_data: z.boolean().optional().describe(
+        'Default true: preserve the table\'s cell values and formulas (read → delete → restore), emulating "Convert to range". Set false to delete the table AND its data.',
+      ),
       account: accountParam,
     },
-  }, async ({ spreadsheetId, tableId, account }) => {
-    return runOrDiagnose(['sheets', 'table', 'delete', spreadsheetId, tableId], { account });
+  }, async ({ spreadsheetId, tableId, keep_data = true, account }) => {
+    if (!keep_data) {
+      // Raw destructive delete: removes the table and its cell data. --force is
+      // required because gog refuses table deletes non-interactively without it.
+      return runOrDiagnose(['sheets', 'table', 'delete', spreadsheetId, tableId, '--force'], { account });
+    }
+
+    // keep_data: emulate "Convert to range". Read the full table range with
+    // formulas intact, then delete, then write the data back. If we can't read
+    // the data first, refuse to delete — losing the backup is the whole risk.
+    let range: string;
+    let values: unknown[][];
+    try {
+      // `gog sheets table get` wraps the table under a top-level "table" key.
+      const parsed = JSON.parse(await run(['sheets', 'table', 'get', spreadsheetId, tableId], { account }));
+      range = parsed.table?.a1;
+      if (!range) throw new Error(`could not determine the table's range (no "a1" in table get output) for table ${tableId}`);
+      const read = JSON.parse(await run(['sheets', 'get', spreadsheetId, range, '--render=FORMULA'], { account }));
+      values = read.values ?? [];
+    } catch (err) {
+      return diagnose(err);
+    }
+
+    try {
+      await run(['sheets', 'table', 'delete', spreadsheetId, tableId, '--force'], { account });
+    } catch (err) {
+      // Table not deleted; cell data is untouched.
+      return diagnose(err);
+    }
+
+    if (values.length > 0) {
+      try {
+        await run(['sheets', 'update', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`], { account });
+      } catch (err) {
+        // The table is already gone but the restore write failed. Hand the
+        // read-back data straight back so it can be re-applied manually rather
+        // than silently lost.
+        return toText(
+          `Table ${tableId} was deleted, but restoring its data FAILED — re-apply the values below manually.\n\n` +
+          `Range: ${range}\nValues: ${JSON.stringify(values)}\n\n` +
+          `${toError(err).content[0].text}`,
+        );
+      }
+    }
+
+    return toText(`Deleted table ${tableId} and preserved ${values.length} row(s) of data (values + formulas) in ${range}.`);
   });
 
   // ---- Banding / alternating colors (gog 0.19.0) ----
@@ -797,5 +848,54 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (index !== undefined) args.push(`--index=${index}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_snapshot', {
+    description:
+      'Make a backup copy of an entire spreadsheet — a one-call safety snapshot to take BEFORE a risky or destructive edit (table delete, bulk clear, large rewrite). ' +
+      'Returns the new copy\'s file ID and URL; if the edit goes wrong, restore by copying the backup back or sharing it. The copy is independent — later edits to the original do not affect it.',
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID to back up'),
+      name: z.string().describe('Name for the backup copy, e.g. "Budget — backup before table delete"'),
+      parent: z.string().optional().describe('Destination folder ID for the copy (default: same location as the original)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, name, parent, account }) => {
+    const args = ['drive', 'copy', spreadsheetId, name];
+    if (parent) args.push(`--parent=${parent}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_set_links', {
+    description:
+      'Set hyperlinks on one or more cells in a single call by writing =HYPERLINK(url, text) formulas. ' +
+      'Each link targets one cell (cells may be non-contiguous); the tool issues one write per cell and reports a per-cell success/failure summary. ' +
+      'Note: a HYPERLINK cell holds exactly one link — for multiple links in one cell, gog has no support yet (tracked upstream).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      links: z.array(z.object({
+        cell: z.string().describe('Target cell in A1 notation, e.g. Sheet1!B2'),
+        url: z.string().describe('URL the cell links to'),
+        text: z.string().describe('Display text for the link'),
+      })).describe('Cells to turn into HYPERLINK formulas'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, links, account }) => {
+    // Sheets formula string literals escape a double-quote by doubling it.
+    const esc = (s: string): string => s.replace(/"/g, '""');
+    const results: string[] = [];
+    let ok = 0;
+    for (const { cell, url, text } of links) {
+      const formula = `=HYPERLINK("${esc(url)}","${esc(text)}")`;
+      try {
+        await run(['sheets', 'update', spreadsheetId, cell, `--values-json=${JSON.stringify([[formula]])}`], { account });
+        results.push(`✓ ${cell}`);
+        ok++;
+      } catch (err) {
+        results.push(`✗ ${cell}: ${toError(err).content[0].text}`);
+      }
+    }
+    return toText(`Set ${ok} of ${links.length} hyperlink(s):\n${results.join('\n')}`);
   });
 }

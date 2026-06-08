@@ -51,6 +51,8 @@ Extended Google Sheets MCP server via [gogcli](https://github.com/openclaw/gogcl
 | `gog_sheets_notes` | Read cell notes |
 | `gog_sheets_update_note` | Add or update cell notes |
 | `gog_sheets_links` | List hyperlinks in a range |
+| `gog_sheets_set_links` | Set =HYPERLINK() cells in one call (batch) |
+| `gog_sheets_snapshot` | Back up a whole spreadsheet before a risky edit |
 | `gog_sheets_named_ranges_list` | List named ranges |
 | `gog_sheets_named_ranges_get` | Get a named range |
 | `gog_sheets_named_ranges_add` | Create a named range |

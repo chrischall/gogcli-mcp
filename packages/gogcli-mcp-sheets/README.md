@@ -72,6 +72,8 @@ Plus 5 auth tools and 8 base Sheets tools (get, update, append, clear, metadata,
 | `gog_sheets_notes` | Read cell notes |
 | `gog_sheets_update_note` | Add or update cell notes |
 | `gog_sheets_links` | List hyperlinks in a range |
+| `gog_sheets_set_links` | Set =HYPERLINK() cells in one call (batch) |
+| `gog_sheets_snapshot` | Back up a whole spreadsheet before a risky edit |
 
 ## License
 
