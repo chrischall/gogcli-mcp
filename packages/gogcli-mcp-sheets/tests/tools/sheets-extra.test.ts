@@ -114,11 +114,23 @@ describe('gog_sheets_freeze', () => {
 
 // 7. insert
 describe('gog_sheets_insert', () => {
-  it('calls runOrDiagnose with required args', async () => {
+  it('shifts our 0-based start by +1 so the new dimension lands AT start (after:false)', async () => {
+    // gog's positional <start> is 1-based and, without --after, it inserts *before* it,
+    // so API start_index = positional - 1. To land at our 0-based start we send start+1.
+    // start=5 → positional 6 → API start_index 5.
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'Sheet1', dimension: 'ROWS', start: 5 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'Sheet1', 'ROWS', '5'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'Sheet1', 'ROWS', '6'], { account: undefined });
+  });
+
+  it('bug: start=1, after:false inserts before 0-based index 1 (new row 2), not at the top', async () => {
+    // Regression for the reported "range.startIndex must be set" / wrong-placement bug.
+    // start=1 → positional 2 → gog API start_index 1 (insert before the 2nd row).
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 1, count: 1 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '2', '--count=1'], { account: undefined });
   });
 
   it('shifts start by +1 when after:true so the new dimension lands AFTER start', async () => {
@@ -142,14 +154,17 @@ describe('gog_sheets_insert', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, count: 0 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '0', '--count=0'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '1', '--count=0'], { account: undefined });
   });
 
-  it('omits --after and does not shift start when after:false', async () => {
+  it('omits --after and sends start+1 so start=0 inserts at the very top (after:false)', async () => {
+    // start=0 → positional 1 → gog API start_index 0. Sending positional 0 would make gog
+    // reject the call outright ("start must be >= 1"), so the +1 shift is what makes a
+    // top-of-sheet insert reachable at all.
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, after: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '0'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '1'], { account: undefined });
   });
 
   it('passes --inherit-from-before=true when set', async () => {

@@ -182,11 +182,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, sheet, dimension, start, count, after, inheritFromBefore, account }) => {
-    // The underlying `gog sheets insert` treats `start` as 1-based with `--after` shifting +1.
-    // To honor our 0-based `start` and make `after:true` actually shift the insertion to start+1
-    // (issue #42), we send `start+1` when `after:true`. With after:false the CLI's `start-1`
-    // conversion lands the insertion at our 0-based start.
-    const effectiveStart = after ? start + 1 : start;
+    // gog's positional `<start>` is 1-based, and it rejects 0 ("start must be >= 1").
+    // Without --after it inserts *before* the position, so API start_index = positional - 1;
+    // with --after it inserts *after*, so API start_index = positional. Our `start` is 0-based,
+    // and the contract is: after:false lands at start_index=start, after:true at start_index=start+1.
+    // Both cases reduce to sending positional = start + 1 (issue #42 + the off-by-one this fixes).
+    const effectiveStart = start + 1;
     const args = ['sheets', 'insert', spreadsheetId, sheet, dimension, String(effectiveStart)];
     if (count !== undefined) args.push(`--count=${count}`);
     if (after) args.push('--after');
