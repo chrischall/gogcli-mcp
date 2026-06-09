@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.6.0](https://github.com/chrischall/gogcli-mcp/compare/v2.5.0...v2.6.0) (2026-06-09)
+
+
+### Features
+
+* **sheets:** preserve data on table delete + add snapshot & batch-link tools ([#86](https://github.com/chrischall/gogcli-mcp/issues/86)) ([4ba775b](https://github.com/chrischall/gogcli-mcp/commit/4ba775b932bb768ebea2f470db80933a9de50209))
+* **tools:** catch up to gog v0.23.0 — table-delete guard, link/anchor docs flags, new tools ([#88](https://github.com/chrischall/gogcli-mcp/issues/88)) ([d8cb5b6](https://github.com/chrischall/gogcli-mcp/commit/d8cb5b61938619ea4d0e95b7f07649fe285d531f))
+
 ## [2.5.0](https://github.com/chrischall/gogcli-mcp/compare/v2.4.1...v2.5.0) (2026-06-07)
 
 
