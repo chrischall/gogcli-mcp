@@ -22,13 +22,22 @@ export function registerExtraDocsTools(server: McpServer): void {
     annotations: { destructiveHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
-      start: z.number().describe('Start index (character position, 1-based)'),
-      end: z.number().describe('End index (character position, exclusive)'),
+      start: z.number().optional().describe('Start index (character position, 1-based). Required unless `at` is set.'),
+      end: z.number().optional().describe('End index (character position, exclusive). Required unless `at` is set.'),
+      at: z.string().optional().describe('Anchor by literal text and delete that matched range, instead of supplying start/end indices.'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tabId: z.string().optional().describe('Tab ID to delete content from (for multi-tab docs)'),
       account: accountParam,
     },
-  }, async ({ docId, start, end, tabId, account }) => {
-    const args = ['docs', 'delete', `--start=${start}`, `--end=${end}`, docId];
+  }, async ({ docId, start, end, at, occurrence, matchCase, tabId, account }) => {
+    const args = ['docs', 'delete'];
+    if (start !== undefined) args.push(`--start=${start}`);
+    if (end !== undefined) args.push(`--end=${end}`);
+    args.push(docId);
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
     if (tabId) args.push(`--tab-id=${tabId}`);
     return runOrDiagnose(args, { account });
   });
@@ -104,6 +113,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       strikethrough: z.boolean().optional().describe('Set strikethrough'),
       noStrikethrough: z.boolean().optional().describe('Clear strikethrough'),
       code: z.boolean().optional().describe('Apply code style (Courier New monospace + grey background)'),
+      link: z.string().optional().describe('Set a hyperlink on the matched text. Accepts http://, https://, mailto:, #bookmarkId, or #heading-slug.'),
+      noLink: z.boolean().optional().describe('Clear any hyperlink on the matched text'),
       alignment: z.enum(['left', 'center', 'right', 'justify', 'start', 'end', 'justified']).optional().describe('Paragraph alignment'),
       lineSpacing: z.number().optional().describe('Line spacing percentage (e.g. 100 for single, 150 for 1.5x, 200 for double)'),
       headingLevel: z.number().int().optional().describe('Set paragraph named style to HEADING_1..HEADING_6 (shortcut for namedStyle=HEADING_N)'),
@@ -126,6 +137,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       underline?: boolean; noUnderline?: boolean;
       strikethrough?: boolean; noStrikethrough?: boolean;
       code?: boolean;
+      link?: string; noLink?: boolean;
       alignment?: string;
       lineSpacing?: number;
       headingLevel?: number;
@@ -150,6 +162,8 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (a.strikethrough) argv.push('--strikethrough');
     if (a.noStrikethrough) argv.push('--no-strikethrough');
     if (a.code) argv.push('--code');
+    if (a.link) argv.push(`--link=${a.link}`);
+    if (a.noLink) argv.push('--no-link');
     if (a.alignment) argv.push(`--alignment=${a.alignment}`);
     if (a.lineSpacing !== undefined) argv.push(`--line-spacing=${a.lineSpacing}`);
     if (a.headingLevel !== undefined) argv.push(`--heading-level=${a.headingLevel}`);
@@ -181,14 +195,20 @@ export function registerExtraDocsTools(server: McpServer): void {
       content: z.string().optional().describe('Text content to insert'),
       index: z.number().optional().describe('Character index to insert at (1-based; default: 1 = start of doc). Prefer gog_docs_append when you want to add at the end.'),
       file: z.string().optional().describe('Path to a file whose content to insert'),
+      at: z.string().optional().describe('Anchor by literal text and insert at the start of the matched range, instead of computing an index.'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tabId: z.string().optional().describe('Tab ID to insert into (for multi-tab docs)'),
       account: accountParam,
     },
-  }, async ({ docId, content, index, file, tabId, account }) => {
+  }, async ({ docId, content, index, file, at, occurrence, matchCase, tabId, account }) => {
     const args = ['docs', 'insert', docId];
     if (content) args.push(content);
     if (index !== undefined) args.push(`--index=${index}`);
     if (file) args.push(`--file=${file}`);
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
     if (tabId) args.push(`--tab-id=${tabId}`);
     return runOrDiagnose(args, { account });
   });
@@ -258,17 +278,23 @@ export function registerExtraDocsTools(server: McpServer): void {
       index: z.number().optional().describe('Character index to insert at'),
       replaceRange: z.string().optional().describe('Replace a UTF-16 Docs API range START:END (e.g. "25:40") instead of inserting at index. The replacement text/file content overwrites the range.'),
       markdown: z.boolean().optional().describe('Convert markdown in the text/file to Google Docs formatting (headings, bold, lists, etc.) instead of inserting it literally.'),
+      at: z.string().optional().describe('Anchor by literal text and replace that matched range, instead of supplying an index or replaceRange.'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tabId: z.string().optional().describe('Tab ID for multi-tab docs'),
       pageless: z.boolean().optional().describe('Set document to pageless format'),
       account: accountParam,
     },
-  }, async ({ docId, text, file, index, replaceRange, markdown, tabId, pageless, account }) => {
+  }, async ({ docId, text, file, index, replaceRange, markdown, at, occurrence, matchCase, tabId, pageless, account }) => {
     const args = ['docs', 'update', docId];
     if (text) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
     if (index !== undefined) args.push(`--index=${index}`);
     if (replaceRange) args.push(`--replace-range=${replaceRange}`);
     if (markdown) args.push('--markdown');
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
     if (tabId) args.push(`--tab-id=${tabId}`);
     if (pageless) args.push('--pageless');
     return runOrDiagnose(args, { account });
@@ -372,6 +398,50 @@ export function registerExtraDocsTools(server: McpServer): void {
     return runOrDiagnose(['docs', 'comments', 'reopen', docId, commentId], { account });
   });
 
+  server.registerTool('gog_docs_comments_locate', {
+    description: 'Locate a comment\'s anchor in a Google Doc — resolves the comment\'s quoted text to its current Docs API index range, or reports the comment as orphaned if the quote can no longer be found (e.g. the anchored text was edited away). Read-only; useful before an index-based edit near a comment.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      commentId: z.string().describe('Comment ID to locate'),
+      matchCase: z.boolean().optional().describe('Case-sensitive matching of the comment quote'),
+      normalizeWhitespace: z.boolean().optional().describe('Collapse whitespace while matching the comment quote'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, commentId, matchCase, normalizeWhitespace, tab, account }) => {
+    const args = ['docs', 'comments', 'locate', docId, commentId];
+    if (matchCase) args.push('--match-case');
+    if (normalizeWhitespace) args.push('--normalize-whitespace');
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_find_range', {
+    description: 'Map literal text in a Google Doc to its Docs API UTF-16 index range(s). Read-only helper for computing the start/end indices that index-based tools (gog_docs_delete, gog_docs_update --replace-range) need. Returns the first match by default; use occurrence to pick a specific one or all to return every match.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      text: z.string().describe('Literal text to locate'),
+      occurrence: z.number().int().optional().describe('Return the Nth occurrence (1-based; default: first)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive matching'),
+      normalizeWhitespace: z.boolean().optional().describe('Collapse whitespace while matching'),
+      all: z.boolean().optional().describe('Return all matches instead of just one'),
+      failEmpty: z.boolean().optional().describe('Treat no matches as an error instead of returning an empty result'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, text, occurrence, matchCase, normalizeWhitespace, all, failEmpty, tab, account }) => {
+    const args = ['docs', 'find-range', docId, text];
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
+    if (normalizeWhitespace) args.push('--normalize-whitespace');
+    if (all) args.push('--all');
+    if (failEmpty) args.push('--fail-empty');
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_docs_table_column_width', {
     description: 'Set a fixed width (in points) for a table column, or reset columns to Docs-managed even distribution. Target the table by 1-based index in document order (negative counts from the end) and the column by 1-based number. Pass evenlyDistributed without col to reset every column in the table.',
     annotations: { destructiveHint: true },
@@ -401,13 +471,19 @@ export function registerExtraDocsTools(server: McpServer): void {
       docId: z.string().describe('Doc ID (from the URL)'),
       index: z.number().int().optional().describe('Character index to insert at (1 = beginning). Omit or use atEnd for end-of-doc.'),
       atEnd: z.boolean().optional().describe('Insert at end-of-doc/tab (mutually exclusive with index)'),
+      at: z.string().optional().describe('Anchor by literal text and insert the page break at the start of the matched range, instead of an index.'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
       account: accountParam,
     },
-  }, async ({ docId, index, atEnd, tab, account }) => {
+  }, async ({ docId, index, atEnd, at, occurrence, matchCase, tab, account }) => {
     const args = ['docs', 'insert-page-break', docId];
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
@@ -555,13 +631,19 @@ export function registerExtraDocsTools(server: McpServer): void {
       email: z.string().describe('Email address for the person chip'),
       index: z.number().int().optional().describe('Character index to insert at. Omit or use atEnd for end-of-doc.'),
       atEnd: z.boolean().optional().describe('Insert at end-of-doc/tab (mutually exclusive with index)'),
+      at: z.string().optional().describe('Anchor by literal text, delete the match, and insert the person chip there, instead of an index.'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
       account: accountParam,
     },
-  }, async ({ docId, email, index, atEnd, tab, account }) => {
+  }, async ({ docId, email, index, atEnd, at, occurrence, matchCase, tab, account }) => {
     const args = ['docs', 'insert-person', docId, `--email=${email}`];
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });

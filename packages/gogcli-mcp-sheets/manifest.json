@@ -181,8 +181,8 @@
       "description": "List hyperlinks in a range."
     },
     {
-      "name": "gog_sheets_set_links",
-      "description": "Set hyperlinks on one or more cells in a single call by writing =HYPERLINK(url, text) formulas."
+      "name": "gog_sheets_links_set",
+      "description": "Set native cell hyperlinks: single link, multi-link rich-text cell (runsJson), or batch (cellsJson)."
     },
     {
       "name": "gog_sheets_named_ranges_list",

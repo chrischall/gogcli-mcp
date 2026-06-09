@@ -686,6 +686,39 @@ describe('gog_sheets_links', () => {
   });
 });
 
+// gog 0.23.0
+describe('gog_sheets_links_set', () => {
+  it('sets a single-cell hyperlink with cell/url/text positionals', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_links_set')!({ spreadsheetId: 'sid', cell: 'A1', url: 'https://x.com', text: 'Link' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'links', 'set', 'sid', 'A1', 'https://x.com', 'Link'],
+      { account: undefined },
+    );
+  });
+
+  it('sets a multi-link cell with --runs-json', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_links_set')!({ spreadsheetId: 'sid', cell: 'B2', runsJson: '[{"text":"A","uri":"https://a"}]' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'links', 'set', 'sid', 'B2', '--runs-json=[{"text":"A","uri":"https://a"}]'],
+      { account: undefined },
+    );
+  });
+
+  it('sets batch hyperlinks with --cells-json', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_links_set')!({ spreadsheetId: 'sid', cellsJson: '[{"cell":"A1","url":"https://a"}]' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'links', 'set', 'sid', '--cells-json=[{"cell":"A1","url":"https://a"}]'],
+      { account: undefined },
+    );
+  });
+});
+
 // 18. named-ranges list
 describe('gog_sheets_named_ranges_list', () => {
   it('calls runOrDiagnose with correct args', async () => {
@@ -982,11 +1015,11 @@ describe('gog_sheets_table_clear', () => {
 
 // 35. table delete
 describe('gog_sheets_table_delete', () => {
-  it('keep_data=false deletes table (and data) directly with --force', async () => {
+  it('keep_data=false deletes table (and data) directly with --discard-data --force', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1', keep_data: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'delete', 'sid', 't1', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'delete', 'sid', 't1', '--discard-data', '--force'], { account: undefined });
     expect(lib.run).not.toHaveBeenCalled();
   });
 
@@ -1000,7 +1033,7 @@ describe('gog_sheets_table_delete', () => {
     const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1', account: 'a@b.com' });
     expect(lib.run).toHaveBeenNthCalledWith(1, ['sheets', 'table', 'get', 'sid', 't1'], { account: 'a@b.com' });
     expect(lib.run).toHaveBeenNthCalledWith(2, ['sheets', 'get', 'sid', 'Sheet1!A1:C2', '--render=FORMULA'], { account: 'a@b.com' });
-    expect(lib.run).toHaveBeenNthCalledWith(3, ['sheets', 'table', 'delete', 'sid', 't1', '--force'], { account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(3, ['sheets', 'table', 'delete', 'sid', 't1', '--discard-data', '--force'], { account: 'a@b.com' });
     expect(lib.run).toHaveBeenNthCalledWith(4, ['sheets', 'update', 'sid', 'Sheet1!A1:C2', '--values-json=[["Name","City","N"],["A","NYC","=1+1"]]'], { account: 'a@b.com' });
     expect(res.content[0].text).toContain('2 row');
     expect(res.content[0].text).toContain('Sheet1!A1:C2');
@@ -1234,55 +1267,5 @@ describe('gog_sheets_snapshot', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_sheets_snapshot')!({ spreadsheetId: 'sid', name: 'Backup A', parent: 'folder1', account: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', 'sid', 'Backup A', '--parent=folder1'], { account: 'a@b.com' });
-  });
-});
-
-// 50. set-links (batch HYPERLINK writer)
-describe('gog_sheets_set_links', () => {
-  it('writes one HYPERLINK formula per cell', async () => {
-    vi.mocked(lib.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    const res = await handlers.get('gog_sheets_set_links')!({
-      spreadsheetId: 'sid',
-      links: [
-        { cell: 'Sheet1!B2', url: 'https://x.test/a', text: 'Act A' },
-        { cell: 'Sheet1!B3', url: 'https://x.test/b', text: 'Act B' },
-      ],
-      account: 'a@b.com',
-    });
-    expect(lib.run).toHaveBeenNthCalledWith(1, ['sheets', 'update', 'sid', 'Sheet1!B2', '--values-json=[["=HYPERLINK(\\"https://x.test/a\\",\\"Act A\\")"]]'], { account: 'a@b.com' });
-    expect(lib.run).toHaveBeenNthCalledWith(2, ['sheets', 'update', 'sid', 'Sheet1!B3', '--values-json=[["=HYPERLINK(\\"https://x.test/b\\",\\"Act B\\")"]]'], { account: 'a@b.com' });
-    expect(res.content[0].text).toContain('2 of 2');
-  });
-
-  it('escapes double quotes in url and text', async () => {
-    vi.mocked(lib.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_set_links')!({
-      spreadsheetId: 'sid',
-      links: [{ cell: 'A1', url: 'https://x.test/?q="hi"', text: 'Say "hi"' }],
-    });
-    const arg = vi.mocked(lib.run).mock.calls[0][0][4] as string;
-    const formula = JSON.parse(arg.replace('--values-json=', ''))[0][0];
-    // Sheets formulas escape a double-quote by doubling it
-    expect(formula).toBe('=HYPERLINK("https://x.test/?q=""hi""","Say ""hi""")');
-  });
-
-  it('reports per-cell failures without aborting the rest', async () => {
-    vi.mocked(lib.run)
-      .mockResolvedValueOnce('{}')                       // first cell ok
-      .mockRejectedValueOnce(new Error('cell boom'));    // second cell fails
-    const handlers = setupHandlers();
-    const res = await handlers.get('gog_sheets_set_links')!({
-      spreadsheetId: 'sid',
-      links: [
-        { cell: 'A1', url: 'u1', text: 't1' },
-        { cell: 'A2', url: 'u2', text: 't2' },
-      ],
-    });
-    const text = res.content[0].text;
-    expect(text).toContain('1 of 2');
-    expect(text).toContain('A2');
-    expect(text).toContain('cell boom');
   });
 });

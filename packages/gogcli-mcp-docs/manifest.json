@@ -196,6 +196,14 @@
       "description": "Reopen a previously resolved comment."
     },
     {
+      "name": "gog_docs_comments_locate",
+      "description": "Resolve a comment's quoted anchor to its current Docs API index range, or report it as orphaned."
+    },
+    {
+      "name": "gog_docs_find_range",
+      "description": "Map literal text to its Docs API UTF-16 index range(s) for index-based edits."
+    },
+    {
       "name": "gog_docs_table_column_width",
       "description": "Set a fixed table column width in points, or reset columns to Docs-managed even distribution."
     },

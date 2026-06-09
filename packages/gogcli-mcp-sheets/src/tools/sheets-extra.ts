@@ -440,6 +440,31 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'links', spreadsheetId, range], { account });
   });
 
+  server.registerTool('gog_sheets_links_set', {
+    description:
+      'Set cell hyperlinks in a Google Sheet. Three modes: (1) single link — pass cell + url (+ optional text); ' +
+      '(2) multi-link cell — pass cell + runsJson, a JSON array of rich-text runs (a run with an empty uri is plain text); ' +
+      '(3) batch — pass cellsJson, a JSON array of {cell,url,text} or {cell,runs:[...]} objects written in one request.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      cell: z.string().optional().describe('Target cell in A1 notation (e.g. Sheet1!B2). Used by single-link and runsJson modes; omit for batch (cellsJson).'),
+      url: z.string().optional().describe('Hyperlink URL for single-link mode'),
+      text: z.string().optional().describe('Display text for single-link mode (defaults to the URL when omitted)'),
+      runsJson: z.string().optional().describe('Multi-link cell: JSON array of runs, e.g. [{"text":"Act A","uri":"https://a"},{"text":" / "},{"text":"Act B","uri":"https://b"}]. A run with an empty uri is plain text.'),
+      cellsJson: z.string().optional().describe('Batch: JSON array of {cell,url,text} or {cell,runs:[{text,uri}]} objects, written in one request.'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, cell, url, text, runsJson, cellsJson, account }) => {
+    const args = ['sheets', 'links', 'set', spreadsheetId];
+    if (cell) args.push(cell);
+    if (url) args.push(url);
+    if (text) args.push(text);
+    if (runsJson) args.push(`--runs-json=${runsJson}`);
+    if (cellsJson) args.push(`--cells-json=${cellsJson}`);
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_sheets_named_ranges_list', {
     description: 'List all named ranges in a spreadsheet.',
     annotations: { readOnlyHint: true },
@@ -699,9 +724,10 @@ export function registerExtraSheetsTools(server: McpServer): void {
     },
   }, async ({ spreadsheetId, tableId, keep_data = true, account }) => {
     if (!keep_data) {
-      // Raw destructive delete: removes the table and its cell data. --force is
-      // required because gog refuses table deletes non-interactively without it.
-      return runOrDiagnose(['sheets', 'table', 'delete', spreadsheetId, tableId, '--force'], { account });
+      // Raw destructive delete: removes the table and its cell data. gog ≥ 0.23
+      // requires --discard-data to confirm the cell wipe (--force only skips the
+      // interactive confirmation; it does not authorize the data loss).
+      return runOrDiagnose(['sheets', 'table', 'delete', spreadsheetId, tableId, '--discard-data', '--force'], { account });
     }
 
     // keep_data: emulate "Convert to range". Read the full table range with
@@ -721,7 +747,10 @@ export function registerExtraSheetsTools(server: McpServer): void {
     }
 
     try {
-      await run(['sheets', 'table', 'delete', spreadsheetId, tableId, '--force'], { account });
+      // We have already backed up the cells above, so --discard-data (required
+      // by gog ≥ 0.23) is the intended path here — we re-write the data right
+      // after.
+      await run(['sheets', 'table', 'delete', spreadsheetId, tableId, '--discard-data', '--force'], { account });
     } catch (err) {
       // Table not deleted; cell data is untouched.
       return diagnose(err);
@@ -866,36 +895,4 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  server.registerTool('gog_sheets_set_links', {
-    description:
-      'Set hyperlinks on one or more cells in a single call by writing =HYPERLINK(url, text) formulas. ' +
-      'Each link targets one cell (cells may be non-contiguous); the tool issues one write per cell and reports a per-cell success/failure summary. ' +
-      'Note: a HYPERLINK cell holds exactly one link — for multiple links in one cell, gog has no support yet (tracked upstream).',
-    annotations: { destructiveHint: true },
-    inputSchema: {
-      spreadsheetId: z.string().describe('Spreadsheet ID'),
-      links: z.array(z.object({
-        cell: z.string().describe('Target cell in A1 notation, e.g. Sheet1!B2'),
-        url: z.string().describe('URL the cell links to'),
-        text: z.string().describe('Display text for the link'),
-      })).describe('Cells to turn into HYPERLINK formulas'),
-      account: accountParam,
-    },
-  }, async ({ spreadsheetId, links, account }) => {
-    // Sheets formula string literals escape a double-quote by doubling it.
-    const esc = (s: string): string => s.replace(/"/g, '""');
-    const results: string[] = [];
-    let ok = 0;
-    for (const { cell, url, text } of links) {
-      const formula = `=HYPERLINK("${esc(url)}","${esc(text)}")`;
-      try {
-        await run(['sheets', 'update', spreadsheetId, cell, `--values-json=${JSON.stringify([[formula]])}`], { account });
-        results.push(`✓ ${cell}`);
-        ok++;
-      } catch (err) {
-        results.push(`✗ ${cell}: ${toError(err).content[0].text}`);
-      }
-    }
-    return toText(`Set ${ok} of ${links.length} hyperlink(s):\n${results.join('\n')}`);
-  });
 }
