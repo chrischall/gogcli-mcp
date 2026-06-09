@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-docs",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "mcpName": "io.github.chrischall/gogcli-mcp-docs",
   "description": "Extended Google Docs MCP server via gogcli — all base tools plus full Docs support",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
