@@ -64,6 +64,28 @@ export function registerExtraSlidesTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  server.registerTool('gog_slides_insert_image', {
+    description: 'Place a local image on an existing slide at a given size and position. Unlike gog_slides_add_slide (which creates a new full-bleed image slide), this inserts the image onto a slide you already have. width is required; omit height to keep the image\'s aspect ratio.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      slideId: z.string().describe('Slide ID (object ID of the target slide)'),
+      image: z.string().describe('Path to the local image file'),
+      width: z.number().describe('Image width, in unit'),
+      height: z.number().optional().describe('Image height, in unit; omit to keep the image\'s aspect ratio'),
+      x: z.number().optional().describe('Left position of the image, in unit'),
+      y: z.number().optional().describe('Top position of the image, in unit'),
+      unit: z.enum(['PT', 'EMU']).optional().describe('Measurement unit for x/y/width/height (default: PT)'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, slideId, image, width, height, x, y, unit, account }) => {
+    const args = ['slides', 'insert-image', presentationId, slideId, image, `--width=${width}`];
+    if (height !== undefined) args.push(`--height=${height}`);
+    if (x !== undefined) args.push(`--x=${x}`);
+    if (y !== undefined) args.push(`--y=${y}`);
+    if (unit) args.push(`--unit=${unit}`);
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_slides_delete_slide', {
     description: 'Delete a slide from a Google Slides presentation.',
     annotations: { destructiveHint: true },

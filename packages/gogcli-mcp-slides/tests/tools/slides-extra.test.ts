@@ -218,3 +218,26 @@ describe('gog_slides_replace_slide', () => {
     );
   });
 });
+
+// gog 0.23.0
+describe('gog_slides_insert_image', () => {
+  it('inserts an image with the required width', async () => {
+    await handlers.get('gog_slides_insert_image')!({
+      presentationId: 'p1', slideId: 's1', image: '/tmp/i.png', width: 200,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'insert-image', 'p1', 's1', '/tmp/i.png', '--width=200'],
+      { account: undefined },
+    );
+  });
+
+  it('passes height, position and unit', async () => {
+    await handlers.get('gog_slides_insert_image')!({
+      presentationId: 'p1', slideId: 's1', image: '/tmp/i.png', width: 200, height: 100, x: 50, y: 60, unit: 'PT', account: 'a@b.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'insert-image', 'p1', 's1', '/tmp/i.png', '--width=200', '--height=100', '--x=50', '--y=60', '--unit=PT'],
+      { account: 'a@b.com' },
+    );
+  });
+});

@@ -63,6 +63,17 @@ describe('gog_docs_delete', () => {
     );
   });
 
+  // gog 0.23.0
+  it('anchors by text with --at/--occurrence/--match-case', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_delete')!({ docId: 'abc', at: 'TODO', occurrence: 2, matchCase: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'delete', 'abc', '--at=TODO', '--occurrence=2', '--match-case'],
+      { account: undefined },
+    );
+  });
+
   it('includes --tab-id when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
@@ -175,6 +186,17 @@ describe('gog_docs_insert', () => {
     await handlers.get('gog_docs_insert')!({ docId: 'abc', content: 'Hello world' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['docs', 'insert', 'abc', 'Hello world'],
+      { account: undefined },
+    );
+  });
+
+  // gog 0.23.0
+  it('anchors by text with --at/--occurrence/--match-case', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert')!({ docId: 'abc', content: 'X', at: 'HERE', occurrence: 3, matchCase: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert', 'abc', 'X', '--at=HERE', '--occurrence=3', '--match-case'],
       { account: undefined },
     );
   });
@@ -308,6 +330,17 @@ describe('gog_docs_update', () => {
     await handlers.get('gog_docs_update')!({ docId: 'abc', text: 'Hello' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['docs', 'update', 'abc', '--text=Hello'],
+      { account: undefined },
+    );
+  });
+
+  // gog 0.23.0
+  it('anchors by text with --at/--occurrence/--match-case', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_update')!({ docId: 'abc', text: 'New', at: 'OLD', occurrence: 1, matchCase: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'update', 'abc', '--text=New', '--at=OLD', '--occurrence=1', '--match-case'],
       { account: undefined },
     );
   });
@@ -491,6 +524,47 @@ describe('gog_docs_table_column_width', () => {
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['docs', 'table-column-width', 'd1', '--col=1', '--width=80'],
       { account: 'other@gmail.com' },
+    );
+  });
+});
+
+// gog 0.23.0
+describe('gog_docs_find_range', () => {
+  it('maps matched text to index ranges', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_find_range')!({ docId: 'd1', text: 'hello' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'find-range', 'd1', 'hello'], { account: undefined });
+  });
+
+  it('passes all match flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_find_range')!({
+      docId: 'd1', text: 'hello', occurrence: 2, matchCase: true, normalizeWhitespace: true, all: true, failEmpty: true, tab: 'T',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'find-range', 'd1', 'hello', '--occurrence=2', '--match-case', '--normalize-whitespace', '--all', '--fail-empty', '--tab=T'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_comments_locate', () => {
+  it('locates a comment by id', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_comments_locate')!({ docId: 'd1', commentId: 'c1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'comments', 'locate', 'd1', 'c1'], { account: undefined });
+  });
+
+  it('passes match flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_comments_locate')!({ docId: 'd1', commentId: 'c1', matchCase: true, normalizeWhitespace: true, tab: 'T' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'comments', 'locate', 'd1', 'c1', '--match-case', '--normalize-whitespace', '--tab=T'],
+      { account: undefined },
     );
   });
 });
@@ -776,6 +850,27 @@ describe('gog_docs_format', () => {
       { account: undefined },
     );
   });
+
+  // gog 0.23.0
+  it('sets a hyperlink with --link', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({ docId: 'd1', match: 'see docs', link: 'https://example.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--match=see docs', '--link=https://example.com'],
+      { account: undefined },
+    );
+  });
+
+  it('clears a hyperlink with --no-link', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({ docId: 'd1', match: 'linked', noLink: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--match=linked', '--no-link'],
+      { account: undefined },
+    );
+  });
 });
 
 // --- gog 0.18.0 new tools ---
@@ -787,6 +882,17 @@ describe('gog_docs_insert_page_break', () => {
     await handlers.get('gog_docs_insert_page_break')!({ docId: 'd1', index: 42 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['docs', 'insert-page-break', 'd1', '--index=42'],
+      { account: undefined },
+    );
+  });
+
+  // gog 0.23.0
+  it('anchors by text with --at/--occurrence/--match-case', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_page_break')!({ docId: 'd1', at: 'Chapter 2', occurrence: 1, matchCase: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-page-break', 'd1', '--at=Chapter 2', '--occurrence=1', '--match-case'],
       { account: undefined },
     );
   });
@@ -951,6 +1057,17 @@ describe('gog_docs_insert_person', () => {
     await handlers.get('gog_docs_insert_person')!({ docId: 'd1', email: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['docs', 'insert-person', 'd1', '--email=a@b.com'],
+      { account: undefined },
+    );
+  });
+
+  // gog 0.23.0
+  it('anchors by text with --at/--occurrence/--match-case', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_person')!({ docId: 'd1', email: 'a@b.com', at: '@alice', occurrence: 1, matchCase: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-person', 'd1', '--email=a@b.com', '--at=@alice', '--occurrence=1', '--match-case'],
       { account: undefined },
     );
   });

@@ -106,6 +106,10 @@
       "description": "Add a slide from a local image"
     },
     {
+      "name": "gog_slides_insert_image",
+      "description": "Place a sized, positioned local image on an existing slide"
+    },
+    {
       "name": "gog_slides_list_slides",
       "description": "List slides in a presentation"
     },
