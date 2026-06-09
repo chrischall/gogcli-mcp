@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.1](https://github.com/chrischall/gogcli-mcp/compare/v2.6.0...v2.6.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* **sheets:** correct off-by-one in gog_sheets_insert start index ([#89](https://github.com/chrischall/gogcli-mcp/issues/89)) ([f59970a](https://github.com/chrischall/gogcli-mcp/commit/f59970accad170bf3dd6d9c31824a57a8bf47fc7))
+
 ## [2.6.0](https://github.com/chrischall/gogcli-mcp/compare/v2.5.0...v2.6.0) (2026-06-09)
 
 
