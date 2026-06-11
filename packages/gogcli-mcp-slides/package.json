@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-slides",
-  "version": "2.6.1",
+  "version": "2.7.0",
   "mcpName": "io.github.chrischall/gogcli-mcp-slides",
   "description": "Extended Google Slides MCP server via gogcli — auth + full Slides support",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
