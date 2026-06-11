@@ -5,3 +5,5 @@ dist/
 coverage/
 *.mcpb
 *.tsbuildinfo
+# LICENSE copies staged into each package by scripts/bundle.js (root LICENSE is the source)
+packages/*/LICENSE
