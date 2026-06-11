@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.0](https://github.com/chrischall/gogcli-mcp/compare/v2.6.1...v2.7.0) (2026-06-11)
+
+
+### Features
+
+* **tools:** catch up to gog v0.24.0 — sheets validation, docs table CRUD & named ranges, drive revisions ([#92](https://github.com/chrischall/gogcli-mcp/issues/92)) ([dcfdfe1](https://github.com/chrischall/gogcli-mcp/commit/dcfdfe15c51655921525b223ff6d4ae56c453320))
+
 ## [2.6.1](https://github.com/chrischall/gogcli-mcp/compare/v2.6.0...v2.6.1) (2026-06-09)
 
 
