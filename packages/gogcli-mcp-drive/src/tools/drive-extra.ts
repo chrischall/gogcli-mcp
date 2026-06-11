@@ -301,6 +301,32 @@ export function registerExtraDriveTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  server.registerTool('gog_drive_revisions_list', {
+    description: 'List a file\'s revision history — paged revision metadata plus provider export links for each revision.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      fileId: z.string().describe('File ID'),
+      ...paginationParams,
+      account: accountParam,
+    },
+  }, async ({ fileId, max, page, all, account }) => {
+    const args = ['drive', 'revisions', 'list', fileId];
+    pushPaginationFlags(args, { max, page, all });
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_revisions_get', {
+    description: 'Get one revision of a Drive file by revision ID (metadata + export links). Find revision IDs with gog_drive_revisions_list.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      fileId: z.string().describe('File ID'),
+      revisionId: z.string().describe('Revision ID'),
+      account: accountParam,
+    },
+  }, async ({ fileId, revisionId, account }) => {
+    return runOrDiagnose(['drive', 'revisions', 'get', fileId, revisionId], { account });
+  });
+
   server.registerTool('gog_drive_labels_list', {
     description: 'List Drive label schemas available to the account.',
     annotations: { readOnlyHint: true },

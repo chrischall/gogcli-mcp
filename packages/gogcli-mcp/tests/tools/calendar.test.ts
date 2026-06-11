@@ -155,6 +155,24 @@ describe('gog_calendar_update', () => {
     );
   });
 
+  // gog 0.24.0
+  it('passes repeatable --attachment values, and an empty string to clear', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_calendar_update')!({
+      calendarId: 'primary', eventId: 'evt1', attachments: ['https://drive.google.com/file/d/a', 'https://x.test/b.pdf'],
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--attachment=https://drive.google.com/file/d/a', '--attachment=https://x.test/b.pdf'],
+      { account: undefined },
+    );
+    await handlers.get('gog_calendar_update')!({ calendarId: 'primary', eventId: 'evt1', attachments: [''] });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--attachment='],
+      { account: undefined },
+    );
+  });
+
   it('passes all optional fields when provided', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();

@@ -577,3 +577,24 @@ describe('gog_drive_audit_user', () => {
     );
   });
 });
+
+// gog 0.24.0
+describe('gog_drive_revisions_list', () => {
+  it('lists revisions with pagination', async () => {
+    await handlers.get('gog_drive_revisions_list')!({ fileId: 'f1', max: 10, page: 'tok', all: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'revisions', 'list', 'f1', '--max=10', '--page=tok', '--all'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_drive_revisions_get', () => {
+  it('gets one revision', async () => {
+    await handlers.get('gog_drive_revisions_get')!({ fileId: 'f1', revisionId: 'r3', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'revisions', 'get', 'f1', 'r3'],
+      { account: 'a@b.com' },
+    );
+  });
+});

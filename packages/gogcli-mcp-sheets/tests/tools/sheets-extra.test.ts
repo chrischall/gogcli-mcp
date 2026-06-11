@@ -1284,3 +1284,82 @@ describe('gog_sheets_snapshot', () => {
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', 'sid', 'Backup A', '--parent=folder1'], { account: 'a@b.com' });
   });
 });
+
+// gog 0.24.0
+describe('gog_sheets_validation_get', () => {
+  it('reads validation rules for a range', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_validation_get')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:A10' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'validation', 'get', 'sid', 'Sheet1!A1:A10'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_sheets_validation_set', () => {
+  it('sets a dropdown rule with repeated values', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_validation_set')!({
+      spreadsheetId: 'sid', range: 'A1:A10', type: 'ONE_OF_LIST', values: ['Red', 'Green'],
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'validation', 'set', 'sid', 'A1:A10', '--type=ONE_OF_LIST', '--value=Red', '--value=Green'],
+      { account: undefined },
+    );
+  });
+
+  it('passes strict, input message, custom UI and filtered-rows flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_validation_set')!({
+      spreadsheetId: 'sid', range: 'A1', type: 'NUMBER_BETWEEN', values: ['1', '10'],
+      strict: true, inputMessage: 'Pick 1-10', showCustomUi: true, filteredRowsIncluded: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'validation', 'set', 'sid', 'A1', '--type=NUMBER_BETWEEN', '--value=1', '--value=10',
+        '--strict', '--input-message=Pick 1-10', '--show-custom-ui', '--filtered-rows-included'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_sheets_validation_clear', () => {
+  it('clears rules from a range', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_validation_clear')!({ spreadsheetId: 'sid', range: 'A1:A10', filteredRowsIncluded: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'validation', 'clear', 'sid', 'A1:A10', '--filtered-rows-included'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_sheets_delete_dimension', () => {
+  it('deletes a row span from a sheet target', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_delete_dimension')!({
+      spreadsheetId: 'sid', rangeOrSheet: 'Sheet1', dimension: 'ROWS', start: 5, end: 7,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'delete-dimension', 'sid', 'Sheet1', '--dimension=ROWS', '--start=5', '--end=7'],
+      { account: undefined },
+    );
+  });
+
+  it('deletes columns by A1 range without start/end', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_delete_dimension')!({
+      spreadsheetId: 'sid', rangeOrSheet: 'Sheet1!C:D', dimension: 'COLUMNS', account: 'a@b.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'delete-dimension', 'sid', 'Sheet1!C:D', '--dimension=COLUMNS'],
+      { account: 'a@b.com' },
+    );
+  });
+});

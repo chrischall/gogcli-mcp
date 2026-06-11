@@ -34,7 +34,7 @@ export function registerGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_send', {
-    description: 'Send an email.',
+    description: 'Send an email. When attach is used, the JSON result echoes the attached filenames and byte sizes — check it to confirm the files were found and embedded.',
     annotations: { destructiveHint: true },
     inputSchema: {
       to: z.string().describe('Recipient(s), comma-separated'),

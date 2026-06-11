@@ -466,6 +466,75 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  server.registerTool('gog_sheets_validation_get', {
+    description: 'Read the data-validation rules (dropdowns, checkboxes, number/date conditions, custom formulas) applied to a range.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      range: z.string().describe('Range to inspect (e.g. Sheet1!A1:A10)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, range, account }) => {
+    return runOrDiagnose(['sheets', 'validation', 'get', spreadsheetId, range], { account });
+  });
+
+  server.registerTool('gog_sheets_validation_set', {
+    description: 'Set a data-validation rule on a range — dropdowns (ONE_OF_LIST / ONE_OF_RANGE), checkboxes (BOOLEAN), number/date conditions, or custom formulas. Overwrites any existing rule on the range. Repeat values for list entries or between-bounds.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      range: z.string().describe('Range to apply the rule to (e.g. Sheet1!A1:A10)'),
+      type: z.string().describe('Condition type, e.g. ONE_OF_LIST, ONE_OF_RANGE, NUMBER_BETWEEN, NUMBER_GREATER, DATE_AFTER, BOOLEAN, CUSTOM_FORMULA'),
+      values: z.array(z.string()).optional().describe('Condition values (repeatable): list entries for ONE_OF_LIST, two bounds for *_BETWEEN, a range for ONE_OF_RANGE, a formula for CUSTOM_FORMULA'),
+      strict: z.boolean().optional().describe('Reject invalid input instead of showing a warning'),
+      inputMessage: z.string().optional().describe('Message shown when the cell is selected'),
+      showCustomUi: z.boolean().optional().describe('Show dropdown or checkbox UI where supported'),
+      filteredRowsIncluded: z.boolean().optional().describe('Apply the rule to filtered rows too; required for table-managed dropdown columns'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, range, type, values, strict, inputMessage, showCustomUi, filteredRowsIncluded, account }) => {
+    const args = ['sheets', 'validation', 'set', spreadsheetId, range, `--type=${type}`];
+    if (values) for (const v of values) args.push(`--value=${v}`);
+    if (strict) args.push('--strict');
+    if (inputMessage) args.push(`--input-message=${inputMessage}`);
+    if (showCustomUi) args.push('--show-custom-ui');
+    if (filteredRowsIncluded) args.push('--filtered-rows-included');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_validation_clear', {
+    description: 'Remove all data-validation rules from a range.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      range: z.string().describe('Range to clear (e.g. Sheet1!A1:A10)'),
+      filteredRowsIncluded: z.boolean().optional().describe('Clear rules from filtered rows too; required for table-managed dropdown columns'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, range, filteredRowsIncluded, account }) => {
+    const args = ['sheets', 'validation', 'clear', spreadsheetId, range];
+    if (filteredRowsIncluded) args.push('--filtered-rows-included');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_delete_dimension', {
+    description: 'Delete a span of rows or columns, table-aware: intersecting table objects are preserved (shrunk) along with their remaining data, instead of being corrupted as with a raw DeleteDimension batch update. Target by A1 range (e.g. Sheet1!5:7 or Sheet1!C:D) or by sheet name plus start/end.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      rangeOrSheet: z.string().describe('A1 range covering the rows/columns to delete, or a sheet name (then start/end are required)'),
+      dimension: z.enum(['ROWS', 'COLUMNS']).describe('Dimension to delete'),
+      start: z.number().int().optional().describe('First row/column to delete (1-based, inclusive; required with a sheet-name target)'),
+      end: z.number().int().optional().describe('Last row/column to delete (1-based, inclusive; required with a sheet-name target)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, rangeOrSheet, dimension, start, end, account }) => {
+    const args = ['sheets', 'delete-dimension', spreadsheetId, rangeOrSheet, `--dimension=${dimension}`];
+    if (start !== undefined) args.push(`--start=${start}`);
+    if (end !== undefined) args.push(`--end=${end}`);
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_sheets_named_ranges_list', {
     description: 'List all named ranges in a spreadsheet.',
     annotations: { readOnlyHint: true },
@@ -712,7 +781,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     description:
       'Delete a Google Sheets table. WARNING: the underlying `gog`/Sheets behaviour is that deleting a table also DESTROYS every cell value in the table range — not just the table styling/columns. ' +
       'By default this tool prevents that data loss by emulating the Sheets UI\'s "Convert to range": it reads the table\'s cells (values AND formulas) first, deletes the table, then restores the data into the now-plain range. ' +
-      'Formatting, banding, and data-validation dropdowns are still lost (gog cannot round-trip those yet). ' +
+      'Formatting and banding are still lost; data-validation dropdowns are also not restored automatically, but you can snapshot them first with gog_sheets_validation_get and re-apply with gog_sheets_validation_set. ' +
       'Set keep_data=false to delete the table AND wipe its cell data (the raw destructive behaviour). To preserve everything, snapshot the whole spreadsheet first with gog_sheets_snapshot.',
     annotations: { destructiveHint: true },
     inputSchema: {
