@@ -1,5 +1,10 @@
 # gogcli-mcp
 
+[![CI](https://github.com/chrischall/gogcli-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/chrischall/gogcli-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/gogcli-mcp)](https://www.npmjs.com/package/gogcli-mcp)
+[![coverage: 100%](https://img.shields.io/badge/coverage-100%25-brightgreen)](packages/gogcli-mcp/vitest.config.ts)
+[![license](https://img.shields.io/npm/l/gogcli-mcp)](https://www.npmjs.com/package/gogcli-mcp)
+
 A monorepo of [Model Context Protocol](https://modelcontextprotocol.io) servers that give Claude natural-language access to Google Workspace via [gogcli](https://github.com/openclaw/gogcli).
 
 > [!WARNING]
