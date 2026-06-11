@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/chrischall-gogcli-mcp-badge.png)](https://mseep.ai/app/chrischall-gogcli-mcp)
+
 # gogcli-mcp
 
 A monorepo of [Model Context Protocol](https://modelcontextprotocol.io) servers that give Claude natural-language access to Google Workspace via [gogcli](https://github.com/openclaw/gogcli).
