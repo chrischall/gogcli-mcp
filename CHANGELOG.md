@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.7.1](https://github.com/chrischall/gogcli-mcp/compare/v2.7.0...v2.7.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* bot PRs bypass the CI gate unconditionally (upstream curtaincall[#86](https://github.com/chrischall/gogcli-mcp/issues/86) review) ([#100](https://github.com/chrischall/gogcli-mcp/issues/100)) ([04ce65e](https://github.com/chrischall/gogcli-mcp/commit/04ce65e3d2acb9656113ac598f1abd840a7d90af))
+
+
+### Documentation
+
+* add MIT LICENSE file ([#96](https://github.com/chrischall/gogcli-mcp/issues/96)) ([c8acf64](https://github.com/chrischall/gogcli-mcp/commit/c8acf642148869268c3c74feb853f54229a07401))
+* **readme:** add CI, npm version, coverage, and license badges ([#94](https://github.com/chrischall/gogcli-mcp/issues/94)) ([4a77d1f](https://github.com/chrischall/gogcli-mcp/commit/4a77d1fb5db0704dea31cca5eed1091fcd11f61f))
+
 ## [2.7.0](https://github.com/chrischall/gogcli-mcp/compare/v2.6.1...v2.7.0) (2026-06-11)
 
 
