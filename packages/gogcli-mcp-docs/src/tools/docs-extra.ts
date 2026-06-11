@@ -75,14 +75,17 @@ export function registerExtraDocsTools(server: McpServer): void {
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       format: z.enum(['text', 'json']).optional().describe('Output format (default: text)'),
-      tab: z.string().optional().describe('Target tab title or ID (text mode only)'),
-      allTabs: z.boolean().optional().describe('Show all tabs with headers (text mode only)'),
+      tab: z.string().optional().describe('Target tab title or ID. In json mode, returns that one tab in the legacy top-level Document shape.'),
+      allTabs: z.boolean().optional().describe('Show all tabs. In json mode, returns the canonical Document response with all tab content populated.'),
       maxBytes: z.number().optional().describe('Max bytes to read in text mode (0 = unlimited; default 2000000)'),
       account: accountParam,
     },
   }, async ({ docId, format, tab, allTabs, maxBytes, account }) => {
     if (format === 'json') {
-      return runOrDiagnose(['docs', 'raw', docId, '--pretty'], { account });
+      const args = ['docs', 'raw', docId, '--pretty'];
+      if (tab) args.push(`--tab=${tab}`);
+      if (allTabs) args.push('--all-tabs');
+      return runOrDiagnose(args, { account });
     }
     const args = ['docs', 'cat', docId];
     if (tab) args.push(`--tab=${tab}`);
@@ -464,6 +467,247 @@ export function registerExtraDocsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  // Shared describe for the --table selector used by the table-row/column/merge
+  // tools (a richer addressing scheme than the older tableIndex param).
+  const tableSelectorParam = z.string().optional().describe('Table selector: 1-based index (negative from the end), exact first-cell text, * for the only table, or text:VALUE for numeric/syntax-looking first-cell text (default: 1)');
+
+  server.registerTool('gog_docs_table_row_insert', {
+    description: 'Insert a row into a native Google Docs table, optionally populated from a JSON string array. Inserts before the 1-based position given by `at` (negative counts from the end; "end" appends — the default).',
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      table: tableSelectorParam,
+      at: z.string().optional().describe('Insert before this 1-based row, a negative index from the end, or "end" to append (default: end)'),
+      valuesJson: z.string().optional().describe('JSON string array with the new row\'s cell values, e.g. ["Name","Qty"]'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, table, at, valuesJson, tab, account }) => {
+    const args = ['docs', 'table-row', 'insert', docId];
+    if (table) args.push(`--table=${table}`);
+    if (at) args.push(`--at=${at}`);
+    if (valuesJson) args.push(`--values-json=${valuesJson}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_table_row_delete', {
+    description: 'Delete a row from a native Google Docs table by 1-based row number (negative counts from the end). The row\'s cell content is lost.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      row: z.number().int().describe('1-based row number; negative indexes count from the end'),
+      table: tableSelectorParam,
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, row, table, tab, account }) => {
+    const args = ['docs', 'table-row', 'delete', docId, `--row=${row}`];
+    if (table) args.push(`--table=${table}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_table_column_insert', {
+    description: 'Insert a column into a native Google Docs table. Inserts before the 1-based position given by `at` (negative counts from the end; "end" appends — the default).',
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      table: tableSelectorParam,
+      at: z.string().optional().describe('Insert before this 1-based column, a negative index from the end, or "end" to append (default: end)'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, table, at, tab, account }) => {
+    const args = ['docs', 'table-column', 'insert', docId];
+    if (at) args.push(`--at=${at}`);
+    if (table) args.push(`--table=${table}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_table_column_delete', {
+    description: 'Delete a column from a native Google Docs table by 1-based column number (negative counts from the end). The column\'s cell content is lost.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      col: z.number().int().describe('1-based column number; negative indexes count from the end'),
+      table: tableSelectorParam,
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, col, table, tab, account }) => {
+    const args = ['docs', 'table-column', 'delete', docId, `--col=${col}`];
+    if (table) args.push(`--table=${table}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_table_merge', {
+    description: 'Merge a rectangular cell range in a native Google Docs table. Content of non-first cells in the range is absorbed/discarded by the merge — use gog_docs_table_unmerge to split back.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      range: z.string().describe('1-based cell range r1,c1:r2,c2 (e.g. "1,1:2,3")'),
+      table: tableSelectorParam,
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, range, table, tab, account }) => {
+    const args = ['docs', 'table-merge', docId, `--range=${range}`];
+    if (table) args.push(`--table=${table}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_table_unmerge', {
+    description: 'Unmerge (split) the merged region containing a given cell in a native Google Docs table.',
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      cell: z.string().describe('1-based cell r,c inside the merged region (e.g. "1,1")'),
+      table: tableSelectorParam,
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, cell, table, tab, account }) => {
+    const args = ['docs', 'table-unmerge', docId, `--cell=${cell}`];
+    if (table) args.push(`--table=${table}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_named_range_create', {
+    description: 'Create a named range — a durable, tab-aware anchor over a span of document text that survives subsequent edits (unlike raw indices). Anchor by literal text (`at`) or explicit UTF-16 start/end indices. Pair with gog_docs_named_range_replace for repeatable templated updates.',
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      name: z.string().describe('Unique named range name'),
+      at: z.string().optional().describe('Create the range around this literal matched text, instead of start/end indices'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
+      start: z.number().int().optional().describe('Range start UTF-16 index (inclusive). Required with end unless `at` is set.'),
+      end: z.number().int().optional().describe('Range end UTF-16 index (exclusive). Required with start unless `at` is set.'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, name, at, occurrence, matchCase, start, end, tab, account }) => {
+    const args = ['docs', 'named-range', 'create', docId, `--name=${name}`];
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
+    if (start !== undefined) args.push(`--start=${start}`);
+    if (end !== undefined) args.push(`--end=${end}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_named_range_list', {
+    description: 'List named ranges in a Google Doc, optionally filtered by name.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      name: z.string().optional().describe('Only return ranges with this name'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, name, tab, account }) => {
+    const args = ['docs', 'named-range', 'list', docId];
+    if (name) args.push(`--name=${name}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_named_range_delete', {
+    description: 'Delete a named range (the anchor only — the underlying document text is untouched).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      nameOrId: z.string().describe('Named range name or ID'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, nameOrId, tab, account }) => {
+    const args = ['docs', 'named-range', 'delete', docId, nameOrId];
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_named_range_replace', {
+    description: 'Replace the text inside a named range with new content (inline or from a file), keeping the anchor for future updates — the templated-update workhorse.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      nameOrId: z.string().describe('Named range name or ID'),
+      text: z.string().optional().describe('Replacement text'),
+      file: z.string().optional().describe('Path to a file with the replacement text'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, nameOrId, text, file, tab, account }) => {
+    const args = ['docs', 'named-range', 'replace', docId, nameOrId];
+    if (text !== undefined) args.push(`--text=${text}`);
+    if (file) args.push(`--file=${file}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_tables_list', {
+    description: 'Enumerate the native tables in a Google Doc (dimensions, position) — the index/first-cell-text it reports feeds the `table` selector on the table-row/column/merge tools.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      tab: z.string().optional().describe('Tab title or ID (omit for default)'),
+      account: accountParam,
+    },
+  }, async ({ docId, tab, account }) => {
+    const args = ['docs', 'tables', 'list', docId];
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_images_list', {
+    description: 'Enumerate inline/positioned images in a Google Doc.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      tab: z.string().optional().describe('Tab title or ID (omit for default)'),
+      account: accountParam,
+    },
+  }, async ({ docId, tab, account }) => {
+    const args = ['docs', 'images', 'list', docId];
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_headings_list', {
+    description: 'Enumerate headings in a Google Doc (a lightweight outline view), optionally filtered to one heading level.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      level: z.number().int().optional().describe('Only return this heading level (1-6)'),
+      tab: z.string().optional().describe('Tab title or ID (omit for default)'),
+      account: accountParam,
+    },
+  }, async ({ docId, level, tab, account }) => {
+    const args = ['docs', 'headings', 'list', docId];
+    if (level !== undefined) args.push(`--level=${level}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_paragraphs_list', {
+    description: 'Enumerate paragraphs in a Google Doc with emptiness, text-run ranges, styles, and links — richer than gog_docs_structure when you need per-run detail. Optionally filter to one named style.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      style: z.string().optional().describe('Only return this named style (e.g. NORMAL_TEXT or HEADING_2)'),
+      tab: z.string().optional().describe('Tab title or ID (omit for default)'),
+      account: accountParam,
+    },
+  }, async ({ docId, style, tab, account }) => {
+    const args = ['docs', 'paragraphs', 'list', docId];
+    if (style) args.push(`--style=${style}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_docs_insert_page_break', {
     description: 'Insert a Google Docs page break via InsertPageBreakRequest — the only path for multi-page deliverables (markdown has no page-break construct). Specify `index` for a precise character position, or `atEnd` for end-of-doc.',
     annotations: { destructiveHint: true },
@@ -597,11 +841,12 @@ export function registerExtraDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_insert_image', {
-    description: 'Upload a local image (PNG, JPEG, or GIF) and insert it into a Google Doc. The image is uploaded to Drive, temporarily shared so Docs can fetch it, inserted, then the public permission is revoked. Replaces placeholder text (at) or appends at end-of-doc.',
+    description: 'Insert an image into a Google Doc from a local file or a public HTTPS URL. file: uploaded to Drive, temporarily shared so Docs can fetch it, inserted, then the public permission is revoked. url: inserted directly with no Drive upload or temporary sharing. Replaces placeholder text (at) or appends at end-of-doc.',
     annotations: { destructiveHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
-      file: z.string().describe('Local PNG, JPEG, or GIF image to upload and insert'),
+      file: z.string().optional().describe('Local PNG, JPEG, or GIF image to upload and insert (exactly one of file or url)'),
+      url: z.string().optional().describe('Public HTTPS image URL to insert directly — no Drive upload or temporary public sharing (exactly one of file or url)'),
       at: z.string().optional().describe('Placeholder text to replace, or "end" to append (default: end)'),
       width: z.number().optional().describe('Image width in points (default: 468)'),
       height: z.number().optional().describe('Image height in points (optional; width-only preserves aspect ratio)'),
@@ -611,8 +856,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
       account: accountParam,
     },
-  }, async ({ docId, file, at, width, height, name, parent, onRestricted, tab, account }) => {
-    const args = ['docs', 'insert-image', docId, `--file=${file}`];
+  }, async ({ docId, file, url, at, width, height, name, parent, onRestricted, tab, account }) => {
+    const args = ['docs', 'insert-image', docId];
+    if (file) args.push(`--file=${file}`);
+    if (url) args.push(`--url=${url}`);
     if (at) args.push(`--at=${at}`);
     if (width !== undefined) args.push(`--width=${width}`);
     if (height !== undefined) args.push(`--height=${height}`);

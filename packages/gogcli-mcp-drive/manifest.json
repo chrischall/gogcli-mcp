@@ -190,6 +190,14 @@
       "description": "List Drive changes since a page token"
     },
     {
+      "name": "gog_drive_revisions_list",
+      "description": "List a file's revision history with export links"
+    },
+    {
+      "name": "gog_drive_revisions_get",
+      "description": "Get one revision of a file by revision ID"
+    },
+    {
       "name": "gog_drive_labels_list",
       "description": "List Drive label schemas"
     },

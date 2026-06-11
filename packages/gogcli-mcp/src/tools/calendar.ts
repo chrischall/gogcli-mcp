@@ -75,12 +75,13 @@ export function registerCalendarTools(server: McpServer): void {
       description: z.string().optional().describe('New description'),
       location: z.string().optional().describe('New location'),
       attendees: z.string().optional().describe('New attendee emails, comma-separated (replaces existing)'),
+      attachments: z.array(z.string()).optional().describe('File attachment URLs (e.g. Drive links). Replaces ALL existing attachments; pass a single empty string to clear them.'),
       withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event'),
       regenerateZoom: z.boolean().optional().describe('Replace the event\'s existing Zoom video conference'),
       removeZoom: z.boolean().optional().describe('Remove the event\'s Zoom video conference'),
       account: accountParam,
     },
-  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, withZoom, regenerateZoom, removeZoom, account }) => {
+  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, attachments, withZoom, regenerateZoom, removeZoom, account }) => {
     const args = ['calendar', 'update', calendarId, eventId];
     if (summary !== undefined) args.push(`--summary=${summary}`);
     if (from !== undefined) args.push(`--from=${from}`);
@@ -88,6 +89,7 @@ export function registerCalendarTools(server: McpServer): void {
     if (description !== undefined) args.push(`--description=${description}`);
     if (location !== undefined) args.push(`--location=${location}`);
     if (attendees !== undefined) args.push(`--attendees=${attendees}`);
+    if (attachments) for (const a of attachments) args.push(`--attachment=${a}`);
     if (withZoom) args.push('--with-zoom');
     if (regenerateZoom) args.push('--regenerate-zoom');
     if (removeZoom) args.push('--remove-zoom');

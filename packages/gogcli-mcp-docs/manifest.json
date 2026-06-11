@@ -208,6 +208,62 @@
       "description": "Set a fixed table column width in points, or reset columns to Docs-managed even distribution."
     },
     {
+      "name": "gog_docs_table_row_insert",
+      "description": "Insert a table row, optionally populated from a JSON string array."
+    },
+    {
+      "name": "gog_docs_table_row_delete",
+      "description": "Delete a table row by 1-based number."
+    },
+    {
+      "name": "gog_docs_table_column_insert",
+      "description": "Insert a table column before a 1-based position or at the end."
+    },
+    {
+      "name": "gog_docs_table_column_delete",
+      "description": "Delete a table column by 1-based number."
+    },
+    {
+      "name": "gog_docs_table_merge",
+      "description": "Merge a rectangular cell range in a table."
+    },
+    {
+      "name": "gog_docs_table_unmerge",
+      "description": "Unmerge (split) the merged region containing a cell."
+    },
+    {
+      "name": "gog_docs_named_range_create",
+      "description": "Create a named range — a durable anchor over document text, by matched text or indices."
+    },
+    {
+      "name": "gog_docs_named_range_list",
+      "description": "List named ranges, optionally filtered by name."
+    },
+    {
+      "name": "gog_docs_named_range_delete",
+      "description": "Delete a named range anchor (the text is untouched)."
+    },
+    {
+      "name": "gog_docs_named_range_replace",
+      "description": "Replace the text inside a named range, keeping the anchor for future updates."
+    },
+    {
+      "name": "gog_docs_tables_list",
+      "description": "Enumerate native tables (dimensions, position) — feeds the table selector on the table tools."
+    },
+    {
+      "name": "gog_docs_images_list",
+      "description": "Enumerate inline/positioned images."
+    },
+    {
+      "name": "gog_docs_headings_list",
+      "description": "Enumerate headings (outline view), optionally one level."
+    },
+    {
+      "name": "gog_docs_paragraphs_list",
+      "description": "Enumerate paragraphs with text-run ranges, styles, and links."
+    },
+    {
       "name": "gog_docs_insert_page_break",
       "description": "Insert a Google Docs page break at a given index or at end-of-doc — the only path for multi-page deliverables."
     },

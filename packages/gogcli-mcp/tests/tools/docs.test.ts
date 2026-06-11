@@ -102,6 +102,17 @@ describe('gog_docs_write', () => {
     );
   });
 
+  // gog 0.24.0
+  it('adds --check-orphans when checkOrphans is true', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_write')!({ docId: 'abc', text: 'Rewrite', checkOrphans: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['docs', 'write', 'abc', '--text=Rewrite', '--check-orphans'],
+      { account: undefined },
+    );
+  });
+
   it('omits --append flag when append is false', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();

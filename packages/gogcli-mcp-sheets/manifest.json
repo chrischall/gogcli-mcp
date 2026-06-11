@@ -185,6 +185,22 @@
       "description": "Set native cell hyperlinks: single link, multi-link rich-text cell (runsJson), or batch (cellsJson)."
     },
     {
+      "name": "gog_sheets_validation_get",
+      "description": "Read data-validation rules (dropdowns, checkboxes, conditions) on a range."
+    },
+    {
+      "name": "gog_sheets_validation_set",
+      "description": "Set a data-validation rule on a range: dropdowns, checkboxes, number/date conditions, or custom formulas."
+    },
+    {
+      "name": "gog_sheets_validation_clear",
+      "description": "Remove all data-validation rules from a range."
+    },
+    {
+      "name": "gog_sheets_delete_dimension",
+      "description": "Delete a row or column span, table-aware: intersecting tables are shrunk and their remaining data preserved."
+    },
+    {
       "name": "gog_sheets_named_ranges_list",
       "description": "List all named ranges in a spreadsheet."
     },
