@@ -1496,12 +1496,32 @@ describe('batch lifecycle tools', () => {
     );
   });
 
+  it('gog_batch_begin opens a batch without a name', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_batch_begin')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['batch', 'begin', '--doc=d1'],
+      { account: undefined },
+    );
+  });
+
   it('gog_batch_end submits with split/recovery modes', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_batch_end')!({ batchId: 'b1', autoSplit: true, continueOnError: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['batch', 'end', 'b1', '--auto-split', '--continue-on-error'],
+      { account: undefined },
+    );
+  });
+
+  it('gog_batch_end submits atomically with no options', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_batch_end')!({ batchId: 'b1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['batch', 'end', 'b1'],
       { account: undefined },
     );
   });
@@ -1527,6 +1547,13 @@ describe('batch lifecycle tools', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_batch_prune')!({ olderThan: '72h' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['batch', 'prune', '--older-than=72h'], { account: undefined });
+  });
+
+  it('gog_batch_prune without a duration prunes with no filter', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_batch_prune')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['batch', 'prune'], { account: undefined });
   });
 });
 
@@ -1556,6 +1583,58 @@ describe('batch param on docs mutation tools (gog 0.25.0)', () => {
 
   for (const { tool, input, expected } of cases) {
     it(`${tool} appends to a batch via --batch`, async () => {
+      vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+      const handlers = setupHandlers();
+      await handlers.get(tool)!(input);
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(expected, { account: undefined });
+    });
+  }
+});
+
+// Truthy --tab/--table branches the original tests missed (exposed by the
+// vitest 4.1.8 V8 remapping change — these flags were untested on these tools).
+describe('tab/table selector branch coverage', () => {
+  const cases: Array<{ tool: string; input: Record<string, unknown>; expected: string[] }> = [
+    { tool: 'gog_docs_table_row_delete', input: { docId: 'd1', row: 1, tab: 'T' },
+      expected: ['docs', 'table-row', 'delete', 'd1', '--row=1', '--tab=T'] },
+    { tool: 'gog_docs_table_column_delete', input: { docId: 'd1', col: 1, table: '2', tab: 'T' },
+      expected: ['docs', 'table-column', 'delete', 'd1', '--col=1', '--table=2', '--tab=T'] },
+    { tool: 'gog_docs_table_merge', input: { docId: 'd1', range: '1,1:2,2', tab: 'T' },
+      expected: ['docs', 'table-merge', 'd1', '--range=1,1:2,2', '--tab=T'] },
+    { tool: 'gog_docs_table_unmerge', input: { docId: 'd1', cell: '1,1', table: 'Budget' },
+      expected: ['docs', 'table-unmerge', 'd1', '--cell=1,1', '--table=Budget'] },
+    { tool: 'gog_docs_named_range_list', input: { docId: 'd1', tab: 'T' },
+      expected: ['docs', 'named-range', 'list', 'd1', '--tab=T'] },
+    { tool: 'gog_docs_named_range_delete', input: { docId: 'd1', nameOrId: 'nr', tab: 'T' },
+      expected: ['docs', 'named-range', 'delete', 'd1', 'nr', '--tab=T'] },
+    { tool: 'gog_docs_images_list', input: { docId: 'd1', tab: 'T' },
+      expected: ['docs', 'images', 'list', 'd1', '--tab=T'] },
+    { tool: 'gog_docs_headings_list', input: { docId: 'd1', tab: 'T' },
+      expected: ['docs', 'headings', 'list', 'd1', '--tab=T'] },
+    { tool: 'gog_docs_insert_date_chip', input: { docId: 'd1', tab: 'T' },
+      expected: ['docs', 'insert-date-chip', 'd1', '--tab=T'] },
+  ];
+  for (const { tool, input, expected } of cases) {
+    it(`${tool} passes its tab/table selectors`, async () => {
+      vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+      const handlers = setupHandlers();
+      await handlers.get(tool)!(input);
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(expected, { account: undefined });
+    });
+  }
+});
+
+describe('bare-call branch coverage (no optional flags)', () => {
+  const cases: Array<{ tool: string; input: Record<string, unknown>; expected: string[] }> = [
+    { tool: 'gog_docs_table_column_insert', input: { docId: 'd1' },
+      expected: ['docs', 'table-column', 'insert', 'd1'] },
+    { tool: 'gog_docs_tables_list', input: { docId: 'd1' },
+      expected: ['docs', 'tables', 'list', 'd1'] },
+    { tool: 'gog_docs_paragraphs_list', input: { docId: 'd1' },
+      expected: ['docs', 'paragraphs', 'list', 'd1'] },
+  ];
+  for (const { tool, input, expected } of cases) {
+    it(`${tool} with no optional flags`, async () => {
       vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
       const handlers = setupHandlers();
       await handlers.get(tool)!(input);

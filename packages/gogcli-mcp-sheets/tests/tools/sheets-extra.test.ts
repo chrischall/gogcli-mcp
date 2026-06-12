@@ -1363,3 +1363,26 @@ describe('gog_sheets_delete_dimension', () => {
     );
   });
 });
+
+// Falsy-branch coverage for the validation tools (no optional flags)
+describe('validation tools bare calls', () => {
+  it('gog_sheets_validation_set without values (e.g. BOOLEAN checkbox)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_validation_set')!({ spreadsheetId: 'sid', range: 'A1', type: 'BOOLEAN' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'validation', 'set', 'sid', 'A1', '--type=BOOLEAN'],
+      { account: undefined },
+    );
+  });
+
+  it('gog_sheets_validation_clear without filteredRowsIncluded', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_validation_clear')!({ spreadsheetId: 'sid', range: 'A1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'validation', 'clear', 'sid', 'A1'],
+      { account: undefined },
+    );
+  });
+});
