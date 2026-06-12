@@ -28,9 +28,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
       matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tabId: z.string().optional().describe('Tab ID to delete content from (for multi-tab docs)'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, start, end, at, occurrence, matchCase, tabId, account }) => {
+  }, async ({ docId, start, end, at, occurrence, matchCase, tabId, batch, account }) => {
     const args = ['docs', 'delete'];
     if (start !== undefined) args.push(`--start=${start}`);
     if (end !== undefined) args.push(`--end=${end}`);
@@ -39,6 +40,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
     if (tabId) args.push(`--tab-id=${tabId}`);
+    if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -122,6 +124,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       lineSpacing: z.number().optional().describe('Line spacing percentage (e.g. 100 for single, 150 for 1.5x, 200 for double)'),
       headingLevel: z.number().int().optional().describe('Set paragraph named style to HEADING_1..HEADING_6 (shortcut for namedStyle=HEADING_N)'),
       namedStyle: z.enum(['NORMAL_TEXT', 'TITLE', 'SUBTITLE', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'HEADING_5', 'HEADING_6']).optional().describe('Set paragraph named style explicitly'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
   }, async (args) => {
@@ -142,6 +145,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       code?: boolean;
       link?: string; noLink?: boolean;
       alignment?: string;
+      batch?: string;
       lineSpacing?: number;
       headingLevel?: number;
       namedStyle?: string;
@@ -171,6 +175,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (a.lineSpacing !== undefined) argv.push(`--line-spacing=${a.lineSpacing}`);
     if (a.headingLevel !== undefined) argv.push(`--heading-level=${a.headingLevel}`);
     if (a.namedStyle) argv.push(`--named-style=${a.namedStyle}`);
+    if (a.batch) argv.push(`--batch=${a.batch}`);
     return runOrDiagnose(argv, { account: a.account });
   });
 
@@ -202,9 +207,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
       matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tabId: z.string().optional().describe('Tab ID to insert into (for multi-tab docs)'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, content, index, file, at, occurrence, matchCase, tabId, account }) => {
+  }, async ({ docId, content, index, file, at, occurrence, matchCase, tabId, batch, account }) => {
     const args = ['docs', 'insert', docId];
     if (content) args.push(content);
     if (index !== undefined) args.push(`--index=${index}`);
@@ -213,6 +219,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
     if (tabId) args.push(`--tab-id=${tabId}`);
+    if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -286,9 +293,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tabId: z.string().optional().describe('Tab ID for multi-tab docs'),
       pageless: z.boolean().optional().describe('Set document to pageless format'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, text, file, index, replaceRange, markdown, at, occurrence, matchCase, tabId, pageless, account }) => {
+  }, async ({ docId, text, file, index, replaceRange, markdown, at, occurrence, matchCase, tabId, pageless, batch, account }) => {
     const args = ['docs', 'update', docId];
     if (text) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
@@ -300,6 +308,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (matchCase) args.push('--match-case');
     if (tabId) args.push(`--tab-id=${tabId}`);
     if (pageless) args.push('--pageless');
+    if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -445,6 +454,83 @@ export function registerExtraDocsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  // Persisted, revision-locked Docs request batches (gog 0.25): begin a batch,
+  // run docs mutation tools with batch=<id> to compose requests locally, then
+  // end to submit them atomically against the locked revision.
+  server.registerTool('gog_batch_begin', {
+    description: 'Open a persisted, revision-locked request batch for a Google Doc. Subsequent docs mutation tools called with batch=<batchId> append their requests locally instead of applying them; gog_batch_end submits everything atomically. Returns the batchId.',
+    inputSchema: {
+      docId: z.string().describe('Google Doc ID the batch is locked to'),
+      name: z.string().optional().describe('Optional batch label'),
+      account: accountParam,
+    },
+  }, async ({ docId, name, account }) => {
+    const args = ['batch', 'begin', `--doc=${docId}`];
+    if (name) args.push(`--name=${name}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_batch_end', {
+    description: 'Submit a persisted batch: applies every composed request to the doc in one atomic batchUpdate against the locked revision. Atomic by default — set autoSplit to submit >500-request batches as ordered chunks (non-atomic), or continueOnError to retry individually after an atomic validation failure, retaining failures in the batch.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      batchId: z.string().describe('Batch ID (from gog_batch_begin)'),
+      autoSplit: z.boolean().optional().describe('Submit batches over 500 requests as ordered chunks (non-atomic)'),
+      continueOnError: z.boolean().optional().describe('After an atomic validation failure, submit requests individually and retain failures'),
+      account: accountParam,
+    },
+  }, async ({ batchId, autoSplit, continueOnError, account }) => {
+    const args = ['batch', 'end', batchId];
+    if (autoSplit) args.push('--auto-split');
+    if (continueOnError) args.push('--continue-on-error');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_batch_abort', {
+    description: 'Discard a persisted batch and its composed requests without applying anything to the doc.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      batchId: z.string().describe('Batch ID to discard'),
+      account: accountParam,
+    },
+  }, async ({ batchId, account }) => {
+    return runOrDiagnose(['batch', 'abort', batchId], { account });
+  });
+
+  server.registerTool('gog_batch_list', {
+    description: 'List persisted Docs request batches (id, doc, label, request count, status).',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      account: accountParam,
+    },
+  }, async ({ account }) => {
+    return runOrDiagnose(['batch', 'list'], { account });
+  });
+
+  server.registerTool('gog_batch_show', {
+    description: 'Show one persisted batch: its doc, locked revision, and the composed requests awaiting submission.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      batchId: z.string().describe('Batch ID'),
+      account: accountParam,
+    },
+  }, async ({ batchId, account }) => {
+    return runOrDiagnose(['batch', 'show', batchId], { account });
+  });
+
+  server.registerTool('gog_batch_prune', {
+    description: 'Delete stale persisted batches (not updated within olderThan).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      olderThan: z.string().optional().describe('Delete batches not updated within this duration (e.g. 72h, 7d)'),
+      account: accountParam,
+    },
+  }, async ({ olderThan, account }) => {
+    const args = ['batch', 'prune'];
+    if (olderThan) args.push(`--older-than=${olderThan}`);
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_docs_table_column_width', {
     description: 'Set a fixed width (in points) for a table column, or reset columns to Docs-managed even distribution. Target the table by 1-based index in document order (negative counts from the end) and the column by 1-based number. Pass evenlyDistributed without col to reset every column in the table.',
     annotations: { destructiveHint: true },
@@ -455,15 +541,17 @@ export function registerExtraDocsTools(server: McpServer): void {
       evenlyDistributed: z.boolean().optional().describe('Reset the selected column (or all columns when col is omitted) to Docs-managed equal width.'),
       tableIndex: z.number().int().optional().describe('1-based table index in document order; negative counts from the end (default: 1)'),
       tab: z.string().optional().describe('Target tab title or ID'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, col, width, evenlyDistributed, tableIndex, tab, account }) => {
+  }, async ({ docId, col, width, evenlyDistributed, tableIndex, tab, batch, account }) => {
     const args = ['docs', 'table-column-width', docId];
     if (col !== undefined) args.push(`--col=${col}`);
     if (width !== undefined) args.push(`--width=${width}`);
     if (evenlyDistributed) args.push('--evenly-distributed');
     if (tableIndex !== undefined) args.push(`--table-index=${tableIndex}`);
     if (tab) args.push(`--tab=${tab}`);
+    if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -719,9 +807,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
       matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, index, atEnd, at, occurrence, matchCase, tab, account }) => {
+  }, async ({ docId, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
     const args = ['docs', 'insert-page-break', docId];
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
@@ -729,6 +818,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
     if (tab) args.push(`--tab=${tab}`);
+    if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -824,9 +914,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       underline: z.boolean().optional().describe('Set cell text underline'),
       tableIndex: z.number().int().optional().describe('0-based table index in document order (default: 0)'),
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, row, col, rowSpan, colSpan, backgroundColor, textColor, bold, italic, underline, tableIndex, tab, account }) => {
+  }, async ({ docId, row, col, rowSpan, colSpan, backgroundColor, textColor, bold, italic, underline, tableIndex, tab, batch, account }) => {
     const args = ['docs', 'cell-style', docId, `--row=${row}`, `--col=${col}`];
     if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
     if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
@@ -837,6 +928,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (underline) args.push('--underline');
     if (tableIndex !== undefined) args.push(`--table-index=${tableIndex}`);
     if (tab) args.push(`--tab=${tab}`);
+    if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -882,9 +974,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
       matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, email, index, atEnd, at, occurrence, matchCase, tab, account }) => {
+  }, async ({ docId, email, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
     const args = ['docs', 'insert-person', docId, `--email=${email}`];
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
@@ -892,6 +985,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
     if (tab) args.push(`--tab=${tab}`);
+    if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -905,15 +999,17 @@ export function registerExtraDocsTools(server: McpServer): void {
       index: z.number().int().optional().describe('Character index to insert at. Omit or use atEnd for end-of-doc.'),
       atEnd: z.boolean().optional().describe('Insert at end-of-doc/tab (mutually exclusive with index)'),
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, date, format, index, atEnd, tab, account }) => {
+  }, async ({ docId, date, format, index, atEnd, tab, batch, account }) => {
     const args = ['docs', 'insert-date-chip', docId];
     if (date) args.push(`--date=${date}`);
     if (format) args.push(`--format=${format}`);
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
     if (tab) args.push(`--tab=${tab}`);
+    if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
 

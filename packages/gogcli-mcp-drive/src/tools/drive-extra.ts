@@ -327,6 +327,20 @@ export function registerExtraDriveTools(server: McpServer): void {
     return runOrDiagnose(['drive', 'revisions', 'get', fileId, revisionId], { account });
   });
 
+  server.registerTool('gog_drive_shortcut_create', {
+    description: 'Create a Drive shortcut to a file or folder inside a destination folder. Shortcuts are classified distinctly in listing/tree output and are never followed by tree scans.',
+    inputSchema: {
+      targetId: z.string().describe('File or folder ID the shortcut points to'),
+      parent: z.string().describe('Destination folder ID for the shortcut'),
+      name: z.string().optional().describe('Shortcut name (default: the target\'s name)'),
+      account: accountParam,
+    },
+  }, async ({ targetId, parent, name, account }) => {
+    const args = ['drive', 'shortcut', 'create', targetId, `--parent=${parent}`];
+    if (name) args.push(`--name=${name}`);
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_drive_labels_list', {
     description: 'List Drive label schemas available to the account.',
     annotations: { readOnlyHint: true },

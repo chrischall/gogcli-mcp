@@ -598,3 +598,22 @@ describe('gog_drive_revisions_get', () => {
     );
   });
 });
+
+// gog 0.25.0
+describe('gog_drive_shortcut_create', () => {
+  it('creates a shortcut to a target in a folder', async () => {
+    await handlers.get('gog_drive_shortcut_create')!({ targetId: 'f1', parent: 'folder9' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'shortcut', 'create', 'f1', '--parent=folder9'],
+      { account: undefined },
+    );
+  });
+
+  it('passes an explicit shortcut name', async () => {
+    await handlers.get('gog_drive_shortcut_create')!({ targetId: 'f1', parent: 'folder9', name: 'My Link', account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'shortcut', 'create', 'f1', '--parent=folder9', '--name=My Link'],
+      { account: 'a@b.com' },
+    );
+  });
+});

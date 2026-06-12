@@ -43,12 +43,14 @@ export function registerDocsTools(server: McpServer): void {
       text: z.string().describe('Text content to write'),
       append: z.boolean().optional().describe('Append to existing content instead of replacing (default: false)'),
       checkOrphans: z.boolean().optional().describe('Block the write (exit code 11) if it would orphan an open comment — i.e. remove the text the comment is anchored to. Recommended for replacement writes on commented docs.'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin in gogcli-mcp-docs) instead of applying it — nothing changes in the doc until the batch is submitted.'),
       account: accountParam,
     },
-  }, async ({ docId, text, append, checkOrphans, account }) => {
+  }, async ({ docId, text, append, checkOrphans, batch, account }) => {
     const args = ['docs', 'write', docId, `--text=${text}`];
     if (append) args.push('--append');
     if (checkOrphans) args.push('--check-orphans');
+    if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
 

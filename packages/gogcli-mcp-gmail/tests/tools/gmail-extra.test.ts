@@ -132,6 +132,23 @@ describe('bulk action tools (archive, mark_read, mark_unread, trash)', () => {
       });
     });
   }
+
+  // gog 0.25.0 — --thread is archive-only
+  it('gog_gmail_archive passes --thread to archive whole threads by id', async () => {
+    await handlers.get('gog_gmail_archive')!({ messageIds: ['t1', 't2'], thread: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'archive', 't1', 't2', '--thread'],
+      { account: undefined },
+    );
+  });
+
+  it('other bulk tools do not expose a thread param', async () => {
+    await handlers.get('gog_gmail_trash')!({ messageIds: ['m1'], thread: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'trash', 'm1'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_gmail_message_modify', () => {
