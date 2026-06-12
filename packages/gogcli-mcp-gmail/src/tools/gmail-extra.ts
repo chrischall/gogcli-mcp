@@ -122,11 +122,12 @@ export function registerExtraGmailTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  const bulkActions: Array<{ tool: string; cmd: string; description: string }> = [
+  const bulkActions: Array<{ tool: string; cmd: string; description: string; supportsThread?: boolean }> = [
     {
       tool: 'gog_gmail_archive',
       cmd: 'archive',
-      description: 'Archive messages (remove from inbox). Pass either messageIds or a Gmail search query.',
+      description: 'Archive messages (remove from inbox). Pass either messageIds or a Gmail search query. Set thread=true to treat the ids as THREAD ids and archive every message in each thread (the right mode for ids that came from thread search).',
+      supportsThread: true,
     },
     {
       tool: 'gog_gmail_mark_read',
@@ -145,21 +146,29 @@ export function registerExtraGmailTools(server: McpServer): void {
     },
   ];
 
-  for (const { tool, cmd, description } of bulkActions) {
+  for (const { tool, cmd, description, supportsThread } of bulkActions) {
+    const inputSchema: Record<string, z.ZodTypeAny> = {
+      messageIds: z.array(z.string()).optional().describe('Specific message IDs to act on'),
+      query: z.string().optional().describe('Gmail search query (alternative to messageIds; acts on all matching)'),
+      max: z.number().optional().describe('Max messages when using --query (default: 100)'),
+      account: accountParam,
+    };
+    if (supportsThread) {
+      inputSchema.thread = z.boolean().optional().describe('Treat messageIds as THREAD ids and act on every message in each thread');
+    }
     server.registerTool(tool, {
       description,
       annotations: { destructiveHint: true },
-      inputSchema: {
-        messageIds: z.array(z.string()).optional().describe('Specific message IDs to act on'),
-        query: z.string().optional().describe('Gmail search query (alternative to messageIds; acts on all matching)'),
-        max: z.number().optional().describe('Max messages when using --query (default: 100)'),
-        account: accountParam,
-      },
-    }, async ({ messageIds, query, max, account }) => {
+      inputSchema,
+    }, async (rawArgs) => {
+      const { messageIds, query, max, thread, account } = rawArgs as {
+        messageIds?: string[]; query?: string; max?: number; thread?: boolean; account?: string;
+      };
       const args = ['gmail', cmd];
       if (messageIds) args.push(...messageIds);
       if (query) args.push(`--query=${query}`);
       if (max !== undefined) args.push(`--max=${max}`);
+      if (supportsThread && thread) args.push('--thread');
       return runOrDiagnose(args, { account });
     });
   }

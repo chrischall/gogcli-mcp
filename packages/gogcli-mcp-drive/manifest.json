@@ -198,6 +198,10 @@
       "description": "Get one revision of a file by revision ID"
     },
     {
+      "name": "gog_drive_shortcut_create",
+      "description": "Create a Drive shortcut to a file or folder in a destination folder"
+    },
+    {
       "name": "gog_drive_labels_list",
       "description": "List Drive label schemas"
     },

@@ -102,6 +102,17 @@ describe('gog_docs_write', () => {
     );
   });
 
+  // gog 0.25.0
+  it('appends to a persisted batch via --batch', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_write')!({ docId: 'abc', text: 'T', batch: 'b1' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['docs', 'write', 'abc', '--text=T', '--batch=b1'],
+      { account: undefined },
+    );
+  });
+
   // gog 0.24.0
   it('adds --check-orphans when checkOrphans is true', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
