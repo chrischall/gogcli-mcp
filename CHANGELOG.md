@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/chrischall/gogcli-mcp/compare/v2.7.1...v2.8.0) (2026-06-12)
+
+
+### Features
+
+* **tools:** catch up to gog v0.25.0 — Docs request batches, gmail thread archive, drive shortcuts ([#101](https://github.com/chrischall/gogcli-mcp/issues/101)) ([d551989](https://github.com/chrischall/gogcli-mcp/commit/d551989304defb99b4cadcea99692a644d85c116))
+
 ## [2.7.1](https://github.com/chrischall/gogcli-mcp/compare/v2.7.0...v2.7.1) (2026-06-11)
 
 

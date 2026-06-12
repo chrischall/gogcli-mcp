@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-calendar",
-  "version": "2.7.1",
+  "version": "2.8.0",
   "mcpName": "io.github.chrischall/gogcli-mcp-calendar",
   "description": "Extended Google Calendar + Meet MCP server via gogcli — auth + Calendar events + Meet space management",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
