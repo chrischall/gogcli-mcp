@@ -380,6 +380,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     subject: z.string().describe('Subject'),
     body: z.string().describe('Body (plain text)'),
     bodyHtml: z.string().optional().describe('Body (HTML; optional)'),
+    bodyHtmlFile: z.string().optional().describe('Path to an HTML file (read on the gog server) to use as the HTML body, or "-" to read from stdin. Use instead of bodyHtml for a large pre-rendered HTML body you do not want to inline. If both are given, gog uses the file.'),
     replyToMessageId: z.string().optional().describe('Reply to a specific Gmail MESSAGE id — the short hex `id` field from gog_gmail_get / _search / _thread_get (e.g. 19e7593d77fd9636), NOT a thread id and NOT the RFC822 `<…@host>` Message-Id header. Anchors In-Reply-To/References to that exact message. To reply to a thread when you don\'t know the latest message, use replyToThreadId instead. If both are given, replyToMessageId wins.'),
     replyToThreadId: z.string().optional().describe('Reply to a Gmail THREAD id — passed to gog as --thread-id, which threads the draft using the thread\'s latest-message headers (In-Reply-To/References). This is what "reply to this thread" almost always means. Mutually exclusive with replyToMessageId (which wins if both are set). Thread ids and message ids are both 16-hex strings and easy to confuse — use this param, not replyToMessageId, when the id came from a thread.'),
     replyTo: z.string().optional().describe('Reply-To header address'),
@@ -398,6 +399,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     subject: string;
     body: string;
     bodyHtml?: string;
+    bodyHtmlFile?: string;
     replyToMessageId?: string;
     replyToThreadId?: string;
     replyTo?: string;
@@ -416,6 +418,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     args.push(`--subject=${f.subject}`);
     args.push(`--body=${f.body}`);
     if (f.bodyHtml) args.push(`--body-html=${f.bodyHtml}`);
+    if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
     // A draft can reply to a specific message (--reply-to-message-id) or thread
     // off the latest message in a thread (--thread-id, which gog resolves
     // server-side). replyToMessageId wins when both are supplied.

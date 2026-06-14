@@ -357,3 +357,39 @@ describe('gog_meet_participants', () => {
     );
   });
 });
+
+describe('gog_calendar_unsubscribe', () => {
+  it('calls runOrDiagnose with calendarId', async () => {
+    await handlers.get('gog_calendar_unsubscribe')!({ calendarId: 'cal@group.calendar.google.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['calendar', 'unsubscribe', 'cal@group.calendar.google.com'],
+      { account: undefined },
+    );
+  });
+
+  it('passes account through', async () => {
+    await handlers.get('gog_calendar_unsubscribe')!({ calendarId: 'cal', account: 'me@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['calendar', 'unsubscribe', 'cal'],
+      { account: 'me@x.com' },
+    );
+  });
+});
+
+describe('gog_calendar_delete_calendar', () => {
+  it('calls runOrDiagnose with calendarId', async () => {
+    await handlers.get('gog_calendar_delete_calendar')!({ calendarId: 'cal' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['calendar', 'delete-calendar', 'cal'],
+      { account: undefined },
+    );
+  });
+
+  it('passes account through', async () => {
+    await handlers.get('gog_calendar_delete_calendar')!({ calendarId: 'cal', account: 'me@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['calendar', 'delete-calendar', 'cal'],
+      { account: 'me@x.com' },
+    );
+  });
+});

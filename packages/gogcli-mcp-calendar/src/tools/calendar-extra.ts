@@ -245,6 +245,28 @@ export function registerExtraCalendarTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  server.registerTool('gog_calendar_unsubscribe', {
+    description: 'Remove a calendar from your calendar list (the underlying calendar is not deleted — you can re-subscribe). For deleting a secondary calendar you own, use gog_calendar_delete_calendar.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      calendarId: z.string().describe('Calendar ID or alias to remove from your calendar list'),
+      account: accountParam,
+    },
+  }, async ({ calendarId, account }) => {
+    return runOrDiagnose(['calendar', 'unsubscribe', calendarId], { account });
+  });
+
+  server.registerTool('gog_calendar_delete_calendar', {
+    description: 'Permanently delete an owned secondary calendar and all its events. Cannot delete your primary calendar. To merely remove a calendar you do not own from your list, use gog_calendar_unsubscribe.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      calendarId: z.string().describe('Owned secondary calendar ID or alias'),
+      account: accountParam,
+    },
+  }, async ({ calendarId, account }) => {
+    return runOrDiagnose(['calendar', 'delete-calendar', calendarId], { account });
+  });
+
   server.registerTool('gog_meet_participants', {
     description: 'List participants from the latest (or a specific) Meet call.',
     annotations: { readOnlyHint: true },
