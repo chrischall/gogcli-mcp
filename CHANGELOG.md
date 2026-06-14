@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.9.0](https://github.com/chrischall/gogcli-mcp/compare/v2.8.0...v2.9.0) (2026-06-14)
+
+
+### Features
+
+* **tools:** catch up to gog v0.26.0 — calendar unsubscribe/delete-calendar, gmail draft HTML-file ([#108](https://github.com/chrischall/gogcli-mcp/issues/108)) ([2ba9e4c](https://github.com/chrischall/gogcli-mcp/commit/2ba9e4cbed76460390f746189642d1e49363f238))
+
+
+### Documentation
+
+* bump pr-workflow marker to v2 ([#106](https://github.com/chrischall/gogcli-mcp/issues/106)) ([781fa5a](https://github.com/chrischall/gogcli-mcp/commit/781fa5ab65c65eac50b4704e25001c3cf3e79e4c))
+
 ## [2.8.0](https://github.com/chrischall/gogcli-mcp/compare/v2.7.1...v2.8.0) (2026-06-12)
 
 
