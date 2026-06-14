@@ -514,6 +514,18 @@ describe('gog_gmail_drafts_create', () => {
     );
   });
 
+  it('passes --body-html-file when bodyHtmlFile is supplied', async () => {
+    await handlers.get('gog_gmail_drafts_create')!({
+      subject: 'Hi',
+      body: 'Hello',
+      bodyHtmlFile: '/tmp/body.html',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'create', '--subject=Hi', '--body=Hello', '--body-html-file=/tmp/body.html'],
+      { account: undefined },
+    );
+  });
+
   it('skips recipient flags when omitRecipients is true, even if to/cc/bcc are supplied', async () => {
     await handlers.get('gog_gmail_drafts_create')!({
       to: 'a@b.com', cc: 'cc@x.com', bcc: 'bcc@x.com',

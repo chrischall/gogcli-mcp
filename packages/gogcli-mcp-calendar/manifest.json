@@ -131,6 +131,14 @@
       "description": "Create an Out of Office event that auto-declines invitations"
     },
     {
+      "name": "gog_calendar_unsubscribe",
+      "description": "Remove a calendar from your calendar list"
+    },
+    {
+      "name": "gog_calendar_delete_calendar",
+      "description": "Delete an owned secondary calendar"
+    },
+    {
       "name": "gog_meet_create",
       "description": "Create a Google Meet space"
     },
