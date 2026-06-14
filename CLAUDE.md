@@ -137,7 +137,7 @@ Do NOT manually bump versions or create tags unless the user explicitly asks. re
 
 release-please (`.github/workflows/release-please.yml`) opens / updates a single combined release PR whenever Conventional-Commit-style commits accumulate on `main` (`feat:`, `fix:`, etc.). Merging the release PR creates one `v<NEXT>` tag for all sub-packages (linked-versions); the second job in the same workflow then builds `.mcpb` bundles + `.skill` files, publishes every sub-package to npm via Trusted-Publisher OIDC, publishes each `server.json` to the MCP Registry, publishes skills to ClawHub (when `CLAWHUB_TOKEN` is set), and attaches all artifacts to the GitHub Release release-please authored.
 
-<!-- pr-workflow:v1 -->
+<!-- pr-workflow:v2 -->
 ## Pull requests & release notes
 
 **Default workflow: branch + PR, even for solo work.** Direct pushes to `main` skip review *and* skip auto-generated release notes — GitHub's `generate_release_notes` (configured in `.github/release.yml`) only picks up merged PRs. Push directly to `main` only when the user explicitly asks for it (e.g. emergency hotfix).
