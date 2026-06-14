@@ -756,6 +756,98 @@ describe('gog_gmail_forward', () => {
   });
 });
 
+describe('gog_gmail_reply', () => {
+  it('calls runOrDiagnose with messageId and --body', async () => {
+    await handlers.get('gog_gmail_reply')!({ messageId: 'm1', body: 'Thanks' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'reply', 'm1', '--body=Thanks'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all reply flags including repeatable recipients', async () => {
+    await handlers.get('gog_gmail_reply')!({
+      messageId: 'm1',
+      body: 'Hi',
+      bodyHtml: '<p>Hi</p>',
+      bodyHtmlFile: '/tmp/b.html',
+      to: ['a@b.com', 'c@d.com'],
+      cc: ['cc@x.com'],
+      bcc: ['bcc@x.com'],
+      remove: ['old@x.com'],
+      subject: 'New subject',
+      noQuote: true,
+      attach: ['/tmp/a.pdf', '/tmp/b.pdf'],
+      from: 'me@x.com',
+      signature: true,
+      signatureFrom: 'alias@x.com',
+      signatureFile: '/tmp/sig.txt',
+      account: 'me@gmail.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'gmail', 'reply', 'm1',
+        '--body=Hi',
+        '--body-html=<p>Hi</p>',
+        '--body-html-file=/tmp/b.html',
+        '--to=a@b.com',
+        '--to=c@d.com',
+        '--cc=cc@x.com',
+        '--bcc=bcc@x.com',
+        '--remove=old@x.com',
+        '--subject=New subject',
+        '--no-quote',
+        '--attach=/tmp/a.pdf',
+        '--attach=/tmp/b.pdf',
+        '--from=me@x.com',
+        '--signature',
+        '--signature-from=alias@x.com',
+        '--signature-file=/tmp/sig.txt',
+      ],
+      { account: 'me@gmail.com' },
+    );
+  });
+
+  it('omits --no-quote and --signature when false', async () => {
+    await handlers.get('gog_gmail_reply')!({ messageId: 'm1', body: 'Hi', noQuote: false, signature: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'reply', 'm1', '--body=Hi'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_reply_all', () => {
+  it('uses the reply-all subcommand', async () => {
+    await handlers.get('gog_gmail_reply_all')!({ messageId: 'm1', body: 'Thanks all' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'reply-all', 'm1', '--body=Thanks all'],
+      { account: undefined },
+    );
+  });
+
+  it('passes repeatable recipient and signature flags', async () => {
+    await handlers.get('gog_gmail_reply_all')!({
+      messageId: 'm1',
+      bodyHtml: '<p>Hi</p>',
+      cc: ['x@y.com', 'z@y.com'],
+      remove: ['drop@y.com'],
+      signatureFile: '/tmp/sig.html',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'gmail', 'reply-all', 'm1',
+        '--body-html=<p>Hi</p>',
+        '--cc=x@y.com',
+        '--cc=z@y.com',
+        '--remove=drop@y.com',
+        '--signature-file=/tmp/sig.html',
+      ],
+      { account: undefined },
+    );
+  });
+});
+
 describe('gog_gmail_autoreply', () => {
   it('calls runOrDiagnose with query and --body', async () => {
     await handlers.get('gog_gmail_autoreply')!({ query: 'is:unread', body: 'Thanks' });

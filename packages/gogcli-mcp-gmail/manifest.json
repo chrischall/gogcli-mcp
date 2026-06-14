@@ -202,6 +202,14 @@
       "description": "Forward a Gmail message to new recipients"
     },
     {
+      "name": "gog_gmail_reply",
+      "description": "Reply to a Gmail message (sender only)"
+    },
+    {
+      "name": "gog_gmail_reply_all",
+      "description": "Reply to all participants of a Gmail message"
+    },
+    {
       "name": "gog_gmail_autoreply",
       "description": "Reply once to all messages matching a Gmail search query"
     },

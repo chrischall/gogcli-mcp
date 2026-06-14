@@ -530,6 +530,85 @@ export function registerExtraGmailTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
+  // only in the subcommand and default recipient set (reply → sender; reply-all
+  // → every participant). Recipient flags are repeatable on the CLI, so they are
+  // arrays here. --to/--cc/--bcc ADD or MOVE recipients onto the inherited reply
+  // set; --remove drops them. Body/HTML follow the same inline-or-file shape as
+  // the draft tools.
+  const replySchema = {
+    messageId: z.string().describe('Gmail message ID to reply to — the short hex `id` from gog_gmail_get / _search / _messages_search (NOT the threadId, NOT the RFC822 `<…@host>` Message-Id header).'),
+    body: z.string().optional().describe('Reply body (plain text; required unless bodyHtml or bodyHtmlFile is set)'),
+    bodyHtml: z.string().optional().describe('Reply body (HTML; optional)'),
+    bodyHtmlFile: z.string().optional().describe('Path to an HTML file (read on the gog server) for the reply body, or "-" for stdin. Use instead of bodyHtml for a large pre-rendered HTML body. If both are given, gog uses the file.'),
+    to: z.array(z.string()).optional().describe('Add or move recipients to To (repeatable). Added on top of the recipients inherited from the original message.'),
+    cc: z.array(z.string()).optional().describe('Add or move recipients to Cc (repeatable)'),
+    bcc: z.array(z.string()).optional().describe('Add or move recipients to Bcc (repeatable)'),
+    remove: z.array(z.string()).optional().describe('Remove these recipients from all fields (repeatable) — e.g. to drop someone from a reply-all.'),
+    subject: z.string().optional().describe('Override reply subject (default: "Re: <original>"). A changed subject starts a NEW Gmail thread.'),
+    noQuote: z.boolean().optional().describe('Do not include the original message quoted below the reply (default: the original is quoted)'),
+    attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Read on the gog server, base64-encoded with a MIME type inferred from the extension.'),
+    from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
+    signature: z.boolean().optional().describe('Append the Gmail signature from the active send-as address'),
+    signatureFrom: z.string().optional().describe('Append the Gmail signature from this send-as email address'),
+    signatureFile: z.string().optional().describe('Append a local signature file (plain text or HTML), read on the gog server'),
+    account: accountParam,
+  };
+
+  type ReplyFlags = {
+    body?: string;
+    bodyHtml?: string;
+    bodyHtmlFile?: string;
+    to?: string[];
+    cc?: string[];
+    bcc?: string[];
+    remove?: string[];
+    subject?: string;
+    noQuote?: boolean;
+    attach?: string[];
+    from?: string;
+    signature?: boolean;
+    signatureFrom?: string;
+    signatureFile?: string;
+  };
+
+  function appendReplyFlags(args: string[], f: ReplyFlags): void {
+    if (f.body) args.push(`--body=${f.body}`);
+    if (f.bodyHtml) args.push(`--body-html=${f.bodyHtml}`);
+    if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
+    if (f.to) for (const r of f.to) args.push(`--to=${r}`);
+    if (f.cc) for (const r of f.cc) args.push(`--cc=${r}`);
+    if (f.bcc) for (const r of f.bcc) args.push(`--bcc=${r}`);
+    if (f.remove) for (const r of f.remove) args.push(`--remove=${r}`);
+    if (f.subject) args.push(`--subject=${f.subject}`);
+    if (f.noQuote) args.push('--no-quote');
+    if (f.attach) for (const p of f.attach) args.push(`--attach=${p}`);
+    if (f.from) args.push(`--from=${f.from}`);
+    if (f.signature) args.push('--signature');
+    if (f.signatureFrom) args.push(`--signature-from=${f.signatureFrom}`);
+    if (f.signatureFile) args.push(`--signature-file=${f.signatureFile}`);
+  }
+
+  server.registerTool('gog_gmail_reply', {
+    description: 'Reply to a Gmail message (sends to the original sender only). Threads off the message and inherits a "Re:" subject and the quoted original by default. For replying to every participant use gog_gmail_reply_all; to reply across many messages matching a query use gog_gmail_autoreply; to stage a reply without sending use gog_gmail_drafts_create.',
+    annotations: { destructiveHint: true },
+    inputSchema: replySchema,
+  }, async ({ messageId, account, ...flags }) => {
+    const args = ['gmail', 'reply', messageId];
+    appendReplyFlags(args, flags);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_gmail_reply_all', {
+    description: 'Reply to all participants of a Gmail message (sender plus every To/Cc recipient). Same inherited "Re:" subject and quoting as gog_gmail_reply. Use the remove flag to drop specific recipients from the reply-all.',
+    annotations: { destructiveHint: true },
+    inputSchema: replySchema,
+  }, async ({ messageId, account, ...flags }) => {
+    const args = ['gmail', 'reply-all', messageId];
+    appendReplyFlags(args, flags);
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_gmail_autoreply', {
     description: 'Reply once to all messages matching a Gmail search query. Use the label flag to dedupe across runs.',
     annotations: { destructiveHint: true },
