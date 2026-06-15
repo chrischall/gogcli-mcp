@@ -127,17 +127,23 @@ export function registerExtraContactsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_contacts_dedupe', {
-    description: 'Find likely duplicate personal contacts (preview only — does not modify anything).',
-    annotations: { readOnlyHint: true },
+    description: 'Find likely duplicate personal contacts. Defaults to a read-only preview of the merge plan; set apply to actually merge each duplicate group and delete the redundant contacts (etag-checked, with ambiguous or unmergeable groups refused). Scope a risky apply with resource. Always preview first.',
+    annotations: { destructiveHint: true },
     inputSchema: {
       match: z.string().optional().describe('Match fields, comma-separated from email,phone,name (default: email,phone)'),
-      max: z.number().optional().describe('Max contacts to scan (0 = all)'),
+      max: z.number().optional().describe('Max contacts to scan (0 = all). Mutually exclusive with resource — gog rejects passing both.'),
+      resource: z.array(z.string()).optional().describe('Limit dedupe to these exact contact resource names (e.g. people/c123), repeatable — useful to scope an apply to known duplicates. Mutually exclusive with max.'),
+      apply: z.boolean().optional().describe('Merge each duplicate group and DELETE the redundant contacts. Without this the tool only previews the plan. Destructive — preview first.'),
+      failEmpty: z.boolean().optional().describe('Exit with an error (code 3) when no duplicates are found, instead of succeeding empty.'),
       account: accountParam,
     },
-  }, async ({ match, max, account }) => {
+  }, async ({ match, max, resource, apply, failEmpty, account }) => {
     const args = ['contacts', 'dedupe'];
     if (match) args.push(`--match=${match}`);
     if (max !== undefined) args.push(`--max=${max}`);
+    if (resource) for (const r of resource) args.push(`--resource=${r}`);
+    if (apply) args.push('--apply');
+    if (failEmpty) args.push('--fail-empty');
     return runOrDiagnose(args, { account });
   });
 

@@ -526,6 +526,19 @@ describe('gog_gmail_drafts_create', () => {
     );
   });
 
+  it('passes --reply-all when replyAll is set', async () => {
+    await handlers.get('gog_gmail_drafts_create')!({
+      subject: 'Re: Hi',
+      body: 'Hello all',
+      replyToThreadId: 't1',
+      replyAll: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'create', '--subject=Re: Hi', '--body=Hello all', '--thread-id=t1', '--reply-all'],
+      { account: undefined },
+    );
+  });
+
   it('skips recipient flags when omitRecipients is true, even if to/cc/bcc are supplied', async () => {
     await handlers.get('gog_gmail_drafts_create')!({
       to: 'a@b.com', cc: 'cc@x.com', bcc: 'bcc@x.com',

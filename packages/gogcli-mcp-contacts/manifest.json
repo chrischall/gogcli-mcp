@@ -128,7 +128,7 @@
     },
     {
       "name": "gog_contacts_dedupe",
-      "description": "Find likely duplicate contacts (preview only)"
+      "description": "Find duplicate contacts; optionally merge and delete redundants"
     },
     {
       "name": "gog_contacts_directory_list",
