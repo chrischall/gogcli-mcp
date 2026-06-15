@@ -385,6 +385,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyToThreadId: z.string().optional().describe('Reply to a Gmail THREAD id — passed to gog as --thread-id, which threads the draft using the thread\'s latest-message headers (In-Reply-To/References). This is what "reply to this thread" almost always means. Mutually exclusive with replyToMessageId (which wins if both are set). Thread ids and message ids are both 16-hex strings and easy to confuse — use this param, not replyToMessageId, when the id came from a thread.'),
     replyTo: z.string().optional().describe('Reply-To header address'),
     quote: z.boolean().optional().describe('Include quoted original message in reply (requires replyToMessageId or replyToThreadId)'),
+    replyAll: z.boolean().optional().describe('Auto-populate recipients from the original message (reply-all), inferring To/Cc from it. Requires replyToMessageId or replyToThreadId. Explicit to/cc/bcc still apply on top; omitRecipients still suppresses them.'),
     attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Read on the gog server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all).'),
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     omitRecipients: z.boolean().optional().describe('Create the draft with no recipients even if to/cc/bcc are supplied — an accidental-send guard. Populate recipients in a later update before sending.'),
@@ -404,6 +405,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyToThreadId?: string;
     replyTo?: string;
     quote?: boolean;
+    replyAll?: boolean;
     attach?: string[];
     from?: string;
     omitRecipients?: boolean;
@@ -424,6 +426,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     // server-side). replyToMessageId wins when both are supplied.
     if (f.replyToMessageId) args.push(`--reply-to-message-id=${f.replyToMessageId}`);
     else if (f.replyToThreadId) args.push(`--thread-id=${f.replyToThreadId}`);
+    // --reply-all infers original recipients; gog requires a reply target above.
+    if (f.replyAll) args.push('--reply-all');
     if (f.replyTo) args.push(`--reply-to=${f.replyTo}`);
     if (f.quote) args.push('--quote');
     if (f.attach) for (const path of f.attach) args.push(`--attach=${path}`);

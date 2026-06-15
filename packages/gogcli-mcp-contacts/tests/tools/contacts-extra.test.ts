@@ -158,6 +158,23 @@ describe('gog_contacts_dedupe', () => {
       { account: undefined },
     );
   });
+
+  it('passes --apply, repeatable --resource, and --fail-empty', async () => {
+    await handlers.get('gog_contacts_dedupe')!({
+      apply: true,
+      resource: ['people/c1', 'people/c2'],
+      failEmpty: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['contacts', 'dedupe', '--resource=people/c1', '--resource=people/c2', '--apply', '--fail-empty'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --apply and --fail-empty when false', async () => {
+    await handlers.get('gog_contacts_dedupe')!({ apply: false, failEmpty: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'dedupe'], { account: undefined });
+  });
 });
 
 describe('gog_contacts_directory_list', () => {
