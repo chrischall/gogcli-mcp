@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.9.0](https://github.com/chrischall/gogcli-mcp/compare/v2.8.0...v2.9.0) (2026-06-15)
+
+
+### Features
+
+* **gmail:** catch up to gog v0.27.0 — first-class reply / reply-all ([#110](https://github.com/chrischall/gogcli-mcp/issues/110)) ([a6148b9](https://github.com/chrischall/gogcli-mcp/commit/a6148b976df072cb9e6cabcad4ae5e74c44d5a6d))
+* **tools:** catch up to gog v0.26.0 — calendar unsubscribe/delete-calendar, gmail draft HTML-file ([#108](https://github.com/chrischall/gogcli-mcp/issues/108)) ([2ba9e4c](https://github.com/chrischall/gogcli-mcp/commit/2ba9e4cbed76460390f746189642d1e49363f238))
+* **tools:** catch up to gog v0.28.0 — contacts dedupe --apply, gmail draft reply-all ([#112](https://github.com/chrischall/gogcli-mcp/issues/112)) ([d7521ae](https://github.com/chrischall/gogcli-mcp/commit/d7521aea963f21e1143d9714449f72222d8059bf))
+
+
+### Documentation
+
+* bump pr-workflow marker to v2 ([#106](https://github.com/chrischall/gogcli-mcp/issues/106)) ([781fa5a](https://github.com/chrischall/gogcli-mcp/commit/781fa5ab65c65eac50b4704e25001c3cf3e79e4c))
+* document auto-review follow-up issue convention ([#111](https://github.com/chrischall/gogcli-mcp/issues/111)) ([a7a658f](https://github.com/chrischall/gogcli-mcp/commit/a7a658f4966f9ca2e6d77160dc1815f3b205dcdb))
+
 ## [2.8.0](https://github.com/chrischall/gogcli-mcp/compare/v2.7.1...v2.8.0) (2026-06-12)
 
 
