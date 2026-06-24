@@ -73,15 +73,18 @@ export function registerSlidesTools(server: McpServer): void {
   });
 
   server.registerTool('gog_slides_read_slide', {
-    description: 'Read the content of a slide (text, shapes, speaker notes).',
+    description: 'Read the content of a slide (text, shapes, speaker notes). Set detail=true to also include normalized element geometry, styled text runs, paragraphs, table-cell content, and image source URLs.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID to read'),
+      detail: z.boolean().optional().describe('Include normalized element geometry, styled text runs, paragraphs, table-cell content, and image source URLs'),
       account: accountParam,
     },
-  }, async ({ presentationId, slideId, account }) => {
-    return runOrDiagnose(['slides', 'read-slide', presentationId, slideId], { account });
+  }, async ({ presentationId, slideId, detail, account }) => {
+    const args = ['slides', 'read-slide', presentationId, slideId];
+    if (detail) args.push('--detail');
+    return runOrDiagnose(args, { account });
   });
 
   registerRunTool(server, { service: 'slides', examples: '"add-slide", "delete-slide", "update-notes"' });
