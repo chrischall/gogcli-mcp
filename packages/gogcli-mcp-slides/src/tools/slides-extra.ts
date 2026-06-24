@@ -532,4 +532,213 @@ export function registerExtraSlidesTools(server: McpServer): void {
   }, async ({ presentationId, objectId, account }) => {
     return runOrDiagnose(['slides', 'element', 'delete', presentationId, objectId], { account });
   });
+
+  // --- gog 0.29 native tables (table subtree). Cell addressing is zero-based. ---
+
+  server.registerTool('gog_slides_table_create', {
+    description: 'Create an auto-sized native table on a slide with the given row and column counts.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      slideId: z.string().describe('Slide object ID to create the table on'),
+      rows: z.number().int().min(1).describe('Number of rows (>=1)'),
+      cols: z.number().int().min(1).describe('Number of columns (>=1)'),
+      objectId: z.string().optional().describe('Optional stable table object ID (5-50 chars: letters, digits, _, -, :)'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, slideId, rows, cols, objectId, account }) => {
+    const args = ['slides', 'table', 'create', presentationId, slideId, `--rows=${rows}`, `--cols=${cols}`];
+    if (objectId) args.push(`--object-id=${objectId}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_slides_table_cell_style', {
+    description: 'Style one zero-based table cell: background fill, vertical content alignment, and inline text styling (optionally scoped to a UTF-16 range within the cell). Boolean flags set the attribute; the no* flags clear it.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      row: z.number().int().describe('0-based table row index'),
+      col: z.number().int().describe('0-based table column index'),
+      range: z.string().optional().describe('UTF-16 text range as start:end to scope text styling within the cell'),
+      fillColor: z.string().optional().describe('Cell background fill as #RGB or #RRGGBB'),
+      fillTransparent: z.boolean().optional().describe('Remove the cell background fill'),
+      contentAlign: z.enum(['TOP', 'MIDDLE', 'BOTTOM']).optional().describe('Vertical content alignment within the cell'),
+      font: z.string().optional().describe('Font family (e.g. Arial, Georgia)'),
+      size: z.number().optional().describe('Font size in points'),
+      textColor: z.string().optional().describe('Text color as #RRGGBB or #RGB'),
+      bold: z.boolean().optional().describe('Set bold'),
+      noBold: z.boolean().optional().describe('Clear bold'),
+      italic: z.boolean().optional().describe('Set italic'),
+      noItalic: z.boolean().optional().describe('Clear italic'),
+      underline: z.boolean().optional().describe('Set underline'),
+      noUnderline: z.boolean().optional().describe('Clear underline'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, row, col, range, fillColor, fillTransparent, contentAlign, font, size, textColor, bold, noBold, italic, noItalic, underline, noUnderline, account }) => {
+    const args = ['slides', 'table', 'cell', 'style', presentationId, tableObjectId, `--row=${row}`, `--col=${col}`];
+    if (range) args.push(`--range=${range}`);
+    if (fillColor) args.push(`--fill-color=${fillColor}`);
+    if (fillTransparent) args.push('--fill-transparent');
+    if (contentAlign) args.push(`--content-align=${contentAlign}`);
+    if (font) args.push(`--font=${font}`);
+    if (size !== undefined) args.push(`--size=${size}`);
+    if (textColor) args.push(`--text-color=${textColor}`);
+    if (bold) args.push('--bold');
+    if (noBold) args.push('--no-bold');
+    if (italic) args.push('--italic');
+    if (noItalic) args.push('--no-italic');
+    if (underline) args.push('--underline');
+    if (noUnderline) args.push('--no-underline');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_slides_table_border_style', {
+    description: 'Style borders around or within a zero-based table cell range. position selects which borders are affected; dash sets the line style.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      row: z.number().int().describe('0-based starting row index'),
+      col: z.number().int().describe('0-based starting column index'),
+      rowSpan: z.number().int().optional().describe('Number of rows in the range'),
+      colSpan: z.number().int().optional().describe('Number of columns in the range'),
+      position: z.enum(['ALL', 'OUTER', 'INNER', 'INNER_HORIZONTAL', 'INNER_VERTICAL', 'TOP', 'BOTTOM', 'LEFT', 'RIGHT']).optional().describe('Which borders to style'),
+      borderColor: z.string().optional().describe('Border color as #RGB or #RRGGBB'),
+      weight: z.number().optional().describe('Border weight in points'),
+      dash: z.enum(['SOLID', 'DOT', 'DASH', 'DASH_DOT', 'LONG_DASH', 'LONG_DASH_DOT']).optional().describe('Border dash style'),
+      transparent: z.boolean().optional().describe('Make the selected borders transparent'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, row, col, rowSpan, colSpan, position, borderColor, weight, dash, transparent, account }) => {
+    const args = ['slides', 'table', 'border', 'style', presentationId, tableObjectId, `--row=${row}`, `--col=${col}`];
+    if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
+    if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
+    if (position) args.push(`--position=${position}`);
+    if (borderColor) args.push(`--border-color=${borderColor}`);
+    if (weight !== undefined) args.push(`--weight=${weight}`);
+    if (dash) args.push(`--dash=${dash}`);
+    if (transparent) args.push('--transparent');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_slides_table_column_insert', {
+    description: 'Insert one or more columns relative to a zero-based table column. Inserts to the left by default, or to the right with right=true.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      col: z.number().int().describe('0-based reference column index'),
+      count: z.number().int().optional().describe('Number of columns to insert (default: 1)'),
+      right: z.boolean().optional().describe('Insert to the right of the reference column instead of the left'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, col, count, right, account }) => {
+    const args = ['slides', 'table', 'column', 'insert', presentationId, tableObjectId, `--col=${col}`];
+    if (count !== undefined) args.push(`--count=${count}`);
+    if (right) args.push('--right');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_slides_table_column_delete', {
+    description: 'Delete the column containing a zero-based table cell.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      col: z.number().int().describe('0-based column index to delete'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, col, account }) => {
+    return runOrDiagnose(['slides', 'table', 'column', 'delete', presentationId, tableObjectId, `--col=${col}`], { account });
+  });
+
+  server.registerTool('gog_slides_table_column_size', {
+    description: 'Set the width of a zero-based table column.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      col: z.number().int().describe('0-based column index'),
+      width: z.number().describe('Column width in points'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, col, width, account }) => {
+    return runOrDiagnose(['slides', 'table', 'column', 'size', presentationId, tableObjectId, `--col=${col}`, `--width=${width}`], { account });
+  });
+
+  server.registerTool('gog_slides_table_row_insert', {
+    description: 'Insert one or more rows relative to a zero-based table row. Inserts above by default, or below with below=true.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      row: z.number().int().describe('0-based reference row index'),
+      count: z.number().int().optional().describe('Number of rows to insert (default: 1)'),
+      below: z.boolean().optional().describe('Insert below the reference row instead of above'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, row, count, below, account }) => {
+    const args = ['slides', 'table', 'row', 'insert', presentationId, tableObjectId, `--row=${row}`];
+    if (count !== undefined) args.push(`--count=${count}`);
+    if (below) args.push('--below');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_slides_table_row_delete', {
+    description: 'Delete the row containing a zero-based table cell.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      row: z.number().int().describe('0-based row index to delete'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, row, account }) => {
+    return runOrDiagnose(['slides', 'table', 'row', 'delete', presentationId, tableObjectId, `--row=${row}`], { account });
+  });
+
+  server.registerTool('gog_slides_table_row_size', {
+    description: 'Set the minimum height of a zero-based table row.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      row: z.number().int().describe('0-based row index'),
+      height: z.number().describe('Minimum row height in points'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, row, height, account }) => {
+    return runOrDiagnose(['slides', 'table', 'row', 'size', presentationId, tableObjectId, `--row=${row}`, `--height=${height}`], { account });
+  });
+
+  server.registerTool('gog_slides_table_merge', {
+    description: 'Merge a rectangular table cell range starting at a zero-based cell. Content of non-anchor cells is absorbed by the merge; use gog_slides_table_unmerge to split back.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      row: z.number().int().describe('0-based anchor row index'),
+      col: z.number().int().describe('0-based anchor column index'),
+      rowSpan: z.number().int().optional().describe('Number of rows to merge'),
+      colSpan: z.number().int().optional().describe('Number of columns to merge'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, row, col, rowSpan, colSpan, account }) => {
+    const args = ['slides', 'table', 'merge', presentationId, tableObjectId, `--row=${row}`, `--col=${col}`];
+    if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
+    if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_slides_table_unmerge', {
+    description: 'Unmerge (split) a rectangular range of previously merged cells, starting at a zero-based cell.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      tableObjectId: z.string().describe('Table object ID'),
+      row: z.number().int().describe('0-based anchor row index'),
+      col: z.number().int().describe('0-based anchor column index'),
+      rowSpan: z.number().int().optional().describe('Number of rows in the range'),
+      colSpan: z.number().int().optional().describe('Number of columns in the range'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, tableObjectId, row, col, rowSpan, colSpan, account }) => {
+    const args = ['slides', 'table', 'unmerge', presentationId, tableObjectId, `--row=${row}`, `--col=${col}`];
+    if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
+    if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
+    return runOrDiagnose(args, { account });
+  });
 }
