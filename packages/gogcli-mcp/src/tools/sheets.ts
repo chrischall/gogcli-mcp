@@ -42,9 +42,10 @@ export function registerSheetsTools(server: McpServer): void {
       values: z.array(z.array(cellValueParam)).describe('2D array of values (rows of columns). Cells may be string/number/boolean/null; strings starting with "=" are formulas.'),
       dry_run: dryRunParam,
       fail_if_not_empty: failIfNotEmptyParam,
+      fail_on_formula_error: z.boolean().optional().describe('After writing, read the range back and fail if any cell holds a Sheets formula error (#REF!, #DIV/0!, etc.).'),
       account: accountParam,
     },
-  }, async ({ spreadsheetId, range, values, account, dry_run, fail_if_not_empty }) => {
+  }, async ({ spreadsheetId, range, values, account, dry_run, fail_if_not_empty, fail_on_formula_error }) => {
     const cols = values.reduce((max, row) => Math.max(max, row.length), 0);
     if (fail_if_not_empty && values.length > 0 && cols > 0) {
       const readRange = expandAnchorRange(range, values.length, cols);
@@ -70,6 +71,7 @@ export function registerSheetsTools(server: McpServer): void {
     }
     const args = ['sheets', 'update', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`];
     if (dry_run) args.push('--dry-run');
+    if (fail_on_formula_error) args.push('--fail-on-formula-error');
     return runOrDiagnose(args, { account });
   });
 

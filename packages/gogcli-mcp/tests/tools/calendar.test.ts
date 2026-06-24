@@ -34,6 +34,16 @@ describe('gog_calendar_events', () => {
     );
   });
 
+  it('repeats --event-types for each requested type', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_calendar_events')!({ eventTypes: ['default', 'out-of-office'] });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'events', '--event-types=default', '--event-types=out-of-office'],
+      { account: undefined },
+    );
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Events failed'));
     const handlers = setupHandlers();
@@ -86,12 +96,14 @@ describe('gog_calendar_create', () => {
       location: 'NYC',
       attendees: 'a@b.com,c@d.com',
       allDay: true,
+      timezone: 'America/New_York',
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
         'calendar', 'create', 'primary',
         '--summary=All-day', '--from=2026-04-14', '--to=2026-04-15',
         '--description=Desc', '--location=NYC', '--attendees=a@b.com,c@d.com', '--all-day',
+        '--timezone=America/New_York',
       ],
       { account: undefined },
     );

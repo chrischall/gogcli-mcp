@@ -175,6 +175,16 @@ describe('gog_docs_export', () => {
     await handlers.get('gog_docs_export')!({ docId: 'abc' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'export', 'abc'], { account: undefined });
   });
+
+  it('includes --overwrite when requested', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_export')!({ docId: 'abc', out: '/tmp/doc.pdf', overwrite: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'export', 'abc', '--out=/tmp/doc.pdf', '--overwrite'],
+      { account: undefined },
+    );
+  });
 });
 
 // --- gog_docs_insert ---
@@ -1022,6 +1032,24 @@ describe('gog_docs_cell_style', () => {
       { account: undefined },
     );
   });
+
+  it('passes border, padding and content-alignment flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_cell_style')!({
+      docId: 'd1', row: 0, col: 0,
+      borderAll: '1pt,#000,DASH', borderTop: '2pt', borderBottom: '2pt', borderLeft: '1pt', borderRight: '1pt',
+      paddingAll: '5', paddingTop: '6pt', paddingBottom: '6pt', paddingLeft: '4mm', paddingRight: '4mm',
+      contentAlign: 'middle',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cell-style', 'd1', '--row=0', '--col=0',
+        '--border-all=1pt,#000,DASH', '--border-top=2pt', '--border-bottom=2pt', '--border-left=1pt', '--border-right=1pt',
+        '--padding-all=5', '--padding-top=6pt', '--padding-bottom=6pt', '--padding-left=4mm', '--padding-right=4mm',
+        '--content-align=middle'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_docs_insert_image', () => {
@@ -1045,6 +1073,18 @@ describe('gog_docs_insert_image', () => {
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['docs', 'insert-image', 'd1', '--file=/tmp/pic.png', '--at={{logo}}', '--width=200',
         '--height=100', '--name=logo.png', '--parent=folder1', '--on-restricted=link', '--tab=T'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --before and --after anchors', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_image')!({
+      docId: 'd1', url: 'https://x.test/i.png', before: 'Intro', after: 'Outro',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-image', 'd1', '--url=https://x.test/i.png', '--before=Intro', '--after=Outro'],
       { account: undefined },
     );
   });

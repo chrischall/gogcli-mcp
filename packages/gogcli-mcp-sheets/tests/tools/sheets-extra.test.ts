@@ -86,6 +86,13 @@ describe('gog_sheets_export', () => {
     await handlers.get('gog_sheets_export')!({ spreadsheetId: 'sid', format: 'pdf', out: '/tmp/out.pdf' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', 'sid', '--format=pdf', '--out=/tmp/out.pdf'], { account: undefined });
   });
+
+  it('includes --overwrite when requested', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_sheets_export')!({ spreadsheetId: 'sid', out: '/tmp/out.csv', overwrite: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', 'sid', '--out=/tmp/out.csv', '--overwrite'], { account: undefined });
+  });
 });
 
 // 6. freeze

@@ -141,12 +141,14 @@ export function registerExtraSheetsTools(server: McpServer): void {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       format: z.string().optional().describe('Export format: csv, tsv, pdf (default: csv)'),
       out: z.string().optional().describe('Output file path'),
+      overwrite: z.boolean().optional().describe('Overwrite the output file if it already exists (gog refuses otherwise)'),
       account: accountParam,
     },
-  }, async ({ spreadsheetId, format, out, account }) => {
+  }, async ({ spreadsheetId, format, out, overwrite, account }) => {
     const args = ['sheets', 'export', spreadsheetId];
     if (format) args.push(`--format=${format}`);
     if (out) args.push(`--out=${out}`);
+    if (overwrite) args.push('--overwrite');
     return runOrDiagnose(args, { account });
   });
 

@@ -27,6 +27,16 @@ describe('gog_slides_export', () => {
     );
   });
 
+  it('passes --overwrite when requested', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_slides_export')!({ presentationId: 'p1', out: '/tmp/deck.pptx', overwrite: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['slides', 'export', 'p1', '--out=/tmp/deck.pptx', '--overwrite'],
+      { account: undefined },
+    );
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Export failed'));
     const handlers = setupHandlers();
