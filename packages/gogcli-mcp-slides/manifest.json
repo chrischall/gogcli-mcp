@@ -127,7 +127,87 @@
     },
     {
       "name": "gog_slides_replace_slide",
-      "description": "Replace the image on an existing slide"
+      "description": "Replace the image on an existing slide (local file or public URL)"
+    },
+    {
+      "name": "gog_slides_raw",
+      "description": "Dump the raw Google Slides API response as JSON (lossless)."
+    },
+    {
+      "name": "gog_slides_locate",
+      "description": "Locate text in shapes and table cells with object IDs and UTF-16 ranges."
+    },
+    {
+      "name": "gog_slides_thumbnail",
+      "description": "Get or download a rendered thumbnail image for a slide."
+    },
+    {
+      "name": "gog_slides_new_slide",
+      "description": "Create a native themed slide with a predefined or custom layout."
+    },
+    {
+      "name": "gog_slides_duplicate_slide",
+      "description": "Duplicate a slide by object ID at a zero-based index."
+    },
+    {
+      "name": "gog_slides_move_slide",
+      "description": "Move a slide to a zero-based insertion index."
+    },
+    {
+      "name": "gog_slides_insert_text",
+      "description": "Insert text into a shape or table cell by object ID."
+    },
+    {
+      "name": "gog_slides_style_text",
+      "description": "Apply range-scoped text styling to one page element."
+    },
+    {
+      "name": "gog_slides_link",
+      "description": "Apply or clear a hyperlink on a text range in one element."
+    },
+    {
+      "name": "gog_slides_bullets",
+      "description": "Turn paragraph bullets on or off for a text range."
+    },
+    {
+      "name": "gog_slides_replace_text",
+      "description": "Scoped find-and-replace (object, slides, or whole presentation)."
+    },
+    {
+      "name": "gog_slides_element_create_shape",
+      "description": "Create a native shape on a slide."
+    },
+    {
+      "name": "gog_slides_element_create_line",
+      "description": "Create a native line on a slide."
+    },
+    {
+      "name": "gog_slides_element_style",
+      "description": "Style a shape fill/outline or a line."
+    },
+    {
+      "name": "gog_slides_element_transform",
+      "description": "Move, resize, rotate, or shear a page element."
+    },
+    {
+      "name": "gog_slides_element_z_order",
+      "description": "Change element stacking order."
+    },
+    {
+      "name": "gog_slides_element_group",
+      "description": "Group two or more page elements."
+    },
+    {
+      "name": "gog_slides_element_ungroup",
+      "description": "Ungroup one or more element groups."
+    },
+    {
+      "name": "gog_slides_element_alt_text",
+      "description": "Set or clear element accessibility title/description."
+    },
+    {
+      "name": "gog_slides_element_delete",
+      "description": "Delete one page element by object ID."
     },
     {
       "name": "gog_slides_run",

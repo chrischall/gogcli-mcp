@@ -143,6 +143,16 @@ describe('gog_slides_read_slide', () => {
     );
   });
 
+  it('adds --detail when detail is true', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_slides_read_slide')!({ presentationId: 'p1', slideId: 's1', detail: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['slides', 'read-slide', 'p1', 's1', '--detail'],
+      { account: undefined },
+    );
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Read failed'));
     const handlers = setupHandlers();
