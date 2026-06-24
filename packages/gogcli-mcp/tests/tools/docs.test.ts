@@ -131,6 +131,37 @@ describe('gog_docs_write', () => {
     expect(runner.run).toHaveBeenCalledWith(['docs', 'write', 'abc', '--text=text'], { account: undefined });
   });
 
+  // gog 0.30.0 paragraph list / indentation / spacing / keep controls
+  it('adds bullets, numbering, indentation, spacing and keep flags (keep=true)', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_write')!({
+      docId: 'abc', text: 'List', bullets: true, bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+      indentStart: 18, indentEnd: 6, indentFirstLine: 36, spaceAbove: 4, spaceBelow: 8,
+      keepLinesTogether: true, keepWithNext: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['docs', 'write', 'abc', '--text=List', '--bullets', '--bullet-preset=BULLET_DISC_CIRCLE_SQUARE',
+        '--indent-start=18', '--indent-end=6', '--indent-first-line=36', '--space-above=4', '--space-below=8',
+        '--keep-lines-together', '--keep-with-next'],
+      { account: undefined },
+    );
+  });
+
+  it('uses numbered list and negated keep flags (keep=false)', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_write')!({
+      docId: 'abc', text: 'Steps', ordered: true, noBullets: true,
+      keepLinesTogether: false, keepWithNext: false,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['docs', 'write', 'abc', '--text=Steps', '--ordered', '--no-bullets',
+        '--no-keep-lines-together', '--no-keep-with-next'],
+      { account: undefined },
+    );
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Write failed'));
     const handlers = setupHandlers();

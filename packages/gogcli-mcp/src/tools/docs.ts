@@ -43,13 +43,35 @@ export function registerDocsTools(server: McpServer): void {
       text: z.string().describe('Text content to write'),
       append: z.boolean().optional().describe('Append to existing content instead of replacing (default: false)'),
       checkOrphans: z.boolean().optional().describe('Block the write (exit code 11) if it would orphan an open comment — i.e. remove the text the comment is anchored to. Recommended for replacement writes on commented docs.'),
+      bullets: z.boolean().optional().describe('Write the paragraphs as a bulleted list with the default disc preset'),
+      bulletPreset: z.string().optional().describe('Write a bulleted list with a specific Google Docs bullet glyph preset (e.g. BULLET_DISC_CIRCLE_SQUARE)'),
+      ordered: z.boolean().optional().describe('Write the paragraphs as a numbered list with the default decimal preset'),
+      noBullets: z.boolean().optional().describe('Remove bullets or numbering from the written paragraphs'),
+      indentStart: z.number().optional().describe('Paragraph start indentation in points'),
+      indentEnd: z.number().optional().describe('Paragraph end indentation in points'),
+      indentFirstLine: z.number().optional().describe('Paragraph first-line indentation in points'),
+      spaceAbove: z.number().optional().describe('Space above the paragraph in points'),
+      spaceBelow: z.number().optional().describe('Space below the paragraph in points'),
+      keepLinesTogether: z.boolean().optional().describe('Keep all lines of the paragraph on one page/column (true) or clear that setting (false)'),
+      keepWithNext: z.boolean().optional().describe('Keep the paragraph with the next paragraph (true) or clear that setting (false)'),
       batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin in gogcli-mcp-docs) instead of applying it — nothing changes in the doc until the batch is submitted.'),
       account: accountParam,
     },
-  }, async ({ docId, text, append, checkOrphans, batch, account }) => {
+  }, async ({ docId, text, append, checkOrphans, bullets, bulletPreset, ordered, noBullets, indentStart, indentEnd, indentFirstLine, spaceAbove, spaceBelow, keepLinesTogether, keepWithNext, batch, account }) => {
     const args = ['docs', 'write', docId, `--text=${text}`];
     if (append) args.push('--append');
     if (checkOrphans) args.push('--check-orphans');
+    if (bullets) args.push('--bullets');
+    if (bulletPreset) args.push(`--bullet-preset=${bulletPreset}`);
+    if (ordered) args.push('--ordered');
+    if (noBullets) args.push('--no-bullets');
+    if (indentStart !== undefined) args.push(`--indent-start=${indentStart}`);
+    if (indentEnd !== undefined) args.push(`--indent-end=${indentEnd}`);
+    if (indentFirstLine !== undefined) args.push(`--indent-first-line=${indentFirstLine}`);
+    if (spaceAbove !== undefined) args.push(`--space-above=${spaceAbove}`);
+    if (spaceBelow !== undefined) args.push(`--space-below=${spaceBelow}`);
+    if (keepLinesTogether !== undefined) args.push(keepLinesTogether ? '--keep-lines-together' : '--no-keep-lines-together');
+    if (keepWithNext !== undefined) args.push(keepWithNext ? '--keep-with-next' : '--no-keep-with-next');
     if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });

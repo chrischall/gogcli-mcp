@@ -28,10 +28,11 @@ export function registerExtraDocsTools(server: McpServer): void {
       occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
       matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tabId: z.string().optional().describe('Tab ID to delete content from (for multi-tab docs)'),
+      segment: z.string().optional().describe('Target an exact header, footer, or footnote segment ID (from gog_docs_header_list / gog_docs_footer_list) instead of the document body.'),
       batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, start, end, at, occurrence, matchCase, tabId, batch, account }) => {
+  }, async ({ docId, start, end, at, occurrence, matchCase, tabId, segment, batch, account }) => {
     const args = ['docs', 'delete'];
     if (start !== undefined) args.push(`--start=${start}`);
     if (end !== undefined) args.push(`--end=${end}`);
@@ -40,6 +41,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
     if (tabId) args.push(`--tab-id=${tabId}`);
+    if (segment) args.push(`--segment=${segment}`);
     if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
@@ -124,6 +126,18 @@ export function registerExtraDocsTools(server: McpServer): void {
       lineSpacing: z.number().optional().describe('Line spacing percentage (e.g. 100 for single, 150 for 1.5x, 200 for double)'),
       headingLevel: z.number().int().optional().describe('Set paragraph named style to HEADING_1..HEADING_6 (shortcut for namedStyle=HEADING_N)'),
       namedStyle: z.enum(['NORMAL_TEXT', 'TITLE', 'SUBTITLE', 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'HEADING_5', 'HEADING_6']).optional().describe('Set paragraph named style explicitly'),
+      bullets: z.boolean().optional().describe('Turn the matched paragraphs into a bulleted list with the default disc preset'),
+      bulletPreset: z.string().optional().describe('Create a bulleted list with a specific Google Docs bullet glyph preset (e.g. BULLET_DISC_CIRCLE_SQUARE)'),
+      ordered: z.boolean().optional().describe('Turn the matched paragraphs into a numbered list with the default decimal preset'),
+      noBullets: z.boolean().optional().describe('Remove bullets or numbering from the matched paragraphs'),
+      indentStart: z.number().optional().describe('Paragraph start indentation in points'),
+      indentEnd: z.number().optional().describe('Paragraph end indentation in points'),
+      indentFirstLine: z.number().optional().describe('Paragraph first-line indentation in points'),
+      spaceAbove: z.number().optional().describe('Space above the paragraph in points'),
+      spaceBelow: z.number().optional().describe('Space below the paragraph in points'),
+      keepLinesTogether: z.boolean().optional().describe('Keep all lines of the paragraph on one page/column (true) or clear that setting (false)'),
+      keepWithNext: z.boolean().optional().describe('Keep the paragraph with the next paragraph (true) or clear that setting (false)'),
+      segment: z.string().optional().describe('Target an exact header, footer, or footnote segment ID (from gog_docs_header_list / gog_docs_footer_list) instead of the document body.'),
       batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
@@ -149,6 +163,11 @@ export function registerExtraDocsTools(server: McpServer): void {
       lineSpacing?: number;
       headingLevel?: number;
       namedStyle?: string;
+      bullets?: boolean; bulletPreset?: string; ordered?: boolean; noBullets?: boolean;
+      indentStart?: number; indentEnd?: number; indentFirstLine?: number;
+      spaceAbove?: number; spaceBelow?: number;
+      keepLinesTogether?: boolean; keepWithNext?: boolean;
+      segment?: string;
       account?: string;
     };
     const argv = ['docs', 'format', a.docId];
@@ -175,6 +194,18 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (a.lineSpacing !== undefined) argv.push(`--line-spacing=${a.lineSpacing}`);
     if (a.headingLevel !== undefined) argv.push(`--heading-level=${a.headingLevel}`);
     if (a.namedStyle) argv.push(`--named-style=${a.namedStyle}`);
+    if (a.bullets) argv.push('--bullets');
+    if (a.bulletPreset) argv.push(`--bullet-preset=${a.bulletPreset}`);
+    if (a.ordered) argv.push('--ordered');
+    if (a.noBullets) argv.push('--no-bullets');
+    if (a.indentStart !== undefined) argv.push(`--indent-start=${a.indentStart}`);
+    if (a.indentEnd !== undefined) argv.push(`--indent-end=${a.indentEnd}`);
+    if (a.indentFirstLine !== undefined) argv.push(`--indent-first-line=${a.indentFirstLine}`);
+    if (a.spaceAbove !== undefined) argv.push(`--space-above=${a.spaceAbove}`);
+    if (a.spaceBelow !== undefined) argv.push(`--space-below=${a.spaceBelow}`);
+    if (a.keepLinesTogether !== undefined) argv.push(a.keepLinesTogether ? '--keep-lines-together' : '--no-keep-lines-together');
+    if (a.keepWithNext !== undefined) argv.push(a.keepWithNext ? '--keep-with-next' : '--no-keep-with-next');
+    if (a.segment) argv.push(`--segment=${a.segment}`);
     if (a.batch) argv.push(`--batch=${a.batch}`);
     return runOrDiagnose(argv, { account: a.account });
   });
@@ -209,10 +240,11 @@ export function registerExtraDocsTools(server: McpServer): void {
       occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
       matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tabId: z.string().optional().describe('Tab ID to insert into (for multi-tab docs)'),
+      segment: z.string().optional().describe('Target an exact header, footer, or footnote segment ID (from gog_docs_header_list / gog_docs_footer_list) instead of the document body.'),
       batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, content, index, file, at, occurrence, matchCase, tabId, batch, account }) => {
+  }, async ({ docId, content, index, file, at, occurrence, matchCase, tabId, segment, batch, account }) => {
     const args = ['docs', 'insert', docId];
     if (content) args.push(content);
     if (index !== undefined) args.push(`--index=${index}`);
@@ -221,6 +253,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
     if (tabId) args.push(`--tab-id=${tabId}`);
+    if (segment) args.push(`--segment=${segment}`);
     if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
   });
@@ -294,11 +327,12 @@ export function registerExtraDocsTools(server: McpServer): void {
       occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
       matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
       tabId: z.string().optional().describe('Tab ID for multi-tab docs'),
+      segment: z.string().optional().describe('Target an exact header, footer, or footnote segment ID (from gog_docs_header_list / gog_docs_footer_list) instead of the document body.'),
       pageless: z.boolean().optional().describe('Set document to pageless format'),
       batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, text, file, index, replaceRange, markdown, at, occurrence, matchCase, tabId, pageless, batch, account }) => {
+  }, async ({ docId, text, file, index, replaceRange, markdown, at, occurrence, matchCase, tabId, segment, pageless, batch, account }) => {
     const args = ['docs', 'update', docId];
     if (text) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
@@ -309,6 +343,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
     if (tabId) args.push(`--tab-id=${tabId}`);
+    if (segment) args.push(`--segment=${segment}`);
     if (pageless) args.push('--pageless');
     if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
@@ -443,9 +478,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       all: z.boolean().optional().describe('Return all matches instead of just one'),
       failEmpty: z.boolean().optional().describe('Treat no matches as an error instead of returning an empty result'),
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      segment: z.string().optional().describe('Target an exact header, footer, or footnote segment ID (from gog_docs_header_list / gog_docs_footer_list) instead of the document body.'),
       account: accountParam,
     },
-  }, async ({ docId, text, occurrence, matchCase, normalizeWhitespace, all, failEmpty, tab, account }) => {
+  }, async ({ docId, text, occurrence, matchCase, normalizeWhitespace, all, failEmpty, tab, segment, account }) => {
     const args = ['docs', 'find-range', docId, text];
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
@@ -453,6 +489,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (all) args.push('--all');
     if (failEmpty) args.push('--fail-empty');
     if (tab) args.push(`--tab=${tab}`);
+    if (segment) args.push(`--segment=${segment}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -1095,5 +1132,300 @@ export function registerExtraDocsTools(server: McpServer): void {
     },
   }, async ({ docId, account }) => {
     return runOrDiagnose(['docs', 'clear', docId], { account });
+  });
+
+  // --- gog 0.30 structural authoring: footnotes, section breaks, rules, columns ---
+
+  server.registerTool('gog_docs_insert_footnote', {
+    description: 'Insert a footnote at a character index (or end-of-doc) and populate its text. The footnote reference mark is placed in the body; the footnote content goes in the new footnote segment.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      text: z.string().optional().describe('Footnote text'),
+      file: z.string().optional().describe('Read footnote text from a file ("-" for stdin)'),
+      index: z.number().int().optional().describe('Character index to place the reference mark at (1 = beginning). Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Target end-of-doc/tab (mutually exclusive with index and at)'),
+      at: z.string().optional().describe('Anchor by literal text and place the reference mark at the start of the matched range'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, text, file, index, atEnd, at, occurrence, matchCase, tab, account }) => {
+    const args = ['docs', 'insert-footnote', docId];
+    if (text !== undefined) args.push(`--text=${text}`);
+    if (file) args.push(`--file=${file}`);
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_insert_section_break', {
+    description: 'Insert a continuous or next-page section break at a character index (or end-of-doc). Section breaks enable per-section layout such as column counts (see gog_docs_section_columns).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      type: z.enum(['next-page', 'continuous']).optional().describe('Section break type (default: next-page)'),
+      index: z.number().int().optional().describe('Character index to insert at (1 = beginning). Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Target end-of-doc/tab (mutually exclusive with index and at)'),
+      at: z.string().optional().describe('Anchor by literal text and insert at the start of the matched range'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
+      account: accountParam,
+    },
+  }, async ({ docId, type, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
+    const args = ['docs', 'insert-section-break', docId];
+    if (type) args.push(`--type=${type}`);
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
+    if (tab) args.push(`--tab=${tab}`);
+    if (batch) args.push(`--batch=${batch}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_insert_horizontal_rule', {
+    description: 'Insert a horizontal rule (paragraph border) at a character index (or end-of-doc).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      index: z.number().int().optional().describe('Character index to insert at (1 = beginning). Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Target end-of-doc/tab (mutually exclusive with index and at)'),
+      at: z.string().optional().describe('Anchor by literal text and insert at the start of the matched range'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
+      account: accountParam,
+    },
+  }, async ({ docId, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
+    const args = ['docs', 'insert-horizontal-rule', docId];
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
+    if (tab) args.push(`--tab=${tab}`);
+    if (batch) args.push(`--batch=${batch}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_section_columns', {
+    description: 'Set the column count (1-3) for the document section containing the target position. Use count=1 to reset to a single column. Anchor by index, end-of-doc, or literal text.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      count: z.number().int().min(1).max(3).describe('Number of columns (1-3; 1 resets to one column)'),
+      separator: z.enum(['none', 'between']).optional().describe('Column separator line: none or between'),
+      index: z.number().int().optional().describe('Character index identifying the section (1 = beginning). Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Target end-of-doc/tab (mutually exclusive with index and at)'),
+      at: z.string().optional().describe('Anchor by literal text and target the section at the start of the matched range'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
+      account: accountParam,
+    },
+  }, async ({ docId, count, separator, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
+    const args = ['docs', 'section-columns', docId, `--count=${count}`];
+    if (separator) args.push(`--separator=${separator}`);
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
+    if (tab) args.push(`--tab=${tab}`);
+    if (batch) args.push(`--batch=${batch}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  // --- gog 0.30 header & footer lifecycle (segment IDs feed the segment param
+  // on gog_docs_insert/update/delete/format/find-range) ---
+
+  server.registerTool('gog_docs_header_list', {
+    description: 'List a Google Doc\'s headers and their segment IDs. Use a segment ID with the segment param on gog_docs_insert / gog_docs_update / gog_docs_delete / gog_docs_format / gog_docs_find_range to edit inside a header.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      tab: z.string().optional().describe('Limit results to a tab title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, tab, account }) => {
+    const args = ['docs', 'header', 'list', docId];
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_header_create', {
+    description: 'Create a header in a Google Doc and optionally populate its initial text. Returns the new header segment ID.',
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      text: z.string().optional().describe('Initial header text'),
+      file: z.string().optional().describe('Read initial header text from a file ("-" for stdin)'),
+      index: z.number().int().optional().describe('Character index identifying the section the header belongs to (1 = beginning). Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Target end-of-doc/tab (mutually exclusive with index and at)'),
+      at: z.string().optional().describe('Anchor by literal text and target the section at the start of the matched range'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, text, file, index, atEnd, at, occurrence, matchCase, tab, account }) => {
+    const args = ['docs', 'header', 'create', docId];
+    if (text !== undefined) args.push(`--text=${text}`);
+    if (file) args.push(`--file=${file}`);
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_header_delete', {
+    description: 'Delete a header from a Google Doc by its segment ID (from gog_docs_header_list).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      headerId: z.string().describe('Header segment ID (from gog_docs_header_list)'),
+      tab: z.string().optional().describe('Tab title or ID containing the header'),
+      account: accountParam,
+    },
+  }, async ({ docId, headerId, tab, account }) => {
+    const args = ['docs', 'header', 'delete', docId, headerId];
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_footer_list', {
+    description: 'List a Google Doc\'s footers and their segment IDs. Use a segment ID with the segment param on gog_docs_insert / gog_docs_update / gog_docs_delete / gog_docs_format / gog_docs_find_range to edit inside a footer.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      tab: z.string().optional().describe('Limit results to a tab title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, tab, account }) => {
+    const args = ['docs', 'footer', 'list', docId];
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_footer_create', {
+    description: 'Create a footer in a Google Doc and optionally populate its initial text. Returns the new footer segment ID.',
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      text: z.string().optional().describe('Initial footer text'),
+      file: z.string().optional().describe('Read initial footer text from a file ("-" for stdin)'),
+      index: z.number().int().optional().describe('Character index identifying the section the footer belongs to (1 = beginning). Omit or use atEnd for end-of-doc.'),
+      atEnd: z.boolean().optional().describe('Target end-of-doc/tab (mutually exclusive with index and at)'),
+      at: z.string().optional().describe('Anchor by literal text and target the section at the start of the matched range'),
+      occurrence: z.number().int().optional().describe('Use the Nth `at` match (1-based; required when `at` is ambiguous)'),
+      matchCase: z.boolean().optional().describe('Case-sensitive `at` matching'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, text, file, index, atEnd, at, occurrence, matchCase, tab, account }) => {
+    const args = ['docs', 'footer', 'create', docId];
+    if (text !== undefined) args.push(`--text=${text}`);
+    if (file) args.push(`--file=${file}`);
+    if (index !== undefined) args.push(`--index=${index}`);
+    if (atEnd) args.push('--at-end');
+    if (at) args.push(`--at=${at}`);
+    if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
+    if (matchCase) args.push('--match-case');
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_footer_delete', {
+    description: 'Delete a footer from a Google Doc by its segment ID (from gog_docs_footer_list).',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      footerId: z.string().describe('Footer segment ID (from gog_docs_footer_list)'),
+      tab: z.string().optional().describe('Tab title or ID containing the footer'),
+      account: accountParam,
+    },
+  }, async ({ docId, footerId, tab, account }) => {
+    const args = ['docs', 'footer', 'delete', docId, footerId];
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  // --- gog 0.30 image replacement & table-row pin/style ---
+
+  server.registerTool('gog_docs_replace_image', {
+    description: 'Replace an existing image in a Google Doc in place — keeping its position and bounds — with a new image from a local file or public HTTPS URL. Target the image by exact object ID (from gog_docs_images_list), by alt-text substring, or leave both off to replace the only image in the doc/tab.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      file: z.string().optional().describe('Local PNG, JPEG, or GIF image to upload and use (exactly one of file or url)'),
+      url: z.string().optional().describe('Public HTTPS image URL to use directly — no Drive upload (exactly one of file or url)'),
+      objectId: z.string().optional().describe('Exact image object ID to replace (from gog_docs_images_list)'),
+      matchAlt: z.string().optional().describe('Select the image whose alt text contains this value (case-insensitive)'),
+      name: z.string().optional().describe('Override the uploaded Drive filename (file mode)'),
+      parent: z.string().optional().describe('Drive folder ID for an uploaded local image (file mode)'),
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, file, url, objectId, matchAlt, name, parent, tab, account }) => {
+    const args = ['docs', 'replace-image', docId];
+    if (file) args.push(`--file=${file}`);
+    if (url) args.push(`--url=${url}`);
+    if (objectId) args.push(`--object-id=${objectId}`);
+    if (matchAlt) args.push(`--match-alt=${matchAlt}`);
+    if (name) args.push(`--name=${name}`);
+    if (parent) args.push(`--parent=${parent}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_table_row_pin_header', {
+    description: 'Pin (or unpin) leading rows of a native Google Docs table as repeating header rows. rows=N pins the first N rows; rows=0 unpins all header rows.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      rows: z.number().int().min(0).describe('Number of leading rows to pin as headers; 0 unpins all header rows'),
+      table: tableSelectorParam,
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, rows, table, tab, account }) => {
+    const args = ['docs', 'table-row', 'pin-header', docId, `--rows=${rows}`];
+    if (table) args.push(`--table=${table}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_docs_table_row_style', {
+    description: 'Set native table row height and page-overflow behaviour. Target a 1-based row (negative counts from the end) or omit row to style every row in the table.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      row: z.number().int().optional().describe('1-based row number; negative indexes count from the end; omit to style all rows'),
+      minHeight: z.string().optional().describe('Minimum row height (points by default; supports pt, in, cm, mm)'),
+      preventOverflow: z.boolean().optional().describe('Keep the row within one page or column (true) or clear that setting (false)'),
+      table: tableSelectorParam,
+      tab: z.string().optional().describe('Target a specific tab by title or ID'),
+      account: accountParam,
+    },
+  }, async ({ docId, row, minHeight, preventOverflow, table, tab, account }) => {
+    const args = ['docs', 'table-row', 'style', docId];
+    if (row !== undefined) args.push(`--row=${row}`);
+    if (minHeight) args.push(`--min-height=${minHeight}`);
+    if (preventOverflow !== undefined) args.push(preventOverflow ? '--prevent-overflow' : '--no-prevent-overflow');
+    if (table) args.push(`--table=${table}`);
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
   });
 }
