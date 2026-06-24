@@ -57,6 +57,18 @@
   },
   "tools": [
     {
+      "name": "gog_api_list",
+      "description": "List the Google Discovery APIs available for generic api calls."
+    },
+    {
+      "name": "gog_api_describe",
+      "description": "Describe a Google Discovery API or one of its methods (params, schema, scopes)."
+    },
+    {
+      "name": "gog_api_call",
+      "description": "Call any Discovery-described Google API method (escape hatch; write opt-in + dry-run)."
+    },
+    {
       "name": "gog_auth_add",
       "description": "Authorize a Google account via browser-based OAuth"
     },

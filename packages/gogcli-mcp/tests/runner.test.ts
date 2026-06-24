@@ -569,3 +569,54 @@ describe('run', () => {
     vi.useRealTimers();
   });
 });
+
+describe('run --readonly (gog 0.31)', () => {
+  function withReadonlyEnv<T>(value: string | undefined, fn: () => T): T {
+    const original = process.env.GOG_READONLY;
+    if (value === undefined) delete process.env.GOG_READONLY;
+    else process.env.GOG_READONLY = value;
+    try {
+      return fn();
+    } finally {
+      if (original === undefined) delete process.env.GOG_READONLY;
+      else process.env.GOG_READONLY = original;
+    }
+  }
+
+  it('injects --readonly when options.readonly is true', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await withReadonlyEnv(undefined, () => run(['drive', 'list'], { readonly: true, spawner }));
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', '--readonly', 'drive', 'list'],
+      expect.any(Object),
+    );
+  });
+
+  it('injects --readonly when GOG_READONLY is set to a truthy value', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await withReadonlyEnv('1', () => run(['drive', 'list'], { spawner }));
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', '--readonly', 'drive', 'list'],
+      expect.any(Object),
+    );
+  });
+
+  it('does not inject --readonly when GOG_READONLY is an explicit off value', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await withReadonlyEnv('false', () => run(['drive', 'list'], { spawner }));
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', 'drive', 'list'],
+      expect.any(Object),
+    );
+  });
+
+  it('does not inject --readonly by default', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await withReadonlyEnv(undefined, () => run(['drive', 'list'], { spawner }));
+    const call = (spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]!;
+    expect(call[1]).not.toContain('--readonly');
+  });
+});

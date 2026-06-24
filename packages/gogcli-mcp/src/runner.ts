@@ -13,6 +13,9 @@ export interface RunOptions {
   spawner?: Spawner;
   interactive?: boolean;
   timeout?: number;
+  // Inject gog's global --readonly flag, which blocks mutating API requests at
+  // runtime. Independent of (and OR-ed with) the GOG_READONLY env var.
+  readonly?: boolean;
 }
 
 const TIMEOUT_MS = 30_000;
@@ -33,6 +36,15 @@ function envOrUndefined(key: string): string | undefined {
   const value = process.env[key];
   if (!value || value.startsWith('${')) return undefined;
   return value;
+}
+
+// Interpret a boolean-ish env var. Returns false when unset, blank, an
+// unresolved .mcpb placeholder, or an explicit off value (0/false/no/off);
+// any other set value (e.g. "1", "true") enables it. Used for GOG_READONLY.
+function envFlagEnabled(key: string): boolean {
+  const value = envOrUndefined(key);
+  if (value === undefined) return false;
+  return !/^(0|false|no|off)$/i.test(value.trim());
 }
 
 // Strip ambient secrets from the child env so gogcli only sees its own
@@ -105,13 +117,19 @@ function formatTimeout(ms: number): string {
 }
 
 export async function run(args: string[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner = spawn as unknown as Spawner, interactive = false, timeout } = options;
+  const { account, spawner = spawn as unknown as Spawner, interactive = false, timeout, readonly = false } = options;
 
   const effectiveAccount = account ?? envOrUndefined('GOG_ACCOUNT');
 
   const fullArgs = ['--json', '--color=never'];
   if (!interactive) {
     fullArgs.push('--no-input');
+  }
+  // Block all mutating gog API requests at runtime when either the caller opts
+  // in or GOG_READONLY is set in the environment. gog has no native env binding
+  // for --readonly, so the wrapper translates GOG_READONLY into the flag.
+  if (readonly || envFlagEnabled('GOG_READONLY')) {
+    fullArgs.push('--readonly');
   }
   if (effectiveAccount) {
     fullArgs.push('--account', effectiveAccount);
