@@ -1682,3 +1682,356 @@ describe('bare-call branch coverage (no optional flags)', () => {
     });
   }
 });
+
+// ===========================================================================
+// gog 0.30 docs authoring (PR2)
+// ===========================================================================
+
+describe('segment targeting (gog 0.30)', () => {
+  it('gog_docs_insert forwards --segment', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert')!({ docId: 'd1', content: 'hi', segment: 'kix.h1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert', 'd1', 'hi', '--segment=kix.h1'],
+      { account: undefined },
+    );
+  });
+
+  it('gog_docs_update forwards --segment', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_update')!({ docId: 'd1', text: 'hi', segment: 'kix.f1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'update', 'd1', '--text=hi', '--segment=kix.f1'],
+      { account: undefined },
+    );
+  });
+
+  it('gog_docs_delete forwards --segment', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_delete')!({ docId: 'd1', start: 1, end: 5, segment: 'kix.h1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'delete', '--start=1', '--end=5', 'd1', '--segment=kix.h1'],
+      { account: undefined },
+    );
+  });
+
+  it('gog_docs_find_range forwards --segment', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_find_range')!({ docId: 'd1', text: 'Heading', segment: 'kix.h1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'find-range', 'd1', 'Heading', '--segment=kix.h1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_format paragraph list / indent / spacing / keep (gog 0.30)', () => {
+  it('adds bullets, indentation, spacing, keep (true) and segment', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({
+      docId: 'd1', bullets: true, bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+      indentStart: 18, indentEnd: 6, indentFirstLine: 36, spaceAbove: 4, spaceBelow: 8,
+      keepLinesTogether: true, keepWithNext: true, segment: 'kix.h1',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--bullets', '--bullet-preset=BULLET_DISC_CIRCLE_SQUARE',
+        '--indent-start=18', '--indent-end=6', '--indent-first-line=36', '--space-above=4', '--space-below=8',
+        '--keep-lines-together', '--keep-with-next', '--segment=kix.h1'],
+      { account: undefined },
+    );
+  });
+
+  it('adds numbering, removal and negated keep (false)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({
+      docId: 'd1', ordered: true, noBullets: true, keepLinesTogether: false, keepWithNext: false,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--ordered', '--no-bullets', '--no-keep-lines-together', '--no-keep-with-next'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_insert_footnote', () => {
+  it('passes text and anchor flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_footnote')!({
+      docId: 'd1', text: 'note', file: '/tmp/n.txt', index: 5, atEnd: true,
+      at: 'word', occurrence: 2, matchCase: true, tab: 'T',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-footnote', 'd1', '--text=note', '--file=/tmp/n.txt', '--index=5', '--at-end',
+        '--at=word', '--occurrence=2', '--match-case', '--tab=T'],
+      { account: undefined },
+    );
+  });
+
+  it('works with just docId', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_footnote')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'insert-footnote', 'd1'], { account: undefined });
+  });
+});
+
+describe('gog_docs_insert_section_break', () => {
+  it('passes type and anchor flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_section_break')!({
+      docId: 'd1', type: 'continuous', index: 3, atEnd: true, at: 'x',
+      occurrence: 1, matchCase: true, tab: 'T', batch: 'b1',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-section-break', 'd1', '--type=continuous', '--index=3', '--at-end',
+        '--at=x', '--occurrence=1', '--match-case', '--tab=T', '--batch=b1'],
+      { account: undefined },
+    );
+  });
+
+  it('works with just docId', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_section_break')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'insert-section-break', 'd1'], { account: undefined });
+  });
+});
+
+describe('gog_docs_insert_horizontal_rule', () => {
+  it('passes anchor flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_horizontal_rule')!({
+      docId: 'd1', index: 2, atEnd: true, at: 'x', occurrence: 1, matchCase: true, tab: 'T', batch: 'b1',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'insert-horizontal-rule', 'd1', '--index=2', '--at-end', '--at=x',
+        '--occurrence=1', '--match-case', '--tab=T', '--batch=b1'],
+      { account: undefined },
+    );
+  });
+
+  it('works with just docId', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_insert_horizontal_rule')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'insert-horizontal-rule', 'd1'], { account: undefined });
+  });
+});
+
+describe('gog_docs_section_columns', () => {
+  it('passes count, separator and anchor flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_section_columns')!({
+      docId: 'd1', count: 2, separator: 'between', index: 4, atEnd: true,
+      at: 'x', occurrence: 1, matchCase: true, tab: 'T', batch: 'b1',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'section-columns', 'd1', '--count=2', '--separator=between', '--index=4', '--at-end',
+        '--at=x', '--occurrence=1', '--match-case', '--tab=T', '--batch=b1'],
+      { account: undefined },
+    );
+  });
+
+  it('passes only the required --count', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_section_columns')!({ docId: 'd1', count: 1 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'section-columns', 'd1', '--count=1'], { account: undefined });
+  });
+});
+
+describe('gog_docs header lifecycle', () => {
+  it('header_list passes --tab', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_header_list')!({ docId: 'd1', tab: 'T' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'header', 'list', 'd1', '--tab=T'], { account: undefined });
+  });
+
+  it('header_list bare', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_header_list')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'header', 'list', 'd1'], { account: undefined });
+  });
+
+  it('header_create passes text and anchor flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_header_create')!({
+      docId: 'd1', text: 'Title', file: '/tmp/h.txt', index: 1, atEnd: true,
+      at: 'x', occurrence: 1, matchCase: true, tab: 'T',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'header', 'create', 'd1', '--text=Title', '--file=/tmp/h.txt', '--index=1', '--at-end',
+        '--at=x', '--occurrence=1', '--match-case', '--tab=T'],
+      { account: undefined },
+    );
+  });
+
+  it('header_create bare', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_header_create')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'header', 'create', 'd1'], { account: undefined });
+  });
+
+  it('header_delete passes id and --tab', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_header_delete')!({ docId: 'd1', headerId: 'kix.h1', tab: 'T' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'header', 'delete', 'd1', 'kix.h1', '--tab=T'], { account: undefined });
+  });
+
+  it('header_delete bare', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_header_delete')!({ docId: 'd1', headerId: 'kix.h1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'header', 'delete', 'd1', 'kix.h1'], { account: undefined });
+  });
+});
+
+describe('gog_docs footer lifecycle', () => {
+  it('footer_list passes --tab', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_footer_list')!({ docId: 'd1', tab: 'T' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'footer', 'list', 'd1', '--tab=T'], { account: undefined });
+  });
+
+  it('footer_list bare', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_footer_list')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'footer', 'list', 'd1'], { account: undefined });
+  });
+
+  it('footer_create passes text and anchor flags', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_footer_create')!({
+      docId: 'd1', text: 'Foot', file: '/tmp/f.txt', index: 1, atEnd: true,
+      at: 'x', occurrence: 1, matchCase: true, tab: 'T',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'footer', 'create', 'd1', '--text=Foot', '--file=/tmp/f.txt', '--index=1', '--at-end',
+        '--at=x', '--occurrence=1', '--match-case', '--tab=T'],
+      { account: undefined },
+    );
+  });
+
+  it('footer_create bare', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_footer_create')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'footer', 'create', 'd1'], { account: undefined });
+  });
+
+  it('footer_delete passes id and --tab', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_footer_delete')!({ docId: 'd1', footerId: 'kix.f1', tab: 'T' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'footer', 'delete', 'd1', 'kix.f1', '--tab=T'], { account: undefined });
+  });
+
+  it('footer_delete bare', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_footer_delete')!({ docId: 'd1', footerId: 'kix.f1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'footer', 'delete', 'd1', 'kix.f1'], { account: undefined });
+  });
+});
+
+describe('gog_docs_replace_image', () => {
+  it('passes url + object-id targeting', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_replace_image')!({
+      docId: 'd1', url: 'https://x.test/i.png', objectId: 'kix.img1', tab: 'T',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'replace-image', 'd1', '--url=https://x.test/i.png', '--object-id=kix.img1', '--tab=T'],
+      { account: undefined },
+    );
+  });
+
+  it('passes file + alt-text + name + parent targeting', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_replace_image')!({
+      docId: 'd1', file: '/tmp/i.png', matchAlt: 'logo', name: 'new.png', parent: 'folder1',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'replace-image', 'd1', '--file=/tmp/i.png', '--match-alt=logo', '--name=new.png', '--parent=folder1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_table_row_pin_header', () => {
+  it('passes --rows and table selector', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_table_row_pin_header')!({ docId: 'd1', rows: 2, table: '1', tab: 'T' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'table-row', 'pin-header', 'd1', '--rows=2', '--table=1', '--tab=T'],
+      { account: undefined },
+    );
+  });
+
+  it('unpins with rows=0 and no selector', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_table_row_pin_header')!({ docId: 'd1', rows: 0 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'table-row', 'pin-header', 'd1', '--rows=0'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_table_row_style', () => {
+  it('passes row, min-height and --prevent-overflow (true)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_table_row_style')!({
+      docId: 'd1', row: 1, minHeight: '20pt', preventOverflow: true, table: '1', tab: 'T',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'table-row', 'style', 'd1', '--row=1', '--min-height=20pt', '--prevent-overflow', '--table=1', '--tab=T'],
+      { account: undefined },
+    );
+  });
+
+  it('uses --no-prevent-overflow (false) and styles all rows', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_table_row_style')!({ docId: 'd1', preventOverflow: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'table-row', 'style', 'd1', '--no-prevent-overflow'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_docs_table_row_style overflow-unset branch', () => {
+  it('omits the overflow flag when preventOverflow is unset', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_table_row_style')!({ docId: 'd1', row: 2, minHeight: '30pt' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'table-row', 'style', 'd1', '--row=2', '--min-height=30pt'],
+      { account: undefined },
+    );
+  });
+});

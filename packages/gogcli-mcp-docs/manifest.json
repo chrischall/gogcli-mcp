@@ -240,6 +240,58 @@
       "description": "Delete a table row by 1-based number."
     },
     {
+      "name": "gog_docs_table_row_pin_header",
+      "description": "Pin or unpin leading table rows as repeating header rows."
+    },
+    {
+      "name": "gog_docs_table_row_style",
+      "description": "Set table row minimum height and page-overflow behaviour."
+    },
+    {
+      "name": "gog_docs_insert_footnote",
+      "description": "Insert and populate a footnote at an index or end-of-doc."
+    },
+    {
+      "name": "gog_docs_insert_section_break",
+      "description": "Insert a continuous or next-page section break."
+    },
+    {
+      "name": "gog_docs_insert_horizontal_rule",
+      "description": "Insert a horizontal rule (paragraph border)."
+    },
+    {
+      "name": "gog_docs_section_columns",
+      "description": "Set the column count (1-3) for a document section."
+    },
+    {
+      "name": "gog_docs_header_list",
+      "description": "List a document's headers and their segment IDs."
+    },
+    {
+      "name": "gog_docs_header_create",
+      "description": "Create a header and optionally populate its initial text."
+    },
+    {
+      "name": "gog_docs_header_delete",
+      "description": "Delete a header by its segment ID."
+    },
+    {
+      "name": "gog_docs_footer_list",
+      "description": "List a document's footers and their segment IDs."
+    },
+    {
+      "name": "gog_docs_footer_create",
+      "description": "Create a footer and optionally populate its initial text."
+    },
+    {
+      "name": "gog_docs_footer_delete",
+      "description": "Delete a footer by its segment ID."
+    },
+    {
+      "name": "gog_docs_replace_image",
+      "description": "Replace an existing image in place by object ID, alt text, or sole-image."
+    },
+    {
       "name": "gog_docs_table_column_insert",
       "description": "Insert a table column before a 1-based position or at the end."
     },
