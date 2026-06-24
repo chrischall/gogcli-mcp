@@ -210,6 +210,50 @@
       "description": "Delete one page element by object ID."
     },
     {
+      "name": "gog_slides_table_create",
+      "description": "Create an auto-sized native table on a slide."
+    },
+    {
+      "name": "gog_slides_table_cell_style",
+      "description": "Style one zero-based table cell (fill, alignment, text)."
+    },
+    {
+      "name": "gog_slides_table_border_style",
+      "description": "Style borders around or within a table cell range."
+    },
+    {
+      "name": "gog_slides_table_column_insert",
+      "description": "Insert columns left or right of a zero-based column."
+    },
+    {
+      "name": "gog_slides_table_column_delete",
+      "description": "Delete the column containing a zero-based cell."
+    },
+    {
+      "name": "gog_slides_table_column_size",
+      "description": "Set a table column's width."
+    },
+    {
+      "name": "gog_slides_table_row_insert",
+      "description": "Insert rows above or below a zero-based row."
+    },
+    {
+      "name": "gog_slides_table_row_delete",
+      "description": "Delete the row containing a zero-based cell."
+    },
+    {
+      "name": "gog_slides_table_row_size",
+      "description": "Set a table row's minimum height."
+    },
+    {
+      "name": "gog_slides_table_merge",
+      "description": "Merge a rectangular table cell range."
+    },
+    {
+      "name": "gog_slides_table_unmerge",
+      "description": "Unmerge a rectangular range of merged cells."
+    },
+    {
       "name": "gog_slides_run",
       "description": "Run any gog slides subcommand (escape hatch)"
     }
