@@ -2,6 +2,7 @@ export {
   createServer,
   createBaseServer,
   VERSION,
+  registerApiTools,
   registerAuthTools,
   registerCalendarTools,
   registerClassroomTools,

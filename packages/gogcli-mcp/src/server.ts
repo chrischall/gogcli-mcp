@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { registerApiTools } from './tools/api.js';
 import { registerAuthTools } from './tools/auth.js';
 import { registerCalendarTools } from './tools/calendar.js';
 import { registerClassroomTools } from './tools/classroom.js';
@@ -27,6 +28,7 @@ export function createServer(options?: { name?: string; version?: string }): Mcp
 export function createBaseServer(options?: { name?: string; version?: string }): McpServer {
   const server = createServer(options);
 
+  registerApiTools(server);
   registerAuthTools(server);
   registerCalendarTools(server);
   registerClassroomTools(server);
@@ -42,6 +44,7 @@ export function createBaseServer(options?: { name?: string; version?: string }):
 }
 
 export {
+  registerApiTools,
   registerAuthTools,
   registerCalendarTools,
   registerClassroomTools,
