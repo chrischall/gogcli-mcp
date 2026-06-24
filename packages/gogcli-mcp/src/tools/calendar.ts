@@ -13,9 +13,10 @@ export function registerCalendarTools(server: McpServer): void {
       today: z.boolean().optional().describe('Only show today\'s events'),
       query: z.string().optional().describe('Free text search within events'),
       all: z.boolean().optional().describe('Fetch events from all calendars'),
+      eventTypes: z.array(z.enum(['default', 'birthday', 'focus-time', 'from-gmail', 'out-of-office', 'working-location'])).optional().describe('Filter to specific event types (repeatable)'),
       account: accountParam,
     },
-  }, async ({ calendarId, from, to, today, query, all, account }) => {
+  }, async ({ calendarId, from, to, today, query, all, eventTypes, account }) => {
     const args = ['calendar', 'events'];
     if (calendarId) args.push(calendarId);
     if (from) args.push(`--from=${from}`);
@@ -23,6 +24,7 @@ export function registerCalendarTools(server: McpServer): void {
     if (today) args.push('--today');
     if (query) args.push(`--query=${query}`);
     if (all) args.push('--all');
+    if (eventTypes) for (const t of eventTypes) args.push(`--event-types=${t}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -50,15 +52,17 @@ export function registerCalendarTools(server: McpServer): void {
       location: z.string().optional().describe('Event location'),
       attendees: z.string().optional().describe('Attendee emails, comma-separated'),
       allDay: z.boolean().optional().describe('All-day event (use date-only in from/to)'),
+      timezone: z.string().optional().describe('IANA timezone metadata applied to from/to (e.g. America/New_York). Sets both start and end timezone unless start/end timezone are overridden.'),
       withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event (requires Zoom S2S OAuth setup)'),
       account: accountParam,
     },
-  }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, withZoom, account }) => {
+  }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, timezone, withZoom, account }) => {
     const args = ['calendar', 'create', calendarId, `--summary=${summary}`, `--from=${from}`, `--to=${to}`];
     if (description) args.push(`--description=${description}`);
     if (location) args.push(`--location=${location}`);
     if (attendees) args.push(`--attendees=${attendees}`);
     if (allDay) args.push('--all-day');
+    if (timezone) args.push(`--timezone=${timezone}`);
     if (withZoom) args.push('--with-zoom');
     return runOrDiagnose(args, { account });
   });

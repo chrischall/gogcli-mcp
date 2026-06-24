@@ -186,12 +186,14 @@ export function registerExtraDocsTools(server: McpServer): void {
       docId: z.string().describe('Doc ID (from the URL)'),
       format: z.string().optional().describe('Export format: pdf, txt, html, docx, rtf, odt, epub (default: pdf)'),
       out: z.string().optional().describe('Output file path'),
+      overwrite: z.boolean().optional().describe('Overwrite the output file if it already exists (gog refuses otherwise)'),
       account: accountParam,
     },
-  }, async ({ docId, format, out, account }) => {
+  }, async ({ docId, format, out, overwrite, account }) => {
     const args = ['docs', 'export', docId];
     if (format) args.push(`--format=${format}`);
     if (out) args.push(`--out=${out}`);
+    if (overwrite) args.push('--overwrite');
     return runOrDiagnose(args, { account });
   });
 
@@ -912,12 +914,23 @@ export function registerExtraDocsTools(server: McpServer): void {
       bold: z.boolean().optional().describe('Set cell text bold'),
       italic: z.boolean().optional().describe('Set cell text italic'),
       underline: z.boolean().optional().describe('Set cell text underline'),
+      borderAll: z.string().optional().describe('All borders as WIDTH[,COLOR[,SOLID|DOT|DASH]] (e.g. 1pt,#000,DASH)'),
+      borderTop: z.string().optional().describe('Top border (same format as borderAll); overrides borderAll'),
+      borderBottom: z.string().optional().describe('Bottom border (same format as borderAll); overrides borderAll'),
+      borderLeft: z.string().optional().describe('Left border (same format as borderAll); overrides borderAll'),
+      borderRight: z.string().optional().describe('Right border (same format as borderAll); overrides borderAll'),
+      paddingAll: z.string().optional().describe('All cell padding (points by default; supports pt, in, cm, mm)'),
+      paddingTop: z.string().optional().describe('Top cell padding; overrides paddingAll'),
+      paddingBottom: z.string().optional().describe('Bottom cell padding; overrides paddingAll'),
+      paddingLeft: z.string().optional().describe('Left cell padding; overrides paddingAll'),
+      paddingRight: z.string().optional().describe('Right cell padding; overrides paddingAll'),
+      contentAlign: z.enum(['top', 'middle', 'bottom']).optional().describe('Vertical content alignment within the cell'),
       tableIndex: z.number().int().optional().describe('0-based table index in document order (default: 0)'),
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
       batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin) instead of applying it — nothing changes in the doc until gog_batch_end submits the batch.'),
       account: accountParam,
     },
-  }, async ({ docId, row, col, rowSpan, colSpan, backgroundColor, textColor, bold, italic, underline, tableIndex, tab, batch, account }) => {
+  }, async ({ docId, row, col, rowSpan, colSpan, backgroundColor, textColor, bold, italic, underline, borderAll, borderTop, borderBottom, borderLeft, borderRight, paddingAll, paddingTop, paddingBottom, paddingLeft, paddingRight, contentAlign, tableIndex, tab, batch, account }) => {
     const args = ['docs', 'cell-style', docId, `--row=${row}`, `--col=${col}`];
     if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
     if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
@@ -926,6 +939,17 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (bold) args.push('--bold');
     if (italic) args.push('--italic');
     if (underline) args.push('--underline');
+    if (borderAll) args.push(`--border-all=${borderAll}`);
+    if (borderTop) args.push(`--border-top=${borderTop}`);
+    if (borderBottom) args.push(`--border-bottom=${borderBottom}`);
+    if (borderLeft) args.push(`--border-left=${borderLeft}`);
+    if (borderRight) args.push(`--border-right=${borderRight}`);
+    if (paddingAll) args.push(`--padding-all=${paddingAll}`);
+    if (paddingTop) args.push(`--padding-top=${paddingTop}`);
+    if (paddingBottom) args.push(`--padding-bottom=${paddingBottom}`);
+    if (paddingLeft) args.push(`--padding-left=${paddingLeft}`);
+    if (paddingRight) args.push(`--padding-right=${paddingRight}`);
+    if (contentAlign) args.push(`--content-align=${contentAlign}`);
     if (tableIndex !== undefined) args.push(`--table-index=${tableIndex}`);
     if (tab) args.push(`--tab=${tab}`);
     if (batch) args.push(`--batch=${batch}`);
@@ -940,6 +964,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       file: z.string().optional().describe('Local PNG, JPEG, or GIF image to upload and insert (exactly one of file or url)'),
       url: z.string().optional().describe('Public HTTPS image URL to insert directly — no Drive upload or temporary public sharing (exactly one of file or url)'),
       at: z.string().optional().describe('Placeholder text to replace, or "end" to append (default: end)'),
+      before: z.string().optional().describe('Insert the image immediately before the first literal text match (no text is deleted)'),
+      after: z.string().optional().describe('Insert the image immediately after the first literal text match (no text is deleted)'),
       width: z.number().optional().describe('Image width in points (default: 468)'),
       height: z.number().optional().describe('Image height in points (optional; width-only preserves aspect ratio)'),
       name: z.string().optional().describe('Override the uploaded Drive filename'),
@@ -948,11 +974,13 @@ export function registerExtraDocsTools(server: McpServer): void {
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
       account: accountParam,
     },
-  }, async ({ docId, file, url, at, width, height, name, parent, onRestricted, tab, account }) => {
+  }, async ({ docId, file, url, at, before, after, width, height, name, parent, onRestricted, tab, account }) => {
     const args = ['docs', 'insert-image', docId];
     if (file) args.push(`--file=${file}`);
     if (url) args.push(`--url=${url}`);
     if (at) args.push(`--at=${at}`);
+    if (before) args.push(`--before=${before}`);
+    if (after) args.push(`--after=${after}`);
     if (width !== undefined) args.push(`--width=${width}`);
     if (height !== undefined) args.push(`--height=${height}`);
     if (name) args.push(`--name=${name}`);

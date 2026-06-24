@@ -103,6 +103,17 @@ describe('gog_sheets_update', () => {
     await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1', values: [['x']], dry_run: false });
     expect(vi.mocked(runner.run).mock.calls[0]![0]).not.toContain('--dry-run');
   });
+
+  it('appends --fail-on-formula-error when fail_on_formula_error is true', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    const values = [['=1+1']];
+    await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1', values, fail_on_formula_error: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['sheets', 'update', 'sid', 'A1', `--values-json=${JSON.stringify(values)}`, '--fail-on-formula-error'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_sheets_update fail_if_not_empty guard', () => {

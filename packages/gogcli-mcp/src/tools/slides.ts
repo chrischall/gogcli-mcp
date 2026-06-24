@@ -10,12 +10,14 @@ export function registerSlidesTools(server: McpServer): void {
       presentationId: z.string().describe('Presentation ID'),
       out: z.string().optional().describe('Output file path'),
       format: z.enum(['pdf', 'pptx']).optional().describe('Export format (default: pptx)'),
+      overwrite: z.boolean().optional().describe('Overwrite the output file if it already exists (gog refuses otherwise)'),
       account: accountParam,
     },
-  }, async ({ presentationId, out, format, account }) => {
+  }, async ({ presentationId, out, format, overwrite, account }) => {
     const args = ['slides', 'export', presentationId];
     if (out) args.push(`--out=${out}`);
     if (format) args.push(`--format=${format}`);
+    if (overwrite) args.push('--overwrite');
     return runOrDiagnose(args, { account });
   });
 

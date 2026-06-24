@@ -10,12 +10,14 @@ export function registerExtraDriveTools(server: McpServer): void {
       fileId: z.string().describe('File ID to download'),
       out: z.string().optional().describe('Output file path (default: gogcli config dir)'),
       format: z.string().optional().describe('Export format for Google Docs: pdf, csv, xlsx, pptx, txt, png, docx, md (default: inferred)'),
+      overwrite: z.boolean().optional().describe('Overwrite the output file if it already exists (gog refuses otherwise)'),
       account: accountParam,
     },
-  }, async ({ fileId, out, format, account }) => {
+  }, async ({ fileId, out, format, overwrite, account }) => {
     const args = ['drive', 'download', fileId];
     if (out) args.push(`--out=${out}`);
     if (format) args.push(`--format=${format}`);
+    if (overwrite) args.push('--overwrite');
     return runOrDiagnose(args, { account });
   });
 

@@ -32,6 +32,14 @@ describe('gog_drive_download', () => {
       { account: 'a@b.com' },
     );
   });
+
+  it('passes --overwrite when requested', async () => {
+    await handlers.get('gog_drive_download')!({ fileId: 'f1', out: '/tmp/file.pdf', overwrite: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'download', 'f1', '--out=/tmp/file.pdf', '--overwrite'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_drive_upload', () => {
