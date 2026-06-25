@@ -104,7 +104,8 @@ When adding a tool, ask: does a user opening the all-services base package want 
 4. Inline `if (flag) args.push(\`--flag=\${val}\`)` — no helpers.
 5. Use `z.enum([...])` for closed-set CLI flags (states, types, roles), not `z.string()` with values in `.describe()`.
 6. Annotations: `readOnlyHint: true` for reads; `destructiveHint: true` for deletes/overwrites/grades/run-escape-hatches. Leave creates and restorative ops unannotated.
-7. Add the new tool to the sub-package's `manifest.json`.
+7. Gated deletes need `--force`: if the `gog` subcommand prompts for confirmation, append `--force` to the args — the runner always injects `--no-input`, so without it gog refuses (`refusing to delete … without --force (non-interactive)`). Not every delete is gated; confirm against a real `gog` (the mocked tests can't catch a missing `--force`). See [Gotchas](#gotchas).
+8. Add the new tool to the sub-package's `manifest.json`.
 
 ## Adding a new Google service to base
 
@@ -219,4 +220,5 @@ The repo allows squash-merge only — `--merge` and `--rebase` are blocked at th
 - **Secrets in env**: `runner.ts` strips `GOG_ACCESS_TOKEN`, `GOOGLE_APPLICATION_CREDENTIALS`, and any var ending in `_TOKEN`/`_SECRET`/`_API_KEY`/`_PRIVATE_KEY` before spawning `gog`. Adding new ambient credentials? Audit the regex.
 - **PATH augmentation**: desktop MCP clients spawn with a stripped PATH; the runner re-adds `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/go/bin`. If `gog` lives elsewhere, set `GOG_PATH`.
 - **Coverage gate**: 100% on `src/**` (excluding each package's `src/index.ts`). New code without tests fails CI.
+- **`--force` on gated deletes**: gog gates some destructive commands behind a confirmation, and the runner always injects `--no-input`, so without `--force` they fail at runtime with `refusing to delete … without --force (non-interactive)`. A tool wrapping such a command must append `--force`. Gated examples: `docs header/footer/comments delete`, `slides element delete`, `slides delete-slide`, `slides table row/column delete`. Non-gated (leave alone): `docs table-row/column delete`, `docs named-range delete`, `docs delete`. The mocked unit tests only assert the arg array, so a missing `--force` passes CI but breaks live — verify destructive commands against a real `gog` (e.g. `gog <cmd> … --no-input` without `--force` to see whether it refuses).
 - **Plugin assets**: `.claude-plugin/{plugin,marketplace}.json`, `manifest.json`, `server.json`, `SKILL.md` are distribution artifacts — they're not part of the runtime but their versions are synced at release time. Don't bump them by hand.
