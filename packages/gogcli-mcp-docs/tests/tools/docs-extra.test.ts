@@ -674,7 +674,7 @@ describe('gog_docs_comments_delete', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_docs_comments_delete')!({ docId: 'abc', commentId: 'c1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['docs', 'comments', 'delete', 'abc', 'c1'],
+      ['docs', 'comments', 'delete', 'abc', 'c1', '--force'],
       { account: undefined },
     );
   });
@@ -1890,14 +1890,14 @@ describe('gog_docs header lifecycle', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_docs_header_delete')!({ docId: 'd1', headerId: 'kix.h1', tab: 'T' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'header', 'delete', 'd1', 'kix.h1', '--tab=T'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'header', 'delete', 'd1', 'kix.h1', '--tab=T', '--force'], { account: undefined });
   });
 
   it('header_delete bare', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_docs_header_delete')!({ docId: 'd1', headerId: 'kix.h1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'header', 'delete', 'd1', 'kix.h1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'header', 'delete', 'd1', 'kix.h1', '--force'], { account: undefined });
   });
 });
 
@@ -1941,14 +1941,14 @@ describe('gog_docs footer lifecycle', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_docs_footer_delete')!({ docId: 'd1', footerId: 'kix.f1', tab: 'T' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'footer', 'delete', 'd1', 'kix.f1', '--tab=T'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'footer', 'delete', 'd1', 'kix.f1', '--tab=T', '--force'], { account: undefined });
   });
 
   it('footer_delete bare', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_docs_footer_delete')!({ docId: 'd1', footerId: 'kix.f1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'footer', 'delete', 'd1', 'kix.f1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'footer', 'delete', 'd1', 'kix.f1', '--force'], { account: undefined });
   });
 });
 

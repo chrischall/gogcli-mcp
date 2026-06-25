@@ -432,7 +432,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ docId, commentId, account }) => {
-    return runOrDiagnose(['docs', 'comments', 'delete', docId, commentId], { account });
+    // --force: gog refuses this delete under the runner's --no-input without it.
+    return runOrDiagnose(['docs', 'comments', 'delete', docId, commentId, '--force'], { account });
   });
 
   server.registerTool('gog_docs_comments_reopen', {
@@ -1303,6 +1304,7 @@ export function registerExtraDocsTools(server: McpServer): void {
   }, async ({ docId, headerId, tab, account }) => {
     const args = ['docs', 'header', 'delete', docId, headerId];
     if (tab) args.push(`--tab=${tab}`);
+    args.push('--force'); // gog refuses this delete under the runner's --no-input without it
     return runOrDiagnose(args, { account });
   });
 
@@ -1359,6 +1361,7 @@ export function registerExtraDocsTools(server: McpServer): void {
   }, async ({ docId, footerId, tab, account }) => {
     const args = ['docs', 'footer', 'delete', docId, footerId];
     if (tab) args.push(`--tab=${tab}`);
+    args.push('--force'); // gog refuses this delete under the runner's --no-input without it
     return runOrDiagnose(args, { account });
   });
 
