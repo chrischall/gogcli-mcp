@@ -154,7 +154,7 @@ describe('gog_slides_delete_slide', () => {
   it('calls runOrDiagnose with presentationId and slideId', async () => {
     await handlers.get('gog_slides_delete_slide')!({ presentationId: 'p1', slideId: 's1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'delete-slide', 'p1', 's1'],
+      ['slides', 'delete-slide', 'p1', 's1', '--force'],
       { account: undefined },
     );
   });
@@ -546,7 +546,7 @@ describe('gog_slides_element_alt_text', () => {
 describe('gog_slides_element_delete', () => {
   it('deletes an element', async () => {
     await handlers.get('gog_slides_element_delete')!({ presentationId: 'p1', objectId: 'o1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'delete', 'p1', 'o1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'delete', 'p1', 'o1', '--force'], { account: undefined });
   });
 });
 
@@ -624,7 +624,7 @@ describe('gog_slides_table_column_delete', () => {
   it('deletes by column index', async () => {
     await handlers.get('gog_slides_table_column_delete')!({ presentationId: 'p1', tableObjectId: 't1', col: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'column', 'delete', 'p1', 't1', '--col=2'], { account: undefined });
+      ['slides', 'table', 'column', 'delete', 'p1', 't1', '--col=2', '--force'], { account: undefined });
   });
 });
 
@@ -653,7 +653,7 @@ describe('gog_slides_table_row_delete', () => {
   it('deletes by row index', async () => {
     await handlers.get('gog_slides_table_row_delete')!({ presentationId: 'p1', tableObjectId: 't1', row: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'row', 'delete', 'p1', 't1', '--row=2'], { account: undefined });
+      ['slides', 'table', 'row', 'delete', 'p1', 't1', '--row=2', '--force'], { account: undefined });
   });
 });
 

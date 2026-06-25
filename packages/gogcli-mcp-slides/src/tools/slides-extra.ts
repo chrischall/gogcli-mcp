@@ -99,7 +99,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ presentationId, slideId, account }) => {
-    return runOrDiagnose(['slides', 'delete-slide', presentationId, slideId], { account });
+    // --force: gog refuses this delete under the runner's --no-input without it.
+    return runOrDiagnose(['slides', 'delete-slide', presentationId, slideId, '--force'], { account });
   });
 
   server.registerTool('gog_slides_update_notes', {
@@ -530,7 +531,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ presentationId, objectId, account }) => {
-    return runOrDiagnose(['slides', 'element', 'delete', presentationId, objectId], { account });
+    // --force: gog refuses this delete under the runner's --no-input without it.
+    return runOrDiagnose(['slides', 'element', 'delete', presentationId, objectId, '--force'], { account });
   });
 
   // --- gog 0.29 native tables (table subtree). Cell addressing is zero-based. ---
@@ -646,7 +648,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ presentationId, tableObjectId, col, account }) => {
-    return runOrDiagnose(['slides', 'table', 'column', 'delete', presentationId, tableObjectId, `--col=${col}`], { account });
+    return runOrDiagnose(['slides', 'table', 'column', 'delete', presentationId, tableObjectId, `--col=${col}`, '--force'], { account });
   });
 
   server.registerTool('gog_slides_table_column_size', {
@@ -689,7 +691,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ presentationId, tableObjectId, row, account }) => {
-    return runOrDiagnose(['slides', 'table', 'row', 'delete', presentationId, tableObjectId, `--row=${row}`], { account });
+    return runOrDiagnose(['slides', 'table', 'row', 'delete', presentationId, tableObjectId, `--row=${row}`, '--force'], { account });
   });
 
   server.registerTool('gog_slides_table_row_size', {
