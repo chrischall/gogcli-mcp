@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.10.0](https://github.com/chrischall/gogcli-mcp/compare/v2.9.0...v2.10.0) (2026-06-25)
+
+
+### Features
+
+* **docs:** wrap gog 0.30 docs authoring ([#119](https://github.com/chrischall/gogcli-mcp/issues/119)) ([5262a67](https://github.com/chrischall/gogcli-mcp/commit/5262a67e71505e6f91c257eb7da193eed933af36))
+* generic Google API access + readonly safety ([#123](https://github.com/chrischall/gogcli-mcp/issues/123)) ([6eed43f](https://github.com/chrischall/gogcli-mcp/commit/6eed43f91709b27c11121d2913ae24b6124524c8))
+* **slides:** wrap gog 0.29 native authoring — reads, text, slides, shapes ([#121](https://github.com/chrischall/gogcli-mcp/issues/121)) ([7a862dd](https://github.com/chrischall/gogcli-mcp/commit/7a862ddcbbe8bc7f2a3da86d2dd9ef5d81b95f0c))
+* **slides:** wrap gog 0.29 slides tables ([#122](https://github.com/chrischall/gogcli-mcp/issues/122)) ([3aaacea](https://github.com/chrischall/gogcli-mcp/commit/3aaaceae99ca18cc03165514799c23e2b61ac0bb))
+* **tools:** catch up to gog v0.31.0 ([#117](https://github.com/chrischall/gogcli-mcp/issues/117)) ([97029f2](https://github.com/chrischall/gogcli-mcp/commit/97029f2a54f3f6ad5cec34e12fcc6fee7bf5b797))
+
+
+### Bug Fixes
+
+* **tools:** pass --force to delete tools gog refuses non-interactively ([#125](https://github.com/chrischall/gogcli-mcp/issues/125)) ([412003b](https://github.com/chrischall/gogcli-mcp/commit/412003bfab6695c17f2d4f7dd5c302801819e4c8))
+
+
+### Documentation
+
+* **docs:** clarify footnote segment ID source in segment param ([#124](https://github.com/chrischall/gogcli-mcp/issues/124)) ([ccb6a77](https://github.com/chrischall/gogcli-mcp/commit/ccb6a7748ee5ed016dab3ec4941e63d3a767fe7e))
+* document the --force gotcha for gated deletes ([#126](https://github.com/chrischall/gogcli-mcp/issues/126)) ([9ebaad4](https://github.com/chrischall/gogcli-mcp/commit/9ebaad443c86f1531f9119d5160463b8baa90985))
+
 ## [2.9.0](https://github.com/chrischall/gogcli-mcp/compare/v2.8.0...v2.9.0) (2026-06-15)
 
 
