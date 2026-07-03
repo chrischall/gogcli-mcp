@@ -204,6 +204,33 @@ describe('gog_calendar_search', () => {
   });
 });
 
+describe('gog_calendar_changed', () => {
+  it('calls runOrDiagnose with no flags by default', async () => {
+    await handlers.get('gog_calendar_changed')!({});
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'changed'], { account: undefined });
+  });
+
+  it('passes calendarId positionally and all flags', async () => {
+    await handlers.get('gog_calendar_changed')!({
+      calendarId: 'primary',
+      calendarIds: 'work,personal',
+      since: '48h',
+      max: 25,
+      all: true,
+      account: 'me@example.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['calendar', 'changed', 'primary', '--calendars=work,personal', '--since=48h', '--max=25', '--all'],
+      { account: 'me@example.com' },
+    );
+  });
+
+  it('omits --all when false', async () => {
+    await handlers.get('gog_calendar_changed')!({ all: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'changed'], { account: undefined });
+  });
+});
+
 describe('gog_calendar_freebusy', () => {
   it('calls runOrDiagnose with required from/to only', async () => {
     await handlers.get('gog_calendar_freebusy')!({ from: 'A', to: 'B' });

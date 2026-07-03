@@ -50,7 +50,7 @@ export function registerCalendarTools(server: McpServer): void {
       to: z.string().describe('End time (RFC3339 or date for all-day events)'),
       description: z.string().optional().describe('Event description'),
       location: z.string().optional().describe('Event location'),
-      attendees: z.string().optional().describe('Attendee emails, comma-separated'),
+      attendees: z.string().optional().describe('Attendee emails, comma-separated. Per-attendee modifiers (gog >= 0.31.1 for ;resource): ;optional, ;resource (e.g. meeting rooms), ;comment=TEXT'),
       allDay: z.boolean().optional().describe('All-day event (use date-only in from/to)'),
       timezone: z.string().optional().describe('IANA timezone metadata applied to from/to (e.g. America/New_York). Sets both start and end timezone unless start/end timezone are overridden.'),
       withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event (requires Zoom S2S OAuth setup)'),
@@ -78,14 +78,15 @@ export function registerCalendarTools(server: McpServer): void {
       to: z.string().optional().describe('New end time (RFC3339)'),
       description: z.string().optional().describe('New description'),
       location: z.string().optional().describe('New location'),
-      attendees: z.string().optional().describe('New attendee emails, comma-separated (replaces existing)'),
+      attendees: z.string().optional().describe('New attendee emails, comma-separated (replaces ALL existing; set empty to clear). Per-attendee modifiers: ;optional, ;resource, ;comment=TEXT'),
+      addAttendees: z.string().optional().describe('Attendee emails to add, comma-separated (preserves existing attendees). Per-attendee modifiers: ;optional, ;resource, ;comment=TEXT'),
       attachments: z.array(z.string()).optional().describe('File attachment URLs (e.g. Drive links). Replaces ALL existing attachments; pass a single empty string to clear them.'),
       withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event'),
       regenerateZoom: z.boolean().optional().describe('Replace the event\'s existing Zoom video conference'),
       removeZoom: z.boolean().optional().describe('Remove the event\'s Zoom video conference'),
       account: accountParam,
     },
-  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, attachments, withZoom, regenerateZoom, removeZoom, account }) => {
+  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, account }) => {
     const args = ['calendar', 'update', calendarId, eventId];
     if (summary !== undefined) args.push(`--summary=${summary}`);
     if (from !== undefined) args.push(`--from=${from}`);
@@ -93,6 +94,7 @@ export function registerCalendarTools(server: McpServer): void {
     if (description !== undefined) args.push(`--description=${description}`);
     if (location !== undefined) args.push(`--location=${location}`);
     if (attendees !== undefined) args.push(`--attendees=${attendees}`);
+    if (addAttendees) args.push(`--add-attendee=${addAttendees}`);
     if (attachments) for (const a of attachments) args.push(`--attachment=${a}`);
     if (withZoom) args.push('--with-zoom');
     if (regenerateZoom) args.push('--regenerate-zoom');

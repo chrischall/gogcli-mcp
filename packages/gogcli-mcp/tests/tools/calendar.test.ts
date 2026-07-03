@@ -208,6 +208,24 @@ describe('gog_calendar_update', () => {
     );
   });
 
+  // gog 0.31.1: --add-attendee preserves existing attendees; --attendees replaces all.
+  it('passes --add-attendee with modifiers without touching --attendees', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_calendar_update')!({
+      calendarId: 'primary',
+      eventId: 'evt1',
+      addAttendees: 'room@resource.calendar.google.com;resource,x@y.com;optional',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'calendar', 'update', 'primary', 'evt1',
+        '--add-attendee=room@resource.calendar.google.com;resource,x@y.com;optional',
+      ],
+      { account: undefined },
+    );
+  });
+
   // gog 0.18.0 Zoom flags: with-zoom adds, regenerate-zoom replaces, remove-zoom strips.
   it('passes --with-zoom / --regenerate-zoom / --remove-zoom independently', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
