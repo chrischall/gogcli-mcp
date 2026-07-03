@@ -135,6 +135,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       indentFirstLine: z.number().optional().describe('Paragraph first-line indentation in points'),
       spaceAbove: z.number().optional().describe('Space above the paragraph in points'),
       spaceBelow: z.number().optional().describe('Space below the paragraph in points'),
+      spacingMode: z.enum(['NEVER_COLLAPSE', 'COLLAPSE_LISTS']).optional().describe('Paragraph spacing collapse behavior: NEVER_COLLAPSE always keeps space-above/space-below; COLLAPSE_LISTS collapses spacing between list items'),
       keepLinesTogether: z.boolean().optional().describe('Keep all lines of the paragraph on one page/column (true) or clear that setting (false)'),
       keepWithNext: z.boolean().optional().describe('Keep the paragraph with the next paragraph (true) or clear that setting (false)'),
       segment: z.string().optional().describe('Target an exact header, footer, or footnote segment ID (header/footer IDs come from gog_docs_header_list / gog_docs_footer_list; footnote segment IDs appear in gog_docs_read json mode) instead of the document body.'),
@@ -165,7 +166,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       namedStyle?: string;
       bullets?: boolean; bulletPreset?: string; ordered?: boolean; noBullets?: boolean;
       indentStart?: number; indentEnd?: number; indentFirstLine?: number;
-      spaceAbove?: number; spaceBelow?: number;
+      spaceAbove?: number; spaceBelow?: number; spacingMode?: string;
       keepLinesTogether?: boolean; keepWithNext?: boolean;
       segment?: string;
       account?: string;
@@ -203,11 +204,26 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (a.indentFirstLine !== undefined) argv.push(`--indent-first-line=${a.indentFirstLine}`);
     if (a.spaceAbove !== undefined) argv.push(`--space-above=${a.spaceAbove}`);
     if (a.spaceBelow !== undefined) argv.push(`--space-below=${a.spaceBelow}`);
+    if (a.spacingMode) argv.push(`--spacing-mode=${a.spacingMode}`);
     if (a.keepLinesTogether !== undefined) argv.push(a.keepLinesTogether ? '--keep-lines-together' : '--no-keep-lines-together');
     if (a.keepWithNext !== undefined) argv.push(a.keepWithNext ? '--keep-with-next' : '--no-keep-with-next');
     if (a.segment) argv.push(`--segment=${a.segment}`);
     if (a.batch) argv.push(`--batch=${a.batch}`);
     return runOrDiagnose(argv, { account: a.account });
+  });
+
+  server.registerTool('gog_docs_suggestions_list', {
+    description: 'List pending suggestions (suggested text insertions and deletions) in a Google Doc, with exact UTF-16 ranges and segment context. Read-only; does not accept or reject suggestions.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      docId: z.string().describe('Doc ID (from the URL)'),
+      tab: z.string().optional().describe('Tab title or ID (omit for the first tab)'),
+      account: accountParam,
+    },
+  }, async ({ docId, tab, account }) => {
+    const args = ['docs', 'suggestions', 'list', docId];
+    if (tab) args.push(`--tab=${tab}`);
+    return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_docs_export', {

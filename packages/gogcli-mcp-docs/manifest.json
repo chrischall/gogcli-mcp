@@ -185,7 +185,11 @@
     },
     {
       "name": "gog_docs_format",
-      "description": "Apply text/paragraph formatting (bold, italic, font size, color, alignment, line spacing, named style / heading level) — supports match, matchAll, matchCase"
+      "description": "Apply text/paragraph formatting (bold, italic, font size, color, alignment, line/paragraph spacing, named style / heading level) — supports match, matchAll, matchCase"
+    },
+    {
+      "name": "gog_docs_suggestions_list",
+      "description": "List pending suggestions (suggested insertions/deletions) in a doc with exact UTF-16 ranges (read-only)"
     },
     {
       "name": "gog_docs_trash",

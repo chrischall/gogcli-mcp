@@ -2035,3 +2035,60 @@ describe('gog_docs_table_row_style overflow-unset branch', () => {
     );
   });
 });
+
+// --- gog_docs_suggestions_list ---
+
+describe('gog_docs_suggestions_list', () => {
+  it('calls runOrDiagnose with correct args', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_suggestions_list')!({ docId: 'd1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'suggestions', 'list', 'd1'], { account: undefined });
+  });
+
+  it('includes --tab when provided', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_suggestions_list')!({ docId: 'd1', tab: 'Notes' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'suggestions', 'list', 'd1', '--tab=Notes'],
+      { account: undefined },
+    );
+  });
+
+  it('forwards account override', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_suggestions_list')!({ docId: 'd1', account: 'other@gmail.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'suggestions', 'list', 'd1'],
+      { account: 'other@gmail.com' },
+    );
+  });
+});
+
+// --- gog_docs_format spacingMode ---
+
+describe('gog_docs_format spacingMode', () => {
+  it('passes --spacing-mode alongside space-above/space-below', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({
+      docId: 'd1', spaceAbove: 6, spaceBelow: 12, spacingMode: 'COLLAPSE_LISTS',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--space-above=6', '--space-below=12', '--spacing-mode=COLLAPSE_LISTS'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --spacing-mode when unset', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
+    const handlers = setupHandlers();
+    await handlers.get('gog_docs_format')!({ docId: 'd1', spaceAbove: 6 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'format', 'd1', '--space-above=6'],
+      { account: undefined },
+    );
+  });
+});
