@@ -111,6 +111,10 @@
       "description": "Full-text search for events with optional time filters"
     },
     {
+      "name": "gog_calendar_changed",
+      "description": "List most recently changed events (including cancellations) across calendars"
+    },
+    {
       "name": "gog_calendar_freebusy",
       "description": "Query free/busy intervals for one or more calendars"
     },

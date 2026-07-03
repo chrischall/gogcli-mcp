@@ -159,6 +159,27 @@ export function registerExtraCalendarTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  server.registerTool('gog_calendar_changed', {
+    description: 'List most recently changed events (including cancellations/deletions) across one or more calendars, ordered by last-modification time. Requires gog >= 0.31.1.',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      calendarId: z.string().optional().describe('Calendar ID (default: primary)'),
+      calendarIds: z.string().optional().describe('Comma-separated calendar IDs, names, or indices'),
+      since: z.string().optional().describe('Lower bound for last-modification time (RFC3339, date, or Go duration like 24h, 168h; default: 720h / 30 days). Google rejects windows too far in the past (410 updatedMinTooLongAgo) — retry with a shorter duration if that happens'),
+      max: z.number().optional().describe('Max results (default: 10)'),
+      all: z.boolean().optional().describe('Fetch from all calendars'),
+      account: accountParam,
+    },
+  }, async ({ calendarId, calendarIds, since, max, all, account }) => {
+    const args = ['calendar', 'changed'];
+    if (calendarId) args.push(calendarId);
+    if (calendarIds) args.push(`--calendars=${calendarIds}`);
+    if (since) args.push(`--since=${since}`);
+    if (max !== undefined) args.push(`--max=${max}`);
+    if (all) args.push('--all');
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_calendar_freebusy', {
     description: 'Query free/busy intervals for one or more calendars over a time window.',
     annotations: { readOnlyHint: true },

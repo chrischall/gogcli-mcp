@@ -26,7 +26,7 @@ const TIMEOUT_MS = 30_000;
 // so the requirement change is surfaced in the release notes (see
 // .github/release.yml). This is the single source of truth for the required
 // version; keep the README/CLAUDE.md mention in sync.
-export const MIN_GOG_VERSION = '0.31.0';
+export const MIN_GOG_VERSION = '0.31.1';
 
 // Treat unresolved .mcpb placeholders ("${user_config.gog_path}") and empty
 // strings the same as an unset env var. When an optional .mcpb user_config
