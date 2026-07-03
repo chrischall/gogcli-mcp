@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0](https://github.com/chrischall/gogcli-mcp/compare/v2.10.0...v2.11.0) (2026-07-03)
+
+
+### Features
+
+* **calendar:** wrap gog 0.31.1 changed-events listing and attendee modifiers ([#128](https://github.com/chrischall/gogcli-mcp/issues/128)) ([f834048](https://github.com/chrischall/gogcli-mcp/commit/f83404843718168faf1297b0ee3d933a763324c6))
+
 ## [2.10.0](https://github.com/chrischall/gogcli-mcp/compare/v2.9.0...v2.10.0) (2026-06-25)
 
 
