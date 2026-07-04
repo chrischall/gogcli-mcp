@@ -104,7 +104,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, tabName, account }) => {
-    return runOrDiagnose(['sheets', 'delete-tab', spreadsheetId, tabName], { account });
+    return runOrDiagnose(['sheets', 'delete-tab', spreadsheetId, tabName, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_sheets_rename_tab', {
@@ -534,6 +534,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     const args = ['sheets', 'delete-dimension', spreadsheetId, rangeOrSheet, `--dimension=${dimension}`];
     if (start !== undefined) args.push(`--start=${start}`);
     if (end !== undefined) args.push(`--end=${end}`);
+    args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse
     return runOrDiagnose(args, { account });
   });
 
@@ -708,7 +709,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, chartId, account }) => {
-    return runOrDiagnose(['sheets', 'chart', 'delete', spreadsheetId, chartId], { account });
+    return runOrDiagnose(['sheets', 'chart', 'delete', spreadsheetId, chartId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   // ---- Tables (gog 0.19.0) ----
@@ -776,7 +777,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ spreadsheetId, tableId, account }) => {
-    return runOrDiagnose(['sheets', 'table', 'clear', spreadsheetId, tableId], { account });
+    return runOrDiagnose(['sheets', 'table', 'clear', spreadsheetId, tableId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_sheets_table_delete', {
@@ -893,6 +894,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (id !== undefined) args.push(`--id=${id}`);
     if (all) args.push('--all');
     if (sheet) args.push(`--sheet=${sheet}`);
+    args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse
     return runOrDiagnose(args, { account });
   });
 
@@ -948,6 +950,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     const args = ['sheets', 'conditional-format', 'clear', spreadsheetId, `--sheet=${sheet}`];
     if (index !== undefined) args.push(`--index=${index}`);
     if (all) args.push('--all');
+    args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse
     return runOrDiagnose(args, { account });
   });
 

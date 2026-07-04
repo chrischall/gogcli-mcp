@@ -74,7 +74,9 @@ export function registerTasksTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ tasklistId, taskId, account }) => {
-    return runOrDiagnose(['tasks', 'delete', tasklistId, taskId], { account });
+    // gog gates this delete behind a confirmation; the runner injects
+    // --no-input, so without --force it refuses at runtime.
+    return runOrDiagnose(['tasks', 'delete', tasklistId, taskId, '--force'], { account });
   });
 
   registerRunTool(server, { service: 'tasks', examples: '"update", "undo", "clear"' });

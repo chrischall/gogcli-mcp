@@ -79,7 +79,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ courseId, account }) => {
-    return runOrDiagnose(['classroom', 'courses', 'delete', courseId], { account });
+    return runOrDiagnose(['classroom', 'courses', 'delete', courseId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_courses_archive', {
@@ -126,7 +126,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ courseId, userId, account }) => {
-    return runOrDiagnose(['classroom', 'students', 'remove', courseId, userId], { account });
+    return runOrDiagnose(['classroom', 'students', 'remove', courseId, userId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_teachers_add', {
@@ -149,7 +149,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ courseId, userId, account }) => {
-    return runOrDiagnose(['classroom', 'teachers', 'remove', courseId, userId], { account });
+    return runOrDiagnose(['classroom', 'teachers', 'remove', courseId, userId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_coursework_create', {
@@ -208,7 +208,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ courseId, courseworkId, account }) => {
-    return runOrDiagnose(['classroom', 'coursework', 'delete', courseId, courseworkId], { account });
+    return runOrDiagnose(['classroom', 'coursework', 'delete', courseId, courseworkId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_announcements_update', {
@@ -239,7 +239,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ courseId, announcementId, account }) => {
-    return runOrDiagnose(['classroom', 'announcements', 'delete', courseId, announcementId], { account });
+    return runOrDiagnose(['classroom', 'announcements', 'delete', courseId, announcementId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_topics_create', {
@@ -275,7 +275,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ courseId, topicId, account }) => {
-    return runOrDiagnose(['classroom', 'topics', 'delete', courseId, topicId], { account });
+    return runOrDiagnose(['classroom', 'topics', 'delete', courseId, topicId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_invitations_create', {
@@ -298,6 +298,6 @@ export function registerExtraClassroomTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ invitationId, account }) => {
-    return runOrDiagnose(['classroom', 'invitations', 'delete', invitationId], { account });
+    return runOrDiagnose(['classroom', 'invitations', 'delete', invitationId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 }

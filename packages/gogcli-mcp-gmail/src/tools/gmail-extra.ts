@@ -190,14 +190,17 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_batch_delete', {
-    description: 'Permanently delete multiple messages (requires the broader Gmail scope). Use gog_gmail_trash for normal deletes.',
+    description: 'Permanently delete multiple messages (requires the broader Gmail scope; not reversible — messages bypass Trash). Requires force:true to delete non-interactively. Use gog_gmail_trash for normal deletes.',
     annotations: { destructiveHint: true },
     inputSchema: {
       messageIds: z.array(z.string()).min(1).describe('Message IDs to permanently delete'),
+      force: z.boolean().optional().describe('Required to delete in this non-interactive context — without it the delete is refused as a safety guard.'),
       account: accountParam,
     },
-  }, async ({ messageIds, account }) => {
-    return runOrDiagnose(['gmail', 'batch', 'delete', ...messageIds], { account });
+  }, async ({ messageIds, force, account }) => {
+    const args = ['gmail', 'batch', 'delete', ...messageIds];
+    if (force) args.push('--force');
+    return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_gmail_batch_modify', {
@@ -323,7 +326,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ labelIdOrName, account }) => {
-    return runOrDiagnose(['gmail', 'labels', 'delete', labelIdOrName], { account });
+    return runOrDiagnose(['gmail', 'labels', 'delete', labelIdOrName, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_gmail_labels_modify', {
@@ -782,7 +785,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (important) args.push('--important');
     if (trash) args.push('--trash');
     if (neverSpam) args.push('--never-spam');
-    if (forward) args.push(`--forward=${forward}`);
+    if (forward) args.push(`--forward=${forward}`, '--force'); // gog gates this op; without --force the runner's --no-input makes it refuse (forwarding filters only)
     return runOrDiagnose(args, { account });
   });
 
@@ -794,7 +797,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ filterId, account }) => {
-    return runOrDiagnose(['gmail', 'settings', 'filters', 'delete', filterId], { account });
+    return runOrDiagnose(['gmail', 'settings', 'filters', 'delete', filterId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_gmail_sendas_list', {
@@ -867,7 +870,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ email, account }) => {
-    return runOrDiagnose(['gmail', 'settings', 'sendas', 'delete', email], { account });
+    return runOrDiagnose(['gmail', 'settings', 'sendas', 'delete', email, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_gmail_sendas_verify', {

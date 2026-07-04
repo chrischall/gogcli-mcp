@@ -146,7 +146,7 @@ describe('gog_drive_delete', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();
     await handlers.get('gog_drive_delete')!({ fileId: 'file1' });
-    expect(runner.run).toHaveBeenCalledWith(['drive', 'delete', 'file1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['drive', 'delete', 'file1', '--force'], { account: undefined });
   });
 
   it('appends --permanent when permanent=true', async () => {
@@ -154,7 +154,7 @@ describe('gog_drive_delete', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_drive_delete')!({ fileId: 'file1', permanent: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['drive', 'delete', 'file1', '--permanent'],
+      ['drive', 'delete', 'file1', '--permanent', '--force'],
       { account: undefined },
     );
   });
@@ -163,7 +163,7 @@ describe('gog_drive_delete', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();
     await handlers.get('gog_drive_delete')!({ fileId: 'file1', permanent: false });
-    expect(runner.run).toHaveBeenCalledWith(['drive', 'delete', 'file1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['drive', 'delete', 'file1', '--force'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -191,6 +191,16 @@ describe('gog_drive_share', () => {
     await handlers.get('gog_drive_share')!({ fileId: 'file1', to: 'domain', domain: 'example.com', role: 'writer' });
     expect(runner.run).toHaveBeenCalledWith(
       ['drive', 'share', 'file1', '--to=domain', '--domain=example.com', '--role=writer'],
+      { account: undefined },
+    );
+  });
+
+  it('appends --force for to=anyone (gog gates public sharing; runner injects --no-input)', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const handlers = setupHandlers();
+    await handlers.get('gog_drive_share')!({ fileId: 'file1', to: 'anyone' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['drive', 'share', 'file1', '--to=anyone', '--force'],
       { account: undefined },
     );
   });

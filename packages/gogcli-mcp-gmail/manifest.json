@@ -131,7 +131,7 @@
     },
     {
       "name": "gog_gmail_batch_delete",
-      "description": "Permanently delete multiple messages (irreversible)"
+      "description": "Permanently delete multiple messages (irreversible; requires force:true)"
     },
     {
       "name": "gog_gmail_batch_modify",

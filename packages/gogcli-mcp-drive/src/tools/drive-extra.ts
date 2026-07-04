@@ -97,7 +97,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ fileId, permissionId, account }) => {
-    return runOrDiagnose(['drive', 'unshare', fileId, permissionId], { account });
+    return runOrDiagnose(['drive', 'unshare', fileId, permissionId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_drive_drives_list', {
@@ -182,7 +182,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ fileId, commentId, account }) => {
-    return runOrDiagnose(['drive', 'comments', 'delete', fileId, commentId], { account });
+    return runOrDiagnose(['drive', 'comments', 'delete', fileId, commentId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_drive_comments_reply', {
@@ -433,7 +433,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ fileId, labelId, account }) => {
-    return runOrDiagnose(['drive', 'labels', 'file', 'remove', fileId, labelId], { account });
+    return runOrDiagnose(['drive', 'labels', 'file', 'remove', fileId, labelId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_drive_activity', {

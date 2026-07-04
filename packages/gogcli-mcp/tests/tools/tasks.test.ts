@@ -107,7 +107,7 @@ describe('gog_tasks_delete', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();
     await handlers.get('gog_tasks_delete')!({ tasklistId: 'list1', taskId: 'task1' });
-    expect(runner.run).toHaveBeenCalledWith(['tasks', 'delete', 'list1', 'task1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['tasks', 'delete', 'list1', 'task1', '--force'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {

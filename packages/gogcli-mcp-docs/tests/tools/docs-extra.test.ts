@@ -685,7 +685,7 @@ describe('gog_docs_trash', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
     const handlers = setupHandlers();
     await handlers.get('gog_docs_trash')!({ docId: 'd1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'delete', 'd1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'delete', 'd1', '--force'], { account: undefined });
   });
 });
 
@@ -1058,7 +1058,7 @@ describe('gog_docs_insert_image', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_docs_insert_image')!({ docId: 'd1', file: '/tmp/pic.png' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['docs', 'insert-image', 'd1', '--file=/tmp/pic.png'],
+      ['docs', 'insert-image', 'd1', '--file=/tmp/pic.png', '--force'],
       { account: undefined },
     );
   });
@@ -1072,7 +1072,7 @@ describe('gog_docs_insert_image', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['docs', 'insert-image', 'd1', '--file=/tmp/pic.png', '--at={{logo}}', '--width=200',
-        '--height=100', '--name=logo.png', '--parent=folder1', '--on-restricted=link', '--tab=T'],
+        '--height=100', '--name=logo.png', '--parent=folder1', '--on-restricted=link', '--tab=T', '--force'],
       { account: undefined },
     );
   });
@@ -1269,7 +1269,7 @@ describe('gog_docs_delete_tab', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_docs_delete_tab')!({ docId: 'abc', tab: 'Old' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['docs', 'delete-tab', 'abc', '--tab=Old'],
+      ['docs', 'delete-tab', 'abc', '--tab=Old', '--force'],
       { account: undefined },
     );
   });
@@ -1279,7 +1279,7 @@ describe('gog_docs_delete_tab', () => {
     const handlers = setupHandlers();
     await handlers.get('gog_docs_delete_tab')!({ docId: 'abc', tab: 't1', account: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['docs', 'delete-tab', 'abc', '--tab=t1'],
+      ['docs', 'delete-tab', 'abc', '--tab=t1', '--force'],
       { account: 'a@b.com' },
     );
   });
@@ -1972,7 +1972,7 @@ describe('gog_docs_replace_image', () => {
       docId: 'd1', file: '/tmp/i.png', matchAlt: 'logo', name: 'new.png', parent: 'folder1',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['docs', 'replace-image', 'd1', '--file=/tmp/i.png', '--match-alt=logo', '--name=new.png', '--parent=folder1'],
+      ['docs', 'replace-image', 'd1', '--file=/tmp/i.png', '--match-alt=logo', '--name=new.png', '--parent=folder1', '--force'],
       { account: undefined },
     );
   });
