@@ -111,7 +111,9 @@ export function registerCalendarTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ calendarId, eventId, account }) => {
-    return runOrDiagnose(['calendar', 'delete', calendarId, eventId], { account });
+    // gog gates this delete behind a confirmation; the runner injects
+    // --no-input, so without --force it refuses at runtime.
+    return runOrDiagnose(['calendar', 'delete', calendarId, eventId, '--force'], { account });
   });
 
   server.registerTool('gog_calendar_respond', {

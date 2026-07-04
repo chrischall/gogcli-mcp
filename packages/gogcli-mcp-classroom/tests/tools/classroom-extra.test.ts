@@ -72,7 +72,7 @@ describe('gog_classroom_courses_update', () => {
 describe('gog_classroom_courses_delete', () => {
   it('calls runOrDiagnose with courseId', async () => {
     await handlers.get('gog_classroom_courses_delete')!({ courseId: 'c1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'courses', 'delete', 'c1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'courses', 'delete', 'c1', '--force'], { account: undefined });
   });
 });
 
@@ -108,7 +108,7 @@ describe('gog_classroom_students_add', () => {
 describe('gog_classroom_students_remove', () => {
   it('calls runOrDiagnose with courseId and userId', async () => {
     await handlers.get('gog_classroom_students_remove')!({ courseId: 'c1', userId: 'u1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'students', 'remove', 'c1', 'u1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'students', 'remove', 'c1', 'u1', '--force'], { account: undefined });
   });
 });
 
@@ -122,7 +122,7 @@ describe('gog_classroom_teachers_add', () => {
 describe('gog_classroom_teachers_remove', () => {
   it('calls runOrDiagnose with courseId and userId', async () => {
     await handlers.get('gog_classroom_teachers_remove')!({ courseId: 'c1', userId: 'u1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'teachers', 'remove', 'c1', 'u1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'teachers', 'remove', 'c1', 'u1', '--force'], { account: undefined });
   });
 });
 
@@ -187,7 +187,7 @@ describe('gog_classroom_coursework_update', () => {
 describe('gog_classroom_coursework_delete', () => {
   it('calls runOrDiagnose with ids', async () => {
     await handlers.get('gog_classroom_coursework_delete')!({ courseId: 'c1', courseworkId: 'w1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'coursework', 'delete', 'c1', 'w1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'coursework', 'delete', 'c1', 'w1', '--force'], { account: undefined });
   });
 });
 
@@ -215,7 +215,7 @@ describe('gog_classroom_announcements_update', () => {
 describe('gog_classroom_announcements_delete', () => {
   it('calls runOrDiagnose with ids', async () => {
     await handlers.get('gog_classroom_announcements_delete')!({ courseId: 'c1', announcementId: 'a1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'announcements', 'delete', 'c1', 'a1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'announcements', 'delete', 'c1', 'a1', '--force'], { account: undefined });
   });
 });
 
@@ -242,7 +242,7 @@ describe('gog_classroom_topics_update', () => {
 describe('gog_classroom_topics_delete', () => {
   it('calls runOrDiagnose with ids', async () => {
     await handlers.get('gog_classroom_topics_delete')!({ courseId: 'c1', topicId: 't1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'topics', 'delete', 'c1', 't1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'topics', 'delete', 'c1', 't1', '--force'], { account: undefined });
   });
 });
 
@@ -259,6 +259,6 @@ describe('gog_classroom_invitations_create', () => {
 describe('gog_classroom_invitations_delete', () => {
   it('calls runOrDiagnose with invitationId', async () => {
     await handlers.get('gog_classroom_invitations_delete')!({ invitationId: 'i1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'invitations', 'delete', 'i1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'invitations', 'delete', 'i1', '--force'], { account: undefined });
   });
 });

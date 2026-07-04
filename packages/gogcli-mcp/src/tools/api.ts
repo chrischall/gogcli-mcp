@@ -54,7 +54,9 @@ export function registerApiTools(server: McpServer): void {
     if (params) args.push(`--params=${params}`);
     if (body) args.push(`--body=${body}`);
     if (scope) args.push(`--scope=${scope}`);
-    if (allowWrite) args.push('--allow-write');
+    // gog additionally gates mutating Discovery calls behind a confirmation;
+    // the runner injects --no-input, so --allow-write alone still refuses.
+    if (allowWrite) args.push('--allow-write', '--force');
     if (dryRun) args.push('--dry-run');
     return runOrDiagnose(args, { account });
   });

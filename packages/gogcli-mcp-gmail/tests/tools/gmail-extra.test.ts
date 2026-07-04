@@ -181,6 +181,22 @@ describe('gog_gmail_batch_delete', () => {
       { account: undefined },
     );
   });
+
+  it('appends --force when force is true', async () => {
+    await handlers.get('gog_gmail_batch_delete')!({ messageIds: ['m1'], force: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'batch', 'delete', 'm1', '--force'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --force when force is false', async () => {
+    await handlers.get('gog_gmail_batch_delete')!({ messageIds: ['m1'], force: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'batch', 'delete', 'm1'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_gmail_batch_modify', () => {
@@ -404,7 +420,7 @@ describe('gog_gmail_labels_delete', () => {
   it('calls runOrDiagnose with labelIdOrName', async () => {
     await handlers.get('gog_gmail_labels_delete')!({ labelIdOrName: 'Trash-Me' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'labels', 'delete', 'Trash-Me'],
+      ['gmail', 'labels', 'delete', 'Trash-Me', '--force'],
       { account: undefined },
     );
   });
@@ -1078,7 +1094,7 @@ describe('gog_gmail_filters_create', () => {
       forward: 'fwd@x.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'settings', 'filters', 'create', '--from=alice@x.com', '--to=me@x.com', '--subject=Report', '--query=has:attachment', '--has-attachment', '--add-label=Reports', '--remove-label=INBOX', '--archive', '--mark-read', '--star', '--important', '--trash', '--never-spam', '--forward=fwd@x.com'],
+      ['gmail', 'settings', 'filters', 'create', '--from=alice@x.com', '--to=me@x.com', '--subject=Report', '--query=has:attachment', '--has-attachment', '--add-label=Reports', '--remove-label=INBOX', '--archive', '--mark-read', '--star', '--important', '--trash', '--never-spam', '--forward=fwd@x.com', '--force'],
       { account: undefined },
     );
   });
@@ -1105,7 +1121,7 @@ describe('gog_gmail_filters_delete', () => {
   it('calls runOrDiagnose with the filter ID', async () => {
     await handlers.get('gog_gmail_filters_delete')!({ filterId: 'f1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'settings', 'filters', 'delete', 'f1'],
+      ['gmail', 'settings', 'filters', 'delete', 'f1', '--force'],
       { account: undefined },
     );
   });
@@ -1200,7 +1216,7 @@ describe('gog_gmail_sendas_delete', () => {
   it('calls runOrDiagnose with the email', async () => {
     await handlers.get('gog_gmail_sendas_delete')!({ email: 'alias@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'settings', 'sendas', 'delete', 'alias@x.com'],
+      ['gmail', 'settings', 'sendas', 'delete', 'alias@x.com', '--force'],
       { account: undefined },
     );
   });

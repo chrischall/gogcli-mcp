@@ -81,7 +81,7 @@ describe('gog_api_call', () => {
       [
         'api', 'call', 'drive', 'v3', 'files.create',
         '--params={"fields":"id"}', '--body={"name":"f"}',
-        '--scope=https://www.googleapis.com/auth/drive', '--allow-write', '--dry-run',
+        '--scope=https://www.googleapis.com/auth/drive', '--allow-write', '--force', '--dry-run',
       ],
       { account: 'a@b.com' },
     );

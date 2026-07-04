@@ -54,7 +54,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ docId, account }) => {
-    return runOrDiagnose(['drive', 'delete', docId], { account });
+    return runOrDiagnose(['drive', 'delete', docId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_docs_edit', {
@@ -1041,6 +1041,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (parent) args.push(`--parent=${parent}`);
     if (onRestricted) args.push(`--on-restricted=${onRestricted}`);
     if (tab) args.push(`--tab=${tab}`);
+    if (file) args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse (local files upload via a temporary public share)
     return runOrDiagnose(args, { account });
   });
 
@@ -1136,7 +1137,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ docId, tab, account }) => {
-    const args = ['docs', 'delete-tab', docId, `--tab=${tab}`];
+    const args = ['docs', 'delete-tab', docId, `--tab=${tab}`, '--force']; // gog gates this op; without --force the runner's --no-input makes it refuse
     return runOrDiagnose(args, { account });
   });
 
@@ -1406,6 +1407,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (name) args.push(`--name=${name}`);
     if (parent) args.push(`--parent=${parent}`);
     if (tab) args.push(`--tab=${tab}`);
+    if (file) args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse (local files upload via a temporary public share)
     return runOrDiagnose(args, { account });
   });
 

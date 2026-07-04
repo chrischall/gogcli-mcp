@@ -64,7 +64,7 @@ describe('gog_meet_update', () => {
 describe('gog_meet_end', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
     await handlers.get('gog_meet_end')!({ meetingCode: 'abc-defg-hij' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'end', 'abc-defg-hij'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'end', 'abc-defg-hij', '--force'], { account: undefined });
   });
 });
 
@@ -407,7 +407,7 @@ describe('gog_calendar_delete_calendar', () => {
   it('calls runOrDiagnose with calendarId', async () => {
     await handlers.get('gog_calendar_delete_calendar')!({ calendarId: 'cal' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'delete-calendar', 'cal'],
+      ['calendar', 'delete-calendar', 'cal', '--force'],
       { account: undefined },
     );
   });
@@ -415,7 +415,7 @@ describe('gog_calendar_delete_calendar', () => {
   it('passes account through', async () => {
     await handlers.get('gog_calendar_delete_calendar')!({ calendarId: 'cal', account: 'me@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'delete-calendar', 'cal'],
+      ['calendar', 'delete-calendar', 'cal', '--force'],
       { account: 'me@x.com' },
     );
   });

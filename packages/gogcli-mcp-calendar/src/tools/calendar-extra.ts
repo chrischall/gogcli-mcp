@@ -54,7 +54,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ meetingCode, account }) => {
-    return runOrDiagnose(['meet', 'end', meetingCode], { account });
+    return runOrDiagnose(['meet', 'end', meetingCode, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_meet_history', {
@@ -285,7 +285,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ calendarId, account }) => {
-    return runOrDiagnose(['calendar', 'delete-calendar', calendarId], { account });
+    return runOrDiagnose(['calendar', 'delete-calendar', calendarId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_meet_participants', {

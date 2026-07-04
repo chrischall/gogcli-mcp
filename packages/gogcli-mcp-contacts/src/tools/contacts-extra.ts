@@ -100,7 +100,7 @@ export function registerExtraContactsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ resourceName, account }) => {
-    return runOrDiagnose(['contacts', 'delete', resourceName], { account });
+    return runOrDiagnose(['contacts', 'delete', resourceName, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_contacts_export', {
@@ -144,6 +144,7 @@ export function registerExtraContactsTools(server: McpServer): void {
     if (resource) for (const r of resource) args.push(`--resource=${r}`);
     if (apply) args.push('--apply');
     if (failEmpty) args.push('--fail-empty');
+    if (apply) args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse
     return runOrDiagnose(args, { account });
   });
 

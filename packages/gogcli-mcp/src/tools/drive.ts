@@ -92,6 +92,9 @@ export function registerDriveTools(server: McpServer): void {
   }, async ({ fileId, permanent, account }) => {
     const args = ['drive', 'delete', fileId];
     if (permanent) args.push('--permanent');
+    // gog gates drive delete behind a confirmation; the runner injects
+    // --no-input, so without --force it refuses at runtime.
+    args.push('--force');
     return runOrDiagnose(args, { account });
   });
 
@@ -111,6 +114,9 @@ export function registerDriveTools(server: McpServer): void {
     if (email) args.push(`--email=${email}`);
     if (domain) args.push(`--domain=${domain}`);
     if (role) args.push(`--role=${role}`);
+    // gog gates public sharing behind a confirmation; the runner injects
+    // --no-input, so without --force it refuses at runtime.
+    if (to === 'anyone') args.push('--force');
     return runOrDiagnose(args, { account });
   });
 

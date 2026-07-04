@@ -285,7 +285,7 @@ describe('gog_calendar_delete', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const handlers = setupHandlers();
     await handlers.get('gog_calendar_delete')!({ calendarId: 'primary', eventId: 'evt1' });
-    expect(runner.run).toHaveBeenCalledWith(['calendar', 'delete', 'primary', 'evt1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['calendar', 'delete', 'primary', 'evt1', '--force'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {

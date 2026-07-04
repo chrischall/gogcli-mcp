@@ -126,7 +126,7 @@ describe('gog_drive_unshare', () => {
   it('calls runOrDiagnose with fileId and permissionId', async () => {
     await handlers.get('gog_drive_unshare')!({ fileId: 'f1', permissionId: 'p1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['drive', 'unshare', 'f1', 'p1'],
+      ['drive', 'unshare', 'f1', 'p1', '--force'],
       { account: undefined },
     );
   });
@@ -207,7 +207,7 @@ describe('gog_drive_comments_delete', () => {
   it('calls runOrDiagnose with fileId and commentId', async () => {
     await handlers.get('gog_drive_comments_delete')!({ fileId: 'f1', commentId: 'c1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['drive', 'comments', 'delete', 'f1', 'c1'],
+      ['drive', 'comments', 'delete', 'f1', 'c1', '--force'],
       { account: undefined },
     );
   });
@@ -477,7 +477,7 @@ describe('gog_drive_labels_file_remove', () => {
   it('calls runOrDiagnose with fileId and labelId', async () => {
     await handlers.get('gog_drive_labels_file_remove')!({ fileId: 'f1', labelId: 'l1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['drive', 'labels', 'file', 'remove', 'f1', 'l1'],
+      ['drive', 'labels', 'file', 'remove', 'f1', 'l1', '--force'],
       { account: undefined },
     );
   });

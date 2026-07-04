@@ -114,7 +114,7 @@ describe('gog_contacts_update', () => {
 describe('gog_contacts_delete', () => {
   it('calls runOrDiagnose with resourceName', async () => {
     await handlers.get('gog_contacts_delete')!({ resourceName: 'people/c1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'delete', 'people/c1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'delete', 'people/c1', '--force'], { account: undefined });
   });
 });
 
@@ -166,7 +166,7 @@ describe('gog_contacts_dedupe', () => {
       failEmpty: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['contacts', 'dedupe', '--resource=people/c1', '--resource=people/c2', '--apply', '--fail-empty'],
+      ['contacts', 'dedupe', '--resource=people/c1', '--resource=people/c2', '--apply', '--fail-empty', '--force'],
       { account: undefined },
     );
   });
