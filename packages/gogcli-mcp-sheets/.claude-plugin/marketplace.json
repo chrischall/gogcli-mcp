@@ -7,7 +7,7 @@
   },
   "metadata": {
     "description": "Extended Google Sheets for Claude via gogcli — auth + full Sheets support",
-    "version": "2.11.0"
+    "version": "2.12.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
       "displayName": "gogcli (Sheets)",
       "source": "./",
       "description": "Extended Google Sheets for Claude via gogcli — auth + full Sheets support",
-      "version": "2.11.0",
+      "version": "2.12.0",
       "author": {
         "name": "Chris Hall"
       },

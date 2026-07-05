@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.12.0](https://github.com/chrischall/gogcli-mcp/compare/v2.11.0...v2.12.0) (2026-07-05)
+
+
+### Features
+
+* **docs:** wrap gog 0.32.0 suggestions listing and paragraph spacing mode ([#130](https://github.com/chrischall/gogcli-mcp/issues/130)) ([4ece479](https://github.com/chrischall/gogcli-mcp/commit/4ece4790037622e1d3828b815dc63dcb4e49d783))
+
+
+### Bug Fixes
+
+* pass --force to gated destructive gog commands so they work non-interactively ([#132](https://github.com/chrischall/gogcli-mcp/issues/132)) ([6b24435](https://github.com/chrischall/gogcli-mcp/commit/6b244355789645678310ce5a9dd86bb5f4d52a89))
+
 ## [2.11.0](https://github.com/chrischall/gogcli-mcp/compare/v2.10.0...v2.11.0) (2026-07-03)
 
 
