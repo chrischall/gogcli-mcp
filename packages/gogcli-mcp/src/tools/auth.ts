@@ -68,7 +68,7 @@ export function registerAuthTools(server: McpServer): void {
 
   registerRunTool(server, {
     service: 'auth',
-    examples: '"remove", "alias", "tokens"',
+    examples: '"remove", "alias", "list"',
     omitAccount: true,
     note: 'For browser-based authorization, use gog_auth_add instead.',
   });

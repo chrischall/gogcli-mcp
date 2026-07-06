@@ -155,10 +155,14 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
       const stdout = Buffer.concat(stdoutChunks).toString();
       const stderr = Buffer.concat(stderrChunks).toString().trim();
       if (code === 0) {
+        // Redact on SUCCESS too, not just failure: a successful `gog auth
+        // tokens` (or any command that echoes a credential) would otherwise
+        // return raw Google tokens (ya29.…/1//…) straight into model context,
+        // where a sibling tool (gog_gmail_send) could exfiltrate them.
         if (interactive && stderr) {
-          resolve(stdout + '\n' + stderr);
+          resolve(redactSecrets(stdout + '\n' + stderr));
         } else {
-          resolve(stdout);
+          resolve(redactSecrets(stdout));
         }
       } else {
         reject(new Error(redactSecrets(stderr || `gog exited with code ${code}`)));

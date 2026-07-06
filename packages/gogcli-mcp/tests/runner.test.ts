@@ -542,6 +542,25 @@ describe('run', () => {
     }
   });
 
+  it('redacts Google tokens from SUCCESS stdout surfaced to the client', async () => {
+    // A successful `gog auth ... ` that echoes credentials (e.g. a token dump)
+    // must not leak them into model context on the resolve path.
+    const stdoutLeak =
+      '{"access_token":"ya29.a0Ad52N3-LEAKED-SUCCESS-TOKEN","refresh_token":"1//0eLEAKED-SUCCESS-REFRESH"}';
+    const spawner = makeSpawner(0, stdoutLeak, '');
+    const out = await run(['auth', 'list'], { spawner });
+    expect(out).not.toContain('ya29.a0Ad52N3-LEAKED-SUCCESS-TOKEN');
+    expect(out).not.toContain('1//0eLEAKED-SUCCESS-REFRESH');
+    expect(out).toContain('[REDACTED]');
+  });
+
+  it('redacts Google tokens from interactive SUCCESS stdout+stderr', async () => {
+    const spawner = makeSpawner(0, 'token ya29.a0Ad52N3-INTERACTIVE-LEAK done', 'note line');
+    const out = await run(['auth', 'add', 'x@y.com'], { spawner, interactive: true });
+    expect(out).not.toContain('ya29.a0Ad52N3-INTERACTIVE-LEAK');
+    expect(out).toContain('[REDACTED]');
+  });
+
   it('ignores timeout if close event already settled the promise', async () => {
     vi.useFakeTimers();
     const spawner = vi.fn(() => {
