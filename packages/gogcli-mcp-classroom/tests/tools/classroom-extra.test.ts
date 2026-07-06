@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerExtraClassroomTools } from '../../src/tools/classroom-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
-import { setupHandlers, toText, type ToolHandler } from '../../../gogcli-mcp/tests/helpers/test-harness.js';
+import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
+import { rawTextResult } from '@chrischall/mcp-utils';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -11,17 +12,17 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   };
 });
 
-let handlers: Map<string, ToolHandler>;
+let harness: TestHarness;
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
-  vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-  handlers = setupHandlers(registerExtraClassroomTools);
+  vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+  harness = await createTestHarness(registerExtraClassroomTools);
 });
 
 describe('gog_classroom_courses_create', () => {
   it('calls runOrDiagnose with required name only', async () => {
-    await handlers.get('gog_classroom_courses_create')!({ name: 'Math 101' });
+    await harness.callTool('gog_classroom_courses_create', { name: 'Math 101' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['classroom', 'courses', 'create', '--name=Math 101'],
       { account: undefined },
@@ -29,7 +30,7 @@ describe('gog_classroom_courses_create', () => {
   });
 
   it('passes all optional flags', async () => {
-    await handlers.get('gog_classroom_courses_create')!({
+    await harness.callTool('gog_classroom_courses_create', {
       name: 'Math 101',
       owner: 'me',
       section: 'Section A',
@@ -47,12 +48,12 @@ describe('gog_classroom_courses_create', () => {
 
 describe('gog_classroom_courses_update', () => {
   it('calls runOrDiagnose with courseId only', async () => {
-    await handlers.get('gog_classroom_courses_update')!({ courseId: 'c1' });
+    await harness.callTool('gog_classroom_courses_update', { courseId: 'c1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'courses', 'update', 'c1'], { account: undefined });
   });
 
   it('passes all optional flags', async () => {
-    await handlers.get('gog_classroom_courses_update')!({
+    await harness.callTool('gog_classroom_courses_update', {
       courseId: 'c1',
       name: 'New Name',
       owner: 'me',
@@ -71,33 +72,33 @@ describe('gog_classroom_courses_update', () => {
 
 describe('gog_classroom_courses_delete', () => {
   it('calls runOrDiagnose with courseId', async () => {
-    await handlers.get('gog_classroom_courses_delete')!({ courseId: 'c1' });
+    await harness.callTool('gog_classroom_courses_delete', { courseId: 'c1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'courses', 'delete', 'c1', '--force'], { account: undefined });
   });
 });
 
 describe('gog_classroom_courses_archive', () => {
   it('calls runOrDiagnose with courseId', async () => {
-    await handlers.get('gog_classroom_courses_archive')!({ courseId: 'c1' });
+    await harness.callTool('gog_classroom_courses_archive', { courseId: 'c1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'courses', 'archive', 'c1'], { account: undefined });
   });
 });
 
 describe('gog_classroom_courses_unarchive', () => {
   it('calls runOrDiagnose with courseId', async () => {
-    await handlers.get('gog_classroom_courses_unarchive')!({ courseId: 'c1' });
+    await harness.callTool('gog_classroom_courses_unarchive', { courseId: 'c1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'courses', 'unarchive', 'c1'], { account: undefined });
   });
 });
 
 describe('gog_classroom_students_add', () => {
   it('calls runOrDiagnose with courseId and userId', async () => {
-    await handlers.get('gog_classroom_students_add')!({ courseId: 'c1', userId: 'u1' });
+    await harness.callTool('gog_classroom_students_add', { courseId: 'c1', userId: 'u1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'students', 'add', 'c1', 'u1'], { account: undefined });
   });
 
   it('passes --enrollment-code when provided', async () => {
-    await handlers.get('gog_classroom_students_add')!({ courseId: 'c1', userId: 'u1', enrollmentCode: 'abc123' });
+    await harness.callTool('gog_classroom_students_add', { courseId: 'c1', userId: 'u1', enrollmentCode: 'abc123' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['classroom', 'students', 'add', 'c1', 'u1', '--enrollment-code=abc123'],
       { account: undefined },
@@ -107,28 +108,28 @@ describe('gog_classroom_students_add', () => {
 
 describe('gog_classroom_students_remove', () => {
   it('calls runOrDiagnose with courseId and userId', async () => {
-    await handlers.get('gog_classroom_students_remove')!({ courseId: 'c1', userId: 'u1' });
+    await harness.callTool('gog_classroom_students_remove', { courseId: 'c1', userId: 'u1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'students', 'remove', 'c1', 'u1', '--force'], { account: undefined });
   });
 });
 
 describe('gog_classroom_teachers_add', () => {
   it('calls runOrDiagnose with courseId and userId', async () => {
-    await handlers.get('gog_classroom_teachers_add')!({ courseId: 'c1', userId: 'u1' });
+    await harness.callTool('gog_classroom_teachers_add', { courseId: 'c1', userId: 'u1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'teachers', 'add', 'c1', 'u1'], { account: undefined });
   });
 });
 
 describe('gog_classroom_teachers_remove', () => {
   it('calls runOrDiagnose with courseId and userId', async () => {
-    await handlers.get('gog_classroom_teachers_remove')!({ courseId: 'c1', userId: 'u1' });
+    await harness.callTool('gog_classroom_teachers_remove', { courseId: 'c1', userId: 'u1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'teachers', 'remove', 'c1', 'u1', '--force'], { account: undefined });
   });
 });
 
 describe('gog_classroom_coursework_create', () => {
   it('calls runOrDiagnose with required title only', async () => {
-    await handlers.get('gog_classroom_coursework_create')!({ courseId: 'c1', title: 'HW1' });
+    await harness.callTool('gog_classroom_coursework_create', { courseId: 'c1', title: 'HW1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['classroom', 'coursework', 'create', 'c1', '--title=HW1'],
       { account: undefined },
@@ -136,7 +137,7 @@ describe('gog_classroom_coursework_create', () => {
   });
 
   it('passes all optional flags', async () => {
-    await handlers.get('gog_classroom_coursework_create')!({
+    await harness.callTool('gog_classroom_coursework_create', {
       courseId: 'c1',
       title: 'HW1',
       description: 'Chapter 1',
@@ -158,12 +159,12 @@ describe('gog_classroom_coursework_create', () => {
 
 describe('gog_classroom_coursework_update', () => {
   it('calls runOrDiagnose with ids only', async () => {
-    await handlers.get('gog_classroom_coursework_update')!({ courseId: 'c1', courseworkId: 'w1' });
+    await harness.callTool('gog_classroom_coursework_update', { courseId: 'c1', courseworkId: 'w1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'coursework', 'update', 'c1', 'w1'], { account: undefined });
   });
 
   it('passes all optional flags', async () => {
-    await handlers.get('gog_classroom_coursework_update')!({
+    await harness.callTool('gog_classroom_coursework_update', {
       courseId: 'c1',
       courseworkId: 'w1',
       title: 'New Title',
@@ -186,19 +187,19 @@ describe('gog_classroom_coursework_update', () => {
 
 describe('gog_classroom_coursework_delete', () => {
   it('calls runOrDiagnose with ids', async () => {
-    await handlers.get('gog_classroom_coursework_delete')!({ courseId: 'c1', courseworkId: 'w1' });
+    await harness.callTool('gog_classroom_coursework_delete', { courseId: 'c1', courseworkId: 'w1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'coursework', 'delete', 'c1', 'w1', '--force'], { account: undefined });
   });
 });
 
 describe('gog_classroom_announcements_update', () => {
   it('calls runOrDiagnose with ids only', async () => {
-    await handlers.get('gog_classroom_announcements_update')!({ courseId: 'c1', announcementId: 'a1' });
+    await harness.callTool('gog_classroom_announcements_update', { courseId: 'c1', announcementId: 'a1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'announcements', 'update', 'c1', 'a1'], { account: undefined });
   });
 
   it('passes all optional flags', async () => {
-    await handlers.get('gog_classroom_announcements_update')!({
+    await harness.callTool('gog_classroom_announcements_update', {
       courseId: 'c1',
       announcementId: 'a1',
       text: 'edited',
@@ -214,14 +215,14 @@ describe('gog_classroom_announcements_update', () => {
 
 describe('gog_classroom_announcements_delete', () => {
   it('calls runOrDiagnose with ids', async () => {
-    await handlers.get('gog_classroom_announcements_delete')!({ courseId: 'c1', announcementId: 'a1' });
+    await harness.callTool('gog_classroom_announcements_delete', { courseId: 'c1', announcementId: 'a1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'announcements', 'delete', 'c1', 'a1', '--force'], { account: undefined });
   });
 });
 
 describe('gog_classroom_topics_create', () => {
   it('calls runOrDiagnose with courseId and name', async () => {
-    await handlers.get('gog_classroom_topics_create')!({ courseId: 'c1', name: 'Week 1' });
+    await harness.callTool('gog_classroom_topics_create', { courseId: 'c1', name: 'Week 1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['classroom', 'topics', 'create', 'c1', '--name=Week 1'],
       { account: undefined },
@@ -231,7 +232,7 @@ describe('gog_classroom_topics_create', () => {
 
 describe('gog_classroom_topics_update', () => {
   it('calls runOrDiagnose with ids and name', async () => {
-    await handlers.get('gog_classroom_topics_update')!({ courseId: 'c1', topicId: 't1', name: 'Week 2' });
+    await harness.callTool('gog_classroom_topics_update', { courseId: 'c1', topicId: 't1', name: 'Week 2' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['classroom', 'topics', 'update', 'c1', 't1', '--name=Week 2'],
       { account: undefined },
@@ -241,14 +242,14 @@ describe('gog_classroom_topics_update', () => {
 
 describe('gog_classroom_topics_delete', () => {
   it('calls runOrDiagnose with ids', async () => {
-    await handlers.get('gog_classroom_topics_delete')!({ courseId: 'c1', topicId: 't1' });
+    await harness.callTool('gog_classroom_topics_delete', { courseId: 'c1', topicId: 't1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'topics', 'delete', 'c1', 't1', '--force'], { account: undefined });
   });
 });
 
 describe('gog_classroom_invitations_create', () => {
   it('calls runOrDiagnose with courseId, userId, role', async () => {
-    await handlers.get('gog_classroom_invitations_create')!({ courseId: 'c1', userId: 'u1', role: 'STUDENT' });
+    await harness.callTool('gog_classroom_invitations_create', { courseId: 'c1', userId: 'u1', role: 'STUDENT' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['classroom', 'invitations', 'create', 'c1', 'u1', '--role=STUDENT'],
       { account: undefined },
@@ -258,7 +259,7 @@ describe('gog_classroom_invitations_create', () => {
 
 describe('gog_classroom_invitations_delete', () => {
   it('calls runOrDiagnose with invitationId', async () => {
-    await handlers.get('gog_classroom_invitations_delete')!({ invitationId: 'i1' });
+    await harness.callTool('gog_classroom_invitations_delete', { invitationId: 'i1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'invitations', 'delete', 'i1', '--force'], { account: undefined });
   });
 });

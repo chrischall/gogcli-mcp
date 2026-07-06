@@ -1,6 +1,5 @@
 export {
-  createServer,
-  createBaseServer,
+  BASE_TOOL_REGISTRARS,
   VERSION,
   registerApiTools,
   registerAuthTools,
@@ -20,11 +19,9 @@ export {
   accountParam,
   runOrDiagnose,
   diagnose,
-  toText,
-  toError,
+  errorText,
   ids,
   paginationParams,
   pushPaginationFlags,
   registerRunTool,
 } from './tools/utils.js';
-export type { ToolResult } from './tools/utils.js';

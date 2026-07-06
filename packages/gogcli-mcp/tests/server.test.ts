@@ -1,33 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createServer, createBaseServer, VERSION } from '../src/server.js';
+import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { BASE_TOOL_REGISTRARS, VERSION } from '../src/server.js';
 
-describe('createServer', () => {
-  it('returns an McpServer with default name and version', () => {
-    const server = createServer();
-    expect(server).toBeInstanceOf(McpServer);
-  });
-
-  it('accepts custom name and version', () => {
-    const server = createServer({ name: 'custom', version: '9.9.9' });
-    expect(server).toBeInstanceOf(McpServer);
-  });
-
-  it('accepts partial options (name only)', () => {
-    const server = createServer({ name: 'partial' });
-    expect(server).toBeInstanceOf(McpServer);
-  });
-});
-
-describe('createBaseServer', () => {
-  it('returns an McpServer with all services registered', () => {
-    const server = createBaseServer();
-    expect(server).toBeInstanceOf(McpServer);
-  });
-
-  it('accepts custom options', () => {
-    const server = createBaseServer({ name: 'gogcli-all', version: '9.9.9' });
-    expect(server).toBeInstanceOf(McpServer);
+describe('BASE_TOOL_REGISTRARS', () => {
+  it('registers every base service without duplicate tool names', async () => {
+    const harness = await createTestHarness((server) => {
+      for (const register of BASE_TOOL_REGISTRARS) {
+        register(server, undefined);
+      }
+    });
+    const names = (await harness.listTools()).map((t) => t.name);
+    expect(new Set(names).size).toBe(names.length);
+    // One representative tool per service registrar, in registrar order.
+    for (const expected of [
+      'gog_api_list',
+      'gog_auth_list',
+      'gog_calendar_events',
+      'gog_classroom_courses_list',
+      'gog_contacts_list',
+      'gog_docs_cat',
+      'gog_drive_ls',
+      'gog_gmail_search',
+      'gog_sheets_get',
+      'gog_slides_export',
+      'gog_tasks_lists',
+    ]) {
+      expect(names).toContain(expected);
+    }
+    await harness.close();
   });
 });
 

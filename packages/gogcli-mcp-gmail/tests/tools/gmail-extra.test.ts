@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerExtraGmailTools } from '../../src/tools/gmail-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
-import { setupHandlers, toText, type ToolHandler } from '../../../gogcli-mcp/tests/helpers/test-harness.js';
+import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
+import { rawTextResult } from '@chrischall/mcp-utils';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -11,22 +12,22 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   };
 });
 
-let handlers: Map<string, ToolHandler>;
+let harness: TestHarness;
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
-  vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-  handlers = setupHandlers(registerExtraGmailTools);
+  vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+  harness = await createTestHarness(registerExtraGmailTools);
 });
 
 describe('gog_gmail_raw', () => {
   it('calls runOrDiagnose with messageId', async () => {
-    await handlers.get('gog_gmail_raw')!({ messageId: 'm1' });
+    await harness.callTool('gog_gmail_raw', { messageId: 'm1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'raw', 'm1'], { account: undefined });
   });
 
   it('passes --format and --pretty when provided', async () => {
-    await handlers.get('gog_gmail_raw')!({ messageId: 'm1', format: 'metadata', pretty: true });
+    await harness.callTool('gog_gmail_raw', { messageId: 'm1', format: 'metadata', pretty: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'raw', 'm1', '--format=metadata', '--pretty'],
       { account: undefined },
@@ -34,14 +35,14 @@ describe('gog_gmail_raw', () => {
   });
 
   it('omits --pretty when false', async () => {
-    await handlers.get('gog_gmail_raw')!({ messageId: 'm1', pretty: false });
+    await harness.callTool('gog_gmail_raw', { messageId: 'm1', pretty: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'raw', 'm1'], { account: undefined });
   });
 });
 
 describe('gog_gmail_attachment', () => {
   it('calls runOrDiagnose with messageId and attachmentId', async () => {
-    await handlers.get('gog_gmail_attachment')!({ messageId: 'm1', attachmentId: 'a1' });
+    await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'attachment', 'm1', 'a1'],
       { account: undefined },
@@ -49,7 +50,7 @@ describe('gog_gmail_attachment', () => {
   });
 
   it('passes --out and --name when provided', async () => {
-    await handlers.get('gog_gmail_attachment')!({
+    await harness.callTool('gog_gmail_attachment', {
       messageId: 'm1',
       attachmentId: 'a1',
       out: '/tmp/file.pdf',
@@ -64,12 +65,12 @@ describe('gog_gmail_attachment', () => {
 
 describe('gog_gmail_url', () => {
   it('calls runOrDiagnose with a single threadId', async () => {
-    await handlers.get('gog_gmail_url')!({ threadIds: ['t1'] });
+    await harness.callTool('gog_gmail_url', { threadIds: ['t1'] });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'url', 't1'], { account: undefined });
   });
 
   it('calls runOrDiagnose with multiple threadIds', async () => {
-    await handlers.get('gog_gmail_url')!({ threadIds: ['t1', 't2', 't3'] });
+    await harness.callTool('gog_gmail_url', { threadIds: ['t1', 't2', 't3'] });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'url', 't1', 't2', 't3'],
       { account: undefined },
@@ -79,12 +80,12 @@ describe('gog_gmail_url', () => {
 
 describe('gog_gmail_history', () => {
   it('calls runOrDiagnose with no flags', async () => {
-    await handlers.get('gog_gmail_history')!({});
+    await harness.callTool('gog_gmail_history', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'history'], { account: undefined });
   });
 
   it('passes all history flags', async () => {
-    await handlers.get('gog_gmail_history')!({ since: '12345', max: 50, page: 'tok', all: true });
+    await harness.callTool('gog_gmail_history', { since: '12345', max: 50, page: 'tok', all: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'history', '--since=12345', '--max=50', '--page=tok', '--all'],
       { account: undefined },
@@ -92,7 +93,7 @@ describe('gog_gmail_history', () => {
   });
 
   it('omits --all when false', async () => {
-    await handlers.get('gog_gmail_history')!({ all: false });
+    await harness.callTool('gog_gmail_history', { all: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'history'], { account: undefined });
   });
 });
@@ -108,7 +109,7 @@ describe('bulk action tools (archive, mark_read, mark_unread, trash)', () => {
   for (const { tool, cmd } of bulkTools) {
     describe(tool, () => {
       it('passes messageIds as positional args', async () => {
-        await handlers.get(tool)!({ messageIds: ['m1', 'm2'] });
+        await harness.callTool(tool, { messageIds: ['m1', 'm2'] });
         expect(lib.runOrDiagnose).toHaveBeenCalledWith(
           ['gmail', cmd, 'm1', 'm2'],
           { account: undefined },
@@ -116,7 +117,7 @@ describe('bulk action tools (archive, mark_read, mark_unread, trash)', () => {
       });
 
       it('passes --query and --max', async () => {
-        await handlers.get(tool)!({ query: 'is:unread older_than:7d', max: 50 });
+        await harness.callTool(tool, { query: 'is:unread older_than:7d', max: 50 });
         expect(lib.runOrDiagnose).toHaveBeenCalledWith(
           ['gmail', cmd, '--query=is:unread older_than:7d', '--max=50'],
           { account: undefined },
@@ -124,7 +125,7 @@ describe('bulk action tools (archive, mark_read, mark_unread, trash)', () => {
       });
 
       it('passes both positional ids and flags together', async () => {
-        await handlers.get(tool)!({ messageIds: ['m1'], max: 10 });
+        await harness.callTool(tool, { messageIds: ['m1'], max: 10 });
         expect(lib.runOrDiagnose).toHaveBeenCalledWith(
           ['gmail', cmd, 'm1', '--max=10'],
           { account: undefined },
@@ -135,7 +136,7 @@ describe('bulk action tools (archive, mark_read, mark_unread, trash)', () => {
 
   // gog 0.25.0 — --thread is archive-only
   it('gog_gmail_archive passes --thread to archive whole threads by id', async () => {
-    await handlers.get('gog_gmail_archive')!({ messageIds: ['t1', 't2'], thread: true });
+    await harness.callTool('gog_gmail_archive', { messageIds: ['t1', 't2'], thread: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'archive', 't1', 't2', '--thread'],
       { account: undefined },
@@ -143,7 +144,7 @@ describe('bulk action tools (archive, mark_read, mark_unread, trash)', () => {
   });
 
   it('other bulk tools do not expose a thread param', async () => {
-    await handlers.get('gog_gmail_trash')!({ messageIds: ['m1'], thread: true });
+    await harness.callTool('gog_gmail_trash', { messageIds: ['m1'], thread: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'trash', 'm1'],
       { account: undefined },
@@ -153,7 +154,7 @@ describe('bulk action tools (archive, mark_read, mark_unread, trash)', () => {
 
 describe('gog_gmail_message_modify', () => {
   it('calls runOrDiagnose with messageId and label changes', async () => {
-    await handlers.get('gog_gmail_message_modify')!({
+    await harness.callTool('gog_gmail_message_modify', {
       messageId: 'm1',
       add: 'STARRED,IMPORTANT',
       remove: 'INBOX',
@@ -165,7 +166,7 @@ describe('gog_gmail_message_modify', () => {
   });
 
   it('omits flags when not provided', async () => {
-    await handlers.get('gog_gmail_message_modify')!({ messageId: 'm1' });
+    await harness.callTool('gog_gmail_message_modify', { messageId: 'm1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'messages', 'modify', 'm1'],
       { account: undefined },
@@ -175,7 +176,7 @@ describe('gog_gmail_message_modify', () => {
 
 describe('gog_gmail_batch_delete', () => {
   it('calls runOrDiagnose with messageIds as positional args', async () => {
-    await handlers.get('gog_gmail_batch_delete')!({ messageIds: ['m1', 'm2', 'm3'] });
+    await harness.callTool('gog_gmail_batch_delete', { messageIds: ['m1', 'm2', 'm3'] });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'batch', 'delete', 'm1', 'm2', 'm3'],
       { account: undefined },
@@ -183,7 +184,7 @@ describe('gog_gmail_batch_delete', () => {
   });
 
   it('appends --force when force is true', async () => {
-    await handlers.get('gog_gmail_batch_delete')!({ messageIds: ['m1'], force: true });
+    await harness.callTool('gog_gmail_batch_delete', { messageIds: ['m1'], force: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'batch', 'delete', 'm1', '--force'],
       { account: undefined },
@@ -191,7 +192,7 @@ describe('gog_gmail_batch_delete', () => {
   });
 
   it('omits --force when force is false', async () => {
-    await handlers.get('gog_gmail_batch_delete')!({ messageIds: ['m1'], force: false });
+    await harness.callTool('gog_gmail_batch_delete', { messageIds: ['m1'], force: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'batch', 'delete', 'm1'],
       { account: undefined },
@@ -201,7 +202,7 @@ describe('gog_gmail_batch_delete', () => {
 
 describe('gog_gmail_batch_modify', () => {
   it('calls runOrDiagnose with messageIds and label flags', async () => {
-    await handlers.get('gog_gmail_batch_modify')!({
+    await harness.callTool('gog_gmail_batch_modify', {
       messageIds: ['m1', 'm2'],
       add: 'STARRED',
       remove: 'INBOX',
@@ -213,7 +214,7 @@ describe('gog_gmail_batch_modify', () => {
   });
 
   it('omits label flags when not provided', async () => {
-    await handlers.get('gog_gmail_batch_modify')!({ messageIds: ['m1'] });
+    await harness.callTool('gog_gmail_batch_modify', { messageIds: ['m1'] });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'batch', 'modify', 'm1'],
       { account: undefined },
@@ -223,7 +224,7 @@ describe('gog_gmail_batch_modify', () => {
 
 describe('gog_gmail_thread_get', () => {
   it('calls runOrDiagnose with threadId', async () => {
-    await handlers.get('gog_gmail_thread_get')!({ threadId: 't1' });
+    await harness.callTool('gog_gmail_thread_get', { threadId: 't1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'thread', 'get', 't1'],
       { account: undefined },
@@ -231,7 +232,7 @@ describe('gog_gmail_thread_get', () => {
   });
 
   it('passes all flags', async () => {
-    await handlers.get('gog_gmail_thread_get')!({
+    await harness.callTool('gog_gmail_thread_get', {
       threadId: 't1',
       download: true,
       full: true,
@@ -245,7 +246,7 @@ describe('gog_gmail_thread_get', () => {
   });
 
   it('omits boolean flags when false', async () => {
-    await handlers.get('gog_gmail_thread_get')!({
+    await harness.callTool('gog_gmail_thread_get', {
       threadId: 't1',
       download: false,
       full: false,
@@ -270,14 +271,14 @@ describe('gog_gmail_thread_get', () => {
   });
 
   it('does not transform the output when no paging params are given', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText(THREAD));
-    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(THREAD));
+    const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1' });
     expect(result.content[0].text).toBe(THREAD);
   });
 
   it('latestN returns only the last N messages', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText(THREAD));
-    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', latestN: 2 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(THREAD));
+    const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1', latestN: 2 });
     // latestN is wrapper-side; no CLI flag is added
     expect(vi.mocked(lib.runOrDiagnose).mock.calls[0]![0]).toEqual(['gmail', 'thread', 'get', 't1']);
     const parsed = JSON.parse(result.content[0].text);
@@ -285,8 +286,8 @@ describe('gog_gmail_thread_get', () => {
   });
 
   it('snippetsOnly returns per-message headers and snippet without bodies', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText(THREAD));
-    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', snippetsOnly: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(THREAD));
+    const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1', snippetsOnly: true });
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.thread.messages).toHaveLength(3);
     const m1 = parsed.thread.messages[0];
@@ -298,35 +299,35 @@ describe('gog_gmail_thread_get', () => {
   });
 
   it('combines latestN and snippetsOnly', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText(THREAD));
-    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', latestN: 1, snippetsOnly: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(THREAD));
+    const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1', latestN: 1, snippetsOnly: true });
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.thread.messages).toHaveLength(1);
     expect(parsed.thread.messages[0].id).toBe('m3');
   });
 
   it('returns the raw result when the payload is not JSON', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('not json'));
-    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', latestN: 2 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('not json'));
+    const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1', latestN: 2 });
     expect(result.content[0].text).toBe('not json');
   });
 
   it('returns the raw result when there is no messages array', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('{"thread":{}}'));
-    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', snippetsOnly: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('{"thread":{}}'));
+    const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1', snippetsOnly: true });
     expect(result.content[0].text).toBe('{"thread":{}}');
   });
 
   it('returns the raw result when there is no thread object', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('{}'));
-    const result = await handlers.get('gog_gmail_thread_get')!({ threadId: 't1', latestN: 1 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('{}'));
+    const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1', latestN: 1 });
     expect(result.content[0].text).toBe('{}');
   });
 });
 
 describe('gog_gmail_thread_modify', () => {
   it('calls runOrDiagnose with threadId and label flags', async () => {
-    await handlers.get('gog_gmail_thread_modify')!({
+    await harness.callTool('gog_gmail_thread_modify', {
       threadId: 't1',
       add: 'IMPORTANT',
       remove: 'INBOX',
@@ -338,7 +339,7 @@ describe('gog_gmail_thread_modify', () => {
   });
 
   it('omits label flags when not provided', async () => {
-    await handlers.get('gog_gmail_thread_modify')!({ threadId: 't1' });
+    await harness.callTool('gog_gmail_thread_modify', { threadId: 't1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'thread', 'modify', 't1'],
       { account: undefined },
@@ -348,7 +349,7 @@ describe('gog_gmail_thread_modify', () => {
 
 describe('gog_gmail_thread_attachments', () => {
   it('calls runOrDiagnose with threadId', async () => {
-    await handlers.get('gog_gmail_thread_attachments')!({ threadId: 't1' });
+    await harness.callTool('gog_gmail_thread_attachments', { threadId: 't1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'thread', 'attachments', 't1'],
       { account: undefined },
@@ -356,7 +357,7 @@ describe('gog_gmail_thread_attachments', () => {
   });
 
   it('passes --download and --out-dir when provided', async () => {
-    await handlers.get('gog_gmail_thread_attachments')!({
+    await harness.callTool('gog_gmail_thread_attachments', {
       threadId: 't1',
       download: true,
       outDir: '/tmp/atts',
@@ -370,7 +371,7 @@ describe('gog_gmail_thread_attachments', () => {
 
 describe('gog_gmail_labels_list', () => {
   it('calls runOrDiagnose with no args', async () => {
-    await handlers.get('gog_gmail_labels_list')!({});
+    await harness.callTool('gog_gmail_labels_list', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'labels', 'list'],
       { account: undefined },
@@ -378,7 +379,7 @@ describe('gog_gmail_labels_list', () => {
   });
 
   it('forwards account', async () => {
-    await handlers.get('gog_gmail_labels_list')!({ account: 'a@b.com' });
+    await harness.callTool('gog_gmail_labels_list', { account: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'labels', 'list'],
       { account: 'a@b.com' },
@@ -388,7 +389,7 @@ describe('gog_gmail_labels_list', () => {
 
 describe('gog_gmail_labels_get', () => {
   it('calls runOrDiagnose with labelIdOrName', async () => {
-    await handlers.get('gog_gmail_labels_get')!({ labelIdOrName: 'INBOX' });
+    await harness.callTool('gog_gmail_labels_get', { labelIdOrName: 'INBOX' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'labels', 'get', 'INBOX'],
       { account: undefined },
@@ -398,7 +399,7 @@ describe('gog_gmail_labels_get', () => {
 
 describe('gog_gmail_labels_create', () => {
   it('calls runOrDiagnose with name', async () => {
-    await handlers.get('gog_gmail_labels_create')!({ name: 'Newsletter' });
+    await harness.callTool('gog_gmail_labels_create', { name: 'Newsletter' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'labels', 'create', 'Newsletter'],
       { account: undefined },
@@ -408,7 +409,7 @@ describe('gog_gmail_labels_create', () => {
 
 describe('gog_gmail_labels_rename', () => {
   it('calls runOrDiagnose with old and new names', async () => {
-    await handlers.get('gog_gmail_labels_rename')!({ labelIdOrName: 'Old', newName: 'New' });
+    await harness.callTool('gog_gmail_labels_rename', { labelIdOrName: 'Old', newName: 'New' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'labels', 'rename', 'Old', 'New'],
       { account: undefined },
@@ -418,7 +419,7 @@ describe('gog_gmail_labels_rename', () => {
 
 describe('gog_gmail_labels_delete', () => {
   it('calls runOrDiagnose with labelIdOrName', async () => {
-    await handlers.get('gog_gmail_labels_delete')!({ labelIdOrName: 'Trash-Me' });
+    await harness.callTool('gog_gmail_labels_delete', { labelIdOrName: 'Trash-Me' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'labels', 'delete', 'Trash-Me', '--force'],
       { account: undefined },
@@ -428,7 +429,7 @@ describe('gog_gmail_labels_delete', () => {
 
 describe('gog_gmail_labels_modify', () => {
   it('calls runOrDiagnose with threadIds and label flags', async () => {
-    await handlers.get('gog_gmail_labels_modify')!({
+    await harness.callTool('gog_gmail_labels_modify', {
       threadIds: ['t1', 't2'],
       add: 'Newsletter',
       remove: 'INBOX',
@@ -440,7 +441,7 @@ describe('gog_gmail_labels_modify', () => {
   });
 
   it('omits label flags when not provided', async () => {
-    await handlers.get('gog_gmail_labels_modify')!({ threadIds: ['t1'] });
+    await harness.callTool('gog_gmail_labels_modify', { threadIds: ['t1'] });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'labels', 'modify', 't1'],
       { account: undefined },
@@ -450,7 +451,7 @@ describe('gog_gmail_labels_modify', () => {
 
 describe('gog_gmail_drafts_list', () => {
   it('calls runOrDiagnose with no flags', async () => {
-    await handlers.get('gog_gmail_drafts_list')!({});
+    await harness.callTool('gog_gmail_drafts_list', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'list'],
       { account: undefined },
@@ -458,7 +459,7 @@ describe('gog_gmail_drafts_list', () => {
   });
 
   it('passes pagination flags', async () => {
-    await handlers.get('gog_gmail_drafts_list')!({ max: 50, page: 'tok', all: true });
+    await harness.callTool('gog_gmail_drafts_list', { max: 50, page: 'tok', all: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'list', '--max=50', '--page=tok', '--all'],
       { account: undefined },
@@ -468,7 +469,7 @@ describe('gog_gmail_drafts_list', () => {
 
 describe('gog_gmail_drafts_get', () => {
   it('calls runOrDiagnose with draftId', async () => {
-    await handlers.get('gog_gmail_drafts_get')!({ draftId: 'd1' });
+    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'get', 'd1'],
       { account: undefined },
@@ -476,7 +477,7 @@ describe('gog_gmail_drafts_get', () => {
   });
 
   it('passes --download when true', async () => {
-    await handlers.get('gog_gmail_drafts_get')!({ draftId: 'd1', download: true });
+    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', download: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'get', 'd1', '--download'],
       { account: undefined },
@@ -486,7 +487,7 @@ describe('gog_gmail_drafts_get', () => {
 
 describe('gog_gmail_drafts_create', () => {
   it('calls runOrDiagnose with minimal required flags', async () => {
-    await handlers.get('gog_gmail_drafts_create')!({
+    await harness.callTool('gog_gmail_drafts_create', {
       subject: 'Hi',
       body: 'Hello',
     });
@@ -497,7 +498,7 @@ describe('gog_gmail_drafts_create', () => {
   });
 
   it('passes all flags including attachments', async () => {
-    await handlers.get('gog_gmail_drafts_create')!({
+    await harness.callTool('gog_gmail_drafts_create', {
       to: 'a@b.com,c@d.com',
       cc: 'cc@x.com',
       bcc: 'bcc@x.com',
@@ -531,7 +532,7 @@ describe('gog_gmail_drafts_create', () => {
   });
 
   it('passes --body-html-file when bodyHtmlFile is supplied', async () => {
-    await handlers.get('gog_gmail_drafts_create')!({
+    await harness.callTool('gog_gmail_drafts_create', {
       subject: 'Hi',
       body: 'Hello',
       bodyHtmlFile: '/tmp/body.html',
@@ -543,7 +544,7 @@ describe('gog_gmail_drafts_create', () => {
   });
 
   it('passes --reply-all when replyAll is set', async () => {
-    await handlers.get('gog_gmail_drafts_create')!({
+    await harness.callTool('gog_gmail_drafts_create', {
       subject: 'Re: Hi',
       body: 'Hello all',
       replyToThreadId: 't1',
@@ -556,7 +557,7 @@ describe('gog_gmail_drafts_create', () => {
   });
 
   it('skips recipient flags when omitRecipients is true, even if to/cc/bcc are supplied', async () => {
-    await handlers.get('gog_gmail_drafts_create')!({
+    await harness.callTool('gog_gmail_drafts_create', {
       to: 'a@b.com', cc: 'cc@x.com', bcc: 'bcc@x.com',
       subject: 'Hi', body: 'Hello', omitRecipients: true,
     });
@@ -568,9 +569,9 @@ describe('gog_gmail_drafts_create', () => {
 
   it('returnFull re-fetches and returns the full stored draft', async () => {
     vi.mocked(lib.runOrDiagnose)
-      .mockResolvedValueOnce(toText('{"draftId":"d9","message":{"id":"m9"}}'))
-      .mockResolvedValueOnce(toText('{"id":"d9","message":{"subject":"Hi","body":"Hello"}}'));
-    const result = await handlers.get('gog_gmail_drafts_create')!({
+      .mockResolvedValueOnce(rawTextResult('{"draftId":"d9","message":{"id":"m9"}}'))
+      .mockResolvedValueOnce(rawTextResult('{"id":"d9","message":{"subject":"Hi","body":"Hello"}}'));
+    const result = await harness.callTool('gog_gmail_drafts_create', {
       subject: 'Hi', body: 'Hello', returnFull: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(1,
@@ -582,22 +583,22 @@ describe('gog_gmail_drafts_create', () => {
 
   it('returnFull does not push --return-full to the CLI', async () => {
     vi.mocked(lib.runOrDiagnose)
-      .mockResolvedValueOnce(toText('{"draftId":"d9"}'))
-      .mockResolvedValueOnce(toText('{}'));
-    await handlers.get('gog_gmail_drafts_create')!({ subject: 'Hi', body: 'Hello', returnFull: true });
+      .mockResolvedValueOnce(rawTextResult('{"draftId":"d9"}'))
+      .mockResolvedValueOnce(rawTextResult('{}'));
+    await harness.callTool('gog_gmail_drafts_create', { subject: 'Hi', body: 'Hello', returnFull: true });
     expect(vi.mocked(lib.runOrDiagnose).mock.calls[0]![0]).not.toContain('--return-full');
   });
 
   it('returnFull returns the write result when output is not parseable JSON', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('not json'));
-    const result = await handlers.get('gog_gmail_drafts_create')!({ subject: 'Hi', body: 'Hello', returnFull: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('not json'));
+    const result = await harness.callTool('gog_gmail_drafts_create', { subject: 'Hi', body: 'Hello', returnFull: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
     expect(result.content[0].text).toBe('not json');
   });
 
   it('returnFull returns the write result when no draftId is present', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('{"message":{"id":"m9"}}'));
-    const result = await handlers.get('gog_gmail_drafts_create')!({ subject: 'Hi', body: 'Hello', returnFull: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('{"message":{"id":"m9"}}'));
+    const result = await harness.callTool('gog_gmail_drafts_create', { subject: 'Hi', body: 'Hello', returnFull: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
     expect(result.content[0].text).toBe('{"message":{"id":"m9"}}');
   });
@@ -605,7 +606,7 @@ describe('gog_gmail_drafts_create', () => {
 
 describe('gmail draft reply threading (native --thread-id)', () => {
   it('passes replyToThreadId straight through as --thread-id on create (no thread fetch)', async () => {
-    await handlers.get('gog_gmail_drafts_create')!({
+    await harness.callTool('gog_gmail_drafts_create', {
       subject: 'Re: roof', body: 'Sounds good', replyToThreadId: '19dffe06f9668b28', account: 'me@x.com',
     });
     // gog resolves the thread's latest-message headers itself — no extra fetch.
@@ -617,7 +618,7 @@ describe('gmail draft reply threading (native --thread-id)', () => {
   });
 
   it('passes replyToThreadId as --thread-id on update', async () => {
-    await handlers.get('gog_gmail_drafts_update')!({
+    await harness.callTool('gog_gmail_drafts_update', {
       draftId: 'd1', subject: 'S', body: 'B', replyToThreadId: 't1',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -627,7 +628,7 @@ describe('gmail draft reply threading (native --thread-id)', () => {
   });
 
   it('replyToMessageId wins when both ids are supplied (no --thread-id)', async () => {
-    await handlers.get('gog_gmail_drafts_create')!({
+    await harness.callTool('gog_gmail_drafts_create', {
       subject: 'S', body: 'B', replyToMessageId: 'mExplicit', replyToThreadId: 't1',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
@@ -640,7 +641,7 @@ describe('gmail draft reply threading (native --thread-id)', () => {
 
 describe('gog_gmail_drafts_update', () => {
   it('calls runOrDiagnose with draftId and updated fields', async () => {
-    await handlers.get('gog_gmail_drafts_update')!({
+    await harness.callTool('gog_gmail_drafts_update', {
       draftId: 'd1',
       subject: 'New subject',
       body: 'New body',
@@ -652,7 +653,7 @@ describe('gog_gmail_drafts_update', () => {
   });
 
   it('passes attachments as repeatable flags', async () => {
-    await handlers.get('gog_gmail_drafts_update')!({
+    await harness.callTool('gog_gmail_drafts_update', {
       draftId: 'd1',
       subject: 'S',
       body: 'B',
@@ -665,7 +666,7 @@ describe('gog_gmail_drafts_update', () => {
   });
 
   it('skips recipient flags when omitRecipients is true', async () => {
-    await handlers.get('gog_gmail_drafts_update')!({
+    await harness.callTool('gog_gmail_drafts_update', {
       draftId: 'd1', to: 'a@b.com', subject: 'S', body: 'B', omitRecipients: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -675,7 +676,7 @@ describe('gog_gmail_drafts_update', () => {
   });
 
   it('passes --clear-attachments when clearAttachments is true', async () => {
-    await handlers.get('gog_gmail_drafts_update')!({
+    await harness.callTool('gog_gmail_drafts_update', {
       draftId: 'd1', subject: 'S', body: 'B', clearAttachments: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -686,9 +687,9 @@ describe('gog_gmail_drafts_update', () => {
 
   it('returnFull re-fetches the draft by its known id', async () => {
     vi.mocked(lib.runOrDiagnose)
-      .mockResolvedValueOnce(toText('{"draftId":"d1"}'))
-      .mockResolvedValueOnce(toText('{"id":"d1","message":{"subject":"S"}}'));
-    const result = await handlers.get('gog_gmail_drafts_update')!({
+      .mockResolvedValueOnce(rawTextResult('{"draftId":"d1"}'))
+      .mockResolvedValueOnce(rawTextResult('{"id":"d1","message":{"subject":"S"}}'));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
       draftId: 'd1', subject: 'S', body: 'B', returnFull: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(2,
@@ -697,8 +698,8 @@ describe('gog_gmail_drafts_update', () => {
   });
 
   it('returnFull surfaces a failed update instead of re-fetching a stale draft', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(toText('Error: update failed'));
-    const result = await handlers.get('gog_gmail_drafts_update')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('Error: update failed'));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
       draftId: 'd1', subject: 'S', body: 'B', returnFull: true,
     });
     // write failed (non-JSON) → no re-fetch; the error is surfaced
@@ -709,7 +710,7 @@ describe('gog_gmail_drafts_update', () => {
 
 describe('gog_gmail_drafts_delete', () => {
   it('calls runOrDiagnose with draftId', async () => {
-    await handlers.get('gog_gmail_drafts_delete')!({ draftId: 'd1' });
+    await harness.callTool('gog_gmail_drafts_delete', { draftId: 'd1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'delete', 'd1'],
       { account: undefined },
@@ -717,7 +718,7 @@ describe('gog_gmail_drafts_delete', () => {
   });
 
   it('appends --force when force is true', async () => {
-    await handlers.get('gog_gmail_drafts_delete')!({ draftId: 'd1', force: true });
+    await harness.callTool('gog_gmail_drafts_delete', { draftId: 'd1', force: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'delete', 'd1', '--force'],
       { account: undefined },
@@ -725,7 +726,7 @@ describe('gog_gmail_drafts_delete', () => {
   });
 
   it('omits --force when force is false', async () => {
-    await handlers.get('gog_gmail_drafts_delete')!({ draftId: 'd1', force: false });
+    await harness.callTool('gog_gmail_drafts_delete', { draftId: 'd1', force: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'delete', 'd1'],
       { account: undefined },
@@ -735,7 +736,7 @@ describe('gog_gmail_drafts_delete', () => {
 
 describe('gog_gmail_drafts_send', () => {
   it('calls runOrDiagnose with draftId', async () => {
-    await handlers.get('gog_gmail_drafts_send')!({ draftId: 'd1' });
+    await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'send', 'd1'],
       { account: undefined },
@@ -745,7 +746,7 @@ describe('gog_gmail_drafts_send', () => {
 
 describe('gog_gmail_forward', () => {
   it('calls runOrDiagnose with messageId and required --to', async () => {
-    await handlers.get('gog_gmail_forward')!({ messageId: 'm1', to: 'a@b.com' });
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'forward', 'm1', '--to=a@b.com'],
       { account: undefined },
@@ -753,7 +754,7 @@ describe('gog_gmail_forward', () => {
   });
 
   it('passes all forward flags', async () => {
-    await handlers.get('gog_gmail_forward')!({
+    await harness.callTool('gog_gmail_forward', {
       messageId: 'm1',
       to: 'a@b.com',
       cc: 'cc@x.com',
@@ -777,7 +778,7 @@ describe('gog_gmail_forward', () => {
   });
 
   it('omits --skip-attachments when false', async () => {
-    await handlers.get('gog_gmail_forward')!({ messageId: 'm1', to: 'a@b.com', skipAttachments: false });
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', skipAttachments: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'forward', 'm1', '--to=a@b.com'],
       { account: undefined },
@@ -787,7 +788,7 @@ describe('gog_gmail_forward', () => {
 
 describe('gog_gmail_reply', () => {
   it('calls runOrDiagnose with messageId and --body', async () => {
-    await handlers.get('gog_gmail_reply')!({ messageId: 'm1', body: 'Thanks' });
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Thanks' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'reply', 'm1', '--body=Thanks'],
       { account: undefined },
@@ -795,7 +796,7 @@ describe('gog_gmail_reply', () => {
   });
 
   it('passes all reply flags including repeatable recipients', async () => {
-    await handlers.get('gog_gmail_reply')!({
+    await harness.callTool('gog_gmail_reply', {
       messageId: 'm1',
       body: 'Hi',
       bodyHtml: '<p>Hi</p>',
@@ -838,7 +839,7 @@ describe('gog_gmail_reply', () => {
   });
 
   it('omits --no-quote and --signature when false', async () => {
-    await handlers.get('gog_gmail_reply')!({ messageId: 'm1', body: 'Hi', noQuote: false, signature: false });
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', noQuote: false, signature: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'reply', 'm1', '--body=Hi'],
       { account: undefined },
@@ -848,7 +849,7 @@ describe('gog_gmail_reply', () => {
 
 describe('gog_gmail_reply_all', () => {
   it('uses the reply-all subcommand', async () => {
-    await handlers.get('gog_gmail_reply_all')!({ messageId: 'm1', body: 'Thanks all' });
+    await harness.callTool('gog_gmail_reply_all', { messageId: 'm1', body: 'Thanks all' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'reply-all', 'm1', '--body=Thanks all'],
       { account: undefined },
@@ -856,7 +857,7 @@ describe('gog_gmail_reply_all', () => {
   });
 
   it('passes repeatable recipient and signature flags', async () => {
-    await handlers.get('gog_gmail_reply_all')!({
+    await harness.callTool('gog_gmail_reply_all', {
       messageId: 'm1',
       bodyHtml: '<p>Hi</p>',
       cc: ['x@y.com', 'z@y.com'],
@@ -879,7 +880,7 @@ describe('gog_gmail_reply_all', () => {
 
 describe('gog_gmail_autoreply', () => {
   it('calls runOrDiagnose with query and --body', async () => {
-    await handlers.get('gog_gmail_autoreply')!({ query: 'is:unread', body: 'Thanks' });
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'autoreply', 'is:unread', '--body=Thanks'],
       { account: undefined },
@@ -887,7 +888,7 @@ describe('gog_gmail_autoreply', () => {
   });
 
   it('passes all autoreply flags', async () => {
-    await handlers.get('gog_gmail_autoreply')!({
+    await harness.callTool('gog_gmail_autoreply', {
       query: 'is:unread',
       max: 50,
       subject: 'Re: out of office',
@@ -921,7 +922,7 @@ describe('gog_gmail_autoreply', () => {
   });
 
   it('omits boolean flags when false', async () => {
-    await handlers.get('gog_gmail_autoreply')!({
+    await harness.callTool('gog_gmail_autoreply', {
       query: 'is:unread',
       body: 'Thanks',
       archive: false,
@@ -936,7 +937,7 @@ describe('gog_gmail_autoreply', () => {
   });
 
   it('supports HTML-only body (no plain --body)', async () => {
-    await handlers.get('gog_gmail_autoreply')!({ query: 'is:unread', bodyHtml: '<p>Hi</p>' });
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', bodyHtml: '<p>Hi</p>' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'autoreply', 'is:unread', '--body-html=<p>Hi</p>'],
       { account: undefined },
@@ -946,7 +947,7 @@ describe('gog_gmail_autoreply', () => {
 
 describe('gog_gmail_messages_search', () => {
   it('calls runOrDiagnose with just the query', async () => {
-    await handlers.get('gog_gmail_messages_search')!({ query: 'from:alice' });
+    await harness.callTool('gog_gmail_messages_search', { query: 'from:alice' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'messages', 'search', 'from:alice'],
       { account: undefined },
@@ -954,7 +955,7 @@ describe('gog_gmail_messages_search', () => {
   });
 
   it('passes all flags when provided', async () => {
-    await handlers.get('gog_gmail_messages_search')!({
+    await harness.callTool('gog_gmail_messages_search', {
       query: 'is:unread',
       max: 10,
       page: 'tok',
@@ -971,7 +972,7 @@ describe('gog_gmail_messages_search', () => {
   });
 
   it('omits flags when false/absent', async () => {
-    await handlers.get('gog_gmail_messages_search')!({ query: 'x', all: false, includeBody: false, full: false });
+    await harness.callTool('gog_gmail_messages_search', { query: 'x', all: false, includeBody: false, full: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'messages', 'search', 'x'],
       { account: undefined },
@@ -981,7 +982,7 @@ describe('gog_gmail_messages_search', () => {
 
 describe('gog_gmail_labels_style', () => {
   it('calls runOrDiagnose with just the label', async () => {
-    await handlers.get('gog_gmail_labels_style')!({ labelIdOrName: 'Work' });
+    await harness.callTool('gog_gmail_labels_style', { labelIdOrName: 'Work' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'labels', 'style', 'Work'],
       { account: undefined },
@@ -989,7 +990,7 @@ describe('gog_gmail_labels_style', () => {
   });
 
   it('passes all style flags when provided', async () => {
-    await handlers.get('gog_gmail_labels_style')!({
+    await harness.callTool('gog_gmail_labels_style', {
       labelIdOrName: 'Work',
       backgroundColor: '#000000',
       textColor: '#ffffff',
@@ -1005,7 +1006,7 @@ describe('gog_gmail_labels_style', () => {
 
 describe('gog_gmail_vacation_get', () => {
   it('calls runOrDiagnose', async () => {
-    await handlers.get('gog_gmail_vacation_get')!({ account: 'me@x.com' });
+    await harness.callTool('gog_gmail_vacation_get', { account: 'me@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'vacation', 'get'],
       { account: 'me@x.com' },
@@ -1015,7 +1016,7 @@ describe('gog_gmail_vacation_get', () => {
 
 describe('gog_gmail_vacation_update', () => {
   it('calls runOrDiagnose with no flags', async () => {
-    await handlers.get('gog_gmail_vacation_update')!({});
+    await harness.callTool('gog_gmail_vacation_update', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'vacation', 'update'],
       { account: undefined },
@@ -1023,7 +1024,7 @@ describe('gog_gmail_vacation_update', () => {
   });
 
   it('enables with subject/body/start/end and scoping', async () => {
-    await handlers.get('gog_gmail_vacation_update')!({
+    await harness.callTool('gog_gmail_vacation_update', {
       enable: true,
       subject: 'Away',
       body: '<p>OOO</p>',
@@ -1039,7 +1040,7 @@ describe('gog_gmail_vacation_update', () => {
   });
 
   it('disables the responder', async () => {
-    await handlers.get('gog_gmail_vacation_update')!({ disable: true, enable: false, contactsOnly: false, domainOnly: false });
+    await harness.callTool('gog_gmail_vacation_update', { disable: true, enable: false, contactsOnly: false, domainOnly: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'vacation', 'update', '--disable'],
       { account: undefined },
@@ -1049,7 +1050,7 @@ describe('gog_gmail_vacation_update', () => {
 
 describe('gog_gmail_filters_list', () => {
   it('calls runOrDiagnose', async () => {
-    await handlers.get('gog_gmail_filters_list')!({});
+    await harness.callTool('gog_gmail_filters_list', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'filters', 'list'],
       { account: undefined },
@@ -1059,7 +1060,7 @@ describe('gog_gmail_filters_list', () => {
 
 describe('gog_gmail_filters_get', () => {
   it('calls runOrDiagnose with the filter ID', async () => {
-    await handlers.get('gog_gmail_filters_get')!({ filterId: 'f1' });
+    await harness.callTool('gog_gmail_filters_get', { filterId: 'f1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'filters', 'get', 'f1'],
       { account: undefined },
@@ -1069,7 +1070,7 @@ describe('gog_gmail_filters_get', () => {
 
 describe('gog_gmail_filters_create', () => {
   it('calls runOrDiagnose with no flags', async () => {
-    await handlers.get('gog_gmail_filters_create')!({});
+    await harness.callTool('gog_gmail_filters_create', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'filters', 'create'],
       { account: undefined },
@@ -1077,7 +1078,7 @@ describe('gog_gmail_filters_create', () => {
   });
 
   it('passes all criteria and actions when provided', async () => {
-    await handlers.get('gog_gmail_filters_create')!({
+    await harness.callTool('gog_gmail_filters_create', {
       from: 'alice@x.com',
       to: 'me@x.com',
       subject: 'Report',
@@ -1100,7 +1101,7 @@ describe('gog_gmail_filters_create', () => {
   });
 
   it('omits boolean flags when false', async () => {
-    await handlers.get('gog_gmail_filters_create')!({
+    await harness.callTool('gog_gmail_filters_create', {
       from: 'a@x.com',
       hasAttachment: false,
       archive: false,
@@ -1119,7 +1120,7 @@ describe('gog_gmail_filters_create', () => {
 
 describe('gog_gmail_filters_delete', () => {
   it('calls runOrDiagnose with the filter ID', async () => {
-    await handlers.get('gog_gmail_filters_delete')!({ filterId: 'f1' });
+    await harness.callTool('gog_gmail_filters_delete', { filterId: 'f1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'filters', 'delete', 'f1', '--force'],
       { account: undefined },
@@ -1129,7 +1130,7 @@ describe('gog_gmail_filters_delete', () => {
 
 describe('gog_gmail_sendas_list', () => {
   it('calls runOrDiagnose', async () => {
-    await handlers.get('gog_gmail_sendas_list')!({});
+    await harness.callTool('gog_gmail_sendas_list', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'sendas', 'list'],
       { account: undefined },
@@ -1139,7 +1140,7 @@ describe('gog_gmail_sendas_list', () => {
 
 describe('gog_gmail_sendas_get', () => {
   it('calls runOrDiagnose with the email', async () => {
-    await handlers.get('gog_gmail_sendas_get')!({ email: 'alias@x.com' });
+    await harness.callTool('gog_gmail_sendas_get', { email: 'alias@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'sendas', 'get', 'alias@x.com'],
       { account: undefined },
@@ -1149,7 +1150,7 @@ describe('gog_gmail_sendas_get', () => {
 
 describe('gog_gmail_sendas_create', () => {
   it('calls runOrDiagnose with just the email', async () => {
-    await handlers.get('gog_gmail_sendas_create')!({ email: 'alias@x.com' });
+    await harness.callTool('gog_gmail_sendas_create', { email: 'alias@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'sendas', 'create', 'alias@x.com'],
       { account: undefined },
@@ -1157,7 +1158,7 @@ describe('gog_gmail_sendas_create', () => {
   });
 
   it('passes all flags when provided', async () => {
-    await handlers.get('gog_gmail_sendas_create')!({
+    await harness.callTool('gog_gmail_sendas_create', {
       email: 'alias@x.com',
       displayName: 'Alias',
       replyTo: 'reply@x.com',
@@ -1171,7 +1172,7 @@ describe('gog_gmail_sendas_create', () => {
   });
 
   it('omits treatAsAlias when false', async () => {
-    await handlers.get('gog_gmail_sendas_create')!({ email: 'alias@x.com', treatAsAlias: false });
+    await harness.callTool('gog_gmail_sendas_create', { email: 'alias@x.com', treatAsAlias: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'sendas', 'create', 'alias@x.com'],
       { account: undefined },
@@ -1181,7 +1182,7 @@ describe('gog_gmail_sendas_create', () => {
 
 describe('gog_gmail_sendas_update', () => {
   it('calls runOrDiagnose with just the email', async () => {
-    await handlers.get('gog_gmail_sendas_update')!({ email: 'alias@x.com' });
+    await harness.callTool('gog_gmail_sendas_update', { email: 'alias@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'sendas', 'update', 'alias@x.com'],
       { account: undefined },
@@ -1189,7 +1190,7 @@ describe('gog_gmail_sendas_update', () => {
   });
 
   it('passes all flags when provided', async () => {
-    await handlers.get('gog_gmail_sendas_update')!({
+    await harness.callTool('gog_gmail_sendas_update', {
       email: 'alias@x.com',
       displayName: 'Alias',
       replyTo: 'reply@x.com',
@@ -1204,7 +1205,7 @@ describe('gog_gmail_sendas_update', () => {
   });
 
   it('omits boolean flags when false', async () => {
-    await handlers.get('gog_gmail_sendas_update')!({ email: 'alias@x.com', treatAsAlias: false, makeDefault: false });
+    await harness.callTool('gog_gmail_sendas_update', { email: 'alias@x.com', treatAsAlias: false, makeDefault: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'sendas', 'update', 'alias@x.com'],
       { account: undefined },
@@ -1214,7 +1215,7 @@ describe('gog_gmail_sendas_update', () => {
 
 describe('gog_gmail_sendas_delete', () => {
   it('calls runOrDiagnose with the email', async () => {
-    await handlers.get('gog_gmail_sendas_delete')!({ email: 'alias@x.com' });
+    await harness.callTool('gog_gmail_sendas_delete', { email: 'alias@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'sendas', 'delete', 'alias@x.com', '--force'],
       { account: undefined },
@@ -1224,10 +1225,30 @@ describe('gog_gmail_sendas_delete', () => {
 
 describe('gog_gmail_sendas_verify', () => {
   it('calls runOrDiagnose with the email', async () => {
-    await handlers.get('gog_gmail_sendas_verify')!({ email: 'alias@x.com' });
+    await harness.callTool('gog_gmail_sendas_verify', { email: 'alias@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'settings', 'sendas', 'verify', 'alias@x.com'],
       { account: undefined },
     );
+  });
+});
+
+// resultText degradations: a non-text tool result (never produced by
+// runOrDiagnose today, but allowed by the MCP result shape) is passed
+// through untouched instead of being post-processed.
+describe('non-text result passthrough', () => {
+  it('gog_gmail_thread_get returns a non-text result untouched when trimming', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue({ content: [] });
+    const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1', latestN: 1 });
+    expect(result.content).toEqual([]);
+  });
+
+  it('returnFull surfaces a non-text write result without re-fetching', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce({ content: [] });
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', returnFull: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+    expect(result.content).toEqual([]);
   });
 });

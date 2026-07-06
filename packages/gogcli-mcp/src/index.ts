@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { createBaseServer } from './server.js';
+import { runMcp } from '@chrischall/mcp-utils';
+import { BASE_TOOL_REGISTRARS, VERSION } from './server.js';
 
-const server = createBaseServer();
-const transport = new StdioServerTransport();
-await server.connect(transport);
+await runMcp({
+  name: 'gogcli',
+  version: VERSION,
+  tools: BASE_TOOL_REGISTRARS,
+});

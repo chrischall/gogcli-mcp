@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ToolRegistrar } from '@chrischall/mcp-utils';
 import { registerApiTools } from './tools/api.js';
 import { registerAuthTools } from './tools/auth.js';
 import { registerCalendarTools } from './tools/calendar.js';
@@ -18,30 +18,22 @@ declare const GOGCLI_VERSION: string;
 /* v8 ignore next */
 export const VERSION = typeof GOGCLI_VERSION !== 'undefined' ? GOGCLI_VERSION : '0.0.0';
 
-export function createServer(options?: { name?: string; version?: string }): McpServer {
-  return new McpServer({
-    name: options?.name ?? 'gogcli',
-    version: options?.version ?? VERSION,
-  });
-}
-
-export function createBaseServer(options?: { name?: string; version?: string }): McpServer {
-  const server = createServer(options);
-
-  registerApiTools(server);
-  registerAuthTools(server);
-  registerCalendarTools(server);
-  registerClassroomTools(server);
-  registerContactsTools(server);
-  registerDocsTools(server);
-  registerDriveTools(server);
-  registerGmailTools(server);
-  registerSheetsTools(server);
-  registerSlidesTools(server);
-  registerTasksTools(server);
-
-  return server;
-}
+// Registrar list for the base (all-services) server, in runMcp's `tools`
+// shape. Sub-packages assemble their own list from the individual registrars
+// re-exported below.
+export const BASE_TOOL_REGISTRARS: ToolRegistrar[] = [
+  registerApiTools,
+  registerAuthTools,
+  registerCalendarTools,
+  registerClassroomTools,
+  registerContactsTools,
+  registerDocsTools,
+  registerDriveTools,
+  registerGmailTools,
+  registerSheetsTools,
+  registerSlidesTools,
+  registerTasksTools,
+];
 
 export {
   registerApiTools,

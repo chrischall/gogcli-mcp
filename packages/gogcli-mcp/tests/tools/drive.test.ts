@@ -1,33 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerDriveTools } from '../../src/tools/drive.js';
 import * as runner from '../../src/runner.js';
-import { setupHandlers as setupHandlersBase, type ToolHandler } from '../helpers/test-harness.js';
+import { createTestHarness } from '@chrischall/mcp-utils/test';
 
 vi.mock('../../src/runner.js');
 
-const setupHandlers = () => setupHandlersBase(registerDriveTools);
+const setupHandlers = () => createTestHarness(registerDriveTools);
 
 beforeEach(() => vi.clearAllMocks());
 
 describe('gog_drive_ls', () => {
   it('calls run with no folderId', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"files":[]}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_ls')!({});
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_ls', {});
     expect(runner.run).toHaveBeenCalledWith(['drive', 'ls'], { account: undefined });
   });
 
   it('passes folderId as --parent flag', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_ls')!({ folderId: 'folder1' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_ls', { folderId: 'folder1' });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'ls', '--parent=folder1'], { account: undefined });
   });
 
   it('supports max, page, query, and allDrives flags', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_ls')!({
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_ls', {
       folderId: 'folder1',
       max: 50,
       page: 'tok',
@@ -41,22 +41,22 @@ describe('gog_drive_ls', () => {
 
   it('passes --no-all-drives when allDrives is false', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_ls')!({ allDrives: false });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_ls', { allDrives: false });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'ls', '--no-all-drives'], { account: undefined });
   });
 
   it('omits all-drives flag when allDrives is true (default)', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_ls')!({ allDrives: true });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_ls', { allDrives: true });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'ls'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Ls failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_drive_ls')!({});
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_ls', {});
     expect(result.content[0].text).toBe('Error: Ls failed');
   });
 });
@@ -64,15 +64,15 @@ describe('gog_drive_ls', () => {
 describe('gog_drive_search', () => {
   it('calls run with query', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"files":[]}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_search')!({ query: 'budget' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_search', { query: 'budget' });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'search', 'budget'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Search failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_drive_search')!({ query: 'x' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_search', { query: 'x' });
     expect(result.content[0].text).toBe('Error: Search failed');
   });
 });
@@ -80,15 +80,15 @@ describe('gog_drive_search', () => {
 describe('gog_drive_get', () => {
   it('calls run with fileId', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"id":"file1"}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_get')!({ fileId: 'file1' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_get', { fileId: 'file1' });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'get', 'file1'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Not found'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_drive_get')!({ fileId: 'bad' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_get', { fileId: 'bad' });
     expect(result.content[0].text).toBe('Error: Not found');
   });
 });
@@ -96,15 +96,15 @@ describe('gog_drive_get', () => {
 describe('gog_drive_mkdir', () => {
   it('calls run with folder name', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"id":"new-folder"}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_mkdir')!({ name: 'Reports' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_mkdir', { name: 'Reports' });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'mkdir', 'Reports'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Mkdir failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_drive_mkdir')!({ name: 'Bad' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_mkdir', { name: 'Bad' });
     expect(result.content[0].text).toBe('Error: Mkdir failed');
   });
 });
@@ -112,15 +112,15 @@ describe('gog_drive_mkdir', () => {
 describe('gog_drive_rename', () => {
   it('calls run with fileId and newName', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_rename')!({ fileId: 'file1', newName: 'Budget 2026' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_rename', { fileId: 'file1', newName: 'Budget 2026' });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'rename', 'file1', 'Budget 2026'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Rename failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_drive_rename')!({ fileId: 'bad', newName: 'x' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_rename', { fileId: 'bad', newName: 'x' });
     expect(result.content[0].text).toBe('Error: Rename failed');
   });
 });
@@ -128,15 +128,15 @@ describe('gog_drive_rename', () => {
 describe('gog_drive_move', () => {
   it('calls run with fileId and --parent flag', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_move')!({ fileId: 'file1', parentId: 'folder1' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_move', { fileId: 'file1', parentId: 'folder1' });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'move', 'file1', '--parent=folder1'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Move failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_drive_move')!({ fileId: 'f', parentId: 'p' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_move', { fileId: 'f', parentId: 'p' });
     expect(result.content[0].text).toBe('Error: Move failed');
   });
 });
@@ -144,15 +144,15 @@ describe('gog_drive_move', () => {
 describe('gog_drive_delete', () => {
   it('calls run with fileId (trash by default)', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_delete')!({ fileId: 'file1' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_delete', { fileId: 'file1' });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'delete', 'file1', '--force'], { account: undefined });
   });
 
   it('appends --permanent when permanent=true', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_delete')!({ fileId: 'file1', permanent: true });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_delete', { fileId: 'file1', permanent: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['drive', 'delete', 'file1', '--permanent', '--force'],
       { account: undefined },
@@ -161,15 +161,15 @@ describe('gog_drive_delete', () => {
 
   it('omits --permanent when permanent=false', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_delete')!({ fileId: 'file1', permanent: false });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_delete', { fileId: 'file1', permanent: false });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'delete', 'file1', '--force'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Delete failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_drive_delete')!({ fileId: 'bad' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_delete', { fileId: 'bad' });
     expect(result.content[0].text).toBe('Error: Delete failed');
   });
 });
@@ -177,8 +177,8 @@ describe('gog_drive_delete', () => {
 describe('gog_drive_share', () => {
   it('calls run with required args for user share', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_share')!({ fileId: 'file1', to: 'user', email: 'bob@example.com' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_share', { fileId: 'file1', to: 'user', email: 'bob@example.com' });
     expect(runner.run).toHaveBeenCalledWith(
       ['drive', 'share', 'file1', '--to=user', '--email=bob@example.com'],
       { account: undefined },
@@ -187,8 +187,8 @@ describe('gog_drive_share', () => {
 
   it('appends domain and role when provided', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_share')!({ fileId: 'file1', to: 'domain', domain: 'example.com', role: 'writer' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_share', { fileId: 'file1', to: 'domain', domain: 'example.com', role: 'writer' });
     expect(runner.run).toHaveBeenCalledWith(
       ['drive', 'share', 'file1', '--to=domain', '--domain=example.com', '--role=writer'],
       { account: undefined },
@@ -197,8 +197,8 @@ describe('gog_drive_share', () => {
 
   it('appends --force for to=anyone (gog gates public sharing; runner injects --no-input)', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_share')!({ fileId: 'file1', to: 'anyone' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_share', { fileId: 'file1', to: 'anyone' });
     expect(runner.run).toHaveBeenCalledWith(
       ['drive', 'share', 'file1', '--to=anyone', '--force'],
       { account: undefined },
@@ -207,8 +207,8 @@ describe('gog_drive_share', () => {
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Share failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_drive_share')!({ fileId: 'f', to: 'anyone' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_share', { fileId: 'f', to: 'anyone' });
     expect(result.content[0].text).toBe('Error: Share failed');
   });
 });
@@ -216,15 +216,15 @@ describe('gog_drive_share', () => {
 describe('gog_drive_run', () => {
   it('passes subcommand and args to runner', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_drive_run')!({ subcommand: 'copy', args: ['file1', 'My Copy'] });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_run', { subcommand: 'copy', args: ['file1', 'My Copy'] });
     expect(runner.run).toHaveBeenCalledWith(['drive', 'copy', 'file1', 'My Copy'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Run failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_drive_run')!({ subcommand: 'copy', args: [] });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_run', { subcommand: 'copy', args: [] });
     expect(result.content[0].text).toBe('Error: Run failed');
   });
 });

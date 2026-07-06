@@ -619,4 +619,20 @@ describe('run --readonly (gog 0.31)', () => {
     const call = (spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]!;
     expect(call[1]).not.toContain('--readonly');
   });
+
+  // GOG_READONLY is fail-safe: an unrecognised (but set) value blocks writes
+  // rather than silently allowing them.
+  it('injects --readonly when GOG_READONLY is set to an unrecognised value', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await withReadonlyEnv('enable-please', () => run(['drive', 'list'], { spawner }));
+    const call = (spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]!;
+    expect(call[1]).toContain('--readonly');
+  });
+
+  it('does not inject --readonly when GOG_READONLY is an unresolved .mcpb placeholder', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await withReadonlyEnv('${user_config.gog_readonly}', () => run(['drive', 'list'], { spawner }));
+    const call = (spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]!;
+    expect(call[1]).not.toContain('--readonly');
+  });
 });

@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { run } from '../runner.js';
-import { accountParam, runOrDiagnose, registerRunTool, toText, diagnose } from './utils.js';
+import { rawTextResult } from '@chrischall/mcp-utils';
+import { accountParam, runOrDiagnose, registerRunTool, diagnose } from './utils.js';
 import { expandAnchorRange, countNonEmptyCells } from './sheets-a1.js';
 
 // Cell value type: matches what gog sheets --values-json accepts (passed
@@ -63,7 +64,7 @@ export function registerSheetsTools(server: McpServer): void {
         const detail = occupied < 0
           ? 'could not be verified as empty'
           : `already contains data in ${occupied} cell(s)`;
-        return toText(
+        return rawTextResult(
           `Write aborted (fail_if_not_empty): target range ${readRange} ${detail}. ` +
           'Re-run without fail_if_not_empty to overwrite, or clear it first with gog_sheets_clear.',
         );

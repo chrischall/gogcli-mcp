@@ -1,6 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, toText, type ToolResult } from '../../../gogcli-mcp/src/lib.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { rawTextResult } from '@chrischall/mcp-utils';
+import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
+
+// Pull the text out of a single-text-block tool result; undefined for any
+// other shape (an error result is still a text block, so it parses below).
+function resultText(result: CallToolResult): string | undefined {
+  const first = result.content[0];
+  return first?.type === 'text' ? first.text : undefined;
+}
 
 type GmailHeader = { name?: string; value?: string };
 type GmailMessage = {
@@ -41,18 +50,18 @@ function summarizeMessage(m: GmailMessage): Record<string, unknown> {
 // message-limit flag, so this is done by post-processing its output. Any
 // non-JSON output (an error, an unexpected shape) is passed through untouched.
 function trimThread(
-  result: ToolResult,
+  result: CallToolResult,
   latestN: number | undefined,
   snippetsOnly: boolean | undefined,
-): ToolResult {
+): CallToolResult {
   try {
-    const parsed = JSON.parse(result.content[0].text) as { thread?: { messages?: unknown[] } };
+    const parsed = JSON.parse(resultText(result) ?? '') as { thread?: { messages?: unknown[] } };
     const messages = parsed.thread?.messages;
     if (!Array.isArray(messages)) return result;
     let trimmed: unknown[] = messages;
     if (latestN !== undefined) trimmed = trimmed.slice(-latestN);
     if (snippetsOnly) trimmed = trimmed.map((m) => summarizeMessage(m as GmailMessage));
-    return toText(JSON.stringify({ ...parsed, thread: { ...parsed.thread, messages: trimmed } }));
+    return rawTextResult(JSON.stringify({ ...parsed, thread: { ...parsed.thread, messages: trimmed } }));
   } catch {
     return result;
   }
@@ -447,16 +456,16 @@ export function registerExtraGmailTools(server: McpServer): void {
     account: string | undefined,
     returnFull: boolean | undefined,
     knownDraftId?: string,
-  ): Promise<ToolResult> {
+  ): Promise<CallToolResult> {
     const result = await runOrDiagnose(args, { account });
     if (!returnFull) return result;
     // The write must have returned a JSON acknowledgement before we re-fetch.
-    // A failed write (an error ToolResult, not JSON) is surfaced as-is rather
+    // A failed write (an error result, not JSON) is surfaced as-is rather
     // than masked by re-fetching the unchanged draft — this matters for the
     // update path, where a known draftId would otherwise re-fetch a stale draft.
     let parsed: { draftId?: string };
     try {
-      parsed = JSON.parse(result.content[0].text) as { draftId?: string };
+      parsed = JSON.parse(resultText(result) ?? '') as { draftId?: string };
     } catch {
       return result;
     }

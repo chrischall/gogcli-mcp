@@ -45,27 +45,26 @@ All tools are prefixed `gog_` and namespaced by service (e.g. `gog_sheets_read`,
 ```
 packages/gogcli-mcp/
   src/
-    index.ts               # bin entry — createBaseServer() + stdio transport
-    server.ts              # createBaseServer() factory + VERSION constant (injected by esbuild)
+    index.ts               # bin entry — runMcp({ name, version, tools: BASE_TOOL_REGISTRARS }) from @chrischall/mcp-utils
+    server.ts              # BASE_TOOL_REGISTRARS list + VERSION constant (injected by esbuild)
     runner.ts              # only module touching child_process; exports run() with Spawner DI
     lib.ts                 # barrel export consumed by sub-packages
     tools/
       auth.ts calendar.ts classroom.ts contacts.ts docs.ts drive.ts
       gmail.ts sheets.ts slides.ts tasks.ts
-      utils.ts             # accountParam, runOrDiagnose, toText/toError, ids, paginationParams, registerRunTool
-  tests/
-    helpers/test-harness.ts # setupHandlers(register) + toText(); ToolHandler type
+      utils.ts             # accountParam, runOrDiagnose, errorText, ids, paginationParams, registerRunTool
+  tests/                   # drive tools through createTestHarness from @chrischall/mcp-utils/test
 
 packages/gogcli-mcp-<service>/
   src/
-    index.ts               # createServer() + registerAuthTools + registerXxxTools + registerExtra<Xxx>Tools
+    index.ts               # runMcp({ ..., tools: [registerAuthTools, registerXxxTools, registerExtra<Xxx>Tools] })
     tools/<service>-extra.ts
   tests/tools/<service>-extra.test.ts
 ```
 
 Sub-packages import from `gogcli-mcp/src/lib.js` (NOT the published `gogcli-mcp/lib`) — `tsconfig.json` includes `../gogcli-mcp/src/**/*` so esbuild bundles the source directly. There is no inter-package build dependency.
 
-`runner.ts` always injects `--json --no-input --color=never`, strips `GOG_ACCESS_TOKEN` and other ambient `*_TOKEN`/`*_SECRET`/`*_API_KEY`/`*_PRIVATE_KEY` env vars from the child, augments PATH with Homebrew/`~/.local/bin`/`~/go/bin`, and redacts bearer/refresh-token patterns from any error text surfaced to the MCP client. Default timeout: 30 s.
+`runner.ts` always injects `--json --no-input --color=never`, strips `GOG_ACCESS_TOKEN` and other ambient `*_TOKEN`/`*_SECRET`/`*_API_KEY`/`*_PRIVATE_KEY` env vars from the child, augments PATH with Homebrew/`~/.local/bin`/`~/go/bin`, and redacts bearer/refresh-token patterns from any error text surfaced to the MCP client (mcp-utils `redactSecrets` plus Google-specific `ya29.`/`1//` token shapes). Default timeout: 30 s.
 
 ## Environment
 
@@ -97,9 +96,11 @@ When adding a tool, ask: does a user opening the all-services base package want 
 1. Register in `packages/<pkg>/src/tools/<service>-extra.ts`.
 2. Add a test in `packages/<pkg>/tests/tools/<service>-extra.test.ts` using the shared harness:
    ```ts
-   import { setupHandlers, toText, type ToolHandler }
-     from '../../../gogcli-mcp/tests/helpers/test-harness.js';
+   import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
+   import { rawTextResult } from '@chrischall/mcp-utils';
    ```
+   Tool calls go through the real MCP RPC path (`harness.callTool(name, args)`), so zod
+   input validation applies and thrown handler errors surface as `isError: true` results.
 3. Import `accountParam` / `runOrDiagnose` from `../../../gogcli-mcp/src/lib.js`.
 4. Inline `if (flag) args.push(\`--flag=\${val}\`)` — no helpers.
 5. Use `z.enum([...])` for closed-set CLI flags (states, types, roles), not `z.string()` with values in `.describe()`.
@@ -111,7 +112,7 @@ When adding a tool, ask: does a user opening the all-services base package want 
 
 1. Create `packages/gogcli-mcp/src/tools/<service>.ts` exporting `registerXxxTools(server: McpServer)`.
 2. Add tests in `packages/gogcli-mcp/tests/tools/<service>.test.ts`.
-3. Wire it in `packages/gogcli-mcp/src/server.ts` (`createBaseServer`) and re-export from `src/lib.ts`.
+3. Wire it into `BASE_TOOL_REGISTRARS` in `packages/gogcli-mcp/src/server.ts` and re-export from `src/lib.ts`.
 4. Add the tools to `packages/gogcli-mcp/manifest.json`.
 5. Same annotation/enum/inline-style rules as above.
 
@@ -215,7 +216,7 @@ The repo allows squash-merge only — `--merge` and `--rebase` are blocked at th
 
 - **ESM + NodeNext**: imports must use `.js` extensions even for `.ts` source (e.g. `import { run } from './runner.js'`).
 - **Sub-packages bundle base source directly**: each sub-package's `tsconfig.json` includes `../gogcli-mcp/src/**/*` and esbuild inlines it. Don't try to import from the published `gogcli-mcp/lib` path inside the workspace.
-- **`createServer` vs `createBaseServer`**: sub-packages use `createServer()` (empty server) and register only what they need. Only the base bin uses `createBaseServer()`.
+- **Registrar lists, not server factories**: every package's `index.ts` boots via `runMcp` from `@chrischall/mcp-utils` with a registrar list. Sub-packages assemble their own list from `lib.js` registrars; only the base bin uses `BASE_TOOL_REGISTRARS`.
 - **stdio transport**: stdout is reserved for JSON-RPC — never `console.log` from request handlers. Log to stderr.
 - **Secrets in env**: `runner.ts` strips `GOG_ACCESS_TOKEN`, `GOOGLE_APPLICATION_CREDENTIALS`, and any var ending in `_TOKEN`/`_SECRET`/`_API_KEY`/`_PRIVATE_KEY` before spawning `gog`. Adding new ambient credentials? Audit the regex.
 - **PATH augmentation**: desktop MCP clients spawn with a stripped PATH; the runner re-adds `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/go/bin`. If `gog` lives elsewhere, set `GOG_PATH`.

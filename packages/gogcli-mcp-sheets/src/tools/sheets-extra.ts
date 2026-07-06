@@ -1,6 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, run, diagnose, toText, toError } from '../../../gogcli-mcp/src/lib.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { rawTextResult } from '@chrischall/mcp-utils';
+import { accountParam, runOrDiagnose, run, diagnose, errorText } from '../../../gogcli-mcp/src/lib.js';
+
+// Pull the text out of a single-text-block tool result; undefined for any
+// other shape (error results are still text blocks, so they parse below).
+function resultText(result: CallToolResult): string | undefined {
+  const first = result.content[0];
+  return first?.type === 'text' ? first.text : undefined;
+}
 
 // Convert a CSS-style hex color ("#FFF5D9", "#FD9", "FFF5D9") to the
 // {red, green, blue} 0-1 float triple that Sheets API CellFormat expects.
@@ -40,7 +49,7 @@ async function checkDateFormatTarget(
   );
   let parsed: { values?: unknown[][] };
   try {
-    parsed = JSON.parse(peek.content[0].text) as { values?: unknown[][] };
+    parsed = JSON.parse(resultText(peek) ?? '') as { values?: unknown[][] };
   } catch {
     return null;
   }
@@ -352,7 +361,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (pattern) args.push(`--pattern=${pattern}`);
     const result = await runOrDiagnose(args, { account });
     if (warning) {
-      return { content: [{ type: 'text' as const, text: `${warning}\n\n${result.content[0].text}` }] };
+      return { ...result, content: [{ type: 'text' as const, text: `${warning}\n\n${resultText(result) ?? ''}` }] };
     }
     return result;
   });
@@ -836,15 +845,15 @@ export function registerExtraSheetsTools(server: McpServer): void {
         // The table is already gone but the restore write failed. Hand the
         // read-back data straight back so it can be re-applied manually rather
         // than silently lost.
-        return toText(
+        return rawTextResult(
           `Table ${tableId} was deleted, but restoring its data FAILED — re-apply the values below manually.\n\n` +
           `Range: ${range}\nValues: ${JSON.stringify(values)}\n\n` +
-          `${toError(err).content[0].text}`,
+          `${errorText(err)}`,
         );
       }
     }
 
-    return toText(`Deleted table ${tableId} and preserved ${values.length} row(s) of data (values + formulas) in ${range}.`);
+    return rawTextResult(`Deleted table ${tableId} and preserved ${values.length} row(s) of data (values + formulas) in ${range}.`);
   });
 
   // ---- Banding / alternating colors (gog 0.19.0) ----
