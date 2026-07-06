@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerExtraSheetsTools } from '../../src/tools/sheets-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
-import { setupHandlers as setupHandlersBase, toText } from '../../../gogcli-mcp/tests/helpers/test-harness.js';
+import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { rawTextResult } from '@chrischall/mcp-utils';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -13,23 +14,23 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   };
 });
 
-const setupHandlers = () => setupHandlersBase(registerExtraSheetsTools);
+const setupHandlers = () => createTestHarness(registerExtraSheetsTools);
 
 beforeEach(() => vi.clearAllMocks());
 
 // 1. add-tab
 describe('gog_sheets_add_tab', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_add_tab')!({ spreadsheetId: 'sid', tabName: 'NewTab' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_add_tab', { spreadsheetId: 'sid', tabName: 'NewTab' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'add-tab', 'sid', 'NewTab'], { account: undefined });
   });
 
   it('forwards account', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_add_tab')!({ spreadsheetId: 'sid', tabName: 'T', account: 'a@b.com' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_add_tab', { spreadsheetId: 'sid', tabName: 'T', account: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'add-tab', 'sid', 'T'], { account: 'a@b.com' });
   });
 });
@@ -37,9 +38,9 @@ describe('gog_sheets_add_tab', () => {
 // 2. delete-tab
 describe('gog_sheets_delete_tab', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_delete_tab')!({ spreadsheetId: 'sid', tabName: 'OldTab' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_delete_tab', { spreadsheetId: 'sid', tabName: 'OldTab' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'delete-tab', 'sid', 'OldTab', '--force'], { account: undefined });
   });
 });
@@ -47,9 +48,9 @@ describe('gog_sheets_delete_tab', () => {
 // 3. rename-tab
 describe('gog_sheets_rename_tab', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_rename_tab')!({ spreadsheetId: 'sid', oldName: 'Old', newName: 'New' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_rename_tab', { spreadsheetId: 'sid', oldName: 'Old', newName: 'New' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'rename-tab', 'sid', 'Old', 'New'], { account: undefined });
   });
 });
@@ -57,16 +58,16 @@ describe('gog_sheets_rename_tab', () => {
 // 4. copy
 describe('gog_sheets_copy', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_copy')!({ spreadsheetId: 'sid', title: 'Copy' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_copy', { spreadsheetId: 'sid', title: 'Copy' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy', 'sid', 'Copy'], { account: undefined });
   });
 
   it('includes --parent when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_copy')!({ spreadsheetId: 'sid', title: 'Copy', parent: 'folderId' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_copy', { spreadsheetId: 'sid', title: 'Copy', parent: 'folderId' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy', 'sid', 'Copy', '--parent=folderId'], { account: undefined });
   });
 });
@@ -74,23 +75,23 @@ describe('gog_sheets_copy', () => {
 // 5. export
 describe('gog_sheets_export', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_export')!({ spreadsheetId: 'sid' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_export', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', 'sid'], { account: undefined });
   });
 
   it('includes --format and --out when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_export')!({ spreadsheetId: 'sid', format: 'pdf', out: '/tmp/out.pdf' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_export', { spreadsheetId: 'sid', format: 'pdf', out: '/tmp/out.pdf' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', 'sid', '--format=pdf', '--out=/tmp/out.pdf'], { account: undefined });
   });
 
   it('includes --overwrite when requested', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_export')!({ spreadsheetId: 'sid', out: '/tmp/out.csv', overwrite: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_export', { spreadsheetId: 'sid', out: '/tmp/out.csv', overwrite: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', 'sid', '--out=/tmp/out.csv', '--overwrite'], { account: undefined });
   });
 });
@@ -98,23 +99,23 @@ describe('gog_sheets_export', () => {
 // 6. freeze
 describe('gog_sheets_freeze', () => {
   it('calls runOrDiagnose with no optional flags', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_freeze')!({ spreadsheetId: 'sid' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_freeze', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'freeze', 'sid'], { account: undefined });
   });
 
   it('includes --rows, --cols, --sheet when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_freeze')!({ spreadsheetId: 'sid', rows: 1, cols: 2, sheet: 'Data' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_freeze', { spreadsheetId: 'sid', rows: 1, cols: 2, sheet: 'Data' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'freeze', 'sid', '--rows=1', '--cols=2', '--sheet=Data'], { account: undefined });
   });
 
   it('includes --rows=0 when rows is 0', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_freeze')!({ spreadsheetId: 'sid', rows: 0 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_freeze', { spreadsheetId: 'sid', rows: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'freeze', 'sid', '--rows=0'], { account: undefined });
   });
 });
@@ -125,42 +126,42 @@ describe('gog_sheets_insert', () => {
     // gog's positional <start> is 1-based and, without --after, it inserts *before* it,
     // so API start_index = positional - 1. To land at our 0-based start we send start+1.
     // start=5 → positional 6 → API start_index 5.
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'Sheet1', dimension: 'ROWS', start: 5 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'Sheet1', dimension: 'ROWS', start: 5 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'Sheet1', 'ROWS', '6'], { account: undefined });
   });
 
   it('bug: start=1, after:false inserts before 0-based index 1 (new row 2), not at the top', async () => {
     // Regression for the reported "range.startIndex must be set" / wrong-placement bug.
     // start=1 → positional 2 → gog API start_index 1 (insert before the 2nd row).
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 1, count: 1 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 1, count: 1 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '2', '--count=1'], { account: undefined });
   });
 
   it('shifts start by +1 when after:true so the new dimension lands AFTER start', async () => {
     // Issue #42: with after:true, start=0 means "insert after index 0" — i.e. land at index 1.
     // The MCP must compensate for the CLI's 1-based interpretation by passing start+1.
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'COLUMNS', start: 0, count: 3, after: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'COLUMNS', start: 0, count: 3, after: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'COLUMNS', '1', '--count=3', '--after'], { account: undefined });
   });
 
   it('issue #42 acceptance: start=28, after:true leaves column 28 untouched (insertion lands at 29)', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'COLUMNS', start: 28, after: true, count: 1 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'COLUMNS', start: 28, after: true, count: 1 });
     // CLI is 1-based; with --after CLI uses startIndex = c.Start, so passing 29 → API startIndex=29.
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'COLUMNS', '29', '--count=1', '--after'], { account: undefined });
   });
 
   it('includes --count=0 when count is 0', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, count: 0 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, count: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '1', '--count=0'], { account: undefined });
   });
 
@@ -168,46 +169,46 @@ describe('gog_sheets_insert', () => {
     // start=0 → positional 1 → gog API start_index 0. Sending positional 0 would make gog
     // reject the call outright ("start must be >= 1"), so the +1 shift is what makes a
     // top-of-sheet insert reachable at all.
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, after: false });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, after: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '1'], { account: undefined });
   });
 
   it('passes --inherit-from-before=true when set', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 5, after: true, inheritFromBefore: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 5, after: true, inheritFromBefore: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '6', '--after', '--inherit-from-before=true'], { account: undefined });
   });
 
   it('passes --inherit-from-before=false to inherit from the following neighbor', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_insert')!({ spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 5, after: true, inheritFromBefore: false });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 5, after: true, inheritFromBefore: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '6', '--after', '--inherit-from-before=false'], { account: undefined });
   });
 });
 
 describe('gog_sheets_copy_paste', () => {
   it('calls runOrDiagnose with required source/dest', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_copy_paste')!({ spreadsheetId: 'sid', source: 'Sheet1!A2:H71', dest: 'Sheet1!A2:H120' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_copy_paste', { spreadsheetId: 'sid', source: 'Sheet1!A2:H71', dest: 'Sheet1!A2:H120' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', 'sid', 'Sheet1!A2:H71', 'Sheet1!A2:H120'], { account: undefined });
   });
 
   it('appends --type and --transpose when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_copy_paste')!({ spreadsheetId: 'sid', source: 'A1:B2', dest: 'D1:E2', type: 'FORMULA', transpose: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_copy_paste', { spreadsheetId: 'sid', source: 'A1:B2', dest: 'D1:E2', type: 'FORMULA', transpose: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', 'sid', 'A1:B2', 'D1:E2', '--type=FORMULA', '--transpose'], { account: undefined });
   });
 
   it('forwards account', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_copy_paste')!({ spreadsheetId: 'sid', source: 'A1', dest: 'B1', account: 'a@b.com' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_copy_paste', { spreadsheetId: 'sid', source: 'A1', dest: 'B1', account: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', 'sid', 'A1', 'B1'], { account: 'a@b.com' });
   });
 });
@@ -215,16 +216,16 @@ describe('gog_sheets_copy_paste', () => {
 // 8. merge
 describe('gog_sheets_merge', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_merge')!({ spreadsheetId: 'sid', range: 'A1:C3' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_merge', { spreadsheetId: 'sid', range: 'A1:C3' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'merge', 'sid', 'A1:C3'], { account: undefined });
   });
 
   it('includes --type when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_merge')!({ spreadsheetId: 'sid', range: 'A1:C3', type: 'MERGE_COLUMNS' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_merge', { spreadsheetId: 'sid', range: 'A1:C3', type: 'MERGE_COLUMNS' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'merge', 'sid', 'A1:C3', '--type=MERGE_COLUMNS'], { account: undefined });
   });
 });
@@ -232,9 +233,9 @@ describe('gog_sheets_merge', () => {
 // 9. unmerge
 describe('gog_sheets_unmerge', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_unmerge')!({ spreadsheetId: 'sid', range: 'A1:C3' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_unmerge', { spreadsheetId: 'sid', range: 'A1:C3' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'unmerge', 'sid', 'A1:C3'], { account: undefined });
   });
 });
@@ -242,10 +243,10 @@ describe('gog_sheets_unmerge', () => {
 // 10. format
 describe('gog_sheets_format', () => {
   it('passes raw formatJson + formatFields through unchanged (escape hatch)', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
     const fj = '{"textFormat":{"bold":true}}';
-    await handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1:B2', formatJson: fj, formatFields: 'textFormat.bold' });
+    await harness.callTool('gog_sheets_format', { spreadsheetId: 'sid', range: 'A1:B2', formatJson: fj, formatFields: 'textFormat.bold' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'format', 'sid', 'A1:B2', `--format-json=${fj}`, '--format-fields=textFormat.bold'],
       { account: undefined },
@@ -253,9 +254,9 @@ describe('gog_sheets_format', () => {
   });
 
   it('passes raw formatJson without formatFields', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1', formatJson: '{}' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_format', { spreadsheetId: 'sid', range: 'A1', formatJson: '{}' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'format', 'sid', 'A1', '--format-json={}'],
       { account: undefined },
@@ -263,9 +264,9 @@ describe('gog_sheets_format', () => {
   });
 
   it('composes named flags into CellFormat JSON + auto-computed fields', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_format')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_format', {
       spreadsheetId: 'sid', range: 'A1:C3',
       bold: true,
       backgroundColor: '#FFF5D9',
@@ -295,9 +296,9 @@ describe('gog_sheets_format', () => {
   });
 
   it('composes all named flags including textColor + alignment', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_format')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_format', {
       spreadsheetId: 'sid', range: 'A1',
       italic: true,
       underline: true,
@@ -322,33 +323,34 @@ describe('gog_sheets_format', () => {
   });
 
   it('rejects bad hex in textColor', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await expect(
-      handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1', textColor: 'not-a-hex' }),
-    ).rejects.toThrow(/Invalid textColor/);
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    // Thrown handler errors surface through the MCP RPC path as error results.
+    const result = await harness.callTool('gog_sheets_format', { spreadsheetId: 'sid', range: 'A1', textColor: 'not-a-hex' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/Invalid textColor/);
   });
 
   it('rejects bad hex in backgroundColor', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await expect(
-      handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1', backgroundColor: 'orange' }),
-    ).rejects.toThrow(/Invalid backgroundColor/);
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_format', { spreadsheetId: 'sid', range: 'A1', backgroundColor: 'orange' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/Invalid backgroundColor/);
   });
 
   it('rejects no-op calls with neither flags nor formatJson', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await expect(
-      handlers.get('gog_sheets_format')!({ spreadsheetId: 'sid', range: 'A1' }),
-    ).rejects.toThrow(/requires at least one named flag/);
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_format', { spreadsheetId: 'sid', range: 'A1' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/requires at least one named flag/);
   });
 
   it('honors caller-provided formatFields when also using named flags', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_format')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_format', {
       spreadsheetId: 'sid', range: 'A1',
       bold: true,
       formatFields: 'textFormat.bold,textFormat.italic',
@@ -360,9 +362,9 @@ describe('gog_sheets_format', () => {
 
 describe('gog_sheets_list_tabs', () => {
   it('uses metadata with a --select projection', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_list_tabs')!({ spreadsheetId: 'sid' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_list_tabs', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'metadata', 'sid', '--select=sheets.properties.sheetId,sheets.properties.title,sheets.properties.index,sheets.properties.gridProperties'],
       { account: undefined },
@@ -373,30 +375,30 @@ describe('gog_sheets_list_tabs', () => {
 // 11. number-format
 describe('gog_sheets_number_format', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A10' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A10' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'number-format', 'sid', 'A1:A10'], { account: undefined });
   });
 
   it('includes --type and --pattern when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1', type: 'CURRENCY', pattern: '#,##0.00' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1', type: 'CURRENCY', pattern: '#,##0.00' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'number-format', 'sid', 'A1', '--type=CURRENCY', '--pattern=#,##0.00'], { account: undefined });
   });
 
   // Issue #43: warn when DATE/DATE_TIME format applied to small integers (silent 1899/1900 render).
   describe('DATE/DATE_TIME small-integer warning', () => {
     it('emits a warning when DATE applied to a range of small integers', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'Sheet1!A1:A3', values: [[1], [2], [3]] }));
+          return rawTextResult(JSON.stringify({ range: 'Sheet1!A1:A3', values: [[1], [2], [3]] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:A3', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'Sheet1!A1:A3', type: 'DATE' });
       // Peek call goes out first.
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
         ['sheets', 'get', 'sid', 'Sheet1!A1:A3', '--render=UNFORMATTED_VALUE'],
@@ -414,21 +416,21 @@ describe('gog_sheets_number_format', () => {
     });
 
     it('also warns for DATE_TIME', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'Sheet1!A1:A2', values: [[5], [7]] }));
+          return rawTextResult(JSON.stringify({ range: 'Sheet1!A1:A2', values: [[5], [7]] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:A2', type: 'DATE_TIME' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'Sheet1!A1:A2', type: 'DATE_TIME' });
       expect(result.content[0].text).toMatch(/warning/i);
     });
 
     it('does not peek or warn when force:true', async () => {
-      const handlers = setupHandlers();
-      vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{"ok":true}'));
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:A3', type: 'DATE', force: true });
+      const harness = await setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{"ok":true}'));
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'Sheet1!A1:A3', type: 'DATE', force: true });
       // Only the format call should fire — no peek.
       expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -439,22 +441,22 @@ describe('gog_sheets_number_format', () => {
     });
 
     it('peeks and warns when force:false is passed explicitly (round-trips the no-force path)', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'A1:A3', values: [[1], [2], [3]] }));
+          return rawTextResult(JSON.stringify({ range: 'A1:A3', values: [[1], [2], [3]] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE', force: false });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE', force: false });
       expect(lib.runOrDiagnose).toHaveBeenCalledTimes(2);
       expect(result.content[0].text).toMatch(/warning/i);
     });
 
     it('does not peek when type is not DATE/DATE_TIME', async () => {
-      const handlers = setupHandlers();
-      vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{"ok":true}'));
-      await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'CURRENCY' });
+      const harness = await setupHandlers();
+      vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{"ok":true}'));
+      await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'CURRENCY' });
       expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
         ['sheets', 'number-format', 'sid', 'A1:A3', '--type=CURRENCY'],
@@ -463,112 +465,112 @@ describe('gog_sheets_number_format', () => {
     });
 
     it('does not warn when values include a large integer (>=10000)', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
           // 45000 is a real day-serial (year ~2023) — legitimate date value.
-          return toText(JSON.stringify({ range: 'A1:A2', values: [[1], [45000]] }));
+          return rawTextResult(JSON.stringify({ range: 'A1:A2', values: [[1], [45000]] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
       expect(result.content[0].text).not.toMatch(/warning/i);
     });
 
     it('does not warn when values include a negative integer (deltas/error codes, not day-serials)', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'A1:A3', values: [[1], [-5], [3]] }));
+          return rawTextResult(JSON.stringify({ range: 'A1:A3', values: [[1], [-5], [3]] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
       expect(result.content[0].text).not.toMatch(/warning/i);
     });
 
     it('does not warn when values include non-integer numbers', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'A1:A2', values: [[1], [2.5]] }));
+          return rawTextResult(JSON.stringify({ range: 'A1:A2', values: [[1], [2.5]] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
       expect(result.content[0].text).not.toMatch(/warning/i);
     });
 
     it('does not warn when range has no values (missing values key)', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'A1:A3' }));
+          return rawTextResult(JSON.stringify({ range: 'A1:A3' }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
       expect(result.content[0].text).not.toMatch(/warning/i);
     });
 
     it('does not warn when range has empty values array', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'A1:A3', values: [] }));
+          return rawTextResult(JSON.stringify({ range: 'A1:A3', values: [] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
       expect(result.content[0].text).not.toMatch(/warning/i);
     });
 
     it('does not warn when values are strings', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'A1:A2', values: [['hello'], ['world']] }));
+          return rawTextResult(JSON.stringify({ range: 'A1:A2', values: [['hello'], ['world']] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A2', type: 'DATE' });
       expect(result.content[0].text).not.toMatch(/warning/i);
     });
 
     it('ignores null and empty cells when deciding to warn', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
           // Real-world: nulls/empty strings interspersed with the ordinal ints.
-          return toText(JSON.stringify({ range: 'A1:A4', values: [[1], [null], [''], [3]] }));
+          return rawTextResult(JSON.stringify({ range: 'A1:A4', values: [[1], [null], [''], [3]] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A4', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A4', type: 'DATE' });
       expect(result.content[0].text).toMatch(/warning/i);
     });
 
     it('does not warn when every cell is null or empty (no small integers seen)', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'A1:A3', values: [[null], [''], [null]] }));
+          return rawTextResult(JSON.stringify({ range: 'A1:A3', values: [[null], [''], [null]] }));
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
       expect(result.content[0].text).not.toMatch(/warning/i);
     });
 
     it('proceeds with format when peek fails (does not block)', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText('Error: something went wrong');
+          return rawTextResult('Error: something went wrong');
         }
-        return toText('{"ok":true}');
+        return rawTextResult('{"ok":true}');
       });
-      const result = await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+      const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
       // Format call should still happen.
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
         ['sheets', 'number-format', 'sid', 'A1:A3', '--type=DATE'],
@@ -579,14 +581,14 @@ describe('gog_sheets_number_format', () => {
     });
 
     it('forwards account on both peek and format calls', async () => {
-      const handlers = setupHandlers();
+      const harness = await setupHandlers();
       vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
         if (args[1] === 'get') {
-          return toText(JSON.stringify({ range: 'A1', values: [[1]] }));
+          return rawTextResult(JSON.stringify({ range: 'A1', values: [[1]] }));
         }
-        return toText('{}');
+        return rawTextResult('{}');
       });
-      await handlers.get('gog_sheets_number_format')!({ spreadsheetId: 'sid', range: 'A1', type: 'DATE', account: 'a@b.com' });
+      await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1', type: 'DATE', account: 'a@b.com' });
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
         ['sheets', 'get', 'sid', 'A1', '--render=UNFORMATTED_VALUE'],
         { account: 'a@b.com' },
@@ -602,23 +604,23 @@ describe('gog_sheets_number_format', () => {
 // 12. read-format
 describe('gog_sheets_read_format', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_read_format')!({ spreadsheetId: 'sid', range: 'A1:B2' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_read_format', { spreadsheetId: 'sid', range: 'A1:B2' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'read-format', 'sid', 'A1:B2'], { account: undefined });
   });
 
   it('includes --effective when true', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_read_format')!({ spreadsheetId: 'sid', range: 'A1', effective: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_read_format', { spreadsheetId: 'sid', range: 'A1', effective: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'read-format', 'sid', 'A1', '--effective'], { account: undefined });
   });
 
   it('omits --effective when false', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_read_format')!({ spreadsheetId: 'sid', range: 'A1', effective: false });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_read_format', { spreadsheetId: 'sid', range: 'A1', effective: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'read-format', 'sid', 'A1'], { account: undefined });
   });
 });
@@ -626,23 +628,23 @@ describe('gog_sheets_read_format', () => {
 // 13. resize-columns
 describe('gog_sheets_resize_columns', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_resize_columns')!({ spreadsheetId: 'sid', columns: 'A:C' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_resize_columns', { spreadsheetId: 'sid', columns: 'A:C' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-columns', 'sid', 'A:C'], { account: undefined });
   });
 
   it('includes --width and --auto when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_resize_columns')!({ spreadsheetId: 'sid', columns: 'A:C', width: 200, auto: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_resize_columns', { spreadsheetId: 'sid', columns: 'A:C', width: 200, auto: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-columns', 'sid', 'A:C', '--width=200', '--auto'], { account: undefined });
   });
 
   it('includes --width=0 when width is 0', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_resize_columns')!({ spreadsheetId: 'sid', columns: 'A:A', width: 0 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_resize_columns', { spreadsheetId: 'sid', columns: 'A:A', width: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-columns', 'sid', 'A:A', '--width=0'], { account: undefined });
   });
 });
@@ -650,23 +652,23 @@ describe('gog_sheets_resize_columns', () => {
 // 14. resize-rows
 describe('gog_sheets_resize_rows', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_resize_rows')!({ spreadsheetId: 'sid', rows: '1:10' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_resize_rows', { spreadsheetId: 'sid', rows: '1:10' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-rows', 'sid', '1:10'], { account: undefined });
   });
 
   it('includes --height and --auto when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_resize_rows')!({ spreadsheetId: 'sid', rows: '1:5', height: 40, auto: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_resize_rows', { spreadsheetId: 'sid', rows: '1:5', height: 40, auto: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-rows', 'sid', '1:5', '--height=40', '--auto'], { account: undefined });
   });
 
   it('includes --height=0 when height is 0', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_resize_rows')!({ spreadsheetId: 'sid', rows: '1:1', height: 0 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_resize_rows', { spreadsheetId: 'sid', rows: '1:1', height: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-rows', 'sid', '1:1', '--height=0'], { account: undefined });
   });
 });
@@ -674,9 +676,9 @@ describe('gog_sheets_resize_rows', () => {
 // 15. notes
 describe('gog_sheets_notes', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_notes')!({ spreadsheetId: 'sid', range: 'A1:B5' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_notes', { spreadsheetId: 'sid', range: 'A1:B5' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'notes', 'sid', 'A1:B5'], { account: undefined });
   });
 });
@@ -684,16 +686,16 @@ describe('gog_sheets_notes', () => {
 // 16. update-note
 describe('gog_sheets_update_note', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_update_note')!({ spreadsheetId: 'sid', range: 'A1', note: 'Hello' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_update_note', { spreadsheetId: 'sid', range: 'A1', note: 'Hello' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'update-note', 'sid', 'A1', '--note=Hello'], { account: undefined });
   });
 
   it('passes empty string to clear note', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_update_note')!({ spreadsheetId: 'sid', range: 'A1', note: '' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_update_note', { spreadsheetId: 'sid', range: 'A1', note: '' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'update-note', 'sid', 'A1', '--note='], { account: undefined });
   });
 });
@@ -701,9 +703,9 @@ describe('gog_sheets_update_note', () => {
 // 17. links
 describe('gog_sheets_links', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_links')!({ spreadsheetId: 'sid', range: 'A1:Z100' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_links', { spreadsheetId: 'sid', range: 'A1:Z100' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'links', 'sid', 'A1:Z100'], { account: undefined });
   });
 });
@@ -711,9 +713,9 @@ describe('gog_sheets_links', () => {
 // gog 0.23.0
 describe('gog_sheets_links_set', () => {
   it('sets a single-cell hyperlink with cell/url/text positionals', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_links_set')!({ spreadsheetId: 'sid', cell: 'A1', url: 'https://x.com', text: 'Link' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_links_set', { spreadsheetId: 'sid', cell: 'A1', url: 'https://x.com', text: 'Link' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'links', 'set', 'sid', 'A1', 'https://x.com', 'Link'],
       { account: undefined },
@@ -721,9 +723,9 @@ describe('gog_sheets_links_set', () => {
   });
 
   it('sets a multi-link cell with --runs-json', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_links_set')!({ spreadsheetId: 'sid', cell: 'B2', runsJson: '[{"text":"A","uri":"https://a"}]' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_links_set', { spreadsheetId: 'sid', cell: 'B2', runsJson: '[{"text":"A","uri":"https://a"}]' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'links', 'set', 'sid', 'B2', '--runs-json=[{"text":"A","uri":"https://a"}]'],
       { account: undefined },
@@ -731,9 +733,9 @@ describe('gog_sheets_links_set', () => {
   });
 
   it('sets batch hyperlinks with --cells-json', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_links_set')!({ spreadsheetId: 'sid', cellsJson: '[{"cell":"A1","url":"https://a"}]' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_links_set', { spreadsheetId: 'sid', cellsJson: '[{"cell":"A1","url":"https://a"}]' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'links', 'set', 'sid', '--cells-json=[{"cell":"A1","url":"https://a"}]'],
       { account: undefined },
@@ -744,9 +746,9 @@ describe('gog_sheets_links_set', () => {
 // 18. named-ranges list
 describe('gog_sheets_named_ranges_list', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_named_ranges_list')!({ spreadsheetId: 'sid' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_named_ranges_list', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'list', 'sid'], { account: undefined });
   });
 });
@@ -754,9 +756,9 @@ describe('gog_sheets_named_ranges_list', () => {
 // 19. named-ranges get
 describe('gog_sheets_named_ranges_get', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_named_ranges_get')!({ spreadsheetId: 'sid', nameOrId: 'MyRange' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_named_ranges_get', { spreadsheetId: 'sid', nameOrId: 'MyRange' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'get', 'sid', 'MyRange'], { account: undefined });
   });
 });
@@ -764,9 +766,9 @@ describe('gog_sheets_named_ranges_get', () => {
 // 20. named-ranges add
 describe('gog_sheets_named_ranges_add', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_named_ranges_add')!({ spreadsheetId: 'sid', name: 'Totals', range: 'Sheet1!A1:B10' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_named_ranges_add', { spreadsheetId: 'sid', name: 'Totals', range: 'Sheet1!A1:B10' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'add', 'sid', 'Totals', 'Sheet1!A1:B10'], { account: undefined });
   });
 });
@@ -774,16 +776,16 @@ describe('gog_sheets_named_ranges_add', () => {
 // 21. named-ranges update
 describe('gog_sheets_named_ranges_update', () => {
   it('calls runOrDiagnose with no optional flags', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_named_ranges_update')!({ spreadsheetId: 'sid', nameOrId: 'MyRange' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_named_ranges_update', { spreadsheetId: 'sid', nameOrId: 'MyRange' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'update', 'sid', 'MyRange'], { account: undefined });
   });
 
   it('includes --name and --range when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_named_ranges_update')!({ spreadsheetId: 'sid', nameOrId: 'MyRange', name: 'NewName', range: 'Sheet1!C1:D5' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_named_ranges_update', { spreadsheetId: 'sid', nameOrId: 'MyRange', name: 'NewName', range: 'Sheet1!C1:D5' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'update', 'sid', 'MyRange', '--name=NewName', '--range=Sheet1!C1:D5'], { account: undefined });
   });
 });
@@ -791,9 +793,9 @@ describe('gog_sheets_named_ranges_update', () => {
 // 22. named-ranges delete
 describe('gog_sheets_named_ranges_delete', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_named_ranges_delete')!({ spreadsheetId: 'sid', nameOrId: 'OldRange' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_named_ranges_delete', { spreadsheetId: 'sid', nameOrId: 'OldRange' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'delete', 'sid', 'OldRange'], { account: undefined });
   });
 });
@@ -801,10 +803,10 @@ describe('gog_sheets_named_ranges_delete', () => {
 // 23. batch-update (gog 0.18.0)
 describe('gog_sheets_batch_update', () => {
   it('passes --data-json and required spreadsheetId', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
     const data = '[{"range":"Sheet1!A1:B1","values":[["a","b"]]}]';
-    await handlers.get('gog_sheets_batch_update')!({ spreadsheetId: 'sid', dataJson: data });
+    await harness.callTool('gog_sheets_batch_update', { spreadsheetId: 'sid', dataJson: data });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'batch-update', 'sid', `--data-json=${data}`],
       { account: undefined },
@@ -812,9 +814,9 @@ describe('gog_sheets_batch_update', () => {
   });
 
   it('passes optional --input, --include-values-in-response, --response-render, --response-date-time-render', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_batch_update')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_batch_update', {
       spreadsheetId: 'sid',
       dataJson: '[]',
       input: 'RAW',
@@ -837,9 +839,9 @@ describe('gog_sheets_batch_update', () => {
   });
 
   it('omits --include-values-in-response when false', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_batch_update')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_batch_update', {
       spreadsheetId: 'sid', dataJson: '[]', includeValuesInResponse: false,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -852,9 +854,9 @@ describe('gog_sheets_batch_update', () => {
 // 24. reorder-tab (gog 0.18.0)
 describe('gog_sheets_reorder_tab', () => {
   it('passes --tab and --to', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_reorder_tab')!({ spreadsheetId: 'sid', tab: 'Data', to: 2 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_reorder_tab', { spreadsheetId: 'sid', tab: 'Data', to: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'reorder-tab', 'sid', '--tab=Data', '--to=2'],
       { account: undefined },
@@ -862,9 +864,9 @@ describe('gog_sheets_reorder_tab', () => {
   });
 
   it('sends --to=0 explicitly to reach the leftmost position', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_reorder_tab')!({ spreadsheetId: 'sid', tab: '123', to: 0 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_reorder_tab', { spreadsheetId: 'sid', tab: '123', to: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'reorder-tab', 'sid', '--tab=123', '--to=0'],
       { account: undefined },
@@ -872,9 +874,9 @@ describe('gog_sheets_reorder_tab', () => {
   });
 
   it('forwards account', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_reorder_tab')!({ spreadsheetId: 'sid', tab: 'Data', to: 1, account: 'a@b.com' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_reorder_tab', { spreadsheetId: 'sid', tab: 'Data', to: 1, account: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'reorder-tab', 'sid', '--tab=Data', '--to=1'],
       { account: 'a@b.com' },
@@ -885,16 +887,16 @@ describe('gog_sheets_reorder_tab', () => {
 // 25. chart list (gog 0.19.0)
 describe('gog_sheets_chart_list', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_chart_list')!({ spreadsheetId: 'sid' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_chart_list', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'list', 'sid'], { account: undefined });
   });
 
   it('forwards account', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_chart_list')!({ spreadsheetId: 'sid', account: 'a@b.com' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_chart_list', { spreadsheetId: 'sid', account: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'list', 'sid'], { account: 'a@b.com' });
   });
 });
@@ -902,9 +904,9 @@ describe('gog_sheets_chart_list', () => {
 // 26. chart get
 describe('gog_sheets_chart_get', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_chart_get')!({ spreadsheetId: 'sid', chartId: '12345' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_chart_get', { spreadsheetId: 'sid', chartId: '12345' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'get', 'sid', '12345'], { account: undefined });
   });
 });
@@ -912,10 +914,10 @@ describe('gog_sheets_chart_get', () => {
 // 27. chart create
 describe('gog_sheets_chart_create', () => {
   it('calls runOrDiagnose with only --spec-json', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
     const spec = '{"basicChart":{"chartType":"COLUMN"}}';
-    await handlers.get('gog_sheets_chart_create')!({ spreadsheetId: 'sid', specJson: spec });
+    await harness.callTool('gog_sheets_chart_create', { spreadsheetId: 'sid', specJson: spec });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'chart', 'create', 'sid', `--spec-json=${spec}`],
       { account: undefined },
@@ -923,9 +925,9 @@ describe('gog_sheets_chart_create', () => {
   });
 
   it('includes --sheet, --anchor, --width, --height when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_chart_create')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_chart_create', {
       spreadsheetId: 'sid', specJson: '{}', sheet: 'Data', anchor: 'E10', width: 800, height: 400,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -935,9 +937,9 @@ describe('gog_sheets_chart_create', () => {
   });
 
   it('includes --width=0 and --height=0 when zero', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_chart_create')!({ spreadsheetId: 'sid', specJson: '{}', width: 0, height: 0 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_chart_create', { spreadsheetId: 'sid', specJson: '{}', width: 0, height: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'chart', 'create', 'sid', '--spec-json={}', '--width=0', '--height=0'],
       { account: undefined },
@@ -948,9 +950,9 @@ describe('gog_sheets_chart_create', () => {
 // 28. chart update
 describe('gog_sheets_chart_update', () => {
   it('calls runOrDiagnose with chartId and --spec-json', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_chart_update')!({ spreadsheetId: 'sid', chartId: '99', specJson: '{}' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_chart_update', { spreadsheetId: 'sid', chartId: '99', specJson: '{}' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'chart', 'update', 'sid', '99', '--spec-json={}'],
       { account: undefined },
@@ -961,9 +963,9 @@ describe('gog_sheets_chart_update', () => {
 // 29. chart delete
 describe('gog_sheets_chart_delete', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_chart_delete')!({ spreadsheetId: 'sid', chartId: '7' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_chart_delete', { spreadsheetId: 'sid', chartId: '7' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'delete', 'sid', '7', '--force'], { account: undefined });
   });
 });
@@ -971,9 +973,9 @@ describe('gog_sheets_chart_delete', () => {
 // 30. table list
 describe('gog_sheets_table_list', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_table_list')!({ spreadsheetId: 'sid' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_table_list', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'list', 'sid'], { account: undefined });
   });
 });
@@ -981,9 +983,9 @@ describe('gog_sheets_table_list', () => {
 // 31. table get
 describe('gog_sheets_table_get', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_table_get')!({ spreadsheetId: 'sid', tableId: 't1' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_table_get', { spreadsheetId: 'sid', tableId: 't1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'get', 'sid', 't1'], { account: undefined });
   });
 });
@@ -991,10 +993,10 @@ describe('gog_sheets_table_get', () => {
 // 32. table create
 describe('gog_sheets_table_create', () => {
   it('calls runOrDiagnose with range, --name, --columns-json', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
     const cols = '[{"columnName":"Name","columnType":"TEXT"}]';
-    await handlers.get('gog_sheets_table_create')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:B10', name: 'People', columnsJson: cols });
+    await harness.callTool('gog_sheets_table_create', { spreadsheetId: 'sid', range: 'Sheet1!A1:B10', name: 'People', columnsJson: cols });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'table', 'create', 'sid', 'Sheet1!A1:B10', '--name=People', `--columns-json=${cols}`],
       { account: undefined },
@@ -1005,9 +1007,9 @@ describe('gog_sheets_table_create', () => {
 // 33. table append
 describe('gog_sheets_table_append', () => {
   it('calls runOrDiagnose with --values-json (no --input)', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_table_append')!({ spreadsheetId: 'sid', tableId: 't1', valuesJson: '[["a",1]]' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_table_append', { spreadsheetId: 'sid', tableId: 't1', valuesJson: '[["a",1]]' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'table', 'append', 'sid', 't1', '--values-json=[["a",1]]'],
       { account: undefined },
@@ -1015,9 +1017,9 @@ describe('gog_sheets_table_append', () => {
   });
 
   it('includes --input when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_table_append')!({ spreadsheetId: 'sid', tableId: 't1', valuesJson: '[]', input: 'RAW' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_table_append', { spreadsheetId: 'sid', tableId: 't1', valuesJson: '[]', input: 'RAW' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'table', 'append', 'sid', 't1', '--values-json=[]', '--input=RAW'],
       { account: undefined },
@@ -1028,9 +1030,9 @@ describe('gog_sheets_table_append', () => {
 // 34. table clear
 describe('gog_sheets_table_clear', () => {
   it('calls runOrDiagnose with correct args', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_table_clear')!({ spreadsheetId: 'sid', tableId: 't1' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_table_clear', { spreadsheetId: 'sid', tableId: 't1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'clear', 'sid', 't1', '--force'], { account: undefined });
   });
 });
@@ -1038,9 +1040,9 @@ describe('gog_sheets_table_clear', () => {
 // 35. table delete
 describe('gog_sheets_table_delete', () => {
   it('keep_data=false deletes table (and data) directly with --discard-data --force', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1', keep_data: false });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_table_delete', { spreadsheetId: 'sid', tableId: 't1', keep_data: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'delete', 'sid', 't1', '--discard-data', '--force'], { account: undefined });
     expect(lib.run).not.toHaveBeenCalled();
   });
@@ -1051,8 +1053,8 @@ describe('gog_sheets_table_delete', () => {
       .mockResolvedValueOnce('{"values":[["Name","City","N"],["A","NYC","=1+1"]]}') // get --render=FORMULA
       .mockResolvedValueOnce('{"deleted":{"tableId":"t1"}}')               // table delete
       .mockResolvedValueOnce('{"updatedRows":2}');                         // update restore
-    const handlers = setupHandlers();
-    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1', account: 'a@b.com' });
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_sheets_table_delete', { spreadsheetId: 'sid', tableId: 't1', account: 'a@b.com' });
     expect(lib.run).toHaveBeenNthCalledWith(1, ['sheets', 'table', 'get', 'sid', 't1'], { account: 'a@b.com' });
     expect(lib.run).toHaveBeenNthCalledWith(2, ['sheets', 'get', 'sid', 'Sheet1!A1:C2', '--render=FORMULA'], { account: 'a@b.com' });
     expect(lib.run).toHaveBeenNthCalledWith(3, ['sheets', 'table', 'delete', 'sid', 't1', '--discard-data', '--force'], { account: 'a@b.com' });
@@ -1066,26 +1068,26 @@ describe('gog_sheets_table_delete', () => {
       .mockResolvedValueOnce('{"table":{"a1":"Sheet1!A1:C1"}}')   // table get
       .mockResolvedValueOnce('{}')                        // get --render=FORMULA, no values key
       .mockResolvedValueOnce('{"deleted":{}}');           // table delete
-    const handlers = setupHandlers();
-    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_sheets_table_delete', { spreadsheetId: 'sid', tableId: 't1' });
     expect(lib.run).toHaveBeenCalledTimes(3); // no update call
     expect(res.content[0].text).toContain('0 row');
   });
 
   it('aborts without deleting when the table has no a1 range', async () => {
     vi.mocked(lib.run).mockResolvedValueOnce('{"name":"Repro"}'); // table get, no a1
-    vi.mocked(lib.diagnose).mockResolvedValue(toText('diagnosed'));
-    const handlers = setupHandlers();
-    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    vi.mocked(lib.diagnose).mockResolvedValue(rawTextResult('diagnosed'));
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_sheets_table_delete', { spreadsheetId: 'sid', tableId: 't1' });
     expect(lib.run).toHaveBeenCalledTimes(1); // only the read, no delete
     expect(res.content[0].text).toBe('diagnosed');
   });
 
   it('aborts without deleting when the pre-delete read fails', async () => {
     vi.mocked(lib.run).mockRejectedValueOnce(new Error('read boom')); // table get throws
-    vi.mocked(lib.diagnose).mockResolvedValue(toText('diagnosed read'));
-    const handlers = setupHandlers();
-    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    vi.mocked(lib.diagnose).mockResolvedValue(rawTextResult('diagnosed read'));
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_sheets_table_delete', { spreadsheetId: 'sid', tableId: 't1' });
     expect(lib.run).toHaveBeenCalledTimes(1);
     expect(res.content[0].text).toBe('diagnosed read');
   });
@@ -1095,9 +1097,9 @@ describe('gog_sheets_table_delete', () => {
       .mockResolvedValueOnce('{"table":{"a1":"Sheet1!A1:C2"}}')
       .mockResolvedValueOnce('{"values":[["A"]]}')
       .mockRejectedValueOnce(new Error('delete boom')); // table delete throws
-    vi.mocked(lib.diagnose).mockResolvedValue(toText('diagnosed delete'));
-    const handlers = setupHandlers();
-    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    vi.mocked(lib.diagnose).mockResolvedValue(rawTextResult('diagnosed delete'));
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_sheets_table_delete', { spreadsheetId: 'sid', tableId: 't1' });
     expect(res.content[0].text).toBe('diagnosed delete');
   });
 
@@ -1107,8 +1109,8 @@ describe('gog_sheets_table_delete', () => {
       .mockResolvedValueOnce('{"values":[["keepme"]]}')
       .mockResolvedValueOnce('{"deleted":{}}')
       .mockRejectedValueOnce(new Error('restore boom')); // update throws
-    const handlers = setupHandlers();
-    const res = await handlers.get('gog_sheets_table_delete')!({ spreadsheetId: 'sid', tableId: 't1' });
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_sheets_table_delete', { spreadsheetId: 'sid', tableId: 't1' });
     const text = res.content[0].text;
     expect(text).toContain('restoring its data FAILED');
     expect(text).toContain('keepme'); // the data is handed back for manual recovery
@@ -1119,16 +1121,16 @@ describe('gog_sheets_table_delete', () => {
 // 36. banding list
 describe('gog_sheets_banding_list', () => {
   it('calls runOrDiagnose with no --sheet', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_banding_list')!({ spreadsheetId: 'sid' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_banding_list', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'list', 'sid'], { account: undefined });
   });
 
   it('includes --sheet when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_banding_list')!({ spreadsheetId: 'sid', sheet: 'Data' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_banding_list', { spreadsheetId: 'sid', sheet: 'Data' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'list', 'sid', '--sheet=Data'], { account: undefined });
   });
 });
@@ -1136,16 +1138,16 @@ describe('gog_sheets_banding_list', () => {
 // 37. banding set
 describe('gog_sheets_banding_set', () => {
   it('calls runOrDiagnose with range only', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_banding_set')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:D20' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_banding_set', { spreadsheetId: 'sid', range: 'Sheet1!A1:D20' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'set', 'sid', 'Sheet1!A1:D20'], { account: undefined });
   });
 
   it('includes --row-properties-json and --column-properties-json when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_banding_set')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_banding_set', {
       spreadsheetId: 'sid', range: 'A1:D20',
       rowPropertiesJson: '{"firstBandColor":{}}',
       columnPropertiesJson: '{"secondBandColor":{}}',
@@ -1160,30 +1162,30 @@ describe('gog_sheets_banding_set', () => {
 // 38. banding clear
 describe('gog_sheets_banding_clear', () => {
   it('calls runOrDiagnose with no optional flags', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_banding_clear')!({ spreadsheetId: 'sid' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_banding_clear', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', 'sid', '--force'], { account: undefined });
   });
 
   it('includes --id when provided (including 0)', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_banding_clear')!({ spreadsheetId: 'sid', id: 0 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_banding_clear', { spreadsheetId: 'sid', id: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', 'sid', '--id=0', '--force'], { account: undefined });
   });
 
   it('includes --all and --sheet when clearing a whole sheet', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_banding_clear')!({ spreadsheetId: 'sid', all: true, sheet: 'Data' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_banding_clear', { spreadsheetId: 'sid', all: true, sheet: 'Data' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', 'sid', '--all', '--sheet=Data', '--force'], { account: undefined });
   });
 
   it('omits --all when false', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_banding_clear')!({ spreadsheetId: 'sid', all: false, id: 5 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_banding_clear', { spreadsheetId: 'sid', all: false, id: 5 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', 'sid', '--id=5', '--force'], { account: undefined });
   });
 });
@@ -1191,16 +1193,16 @@ describe('gog_sheets_banding_clear', () => {
 // 39. conditional-format list
 describe('gog_sheets_conditional_format_list', () => {
   it('calls runOrDiagnose with no --sheet', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_conditional_format_list')!({ spreadsheetId: 'sid' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_list', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'list', 'sid'], { account: undefined });
   });
 
   it('includes --sheet when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_conditional_format_list')!({ spreadsheetId: 'sid', sheet: 'Data' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_list', { spreadsheetId: 'sid', sheet: 'Data' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'list', 'sid', '--sheet=Data'], { account: undefined });
   });
 });
@@ -1208,9 +1210,9 @@ describe('gog_sheets_conditional_format_list', () => {
 // 40. conditional-format add
 describe('gog_sheets_conditional_format_add', () => {
   it('calls runOrDiagnose with type and --format-json (no expr/fields)', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_conditional_format_add')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_add', {
       spreadsheetId: 'sid', range: 'A1:A100', type: 'not-blank', formatJson: '{"backgroundColor":{}}',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -1220,9 +1222,9 @@ describe('gog_sheets_conditional_format_add', () => {
   });
 
   it('includes --expr and --format-fields when provided', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_conditional_format_add')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_add', {
       spreadsheetId: 'sid', range: 'B1:B50', type: 'number-gt', expr: '100', formatJson: '{}', formatFields: 'backgroundColor,textFormat.bold',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -1232,9 +1234,9 @@ describe('gog_sheets_conditional_format_add', () => {
   });
 
   it('includes --expr when it is an empty string', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_conditional_format_add')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_add', {
       spreadsheetId: 'sid', range: 'A1', type: 'text-eq', expr: '', formatJson: '{}',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -1247,30 +1249,30 @@ describe('gog_sheets_conditional_format_add', () => {
 // 41. conditional-format clear
 describe('gog_sheets_conditional_format_clear', () => {
   it('calls runOrDiagnose with --sheet only', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_conditional_format_clear')!({ spreadsheetId: 'sid', sheet: 'Data' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_clear', { spreadsheetId: 'sid', sheet: 'Data' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', 'sid', '--sheet=Data', '--force'], { account: undefined });
   });
 
   it('includes --index when provided (including 0)', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_conditional_format_clear')!({ spreadsheetId: 'sid', sheet: 'Data', index: 0 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_clear', { spreadsheetId: 'sid', sheet: 'Data', index: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', 'sid', '--sheet=Data', '--index=0', '--force'], { account: undefined });
   });
 
   it('includes --all when true', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_conditional_format_clear')!({ spreadsheetId: 'sid', sheet: 'Data', all: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_clear', { spreadsheetId: 'sid', sheet: 'Data', all: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', 'sid', '--sheet=Data', '--all', '--force'], { account: undefined });
   });
 
   it('omits --all when false', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_conditional_format_clear')!({ spreadsheetId: 'sid', sheet: 'Data', all: false, index: 2 });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_clear', { spreadsheetId: 'sid', sheet: 'Data', all: false, index: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', 'sid', '--sheet=Data', '--index=2', '--force'], { account: undefined });
   });
 });
@@ -1278,16 +1280,16 @@ describe('gog_sheets_conditional_format_clear', () => {
 // 49. snapshot (backup before destructive edits)
 describe('gog_sheets_snapshot', () => {
   it('copies the spreadsheet to a named backup', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_snapshot')!({ spreadsheetId: 'sid', name: 'Backup A' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_snapshot', { spreadsheetId: 'sid', name: 'Backup A' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', 'sid', 'Backup A'], { account: undefined });
   });
 
   it('includes --parent and forwards account', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_snapshot')!({ spreadsheetId: 'sid', name: 'Backup A', parent: 'folder1', account: 'a@b.com' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_snapshot', { spreadsheetId: 'sid', name: 'Backup A', parent: 'folder1', account: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', 'sid', 'Backup A', '--parent=folder1'], { account: 'a@b.com' });
   });
 });
@@ -1295,9 +1297,9 @@ describe('gog_sheets_snapshot', () => {
 // gog 0.24.0
 describe('gog_sheets_validation_get', () => {
   it('reads validation rules for a range', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_validation_get')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:A10' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_validation_get', { spreadsheetId: 'sid', range: 'Sheet1!A1:A10' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'validation', 'get', 'sid', 'Sheet1!A1:A10'],
       { account: undefined },
@@ -1307,9 +1309,9 @@ describe('gog_sheets_validation_get', () => {
 
 describe('gog_sheets_validation_set', () => {
   it('sets a dropdown rule with repeated values', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_validation_set')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_validation_set', {
       spreadsheetId: 'sid', range: 'A1:A10', type: 'ONE_OF_LIST', values: ['Red', 'Green'],
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -1319,9 +1321,9 @@ describe('gog_sheets_validation_set', () => {
   });
 
   it('passes strict, input message, custom UI and filtered-rows flags', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_validation_set')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_validation_set', {
       spreadsheetId: 'sid', range: 'A1', type: 'NUMBER_BETWEEN', values: ['1', '10'],
       strict: true, inputMessage: 'Pick 1-10', showCustomUi: true, filteredRowsIncluded: true,
     });
@@ -1335,9 +1337,9 @@ describe('gog_sheets_validation_set', () => {
 
 describe('gog_sheets_validation_clear', () => {
   it('clears rules from a range', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_validation_clear')!({ spreadsheetId: 'sid', range: 'A1:A10', filteredRowsIncluded: true });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_validation_clear', { spreadsheetId: 'sid', range: 'A1:A10', filteredRowsIncluded: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'validation', 'clear', 'sid', 'A1:A10', '--filtered-rows-included'],
       { account: undefined },
@@ -1347,9 +1349,9 @@ describe('gog_sheets_validation_clear', () => {
 
 describe('gog_sheets_delete_dimension', () => {
   it('deletes a row span from a sheet target', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_delete_dimension')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_delete_dimension', {
       spreadsheetId: 'sid', rangeOrSheet: 'Sheet1', dimension: 'ROWS', start: 5, end: 7,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -1359,9 +1361,9 @@ describe('gog_sheets_delete_dimension', () => {
   });
 
   it('deletes columns by A1 range without start/end', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_delete_dimension')!({
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_delete_dimension', {
       spreadsheetId: 'sid', rangeOrSheet: 'Sheet1!C:D', dimension: 'COLUMNS', account: 'a@b.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -1374,9 +1376,9 @@ describe('gog_sheets_delete_dimension', () => {
 // Falsy-branch coverage for the validation tools (no optional flags)
 describe('validation tools bare calls', () => {
   it('gog_sheets_validation_set without values (e.g. BOOLEAN checkbox)', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_validation_set')!({ spreadsheetId: 'sid', range: 'A1', type: 'BOOLEAN' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_validation_set', { spreadsheetId: 'sid', range: 'A1', type: 'BOOLEAN' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'validation', 'set', 'sid', 'A1', '--type=BOOLEAN'],
       { account: undefined },
@@ -1384,12 +1386,40 @@ describe('validation tools bare calls', () => {
   });
 
   it('gog_sheets_validation_clear without filteredRowsIncluded', async () => {
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_validation_clear')!({ spreadsheetId: 'sid', range: 'A1' });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_validation_clear', { spreadsheetId: 'sid', range: 'A1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['sheets', 'validation', 'clear', 'sid', 'A1'],
       { account: undefined },
     );
+  });
+});
+
+// resultText degradations: a non-text tool result (never produced by
+// runOrDiagnose today, but allowed by the MCP result shape) degrades
+// gracefully instead of crashing the post-processing.
+describe('non-text result passthrough', () => {
+  it('gog_sheets_number_format skips the warning when the peek result is non-text', async () => {
+    const harness = await setupHandlers();
+    vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+      if (args[1] === 'get') return { content: [] };
+      return rawTextResult('{"ok":true}');
+    });
+    const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+    expect(result.content[0].text).toBe('{"ok":true}');
+  });
+
+  it('gog_sheets_number_format merges the warning onto a non-text format result', async () => {
+    const harness = await setupHandlers();
+    vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: string[]) => {
+      if (args[1] === 'get') {
+        return rawTextResult(JSON.stringify({ range: 'A1:A3', values: [[1], [2], [3]] }));
+      }
+      return { content: [] };
+    });
+    const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toMatch(/warning/i);
   });
 });

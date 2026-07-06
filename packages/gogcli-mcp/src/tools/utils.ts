@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
 import { run } from '../runner.js';
-
-export type ToolResult = { content: [{ type: 'text'; text: string }] };
 
 export const accountParam = z.string().optional().describe(
   'Google account email to use, e.g. you@gmail.com — must be the full address, not a bare username. ' +
@@ -88,12 +88,11 @@ export function registerRunTool(
   });
 }
 
-export function toText(output: string): ToolResult {
-  return { content: [{ type: 'text' as const, text: output }] };
-}
-
-export function toError(err: unknown): ToolResult {
-  return toText(err instanceof Error ? `Error: ${err.message}` : String(err));
+// The fleet-standard error text for a thrown value ("Error: <message>").
+// Pair with mcp-utils errorResult (which redacts secrets and sets
+// `isError: true`) when the text is the whole tool result.
+export function errorText(err: unknown): string {
+  return err instanceof Error ? `Error: ${err.message}` : String(err);
 }
 
 const AUTH_ERROR_PATTERN = /\b(401|unauthorized|token.*(expired|revoked)|invalid_grant)\b/i;
@@ -139,14 +138,14 @@ export function formatAccountList(raw: string): string {
   return raw.trim();
 }
 
-// Turn a thrown error into a diagnosed ToolResult: the error text, an
-// actionable hint when the failure class is recognised (auth / transient /
-// off-grid write), and the list of configured accounts. Callers that need to
-// surface a failure without going through runOrDiagnose (e.g. a pre-write
-// verification read that must abort) can reuse this so the error keeps the
-// same diagnostic quality as everywhere else.
-export async function diagnose(err: unknown): Promise<ToolResult> {
-  const errText = toError(err).content[0].text;
+// Turn a thrown error into a diagnosed error result (`isError: true`): the
+// error text, an actionable hint when the failure class is recognised (auth /
+// transient / off-grid write), and the list of configured accounts. Callers
+// that need to surface a failure without going through runOrDiagnose (e.g. a
+// pre-write verification read that must abort) can reuse this so the error
+// keeps the same diagnostic quality as everywhere else.
+export async function diagnose(err: unknown): Promise<CallToolResult> {
+  const errText = errorText(err);
   const isAuthError = AUTH_ERROR_PATTERN.test(errText);
   const isTransientError = !isAuthError && TRANSIENT_ERROR_PATTERN.test(errText);
   const isGridLimitError = GRID_LIMIT_ERROR_PATTERN.test(errText);
@@ -159,18 +158,18 @@ export async function diagnose(err: unknown): Promise<ToolResult> {
         : '';
   try {
     const accounts = formatAccountList(await run(['auth', 'list']));
-    return toText(`${errText}\n\nConfigured accounts:\n${accounts || '(none)'}${hint}`);
+    return errorResult(`${errText}\n\nConfigured accounts:\n${accounts || '(none)'}${hint}`);
   } catch {
-    return toText(`${errText}${hint}`);
+    return errorResult(`${errText}${hint}`);
   }
 }
 
 export async function runOrDiagnose(
   args: string[],
   options: { account?: string },
-): Promise<ToolResult> {
+): Promise<CallToolResult> {
   try {
-    return toText(await run(args, options));
+    return rawTextResult(await run(args, options));
   } catch (err) {
     return diagnose(err);
   }

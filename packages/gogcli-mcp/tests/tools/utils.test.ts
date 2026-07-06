@@ -88,10 +88,11 @@ describe('formatAccountList', () => {
 });
 
 describe('runOrDiagnose', () => {
-  it('returns output text on success', async () => {
+  it('returns output text on success (not flagged as an error)', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"ok":true}');
     const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
     expect(result.content[0].text).toBe('{"ok":true}');
+    expect(result.isError).toBeUndefined();
   });
 
   it('appends auth list on non-auth failure', async () => {
@@ -102,6 +103,8 @@ describe('runOrDiagnose', () => {
     expect(result.content[0].text).toBe(
       'Error: Doc not found\n\nConfigured accounts:\nuser@gmail.com',
     );
+    // mcp-utils errorResult flags diagnosed failures for the client.
+    expect(result.isError).toBe(true);
     expect(result.content[0].text).not.toContain('gog_auth_add');
   });
 
@@ -184,6 +187,7 @@ describe('runOrDiagnose', () => {
       .mockRejectedValueOnce(new Error('auth list failed'));
     const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
     expect(result.content[0].text).toBe('Error: Doc not found');
+    expect(result.isError).toBe(true);
     expect(result.content[0].text).not.toContain('gog_auth_add');
   });
 

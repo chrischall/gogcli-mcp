@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { run } from '../runner.js';
-import { toText, toError, runOrDiagnose, registerRunTool } from './utils.js';
+import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
+import { errorText, registerRunTool } from './utils.js';
 
 export function registerAuthTools(server: McpServer): void {
   server.registerTool('gog_auth_list', {
@@ -10,9 +11,9 @@ export function registerAuthTools(server: McpServer): void {
     inputSchema: {},
   }, async () => {
     try {
-      return toText(await run(['auth', 'list']));
+      return rawTextResult(await run(['auth', 'list']));
     } catch (err) {
-      return toError(err);
+      return errorResult(errorText(err));
     }
   });
 
@@ -22,9 +23,9 @@ export function registerAuthTools(server: McpServer): void {
     inputSchema: {},
   }, async () => {
     try {
-      return toText(await run(['auth', 'status']));
+      return rawTextResult(await run(['auth', 'status']));
     } catch (err) {
-      return toError(err);
+      return errorResult(errorText(err));
     }
   });
 
@@ -34,9 +35,9 @@ export function registerAuthTools(server: McpServer): void {
     inputSchema: {},
   }, async () => {
     try {
-      return toText(await run(['auth', 'services']));
+      return rawTextResult(await run(['auth', 'services']));
     } catch (err) {
-      return toError(err);
+      return errorResult(errorText(err));
     }
   });
 
@@ -56,12 +57,12 @@ export function registerAuthTools(server: McpServer): void {
     },
   }, async ({ email, services = 'all' }) => {
     try {
-      return toText(await run(['auth', 'add', email, '--services', services], {
+      return rawTextResult(await run(['auth', 'add', email, '--services', services], {
         interactive: true,
         timeout: 300_000,
       }));
     } catch (err) {
-      return toError(err);
+      return errorResult(errorText(err));
     }
   });
 

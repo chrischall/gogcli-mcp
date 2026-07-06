@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerExtraCalendarTools } from '../../src/tools/calendar-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
-import { setupHandlers, toText, type ToolHandler } from '../../../gogcli-mcp/tests/helpers/test-harness.js';
+import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
+import { rawTextResult } from '@chrischall/mcp-utils';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -11,22 +12,22 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   };
 });
 
-let handlers: Map<string, ToolHandler>;
+let harness: TestHarness;
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
-  vi.mocked(lib.runOrDiagnose).mockResolvedValue(toText('{}'));
-  handlers = setupHandlers(registerExtraCalendarTools);
+  vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+  harness = await createTestHarness(registerExtraCalendarTools);
 });
 
 describe('gog_meet_create', () => {
   it('calls runOrDiagnose with no flags', async () => {
-    await handlers.get('gog_meet_create')!({});
+    await harness.callTool('gog_meet_create', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'create'], { account: undefined });
   });
 
   it('passes --access and --open when provided', async () => {
-    await handlers.get('gog_meet_create')!({ access: 'open', open: true });
+    await harness.callTool('gog_meet_create', { access: 'open', open: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['meet', 'create', '--access=open', '--open'],
       { account: undefined },
@@ -34,21 +35,21 @@ describe('gog_meet_create', () => {
   });
 
   it('omits --open when false', async () => {
-    await handlers.get('gog_meet_create')!({ open: false });
+    await harness.callTool('gog_meet_create', { open: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'create'], { account: undefined });
   });
 });
 
 describe('gog_meet_get', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
-    await handlers.get('gog_meet_get')!({ meetingCode: 'abc-defg-hij' });
+    await harness.callTool('gog_meet_get', { meetingCode: 'abc-defg-hij' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'get', 'abc-defg-hij'], { account: undefined });
   });
 });
 
 describe('gog_meet_update', () => {
   it('calls runOrDiagnose with meetingCode and --access', async () => {
-    await handlers.get('gog_meet_update')!({ meetingCode: 'abc-defg-hij', access: 'restricted' });
+    await harness.callTool('gog_meet_update', { meetingCode: 'abc-defg-hij', access: 'restricted' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['meet', 'update', 'abc-defg-hij', '--access=restricted'],
       { account: undefined },
@@ -56,26 +57,26 @@ describe('gog_meet_update', () => {
   });
 
   it('omits --access when not provided', async () => {
-    await handlers.get('gog_meet_update')!({ meetingCode: 'abc-defg-hij' });
+    await harness.callTool('gog_meet_update', { meetingCode: 'abc-defg-hij' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'update', 'abc-defg-hij'], { account: undefined });
   });
 });
 
 describe('gog_meet_end', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
-    await handlers.get('gog_meet_end')!({ meetingCode: 'abc-defg-hij' });
+    await harness.callTool('gog_meet_end', { meetingCode: 'abc-defg-hij' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'end', 'abc-defg-hij', '--force'], { account: undefined });
   });
 });
 
 describe('gog_meet_history', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
-    await handlers.get('gog_meet_history')!({ meetingCode: 'abc-defg-hij' });
+    await harness.callTool('gog_meet_history', { meetingCode: 'abc-defg-hij' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'history', 'abc-defg-hij'], { account: undefined });
   });
 
   it('passes pagination flags', async () => {
-    await handlers.get('gog_meet_history')!({
+    await harness.callTool('gog_meet_history', {
       meetingCode: 'abc-defg-hij',
       max: 50,
       page: 'tok',
@@ -88,7 +89,7 @@ describe('gog_meet_history', () => {
   });
 
   it('omits --all when false', async () => {
-    await handlers.get('gog_meet_history')!({ meetingCode: 'abc-defg-hij', all: false });
+    await harness.callTool('gog_meet_history', { meetingCode: 'abc-defg-hij', all: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'history', 'abc-defg-hij'], { account: undefined });
   });
 });
@@ -97,7 +98,7 @@ describe('gog_meet_history', () => {
 
 describe('gog_zoom_auth_setup', () => {
   it('passes credentials and uses default alias when omitted', async () => {
-    await handlers.get('gog_zoom_auth_setup')!({
+    await harness.callTool('gog_zoom_auth_setup', {
       accountId: 'acct',
       clientId: 'cid',
       clientSecret: 'csecret',
@@ -112,7 +113,7 @@ describe('gog_zoom_auth_setup', () => {
   });
 
   it('passes --alias and --skip-validate when provided', async () => {
-    await handlers.get('gog_zoom_auth_setup')!({
+    await harness.callTool('gog_zoom_auth_setup', {
       accountId: 'acct', clientId: 'cid', clientSecret: 'csecret',
       alias: 'work', skipValidate: true,
     });
@@ -130,12 +131,12 @@ describe('gog_zoom_auth_setup', () => {
 
 describe('gog_zoom_auth_doctor', () => {
   it('validates default alias', async () => {
-    await handlers.get('gog_zoom_auth_doctor')!({});
+    await harness.callTool('gog_zoom_auth_doctor', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['zoom', 'auth', 'doctor'], { account: undefined });
   });
 
   it('passes --alias when provided', async () => {
-    await handlers.get('gog_zoom_auth_doctor')!({ alias: 'work' });
+    await harness.callTool('gog_zoom_auth_doctor', { alias: 'work' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['zoom', 'auth', 'doctor', '--alias=work'],
       { account: undefined },
@@ -147,12 +148,12 @@ describe('gog_zoom_auth_doctor', () => {
 
 describe('gog_calendar_calendars', () => {
   it('calls runOrDiagnose with no flags', async () => {
-    await handlers.get('gog_calendar_calendars')!({});
+    await harness.callTool('gog_calendar_calendars', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'calendars'], { account: undefined });
   });
 
   it('passes pagination flags', async () => {
-    await handlers.get('gog_calendar_calendars')!({ max: 50, page: 'tok', all: true });
+    await harness.callTool('gog_calendar_calendars', { max: 50, page: 'tok', all: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'calendars', '--max=50', '--page=tok', '--all'],
       { account: undefined },
@@ -160,19 +161,19 @@ describe('gog_calendar_calendars', () => {
   });
 
   it('omits --all when false', async () => {
-    await handlers.get('gog_calendar_calendars')!({ all: false });
+    await harness.callTool('gog_calendar_calendars', { all: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'calendars'], { account: undefined });
   });
 });
 
 describe('gog_calendar_search', () => {
   it('calls runOrDiagnose with just the query', async () => {
-    await handlers.get('gog_calendar_search')!({ query: 'standup' });
+    await harness.callTool('gog_calendar_search', { query: 'standup' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'search', 'standup'], { account: undefined });
   });
 
   it('passes all filter flags when provided', async () => {
-    await handlers.get('gog_calendar_search')!({
+    await harness.callTool('gog_calendar_search', {
       query: 'standup',
       from: 'today',
       to: 'tomorrow',
@@ -197,7 +198,7 @@ describe('gog_calendar_search', () => {
   });
 
   it('omits boolean flags when false', async () => {
-    await handlers.get('gog_calendar_search')!({
+    await harness.callTool('gog_calendar_search', {
       query: 'standup', today: false, tomorrow: false, week: false,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'search', 'standup'], { account: undefined });
@@ -206,12 +207,12 @@ describe('gog_calendar_search', () => {
 
 describe('gog_calendar_changed', () => {
   it('calls runOrDiagnose with no flags by default', async () => {
-    await handlers.get('gog_calendar_changed')!({});
+    await harness.callTool('gog_calendar_changed', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'changed'], { account: undefined });
   });
 
   it('passes calendarId positionally and all flags', async () => {
-    await handlers.get('gog_calendar_changed')!({
+    await harness.callTool('gog_calendar_changed', {
       calendarId: 'primary',
       calendarIds: 'work,personal',
       since: '48h',
@@ -226,14 +227,14 @@ describe('gog_calendar_changed', () => {
   });
 
   it('omits --all when false', async () => {
-    await handlers.get('gog_calendar_changed')!({ all: false });
+    await harness.callTool('gog_calendar_changed', { all: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'changed'], { account: undefined });
   });
 });
 
 describe('gog_calendar_freebusy', () => {
   it('calls runOrDiagnose with required from/to only', async () => {
-    await handlers.get('gog_calendar_freebusy')!({ from: 'A', to: 'B' });
+    await harness.callTool('gog_calendar_freebusy', { from: 'A', to: 'B' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'freebusy', '--from=A', '--to=B'],
       { account: undefined },
@@ -241,7 +242,7 @@ describe('gog_calendar_freebusy', () => {
   });
 
   it('passes calendarIds and --all when provided', async () => {
-    await handlers.get('gog_calendar_freebusy')!({
+    await harness.callTool('gog_calendar_freebusy', {
       from: 'A', to: 'B', calendarIds: 'primary,team@x.com', all: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -251,7 +252,7 @@ describe('gog_calendar_freebusy', () => {
   });
 
   it('omits --all when false', async () => {
-    await handlers.get('gog_calendar_freebusy')!({ from: 'A', to: 'B', all: false });
+    await harness.callTool('gog_calendar_freebusy', { from: 'A', to: 'B', all: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'freebusy', '--from=A', '--to=B'],
       { account: undefined },
@@ -261,19 +262,19 @@ describe('gog_calendar_freebusy', () => {
 
 describe('gog_calendar_colors', () => {
   it('calls runOrDiagnose with the colors subcommand', async () => {
-    await handlers.get('gog_calendar_colors')!({});
+    await harness.callTool('gog_calendar_colors', {});
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'colors'], { account: undefined });
   });
 });
 
 describe('gog_calendar_acl', () => {
   it('calls runOrDiagnose with calendarId only', async () => {
-    await handlers.get('gog_calendar_acl')!({ calendarId: 'primary' });
+    await harness.callTool('gog_calendar_acl', { calendarId: 'primary' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'acl', 'primary'], { account: undefined });
   });
 
   it('passes pagination flags', async () => {
-    await handlers.get('gog_calendar_acl')!({ calendarId: 'primary', max: 25, page: 'tok', all: true });
+    await harness.callTool('gog_calendar_acl', { calendarId: 'primary', max: 25, page: 'tok', all: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'acl', 'primary', '--max=25', '--page=tok', '--all'],
       { account: undefined },
@@ -281,14 +282,14 @@ describe('gog_calendar_acl', () => {
   });
 
   it('omits --all when false', async () => {
-    await handlers.get('gog_calendar_acl')!({ calendarId: 'primary', all: false });
+    await harness.callTool('gog_calendar_acl', { calendarId: 'primary', all: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'acl', 'primary'], { account: undefined });
   });
 });
 
 describe('gog_calendar_move', () => {
   it('calls runOrDiagnose with the three positionals', async () => {
-    await handlers.get('gog_calendar_move')!({
+    await harness.callTool('gog_calendar_move', {
       calendarId: 'primary', eventId: 'ev1', destinationCalendarId: 'team@x.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -298,7 +299,7 @@ describe('gog_calendar_move', () => {
   });
 
   it('passes --send-updates when provided', async () => {
-    await handlers.get('gog_calendar_move')!({
+    await harness.callTool('gog_calendar_move', {
       calendarId: 'primary', eventId: 'ev1', destinationCalendarId: 'team@x.com',
       sendUpdates: 'all',
     });
@@ -311,7 +312,7 @@ describe('gog_calendar_move', () => {
 
 describe('gog_calendar_out_of_office', () => {
   it('calls runOrDiagnose with required from/to only', async () => {
-    await handlers.get('gog_calendar_out_of_office')!({ from: '2026-06-01', to: '2026-06-05' });
+    await harness.callTool('gog_calendar_out_of_office', { from: '2026-06-01', to: '2026-06-05' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'out-of-office', '--from=2026-06-01', '--to=2026-06-05'],
       { account: undefined },
@@ -319,7 +320,7 @@ describe('gog_calendar_out_of_office', () => {
   });
 
   it('passes calendarId and all optional flags when provided', async () => {
-    await handlers.get('gog_calendar_out_of_office')!({
+    await harness.callTool('gog_calendar_out_of_office', {
       from: '2026-06-01', to: '2026-06-05',
       calendarId: 'primary',
       summary: 'Vacation',
@@ -339,7 +340,7 @@ describe('gog_calendar_out_of_office', () => {
   });
 
   it('omits --all-day when false', async () => {
-    await handlers.get('gog_calendar_out_of_office')!({ from: '2026-06-01', to: '2026-06-05', allDay: false });
+    await harness.callTool('gog_calendar_out_of_office', { from: '2026-06-01', to: '2026-06-05', allDay: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'out-of-office', '--from=2026-06-01', '--to=2026-06-05'],
       { account: undefined },
@@ -349,7 +350,7 @@ describe('gog_calendar_out_of_office', () => {
 
 describe('gog_meet_participants', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
-    await handlers.get('gog_meet_participants')!({ meetingCode: 'abc-defg-hij' });
+    await harness.callTool('gog_meet_participants', { meetingCode: 'abc-defg-hij' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['meet', 'participants', 'abc-defg-hij'],
       { account: undefined },
@@ -357,7 +358,7 @@ describe('gog_meet_participants', () => {
   });
 
   it('passes --conference and pagination flags', async () => {
-    await handlers.get('gog_meet_participants')!({
+    await harness.callTool('gog_meet_participants', {
       meetingCode: 'abc-defg-hij',
       conference: 'conf123',
       max: 100,
@@ -377,7 +378,7 @@ describe('gog_meet_participants', () => {
   });
 
   it('omits --all when false', async () => {
-    await handlers.get('gog_meet_participants')!({ meetingCode: 'abc-defg-hij', all: false });
+    await harness.callTool('gog_meet_participants', { meetingCode: 'abc-defg-hij', all: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['meet', 'participants', 'abc-defg-hij'],
       { account: undefined },
@@ -387,7 +388,7 @@ describe('gog_meet_participants', () => {
 
 describe('gog_calendar_unsubscribe', () => {
   it('calls runOrDiagnose with calendarId', async () => {
-    await handlers.get('gog_calendar_unsubscribe')!({ calendarId: 'cal@group.calendar.google.com' });
+    await harness.callTool('gog_calendar_unsubscribe', { calendarId: 'cal@group.calendar.google.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'unsubscribe', 'cal@group.calendar.google.com'],
       { account: undefined },
@@ -395,7 +396,7 @@ describe('gog_calendar_unsubscribe', () => {
   });
 
   it('passes account through', async () => {
-    await handlers.get('gog_calendar_unsubscribe')!({ calendarId: 'cal', account: 'me@x.com' });
+    await harness.callTool('gog_calendar_unsubscribe', { calendarId: 'cal', account: 'me@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'unsubscribe', 'cal'],
       { account: 'me@x.com' },
@@ -405,7 +406,7 @@ describe('gog_calendar_unsubscribe', () => {
 
 describe('gog_calendar_delete_calendar', () => {
   it('calls runOrDiagnose with calendarId', async () => {
-    await handlers.get('gog_calendar_delete_calendar')!({ calendarId: 'cal' });
+    await harness.callTool('gog_calendar_delete_calendar', { calendarId: 'cal' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'delete-calendar', 'cal', '--force'],
       { account: undefined },
@@ -413,7 +414,7 @@ describe('gog_calendar_delete_calendar', () => {
   });
 
   it('passes account through', async () => {
-    await handlers.get('gog_calendar_delete_calendar')!({ calendarId: 'cal', account: 'me@x.com' });
+    await harness.callTool('gog_calendar_delete_calendar', { calendarId: 'cal', account: 'me@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['calendar', 'delete-calendar', 'cal', '--force'],
       { account: 'me@x.com' },

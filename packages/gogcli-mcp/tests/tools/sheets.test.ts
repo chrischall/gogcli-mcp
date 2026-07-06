@@ -2,27 +2,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerSheetsTools } from '../../src/tools/sheets.js';
 import * as runner from '../../src/runner.js';
-import { setupHandlers as setupHandlersBase, type ToolHandler } from '../helpers/test-harness.js';
+import { createTestHarness } from '@chrischall/mcp-utils/test';
 
 vi.mock('../../src/runner.js');
 
-const setupHandlers = () => setupHandlersBase(registerSheetsTools);
+const setupHandlers = () => createTestHarness(registerSheetsTools);
 
 beforeEach(() => vi.clearAllMocks());
 
 describe('gog_sheets_get', () => {
   it('calls run with correct args', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"values":[["a","b"]]}');
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_get')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:B2' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_get', { spreadsheetId: 'sid', range: 'Sheet1!A1:B2' });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', 'sid', 'Sheet1!A1:B2'], { account: undefined });
     expect(result.content[0].text).toBe('{"values":[["a","b"]]}');
   });
 
   it('forwards account override', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_get')!({ spreadsheetId: 'sid', range: 'A1', account: 'other@gmail.com' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_get', { spreadsheetId: 'sid', range: 'A1', account: 'other@gmail.com' });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', 'sid', 'A1'], { account: 'other@gmail.com' });
   });
 
@@ -30,15 +30,15 @@ describe('gog_sheets_get', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Spreadsheet not found'))
       .mockResolvedValueOnce('user@gmail.com');
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_get')!({ spreadsheetId: 'bad', range: 'A1' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_get', { spreadsheetId: 'bad', range: 'A1' });
     expect(result.content[0].text).toBe('Error: Spreadsheet not found\n\nConfigured accounts:\nuser@gmail.com');
   });
 
   it('returns plain error text when auth list also fails', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Spreadsheet not found'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_get')!({ spreadsheetId: 'bad', range: 'A1' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_get', { spreadsheetId: 'bad', range: 'A1' });
     expect(result.content[0].text).toBe('Error: Spreadsheet not found');
   });
 
@@ -46,8 +46,8 @@ describe('gog_sheets_get', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce('raw error string')
       .mockRejectedValueOnce(new Error('auth list failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_get')!({ spreadsheetId: 'bad', range: 'A1' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_get', { spreadsheetId: 'bad', range: 'A1' });
     expect(result.content[0].text).toBe('raw error string');
   });
 });
@@ -55,9 +55,9 @@ describe('gog_sheets_get', () => {
 describe('gog_sheets_update', () => {
   it('passes values via --values-json flag', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"updatedCells":2}');
-    const handlers = setupHandlers();
+    const harness = await setupHandlers();
     const values = [['hello', 'world']];
-    await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1:B1', values });
+    await harness.callTool('gog_sheets_update', { spreadsheetId: 'sid', range: 'A1:B1', values });
     expect(runner.run).toHaveBeenCalledWith(
       ['sheets', 'update', 'sid', 'A1:B1', `--values-json=${JSON.stringify(values)}`],
       { account: undefined },
@@ -66,9 +66,9 @@ describe('gog_sheets_update', () => {
 
   it('preserves non-string cell types (numbers, booleans, nulls, formulas) in --values-json', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
+    const harness = await setupHandlers();
     const values = [['Sheet', 'A', 'B', 'C'], ['Row', 1, 2.5, '=A2+B2'], ['Bool', true, false, null]];
-    await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1:D3', values });
+    await harness.callTool('gog_sheets_update', { spreadsheetId: 'sid', range: 'A1:D3', values });
     const call = vi.mocked(runner.run).mock.calls[0]!;
     expect(call[0][4]).toBe(`--values-json=${JSON.stringify(values)}`);
     // Spot-check the serialized JSON keeps non-string primitives intact (no stringification)
@@ -81,16 +81,16 @@ describe('gog_sheets_update', () => {
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Update failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_update')!({ spreadsheetId: 'bad', range: 'A1', values: [['x']] });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_update', { spreadsheetId: 'bad', range: 'A1', values: [['x']] });
     expect(result.content[0].text).toBe('Error: Update failed');
   });
 
   it('appends --dry-run when dry_run is true', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"dryRun":true}');
-    const handlers = setupHandlers();
+    const harness = await setupHandlers();
     const values = [['x']];
-    await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1', values, dry_run: true });
+    await harness.callTool('gog_sheets_update', { spreadsheetId: 'sid', range: 'A1', values, dry_run: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['sheets', 'update', 'sid', 'A1', `--values-json=${JSON.stringify(values)}`, '--dry-run'],
       { account: undefined },
@@ -99,16 +99,16 @@ describe('gog_sheets_update', () => {
 
   it('omits --dry-run when dry_run is false or unset', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1', values: [['x']], dry_run: false });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_update', { spreadsheetId: 'sid', range: 'A1', values: [['x']], dry_run: false });
     expect(vi.mocked(runner.run).mock.calls[0]![0]).not.toContain('--dry-run');
   });
 
   it('appends --fail-on-formula-error when fail_on_formula_error is true', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
+    const harness = await setupHandlers();
     const values = [['=1+1']];
-    await handlers.get('gog_sheets_update')!({ spreadsheetId: 'sid', range: 'A1', values, fail_on_formula_error: true });
+    await harness.callTool('gog_sheets_update', { spreadsheetId: 'sid', range: 'A1', values, fail_on_formula_error: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['sheets', 'update', 'sid', 'A1', `--values-json=${JSON.stringify(values)}`, '--fail-on-formula-error'],
       { account: undefined },
@@ -119,8 +119,8 @@ describe('gog_sheets_update', () => {
 describe('gog_sheets_update fail_if_not_empty guard', () => {
   it('aborts the write when the target range already holds data', async () => {
     vi.mocked(runner.run).mockResolvedValueOnce('{"values":[["existing"]]}');
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_update')!({
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true,
     });
     // Only the read happened — no update call.
@@ -135,9 +135,9 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
     vi.mocked(runner.run)
       .mockResolvedValueOnce('{}')
       .mockResolvedValueOnce('{"updatedCells":1}');
-    const handlers = setupHandlers();
+    const harness = await setupHandlers();
     const values = [['new']];
-    const result = await handlers.get('gog_sheets_update')!({
+    const result = await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'A1', values, fail_if_not_empty: true,
     });
     expect(runner.run).toHaveBeenCalledTimes(2);
@@ -151,8 +151,8 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
     vi.mocked(runner.run)
       .mockResolvedValueOnce('{}')
       .mockResolvedValueOnce('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_update')!({
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'Sheet1!A1',
       values: [['a', 'b'], ['c', 'd'], ['e', 'f']], fail_if_not_empty: true,
     });
@@ -163,8 +163,8 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('read boom')) // the verification get
       .mockResolvedValueOnce('{"accounts":[{"email":"u@x.com"}]}'); // diagnose -> auth list
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_update')!({
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true,
     });
     // get + auth list (for diagnosis), but the update is never attempted
@@ -178,8 +178,8 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Request failed with status 401'))
       .mockResolvedValueOnce('{"accounts":[{"email":"u@x.com"}]}');
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_update')!({
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'A1', values: [['x']], fail_if_not_empty: true,
     });
     expect(result.content[0].text).toContain('gog_auth_add');
@@ -187,8 +187,8 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
 
   it('aborts when emptiness cannot be verified from unparseable output', async () => {
     vi.mocked(runner.run).mockResolvedValueOnce('not json');
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_update')!({
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true,
     });
     expect(runner.run).toHaveBeenCalledTimes(1);
@@ -199,8 +199,8 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
     vi.mocked(runner.run)
       .mockResolvedValueOnce('{}')
       .mockResolvedValueOnce('{"dryRun":true}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_update')!({
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true, dry_run: true,
     });
     expect(vi.mocked(runner.run).mock.calls[1]![0]).toContain('--dry-run');
@@ -208,8 +208,8 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
 
   it('skips the guard read when values has no rows', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_update')!({
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'A1', values: [], fail_if_not_empty: true,
     });
     expect(runner.run).toHaveBeenCalledTimes(1);
@@ -218,8 +218,8 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
 
   it('skips the guard read when rows have no columns', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_update')!({
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'A1', values: [[]], fail_if_not_empty: true,
     });
     expect(runner.run).toHaveBeenCalledTimes(1);
@@ -230,9 +230,9 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
 describe('gog_sheets_append', () => {
   it('passes values via --values-json flag', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"updates":{}}');
-    const handlers = setupHandlers();
+    const harness = await setupHandlers();
     const values = [['r1c1', 'r1c2'], ['r2c1', 'r2c2']];
-    await handlers.get('gog_sheets_append')!({ spreadsheetId: 'sid', range: 'Sheet1!A:B', values });
+    await harness.callTool('gog_sheets_append', { spreadsheetId: 'sid', range: 'Sheet1!A:B', values });
     expect(runner.run).toHaveBeenCalledWith(
       ['sheets', 'append', 'sid', 'Sheet1!A:B', `--values-json=${JSON.stringify(values)}`],
       { account: undefined },
@@ -241,16 +241,16 @@ describe('gog_sheets_append', () => {
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Append failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_append')!({ spreadsheetId: 'bad', range: 'A1', values: [['x']] });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_append', { spreadsheetId: 'bad', range: 'A1', values: [['x']] });
     expect(result.content[0].text).toBe('Error: Append failed');
   });
 
   it('appends --dry-run when dry_run is true', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"dryRun":true}');
-    const handlers = setupHandlers();
+    const harness = await setupHandlers();
     const values = [['x']];
-    await handlers.get('gog_sheets_append')!({ spreadsheetId: 'sid', range: 'Sheet1!A:A', values, dry_run: true });
+    await harness.callTool('gog_sheets_append', { spreadsheetId: 'sid', range: 'Sheet1!A:A', values, dry_run: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['sheets', 'append', 'sid', 'Sheet1!A:A', `--values-json=${JSON.stringify(values)}`, '--dry-run'],
       { account: undefined },
@@ -261,22 +261,22 @@ describe('gog_sheets_append', () => {
 describe('gog_sheets_clear', () => {
   it('calls run with correct args', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_clear')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:Z100' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_clear', { spreadsheetId: 'sid', range: 'Sheet1!A1:Z100' });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'clear', 'sid', 'Sheet1!A1:Z100'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Clear failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_clear')!({ spreadsheetId: 'bad', range: 'A1' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_clear', { spreadsheetId: 'bad', range: 'A1' });
     expect(result.content[0].text).toBe('Error: Clear failed');
   });
 
   it('appends --dry-run when dry_run is true', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"dryRun":true}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_clear')!({ spreadsheetId: 'sid', range: 'Sheet1!A1:Z100', dry_run: true });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_clear', { spreadsheetId: 'sid', range: 'Sheet1!A1:Z100', dry_run: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['sheets', 'clear', 'sid', 'Sheet1!A1:Z100', '--dry-run'],
       { account: undefined },
@@ -298,16 +298,16 @@ describe('gog_sheets_metadata', () => {
 
   it('calls run with spreadsheetId only', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"title":"My Sheet","sheets":[{"title":"Sheet1"}]}');
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_metadata')!({ spreadsheetId: 'sid' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_metadata', { spreadsheetId: 'sid' });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'metadata', 'sid'], { account: undefined });
     expect(result.content[0].text).toContain('My Sheet');
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Not found'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_metadata')!({ spreadsheetId: 'bad' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_metadata', { spreadsheetId: 'bad' });
     expect(result.content[0].text).toBe('Error: Not found');
   });
 });
@@ -315,15 +315,15 @@ describe('gog_sheets_metadata', () => {
 describe('gog_sheets_create', () => {
   it('calls run with title', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"spreadsheetId":"newid","title":"Budget 2026"}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_create')!({ title: 'Budget 2026' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_create', { title: 'Budget 2026' });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'create', 'Budget 2026'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Create failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_create')!({ title: 'Bad' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_create', { title: 'Bad' });
     expect(result.content[0].text).toBe('Error: Create failed');
   });
 });
@@ -331,15 +331,15 @@ describe('gog_sheets_create', () => {
 describe('gog_sheets_find_replace', () => {
   it('calls run with find and replace args', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"occurrencesChanged":3}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_find_replace')!({ spreadsheetId: 'sid', find: 'foo', replace: 'bar' });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_find_replace', { spreadsheetId: 'sid', find: 'foo', replace: 'bar' });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'find-replace', 'sid', 'foo', 'bar'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Replace failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_find_replace')!({ spreadsheetId: 'bad', find: 'x', replace: 'y' });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_find_replace', { spreadsheetId: 'bad', find: 'x', replace: 'y' });
     expect(result.content[0].text).toBe('Error: Replace failed');
   });
 });
@@ -347,8 +347,8 @@ describe('gog_sheets_find_replace', () => {
 describe('gog_sheets_run', () => {
   it('passes raw subcommand and args to runner', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_run')!({
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_run', {
       subcommand: 'freeze',
       args: ['sid', '--rows=1'],
     });
@@ -357,15 +357,15 @@ describe('gog_sheets_run', () => {
 
   it('works with empty args array', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const handlers = setupHandlers();
-    await handlers.get('gog_sheets_run')!({ subcommand: 'metadata', args: [] });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_run', { subcommand: 'metadata', args: [] });
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'metadata'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Run failed'));
-    const handlers = setupHandlers();
-    const result = await handlers.get('gog_sheets_run')!({ subcommand: 'freeze', args: [] });
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_run', { subcommand: 'freeze', args: [] });
     expect(result.content[0].text).toBe('Error: Run failed');
   });
 });

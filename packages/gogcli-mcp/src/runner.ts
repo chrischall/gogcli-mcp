@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { delimiter } from 'node:path';
+import { parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
 
 export type Spawner = (
   command: string,
@@ -28,23 +29,15 @@ const TIMEOUT_MS = 30_000;
 // version; keep the README/CLAUDE.md mention in sync.
 export const MIN_GOG_VERSION = '0.32.0';
 
-// Treat unresolved .mcpb placeholders ("${user_config.gog_path}") and empty
-// strings the same as an unset env var. When an optional .mcpb user_config
-// field is left blank, some clients pass the literal placeholder text through
-// to the spawned server instead of substituting "" or omitting the key.
-function envOrUndefined(key: string): string | undefined {
-  const value = process.env[key];
-  if (!value || value.startsWith('${')) return undefined;
-  return value;
-}
-
-// Interpret a boolean-ish env var. Returns false when unset, blank, an
-// unresolved .mcpb placeholder, or an explicit off value (0/false/no/off);
-// any other set value (e.g. "1", "true") enables it. Used for GOG_READONLY.
-function envFlagEnabled(key: string): boolean {
-  const value = envOrUndefined(key);
-  if (value === undefined) return false;
-  return !/^(0|false|no|off)$/i.test(value.trim());
+// Interpret the GOG_READONLY kill-switch. `readEnvVar` already treats blank
+// values, 'undefined'/'null' sentinels, and unresolved .mcpb placeholders
+// ("${user_config.gog_readonly}") as unset. On top of that, GOG_READONLY is
+// deliberately fail-safe: any *set* value that isn't an explicit off value
+// (0/false/no/off) enables readonly — parseBoolEnv's `default: true` covers
+// unrecognised values (e.g. "enable"), so a typo blocks writes instead of
+// silently allowing them.
+function readonlyEnvEnabled(): boolean {
+  return readEnvVar('GOG_READONLY') !== undefined && parseBoolEnv('GOG_READONLY', { default: true });
 }
 
 // Strip ambient secrets from the child env so gogcli only sees its own
@@ -67,15 +60,16 @@ function sanitizedEnv(): NodeJS.ProcessEnv {
 // Redact bearer/refresh-token patterns from error text before surfacing
 // it back to the MCP client. If gog ever emits a token in stderr (e.g.
 // from a verbose log mode), this prevents it from leaking to the model.
-const TOKEN_PATTERNS: RegExp[] = [
-  /Bearer\s+[A-Za-z0-9._\-+/=]+/gi,
+// The shared mcp-utils redactSecrets covers Bearer/Basic headers, JWTs,
+// cookies, well-known key shapes (incl. Google AIza… API keys), and secret
+// query params — but not Google's OAuth2 token shapes, so those stay here.
+const GOOGLE_TOKEN_PATTERNS: RegExp[] = [
   /ya29\.[A-Za-z0-9._\-]+/g,           // OAuth2 access tokens
   /1\/\/[A-Za-z0-9._\-]+/g,            // OAuth2 refresh tokens
-  /AIza[A-Za-z0-9_\-]{35}/g,           // Google API keys
 ];
 export function redactSecrets(text: string): string {
-  let redacted = text;
-  for (const re of TOKEN_PATTERNS) {
+  let redacted = redactSharedSecrets(text);
+  for (const re of GOOGLE_TOKEN_PATTERNS) {
     redacted = redacted.replace(re, '[REDACTED]');
   }
   return redacted;
@@ -119,7 +113,7 @@ function formatTimeout(ms: number): string {
 export async function run(args: string[], options: RunOptions = {}): Promise<string> {
   const { account, spawner = spawn as unknown as Spawner, interactive = false, timeout, readonly = false } = options;
 
-  const effectiveAccount = account ?? envOrUndefined('GOG_ACCOUNT');
+  const effectiveAccount = account ?? readEnvVar('GOG_ACCOUNT');
 
   const fullArgs = ['--json', '--color=never'];
   if (!interactive) {
@@ -128,7 +122,7 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
   // Block all mutating gog API requests at runtime when either the caller opts
   // in or GOG_READONLY is set in the environment. gog has no native env binding
   // for --readonly, so the wrapper translates GOG_READONLY into the flag.
-  if (readonly || envFlagEnabled('GOG_READONLY')) {
+  if (readonly || readonlyEnvEnabled()) {
     fullArgs.push('--readonly');
   }
   if (effectiveAccount) {
@@ -140,7 +134,7 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
 
   return new Promise((resolve, reject) => {
     const childEnv = { ...sanitizedEnv(), PATH: augmentedPath() };
-    const child = spawner(envOrUndefined('GOG_PATH') ?? 'gog', fullArgs, { env: childEnv });
+    const child = spawner(readEnvVar('GOG_PATH') ?? 'gog', fullArgs, { env: childEnv });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let settled = false;
