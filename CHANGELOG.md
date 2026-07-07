@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.12.1](https://github.com/chrischall/gogcli-mcp/compare/v2.12.0...v2.12.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* append --force after --dry-run in gog api tool ([#139](https://github.com/chrischall/gogcli-mcp/issues/139)) ([3bf6830](https://github.com/chrischall/gogcli-mcp/commit/3bf68309795eae5468cdea682813e70810fa12a7))
+* **security:** redact gog run success output and stop advertising token dump ([#138](https://github.com/chrischall/gogcli-mcp/issues/138)) ([2eb2ca6](https://github.com/chrischall/gogcli-mcp/commit/2eb2ca6a8340c65e350f5e4a55bf4a4addd3fb22))
+
+
+### Refactor
+
+* adopt @chrischall/mcp-utils (bootstrap, results, redaction, env, test harness) ([#135](https://github.com/chrischall/gogcli-mcp/issues/135)) ([8cceefe](https://github.com/chrischall/gogcli-mcp/commit/8cceefea109c19698063a6b9df04d8f308ef774f))
+
+
+### Documentation
+
+* document first-party dependency-bump label exception ([#140](https://github.com/chrischall/gogcli-mcp/issues/140)) ([e4889ec](https://github.com/chrischall/gogcli-mcp/commit/e4889ecd86ba9b1b4e750adc185be74c8cc12845))
+
 ## [2.12.0](https://github.com/chrischall/gogcli-mcp/compare/v2.11.0...v2.12.0) (2026-07-05)
 
 
