@@ -163,6 +163,8 @@ For every PR, apply exactly one label so it lands in the right release-notes sec
 | *(none / unmatched)* | Other Changes            |
 | `ignore-for-release` | Hidden from notes        |
 
+**Exception for first-party dependency bumps.** When bumping a package we own (`@chrischall/mcp-utils`, `@chrischall/realty-core`, `@fetchproxy/server` — anything published from a chrischall-owned repo), label the PR `enhancement` or `bug` instead of `dependencies`, and use the matching Conventional-Commit prefix (`feat:` or `fix:`) instead of `chore:`/`build(deps):`. Those bumps deliver real product fixes or features through us, so they should drive a release-please version bump and show up under Features/Bug Fixes in the release notes — not get hidden under "Dependencies" (which doesn't trigger a release).
+
 **The PR title MUST be a Conventional Commit** (`fix(security): refuse stale refresh tokens`, `feat(sheets): add dry-run write guard`), not internal shorthand (`auth tweaks`). This matters twice over:
 
 1. **release-please reads the PR title.** Because the repo squash-merges only (see [How PRs merge](#how-prs-merge)), the PR title *becomes the squash commit's subject line* — and that subject is the only thing release-please parses to decide the version bump and CHANGELOG section. A title without a `feat:`/`fix:`/`docs:`/etc. type is invisible to release-please: it bumps nothing, adds no changelog entry, and the change never gets published. Conventional prefixes in *individual commit messages* don't help — squash discards them; only the PR title survives.
