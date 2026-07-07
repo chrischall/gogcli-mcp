@@ -56,8 +56,10 @@ export function registerApiTools(server: McpServer): void {
     if (scope) args.push(`--scope=${scope}`);
     // gog additionally gates mutating Discovery calls behind a confirmation;
     // the runner injects --no-input, so --allow-write alone still refuses.
-    if (allowWrite) args.push('--allow-write', '--force');
+    if (allowWrite) args.push('--allow-write');
     if (dryRun) args.push('--dry-run');
+    // Fleet convention: --force is appended LAST (after --dry-run when both are set).
+    if (allowWrite) args.push('--force');
     return runOrDiagnose(args, { account });
   });
 }
