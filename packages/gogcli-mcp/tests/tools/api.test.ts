@@ -81,10 +81,21 @@ describe('gog_api_call', () => {
       [
         'api', 'call', 'drive', 'v3', 'files.create',
         '--params={"fields":"id"}', '--body={"name":"f"}',
-        '--scope=https://www.googleapis.com/auth/drive', '--allow-write', '--force', '--dry-run',
+        '--scope=https://www.googleapis.com/auth/drive', '--allow-write', '--dry-run', '--force',
       ],
       { account: 'a@b.com' },
     );
+  });
+
+  it('appends --force last even when dry-run is absent', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_api_call', {
+      api: 'drive', version: 'v3', method: 'files.create', allowWrite: true,
+    });
+    const passedArgs = vi.mocked(runner.run).mock.calls[0][0];
+    expect(passedArgs).toEqual(['api', 'call', 'drive', 'v3', 'files.create', '--allow-write', '--force']);
+    expect(passedArgs[passedArgs.length - 1]).toBe('--force');
   });
 
   it('returns error text on failure', async () => {
