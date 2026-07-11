@@ -14,9 +14,10 @@ export function registerCalendarTools(server: McpServer): void {
       query: z.string().optional().describe('Free text search within events'),
       all: z.boolean().optional().describe('Fetch events from all calendars'),
       eventTypes: z.array(z.enum(['default', 'birthday', 'focus-time', 'from-gmail', 'out-of-office', 'working-location'])).optional().describe('Filter to specific event types (repeatable)'),
+      timezone: z.string().optional().describe('Display timezone for event times (IANA name, e.g. America/New_York, or "local" for the system timezone). Default: each event\'s timezone, then its calendar\'s timezone.'),
       account: accountParam,
     },
-  }, async ({ calendarId, from, to, today, query, all, eventTypes, account }) => {
+  }, async ({ calendarId, from, to, today, query, all, eventTypes, timezone, account }) => {
     const args = ['calendar', 'events'];
     if (calendarId) args.push(calendarId);
     if (from) args.push(`--from=${from}`);
@@ -25,6 +26,7 @@ export function registerCalendarTools(server: McpServer): void {
     if (query) args.push(`--query=${query}`);
     if (all) args.push('--all');
     if (eventTypes) for (const t of eventTypes) args.push(`--event-types=${t}`);
+    if (timezone) args.push(`--timezone=${timezone}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -34,10 +36,13 @@ export function registerCalendarTools(server: McpServer): void {
     inputSchema: {
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),
+      timezone: z.string().optional().describe('Display timezone for event times (IANA name, e.g. America/New_York, or "local" for the system timezone). Default: the event\'s timezone, then its calendar\'s timezone.'),
       account: accountParam,
     },
-  }, async ({ calendarId, eventId, account }) => {
-    return runOrDiagnose(['calendar', 'event', calendarId, eventId], { account });
+  }, async ({ calendarId, eventId, timezone, account }) => {
+    const args = ['calendar', 'event', calendarId, eventId];
+    if (timezone) args.push(`--timezone=${timezone}`);
+    return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_calendar_create', {

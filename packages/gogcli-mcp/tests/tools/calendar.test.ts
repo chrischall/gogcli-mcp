@@ -44,6 +44,16 @@ describe('gog_calendar_events', () => {
     );
   });
 
+  it('appends --timezone when provided', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_events', { timezone: 'America/New_York' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'events', '--timezone=America/New_York'],
+      { account: undefined },
+    );
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Events failed'));
     const harness = await setupHandlers();
@@ -58,6 +68,16 @@ describe('gog_calendar_get', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_get', { calendarId: 'primary', eventId: 'evt1' });
     expect(runner.run).toHaveBeenCalledWith(['calendar', 'event', 'primary', 'evt1'], { account: undefined });
+  });
+
+  it('appends --timezone when provided', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"id":"evt1"}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_get', { calendarId: 'primary', eventId: 'evt1', timezone: 'local' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'event', 'primary', 'evt1', '--timezone=local'],
+      { account: undefined },
+    );
   });
 
   it('returns error text on failure', async () => {

@@ -60,6 +60,13 @@ describe('gog_docs_cat', () => {
     expect(runner.run).toHaveBeenCalledWith(['docs', 'cat', 'abc'], { account: 'other@gmail.com' });
   });
 
+  it('appends --chips when requested', async () => {
+    vi.mocked(runner.run).mockResolvedValue('Hello @person');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_cat', { docId: 'abc', chips: true });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'cat', 'abc', '--chips'], { account: undefined });
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Not found'));
     const harness = await setupHandlers();
