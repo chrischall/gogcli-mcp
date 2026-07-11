@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-gmail",
-  "version": "2.12.1",
+  "version": "2.13.0",
   "mcpName": "io.github.chrischall/gogcli-mcp-gmail",
   "description": "Extended Gmail MCP server via gogcli — auth + full Gmail support (threads, labels, drafts, attachments, forward, autoreply, bulk operations)",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
