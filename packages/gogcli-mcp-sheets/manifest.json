@@ -293,12 +293,16 @@
       "description": "Remove alternating-color banding by ID or for a whole sheet."
     },
     {
+      "name": "gog_sheets_filter_set",
+      "description": "Set a basic filter on a range; replacing an existing filter requires replace=true."
+    },
+    {
       "name": "gog_sheets_conditional_format_list",
       "description": "List conditional formatting rules."
     },
     {
       "name": "gog_sheets_conditional_format_add",
-      "description": "Add a conditional formatting rule to a range."
+      "description": "Add a conditional formatting rule to a range (boolean or gradient)."
     },
     {
       "name": "gog_sheets_conditional_format_clear",

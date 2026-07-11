@@ -907,6 +907,22 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  // ---- Basic filters (gog 0.33.0) ----
+
+  server.registerTool('gog_sheets_filter_set', {
+    description: 'Set a basic filter on a range (the filter/sort header Sheets shows on a data range). A sheet can hold one basic filter; replacing an existing one requires replace=true — without it, gog refuses rather than silently overwriting.',
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      range: z.string().describe('Range to filter (A1 notation with sheet name, e.g. Sheet1!A1:C100, or a named range name)'),
+      replace: z.boolean().optional().describe('Replace the sheet\'s existing basic filter if one is set (appends --force)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, range, replace, account }) => {
+    const args = ['sheets', 'filter', 'set', spreadsheetId, range];
+    if (replace) args.push('--force');
+    return runOrDiagnose(args, { account });
+  });
+
   // ---- Conditional formatting (gog 0.19.0) ----
 
   server.registerTool('gog_sheets_conditional_format_list', {
@@ -924,7 +940,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_sheets_conditional_format_add', {
-    description: 'Add a conditional formatting rule to a range. type picks the condition; expr is its value/formula (omit for blank/not-blank). formatJson is the CellFormat to apply when the condition matches (inline or @file). Use formatFields to force-send zero/false fields (e.g. backgroundColor,textFormat.bold).',
+    description: 'Add a conditional formatting rule to a range. Boolean rules: type picks the condition, expr is its value/formula (omit for blank/not-blank), formatJson is the CellFormat to apply when the condition matches (inline or @file); use formatFields to force-send zero/false fields (e.g. backgroundColor,textFormat.bold). Gradient rules (color scales): pass gradientRuleJson instead — a GradientRule JSON with minpoint/maxpoint (and optional midpoint), each {"color":{...},"type":"MIN|MAX|NUMBER|PERCENT|PERCENTILE","value":"..."}. The two modes are mutually exclusive.',
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range the rule applies to (e.g. Sheet1!A1:A100)'),
@@ -932,16 +948,20 @@ export function registerExtraSheetsTools(server: McpServer): void {
         'text-eq', 'text-contains', 'text-starts-with', 'text-ends-with',
         'number-eq', 'number-gt', 'number-gte', 'number-lt', 'number-lte',
         'blank', 'not-blank', 'custom-formula',
-      ]).describe('Rule type'),
-      formatJson: z.string().describe('CellFormat JSON to apply when the condition matches (inline or @file)'),
+      ]).optional().describe('Boolean rule type (required unless gradientRuleJson is used)'),
+      formatJson: z.string().optional().describe('CellFormat JSON to apply when a boolean rule matches (inline or @file; required with type)'),
       expr: z.string().optional().describe('Expression value or custom formula (omit for blank/not-blank)'),
       formatFields: z.string().optional().describe('Format field mask for force-sending zero/false fields (e.g. backgroundColor,textFormat.bold)'),
+      gradientRuleJson: z.string().optional().describe('GradientRule JSON for gradient conditional formats (inline or @file; must include minpoint and maxpoint)'),
       account: accountParam,
     },
-  }, async ({ spreadsheetId, range, type, formatJson, expr, formatFields, account }) => {
-    const args = ['sheets', 'conditional-format', 'add', spreadsheetId, range, `--type=${type}`, `--format-json=${formatJson}`];
+  }, async ({ spreadsheetId, range, type, formatJson, expr, formatFields, gradientRuleJson, account }) => {
+    const args = ['sheets', 'conditional-format', 'add', spreadsheetId, range];
+    if (type) args.push(`--type=${type}`);
+    if (formatJson !== undefined) args.push(`--format-json=${formatJson}`);
     if (expr !== undefined) args.push(`--expr=${expr}`);
     if (formatFields) args.push(`--format-fields=${formatFields}`);
+    if (gradientRuleJson !== undefined) args.push(`--gradient-rule-json=${gradientRuleJson}`);
     return runOrDiagnose(args, { account });
   });
 

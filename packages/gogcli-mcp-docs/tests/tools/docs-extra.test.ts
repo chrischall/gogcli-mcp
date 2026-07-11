@@ -760,6 +760,20 @@ describe('gog_docs_read', () => {
       { account: undefined },
     );
   });
+
+  it('appends --chips in text mode', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(''));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_read', { docId: 'd1', chips: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'cat', 'd1', '--chips'], { account: undefined });
+  });
+
+  it('ignores chips in json mode', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_read', { docId: 'd1', format: 'json', chips: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty'], { account: undefined });
+  });
 });
 
 describe('gog_docs_format', () => {

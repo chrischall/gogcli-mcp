@@ -82,9 +82,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       tab: z.string().optional().describe('Target tab title or ID. In json mode, returns that one tab in the legacy top-level Document shape.'),
       allTabs: z.boolean().optional().describe('Show all tabs. In json mode, returns the canonical Document response with all tab content populated.'),
       maxBytes: z.number().optional().describe('Max bytes to read in text mode (0 = unlimited; default 2000000)'),
+      chips: z.boolean().optional().describe('Render Google Docs smart chips (people, dates, rich links) inline in text mode; ignored in json mode'),
       account: accountParam,
     },
-  }, async ({ docId, format, tab, allTabs, maxBytes, account }) => {
+  }, async ({ docId, format, tab, allTabs, maxBytes, chips, account }) => {
     if (format === 'json') {
       const args = ['docs', 'raw', docId, '--pretty'];
       if (tab) args.push(`--tab=${tab}`);
@@ -95,6 +96,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (tab) args.push(`--tab=${tab}`);
     if (allTabs) args.push('--all-tabs');
     if (maxBytes !== undefined) args.push(`--max-bytes=${maxBytes}`);
+    if (chips) args.push('--chips');
     return runOrDiagnose(args, { account });
   });
 

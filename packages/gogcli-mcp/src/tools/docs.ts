@@ -19,10 +19,13 @@ export function registerDocsTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
+      chips: z.boolean().optional().describe('Render Google Docs smart chips (people, dates, rich links) inline in the text output'),
       account: accountParam,
     },
-  }, async ({ docId, account }) => {
-    return runOrDiagnose(['docs', 'cat', docId], { account });
+  }, async ({ docId, chips, account }) => {
+    const args = ['docs', 'cat', docId];
+    if (chips) args.push('--chips');
+    return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_docs_create', {

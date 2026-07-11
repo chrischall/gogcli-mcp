@@ -1244,6 +1244,51 @@ describe('gog_sheets_conditional_format_add', () => {
       { account: undefined },
     );
   });
+
+  it('passes --gradient-rule-json for gradient rules (no type/format-json)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_conditional_format_add', {
+      spreadsheetId: 'sid', range: 'Sheet1!A1:A100', gradientRuleJson: '{"minpoint":{},"maxpoint":{}}',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'conditional-format', 'add', 'sid', 'Sheet1!A1:A100', '--gradient-rule-json={"minpoint":{},"maxpoint":{}}'],
+      { account: undefined },
+    );
+  });
+});
+
+// 40b. filter set
+describe('gog_sheets_filter_set', () => {
+  it('calls runOrDiagnose without --force by default', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_filter_set', { spreadsheetId: 'sid', range: 'Sheet1!A1:C10' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'filter', 'set', 'sid', 'Sheet1!A1:C10'],
+      { account: undefined },
+    );
+  });
+
+  it('appends --force when replace is true', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_filter_set', { spreadsheetId: 'sid', range: 'Sheet1!A1:C10', replace: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'filter', 'set', 'sid', 'Sheet1!A1:C10', '--force'],
+      { account: undefined },
+    );
+  });
+
+  it('forwards account', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_filter_set', { spreadsheetId: 'sid', range: 'Named', account: 'x@y.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'filter', 'set', 'sid', 'Named'],
+      { account: 'x@y.com' },
+    );
+  });
 });
 
 // 41. conditional-format clear
