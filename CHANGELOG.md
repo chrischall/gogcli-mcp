@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.0](https://github.com/chrischall/gogcli-mcp/compare/v2.12.1...v2.13.0) (2026-07-11)
+
+
+### Features
+
+* catch up to gog 0.34.0 (calendar timezone, docs chips, sheets filters + gradients) ([#141](https://github.com/chrischall/gogcli-mcp/issues/141)) ([1a5b020](https://github.com/chrischall/gogcli-mcp/commit/1a5b02076923303a36716d667711341cec5ef028))
+
 ## [2.12.1](https://github.com/chrischall/gogcli-mcp/compare/v2.12.0...v2.12.1) (2026-07-07)
 
 
