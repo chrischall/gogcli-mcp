@@ -85,19 +85,23 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_attachment', {
-    description: 'Download a single attachment from a Gmail message.',
+    description: 'Fetch a single attachment from a Gmail message. By default gog only saves the file on ITS host and returns the local path — useless if you cannot read that filesystem. To get content back in the response, set text:true for PDFs/HTML/plain-text when you want readable text (a note flags scanned/image-only PDFs), or inline:true for base64 bytes (images, other binaries). Both fall back to path-only with an explanatory `reason` above the ~3 MiB inline limit. Use out only for deliberate local-file workflows.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       messageId: z.string().describe('Gmail message ID'),
       attachmentId: z.string().describe('Attachment ID (from the message payload)'),
-      out: z.string().optional().describe('Output file path (default: gogcli config dir)'),
+      inline: z.boolean().optional().describe('Return the attachment content base64-encoded in a `contentBase64` field (attachments up to ~3 MiB). Mutually exclusive with text.'),
+      text: z.boolean().optional().describe('Return extracted text in a `text` field — PDF (text layer), HTML (tags stripped), plain text. Unsupported types return a `reason` instead. Mutually exclusive with inline.'),
+      out: z.string().optional().describe('Output file path on the gog host (default: gogcli config dir)'),
       name: z.string().optional().describe('Filename (used when --out is empty or points to a directory)'),
       account: accountParam,
     },
-  }, async ({ messageId, attachmentId, out, name, account }) => {
+  }, async ({ messageId, attachmentId, inline, text, out, name, account }) => {
     const args = ['gmail', 'attachment', messageId, attachmentId];
     if (out) args.push(`--out=${out}`);
     if (name) args.push(`--name=${name}`);
+    if (inline) args.push('--inline');
+    if (text) args.push('--text');
     return runOrDiagnose(args, { account });
   });
 

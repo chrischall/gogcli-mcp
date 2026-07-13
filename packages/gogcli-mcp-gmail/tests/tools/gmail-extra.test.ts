@@ -61,6 +61,35 @@ describe('gog_gmail_attachment', () => {
       { account: undefined },
     );
   });
+
+  it('passes --inline when inline is true', async () => {
+    await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', inline: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'attachment', 'm1', 'a1', '--inline'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --text when text is true', async () => {
+    await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', text: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'attachment', 'm1', 'a1', '--text'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --inline and --text when false', async () => {
+    await harness.callTool('gog_gmail_attachment', {
+      messageId: 'm1',
+      attachmentId: 'a1',
+      inline: false,
+      text: false,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'attachment', 'm1', 'a1'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_gmail_url', () => {
