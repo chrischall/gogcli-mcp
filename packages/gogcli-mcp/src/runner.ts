@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ChildProcess } from 'node:child_process';
 import { delimiter } from 'node:path';
 import { parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
@@ -8,6 +8,22 @@ export type Spawner = (
   args: string[],
   options: { env: NodeJS.ProcessEnv },
 ) => ChildProcess;
+
+// An executor runs a FULLY-ASSEMBLED gog arg list (already including
+// --json/--no-input/--color=never, --account, --readonly, and the service
+// subcommand) and returns its stdout as a string (or throws). This is the
+// injection seam that lets the same tool registrars run either by spawning
+// `gog` (stdio transport) or by forwarding the arg list to a remote HTTP
+// backend (hosted Cloudflare-Worker connector, which cannot spawn processes).
+export type GogExecutor = (
+  args: string[],
+  opts: { timeout?: number; interactive?: boolean },
+) => Promise<string>;
+
+// Ambient override for the executor `run()` uses when no options.spawner is
+// given. The Worker/Fly path wraps request handling in
+// `runExecutor.run({ executor }, ...)`; unset, `run()` falls back to spawning.
+export const runExecutor = new AsyncLocalStorage<{ executor: GogExecutor }>();
 
 export interface RunOptions {
   account?: string;
@@ -110,31 +126,23 @@ function formatTimeout(ms: number): string {
   return `${ms}ms`;
 }
 
-export async function run(args: string[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner = spawn as unknown as Spawner, interactive = false, timeout, readonly = false } = options;
-
-  const effectiveAccount = account ?? readEnvVar('GOG_ACCOUNT');
-
-  const fullArgs = ['--json', '--color=never'];
-  if (!interactive) {
-    fullArgs.push('--no-input');
-  }
-  // Block all mutating gog API requests at runtime when either the caller opts
-  // in or GOG_READONLY is set in the environment. gog has no native env binding
-  // for --readonly, so the wrapper translates GOG_READONLY into the flag.
-  if (readonly || readonlyEnvEnabled()) {
-    fullArgs.push('--readonly');
-  }
-  if (effectiveAccount) {
-    fullArgs.push('--account', effectiveAccount);
-  }
-  fullArgs.push(...args);
-
+// Spawn-based executor: owns everything process-specific — building the
+// sanitized child env, PATH augmentation, spawning, collecting stdout/stderr,
+// and the timeout kill. It returns raw output (no redaction — `run()` wraps
+// that around whichever executor runs). The child_process import is LAZY so a
+// Cloudflare Worker importing this module doesn't eagerly pull node:child_process
+// (which would break the Worker bundle); the injected `spawner` bypasses it.
+async function spawnExecutor(
+  fullArgs: string[],
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner },
+): Promise<string> {
+  const { timeout, interactive = false, spawner } = opts;
+  const spawn = spawner ?? (await import('node:child_process')).spawn as unknown as Spawner;
   const effectiveTimeout = timeout ?? TIMEOUT_MS;
 
   return new Promise((resolve, reject) => {
     const childEnv = { ...sanitizedEnv(), PATH: augmentedPath() };
-    const child = spawner(readEnvVar('GOG_PATH') ?? 'gog', fullArgs, { env: childEnv });
+    const child = spawn(readEnvVar('GOG_PATH') ?? 'gog', fullArgs, { env: childEnv });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let settled = false;
@@ -155,17 +163,13 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
       const stdout = Buffer.concat(stdoutChunks).toString();
       const stderr = Buffer.concat(stderrChunks).toString().trim();
       if (code === 0) {
-        // Redact on SUCCESS too, not just failure: a successful `gog auth
-        // tokens` (or any command that echoes a credential) would otherwise
-        // return raw Google tokens (ya29.…/1//…) straight into model context,
-        // where a sibling tool (gog_gmail_send) could exfiltrate them.
         if (interactive && stderr) {
-          resolve(redactSecrets(stdout + '\n' + stderr));
+          resolve(stdout + '\n' + stderr);
         } else {
-          resolve(redactSecrets(stdout));
+          resolve(stdout);
         }
       } else {
-        reject(new Error(redactSecrets(stderr || `gog exited with code ${code}`)));
+        reject(new Error(stderr || `gog exited with code ${code}`));
       }
     });
 
@@ -184,4 +188,47 @@ export async function run(args: string[], options: RunOptions = {}): Promise<str
       reject(err);
     });
   });
+}
+
+export async function run(args: string[], options: RunOptions = {}): Promise<string> {
+  const { account, spawner, interactive = false, timeout, readonly = false } = options;
+
+  const effectiveAccount = account ?? readEnvVar('GOG_ACCOUNT');
+
+  const fullArgs = ['--json', '--color=never'];
+  if (!interactive) {
+    fullArgs.push('--no-input');
+  }
+  // Block all mutating gog API requests at runtime when either the caller opts
+  // in or GOG_READONLY is set in the environment. gog has no native env binding
+  // for --readonly, so the wrapper translates GOG_READONLY into the flag.
+  if (readonly || readonlyEnvEnabled()) {
+    fullArgs.push('--readonly');
+  }
+  if (effectiveAccount) {
+    fullArgs.push('--account', effectiveAccount);
+  }
+  fullArgs.push(...args);
+
+  // Pick the executor: an injected spawner keeps the stdio spawn path (and all
+  // its tests) intact and always wins; otherwise an ambient runExecutor store
+  // (the Worker/Fly HTTP-forward path) takes over; otherwise the default lazy
+  // real spawn. Redaction wraps the executor regardless of which one runs — a
+  // successful `gog auth tokens` (or any command echoing a credential) would
+  // otherwise return raw Google tokens (ya29.…/1//…) into model context, where
+  // a sibling tool (gog_gmail_send) could exfiltrate them.
+  const store = runExecutor.getStore();
+  try {
+    let output: string;
+    if (spawner) {
+      output = await spawnExecutor(fullArgs, { timeout, interactive, spawner });
+    } else if (store) {
+      output = await store.executor(fullArgs, { timeout, interactive });
+    } else {
+      output = await spawnExecutor(fullArgs, { timeout, interactive });
+    }
+    return redactSecrets(output);
+  } catch (err) {
+    throw new Error(redactSecrets((err as Error).message));
+  }
 }

@@ -13,8 +13,8 @@ export {
   registerSlidesTools,
   registerTasksTools,
 } from './server.js';
-export { run, MIN_GOG_VERSION } from './runner.js';
-export type { RunOptions, Spawner } from './runner.js';
+export { run, runExecutor, MIN_GOG_VERSION } from './runner.js';
+export type { RunOptions, Spawner, GogExecutor } from './runner.js';
 export {
   accountParam,
   runOrDiagnose,

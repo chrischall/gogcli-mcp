@@ -1,20 +1,28 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { run } from '../src/runner.js';
-import type { Spawner } from '../src/runner.js';
+import { spawn as mockedSpawn } from 'node:child_process';
+import { run, runExecutor } from '../src/runner.js';
+import type { Spawner, GogExecutor } from '../src/runner.js';
+
+// The real spawn is dynamically imported inside runner's default executor.
+// Mock it so the no-spawner/no-executor fallback can be exercised without
+// touching a real `gog` binary.
+vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
+
+function makeProc(exitCode: number, stdout = '', stderr = ''): ReturnType<Spawner> {
+  const proc = new EventEmitter() as ReturnType<Spawner>;
+  (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+  (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+  setTimeout(() => {
+    (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', Buffer.from(stdout));
+    (proc as unknown as { stderr: EventEmitter }).stderr.emit('data', Buffer.from(stderr));
+    proc.emit('close', exitCode);
+  }, 0);
+  return proc;
+}
 
 function makeSpawner(exitCode: number, stdout = '', stderr = ''): Spawner {
-  return vi.fn(() => {
-    const proc = new EventEmitter() as ReturnType<Spawner>;
-    (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
-    (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
-    setTimeout(() => {
-      (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', Buffer.from(stdout));
-      (proc as unknown as { stderr: EventEmitter }).stderr.emit('data', Buffer.from(stderr));
-      proc.emit('close', exitCode);
-    }, 0);
-    return proc;
-  }) as unknown as Spawner;
+  return vi.fn(() => makeProc(exitCode, stdout, stderr)) as unknown as Spawner;
 }
 
 describe('run', () => {
@@ -653,5 +661,72 @@ describe('run --readonly (gog 0.31)', () => {
     await withReadonlyEnv('${user_config.gog_readonly}', () => run(['drive', 'list'], { spawner }));
     const call = (spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]!;
     expect(call[1]).not.toContain('--readonly');
+  });
+});
+
+describe('run executor seam', () => {
+  it('routes to an injected runExecutor executor when no options.spawner is given', async () => {
+    const executor = vi.fn(async () => '{"via":"executor"}') as unknown as GogExecutor;
+    const result = await runExecutor.run({ executor }, () => run(['sheets', 'get', 'id1', 'A1']));
+    expect(result).toBe('{"via":"executor"}');
+    // The executor receives the FULLY-ASSEMBLED gog arg list plus the run opts.
+    expect(executor).toHaveBeenCalledWith(
+      ['--json', '--color=never', '--no-input', 'sheets', 'get', 'id1', 'A1'],
+      { timeout: undefined, interactive: false },
+    );
+  });
+
+  it('forwards timeout and interactive through to the injected executor', async () => {
+    const executor = vi.fn(async () => '{}') as unknown as GogExecutor;
+    await runExecutor.run({ executor }, () =>
+      run(['auth', 'add', 'u@g.com'], { interactive: true, timeout: 60_000 }),
+    );
+    expect(executor).toHaveBeenCalledWith(
+      ['--json', '--color=never', 'auth', 'add', 'u@g.com'],
+      { timeout: 60_000, interactive: true },
+    );
+  });
+
+  it('redacts Google tokens returned by an injected executor', async () => {
+    const executor = vi.fn(async () => 'token ya29.a0Ad52N3-ALS-LEAK done') as unknown as GogExecutor;
+    const result = await runExecutor.run({ executor }, () => run(['auth', 'list']));
+    expect(result).not.toContain('ya29.a0Ad52N3-ALS-LEAK');
+    expect(result).toContain('[REDACTED]');
+  });
+
+  it('redacts error text thrown by an injected executor', async () => {
+    const executor = vi.fn(async () => {
+      throw new Error('boom 1//0eALS-REFRESH-LEAK end');
+    }) as unknown as GogExecutor;
+    try {
+      await runExecutor.run({ executor }, () => run(['gmail', 'get', 'm1']));
+      throw new Error('expected rejection');
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).not.toContain('1//0eALS-REFRESH-LEAK');
+      expect(msg).toContain('[REDACTED]');
+    }
+  });
+
+  it('options.spawner takes precedence over an injected ALS executor', async () => {
+    const spawner = makeSpawner(0, '{"via":"spawner"}');
+    const executor = vi.fn(async () => '{"via":"executor"}') as unknown as GogExecutor;
+    const result = await runExecutor.run({ executor }, () =>
+      run(['sheets', 'get', 'id1', 'A1'], { spawner }),
+    );
+    expect(result).toBe('{"via":"spawner"}');
+    expect(executor).not.toHaveBeenCalled();
+    expect(spawner).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to the lazily-imported real spawn when neither a spawner nor an ALS executor is set', async () => {
+    vi.mocked(mockedSpawn).mockImplementation((() => makeProc(0, '{"real":true}')) as never);
+    const result = await run(['sheets', 'get', 'id1', 'A1']);
+    expect(result).toBe('{"real":true}');
+    expect(mockedSpawn).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', 'sheets', 'get', 'id1', 'A1'],
+      expect.objectContaining({ env: expect.any(Object) }),
+    );
   });
 });
