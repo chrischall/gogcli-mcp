@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.15.0](https://github.com/chrischall/gogcli-mcp/compare/v2.14.0...v2.15.0) (2026-07-17)
+
+
+### Features
+
+* **connector:** add claude.ai remote connector (CF Worker + Fly gog backend) ([#153](https://github.com/chrischall/gogcli-mcp/issues/153)) ([2caed49](https://github.com/chrischall/gogcli-mcp/commit/2caed494123746ed30d2b1503e93dc9d89115f46))
+* **connector:** add per-service MCP paths exposing each service's extended tools ([#157](https://github.com/chrischall/gogcli-mcp/issues/157)) ([8a50703](https://github.com/chrischall/gogcli-mcp/commit/8a50703b73f8aab165a23d02d008a46879a3ac4d))
+
+
+### Refactor
+
+* **runner:** inject gog execution behind an AsyncLocalStorage executor seam ([#149](https://github.com/chrischall/gogcli-mcp/issues/149)) ([199614c](https://github.com/chrischall/gogcli-mcp/commit/199614ccdee5419f86fd1042efed55d465e535a9))
+
 ## [2.14.0](https://github.com/chrischall/gogcli-mcp/compare/v2.13.0...v2.14.0) (2026-07-17)
 
 
