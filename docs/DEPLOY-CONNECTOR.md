@@ -33,12 +33,14 @@ and Cloudflare accounts.
 
 Follow `fly-gog-runner/README.md` to deploy the `gog` runner. In short you:
 
-- deploy the app (`fly deploy`), which stands up a container with `gog` installed;
-- complete the Google OAuth device/login flow **on the backend** so `gog` holds
-  a stored refresh token for the account(s) you want to reach;
-- set a strong **`RUNNER_KEY`** secret (`fly secrets set RUNNER_KEY=…`) — this is
-  the shared bearer token the Worker (and you) present. It is both the
-  connector's login "key" and what guards `/health` and `/run`.
+- set two secrets — a strong **`RUNNER_KEY`** (the shared bearer the Worker and
+  you present; also the connector's login "key" and what guards `/health` and
+  `/run`) and a **`GOG_KEYRING_PASSWORD`** (encrypts gog's stored refresh token
+  in the volume's file keyring) — then `fly deploy`;
+- seed the backend's `gog` with your Google auth so it holds a refresh token for
+  the account(s) you want to reach — run `fly-gog-runner/seed-auth.sh` once (it
+  exports your local refresh token and imports it, plus your OAuth client, onto
+  the volume). Interactive `gog auth add` on the Machine also works.
 
 Note the backend's URL, e.g. `https://gogcli-gog-runner.fly.dev`. It must expose:
 

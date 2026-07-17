@@ -5,7 +5,7 @@
 # (see README.md). Never commit the key to this file.
 
 app = "gogcli-gog-runner"          # placeholder — rename to your Fly app
-primary_region = "iad"             # placeholder — set to your closest region
+primary_region = "ewr"             # US-East (Secaucus NJ); set to your closest region
 
 [build]
   dockerfile = "Dockerfile"
@@ -25,6 +25,11 @@ primary_region = "iad"             # placeholder — set to your closest region
 
 [env]
   GOG_HOME = "/data"
+  # Force a file-based (encrypted) keyring: the container is headless Linux with
+  # no OS keychain, and the token must persist on the volume. Pair with the
+  # GOG_KEYRING_PASSWORD secret (`fly secrets set`), which gog uses to
+  # encrypt/decrypt the stored refresh token under GOG_HOME.
+  GOG_KEYRING_BACKEND = "file"
 
 [[vm]]
   size = "shared-cpu-1x"

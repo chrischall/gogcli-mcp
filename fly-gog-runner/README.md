@@ -53,15 +53,22 @@ Requires the [`flyctl`](https://fly.io/docs/flyctl/) CLI and a Fly account.
 # (fly launch will prompt to reuse the existing fly.toml; keep it.)
 fly launch --no-deploy
 
-# Create the persistent volume for gog's auth/config (match [[mounts]].source).
-# Use the same region as primary_region in fly.toml.
-fly volumes create gogdata --region iad --size 1
+# Create the persistent volume for gog's auth/config (match [[mounts]].source
+# and primary_region in fly.toml). If a region is out of capacity
+# ("insufficient CPUs"), pick a nearby one (e.g. ewr instead of iad) and set
+# primary_region to match — the Machine must sit with its volume.
+fly volumes create gogdata --region "$(awk -F'"' '/primary_region/{print $2}' fly.toml)" --size 1
 
-# Set the shared secret the Worker connector will send as `Authorization: Bearer`.
-# Generate a strong random value and store it in the Worker's config too.
-fly secrets set RUNNER_KEY="$(openssl rand -hex 32)"
+# Two secrets:
+#  RUNNER_KEY           the bearer the Worker (and you) send; also the connector
+#                       login key. Save it — you enter it in claude.ai.
+#  GOG_KEYRING_PASSWORD encrypts gog's stored refresh token in the file keyring
+#                       on the volume (GOG_KEYRING_BACKEND=file). You never need
+#                       to see it; the server reads it from its env.
+fly secrets set RUNNER_KEY="$(openssl rand -hex 32)" \
+                GOG_KEYRING_PASSWORD="$(openssl rand -hex 32)" --stage
 
-# Build + deploy the image.
+# Build + deploy the image (applies the staged secrets).
 fly deploy
 ```
 
@@ -72,27 +79,31 @@ redeploy.
 
 ## Seeding `GOG_HOME` (one-time auth)
 
-`gog` needs the operator's Google credentials in `GOG_HOME` (`/data`) before
-`/run` can do anything useful. Two options:
+`gog` needs your Google credentials in `GOG_HOME` (`/data`) before `/run` can do
+anything useful — specifically **two** things: your OAuth *client* file
+(`credentials.json`) and a stored *refresh token*.
 
-1. **Run `gog auth add` on the Machine.** SSH in and complete the OAuth flow so
-   the tokens land on the volume:
+If you already have a working `gog` locally, seed both in one shot with the
+helper script (run it once, after `fly deploy`):
 
-   ```bash
-   fly ssh console
-   # inside the Machine (runs as root):
-   GOG_HOME=/data gog auth add        # follow the device/OAuth prompts
-   GOG_HOME=/data gog auth status     # confirm the account is authorized
-   ```
+```bash
+APP=gogcli-gog-runner EMAIL=you@gmail.com ./seed-auth.sh
+```
 
-   `fly ssh console` runs as root, so the seeded token files land root-owned.
-   Restart the Machine afterwards (`fly machine restart <id>`) so the entrypoint
-   re-chowns `/data` to `app` before the server serves requests.
+It exports your refresh token from your local gog keyring, pushes it plus
+`credentials.json` to the Machine, imports the token into the encrypted **file
+keyring** on the volume, fixes ownership, verifies (`gog auth list`), and
+restarts the Machine. It's secret-free — the token stays in your shell and the
+keyring password comes from the Machine's injected `GOG_KEYRING_PASSWORD`.
 
-2. **Copy your local gog config onto the volume.** If you already have a working
-   `gog` locally, copy its config dir into the volume (e.g. via
-   `fly ssh sftp shell` / `fly ssh console` + a tarball) so `/data` contains the
-   same auth/token files your local `GOG_HOME` holds.
+Two details it takes care of that trip up a hand-rolled seed:
+
+- Under a custom `GOG_HOME`, gog reads the client file from **`$GOG_HOME/data/credentials.json`**
+  (i.e. `/data/data/credentials.json`), not `$GOG_HOME/credentials.json`.
+- The box uses `GOG_KEYRING_BACKEND=file` (headless Linux has no OS keychain), so
+  the refresh token must be **imported** (`gog auth tokens import`) — a macOS
+  Keychain token isn't a copyable file. Plain `gog auth add` on the Machine also
+  works but needs an interactive browser OAuth flow.
 
 After seeding, verify end-to-end:
 
