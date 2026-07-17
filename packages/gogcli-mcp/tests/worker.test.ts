@@ -1,7 +1,34 @@
 import { SELF } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
-import { BASE_TOOL_REGISTRARS } from '../src/lib.js';
+import type { ToolRegistrar } from '@chrischall/mcp-utils';
+import {
+  BASE_TOOL_REGISTRARS,
+  registerAuthTools,
+  registerSheetsTools,
+  registerGmailTools,
+  registerDriveTools,
+  registerDocsTools,
+} from '../src/lib.js';
+import { registerExtraSheetsTools } from '../../gogcli-mcp-sheets/src/tools/sheets-extra.js';
+import { registerExtraGmailTools } from '../../gogcli-mcp-gmail/src/tools/gmail-extra.js';
+import { registerExtraDriveTools } from '../../gogcli-mcp-drive/src/tools/drive-extra.js';
+import { registerExtraDocsTools } from '../../gogcli-mcp-docs/src/tools/docs-extra.js';
+
+// Each per-service MCP path exposes auth + <service> base + <service> extras —
+// the same tool set that sub-package's stdio server exposes. Mirror worker.ts's
+// wiring. Min counts are conservative floors (base+auth alone is ~13-15).
+const SERVICE_PATHS: Array<{
+  path: string;
+  regs: ToolRegistrar[];
+  baseTool: string;
+  minTools: number;
+}> = [
+  { path: '/mcp/sheets', regs: [registerAuthTools, registerSheetsTools, registerExtraSheetsTools], baseTool: 'gog_sheets_get', minTools: 40 },
+  { path: '/mcp/gmail', regs: [registerAuthTools, registerGmailTools, registerExtraGmailTools], baseTool: 'gog_gmail_search', minTools: 40 },
+  { path: '/mcp/drive', regs: [registerAuthTools, registerDriveTools, registerExtraDriveTools], baseTool: 'gog_drive_ls', minTools: 35 },
+  { path: '/mcp/docs', regs: [registerAuthTools, registerDocsTools, registerExtraDocsTools], baseTool: 'gog_docs_cat', minTools: 60 },
+];
 
 // Handshake + tool-surface test for the gogcli Cloudflare remote connector, run
 // inside the real Workers runtime (Miniflare) via `@cloudflare/vitest-pool-workers`
@@ -37,6 +64,21 @@ describe('gogcli Cloudflare connector — OAuth surface', () => {
     expect(res.status).toBe(401);
   });
 
+  // Each per-service path is wired as an auth-gated API route (→ 401), not a
+  // 404 from the default handler. (A 401 confirms the path is registered and
+  // token-gated; correct routing to the SERVICE agent vs the base agent is
+  // verified live post-deploy via an authenticated tools/list.)
+  for (const { path } of SERVICE_PATHS) {
+    it(`rejects an unauthenticated ${path} request`, async () => {
+      const res = await SELF.fetch(`https://example.com${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+      });
+      expect(res.status).toBe(401);
+    });
+  }
+
   it('GET /authorize renders the gogcli login page with the connector-key field', async () => {
     // No `client_id` query param: the login page renders without needing a
     // registered OAuth client, which is all we verify here.
@@ -71,4 +113,22 @@ describe('gogcli Cloudflare connector — tool surface', () => {
       await harness.close();
     }
   });
+
+  // Each per-service path registers auth + that service's base + its EXTRAS —
+  // proving the extended tool set is wired (well past the ~13 base+auth tools).
+  for (const { path, regs, baseTool, minTools } of SERVICE_PATHS) {
+    it(`${path} registers the extended ${baseTool.split('_')[1]} tool set (base + extras)`, async () => {
+      const harness = await createTestHarness((server) => {
+        for (const register of regs) register(server);
+      });
+      try {
+        const names = (await harness.listTools()).map((t) => t.name);
+        expect(names).toContain(baseTool); // the service's base op
+        expect(names).toContain('gog_auth_list'); // auth tools included
+        expect(names.length).toBeGreaterThan(minTools); // extras present, not just base
+      } finally {
+        await harness.close();
+      }
+    });
+  }
 });
