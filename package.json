@@ -6,12 +6,21 @@
     "packages/*"
   ],
   "devDependencies": {
-    "vitest": "^4.1.10"
+    "@chrischall/mcp-connector": "^0.1.0",
+    "@cloudflare/vitest-pool-workers": "^0.18.4",
+    "@cloudflare/workers-oauth-provider": "^0.0.11",
+    "@cloudflare/workers-types": "^5.20260708.1",
+    "agents": "^0.17.3",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.110.0"
   },
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm test --workspaces",
     "typecheck": "npm run typecheck --workspaces",
-    "publish:all": "npm run build && npm publish --access public --workspaces"
+    "publish:all": "npm run build && npm publish --access public --workspaces",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "worker:test": "vitest run --config vitest.workers.config.mts"
   }
 }

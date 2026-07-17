@@ -59,6 +59,7 @@
           "path": "packages/gogcli-mcp/package.json",
           "jsonpath": "$.version"
         },
+        "packages/gogcli-mcp/src/worker.ts",
         {
           "type": "json",
           "path": "packages/gogcli-mcp/manifest.json",

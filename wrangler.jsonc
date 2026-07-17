@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gogcli-connector",
+  "main": "packages/gogcli-mcp/src/worker.ts",
+  "compatibility_date": "2025-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Only the per-session MCP agent Durable Object is declared — the connector is
+  // stateless beyond the OAuth token store; every `gog` call is forwarded to the
+  // Fly backend (FLY_ENDPOINT), so there is no local cache DO.
+  "durable_objects": {
+    "bindings": [{ "name": "MCP_OBJECT", "class_name": "GogcliMcpAgent" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GogcliMcpAgent"] }],
+  // gogcli-connector's own OAuth token store (title: gogcli-connector-oauth).
+  // Kept separate from any other connector's OAUTH_KV so their OAuth
+  // grants/tokens never cross-wire. To stand up a fresh deployment, create your
+  // own (`wrangler kv namespace create gogcli-connector-oauth`) and replace this
+  // placeholder id — see docs/DEPLOY-CONNECTOR.md.
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "REPLACE_WITH_OAUTH_KV_NAMESPACE_ID" }
+  ],
+  // Production custom domain. The zone must be in the deploying account's
+  // Cloudflare; wrangler provisions the hostname on deploy (TLS a few minutes
+  // later). Remove this route to deploy to *.workers.dev only.
+  "routes": [{ "pattern": "connector.gogcli.nullnet.app", "custom_domain": true }],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  // The Fly.io backend that actually runs `gog` (built in a prior PR). Each
+  // forwarded arg-array is POSTed to `<FLY_ENDPOINT>/run` with the user's
+  // connector key as a bearer token. Replace with your deployed Fly URL.
+  "vars": {
+    "FLY_ENDPOINT": "https://gogcli-gog-runner.fly.dev"
+  }
+}
