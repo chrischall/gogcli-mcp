@@ -73,7 +73,7 @@ export function registerCalendarTools(server: McpServer): void {
   });
 
   server.registerTool('gog_calendar_update', {
-    description: 'Update an existing calendar event. Zoom: withZoom adds a Zoom meeting, regenerateZoom replaces the existing one, removeZoom strips it (each are independent — use one per call).',
+    description: 'Update an existing calendar event. Zoom: withZoom adds a Zoom meeting, regenerateZoom replaces the existing one, removeZoom strips it. removeMeet clears the event\'s Google Meet conference data (e.g. before attaching another provider). Conference flags are independent — use one per call.',
     annotations: { destructiveHint: false },
     inputSchema: {
       calendarId: z.string().describe('Calendar ID'),
@@ -89,9 +89,10 @@ export function registerCalendarTools(server: McpServer): void {
       withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event'),
       regenerateZoom: z.boolean().optional().describe('Replace the event\'s existing Zoom video conference'),
       removeZoom: z.boolean().optional().describe('Remove the event\'s Zoom video conference'),
+      removeMeet: z.boolean().optional().describe('Remove the event\'s Google Meet video conference (clears conference data only)'),
       account: accountParam,
     },
-  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, account }) => {
+  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, removeMeet, account }) => {
     const args = ['calendar', 'update', calendarId, eventId];
     if (summary !== undefined) args.push(`--summary=${summary}`);
     if (from !== undefined) args.push(`--from=${from}`);
@@ -104,6 +105,7 @@ export function registerCalendarTools(server: McpServer): void {
     if (withZoom) args.push('--with-zoom');
     if (regenerateZoom) args.push('--regenerate-zoom');
     if (removeZoom) args.push('--remove-zoom');
+    if (removeMeet) args.push('--remove-meet');
     return runOrDiagnose(args, { account });
   });
 

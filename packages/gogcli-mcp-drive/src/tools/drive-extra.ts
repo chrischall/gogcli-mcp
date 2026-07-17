@@ -47,6 +47,23 @@ export function registerExtraDriveTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  server.registerTool('gog_drive_sync_push', {
+    description: 'Recursively push a local directory\'s contents into an existing Drive folder — uploads new files, updates changed ones (matched by name + MD5), and creates missing subfolders. One-way and additive: it never deletes anything on Drive. Use dryRun to preview the planned actions first.',
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      localPath: z.string().describe('Local directory to push (its contents are mirrored into the parent folder)'),
+      parent: z.string().describe('Existing destination Drive folder ID'),
+      dryRun: z.boolean().optional().describe('Preview the planned actions without making any changes'),
+      allDrives: z.boolean().optional().describe('Include shared drives (default: true; set false for My Drive only)'),
+      account: accountParam,
+    },
+  }, async ({ localPath, parent, dryRun, allDrives, account }) => {
+    const args = ['drive', 'sync', 'push', localPath, `--parent=${parent}`];
+    if (dryRun) args.push('--dry-run');
+    if (allDrives === false) args.push('--no-all-drives');
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_drive_copy', {
     description: 'Copy a Drive file to a new file with the given name.',
     inputSchema: {

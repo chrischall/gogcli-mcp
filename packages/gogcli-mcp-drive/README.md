@@ -52,6 +52,7 @@ Plus 5 auth tools and 9 base Drive tools (ls, search, get, mkdir, rename, move, 
 |------|-------------|
 | `gog_drive_download` | Download a file (exports Google Docs formats: pdf, docx, xlsx, etc.) |
 | `gog_drive_upload` | Upload a local file, optionally replacing an existing file or converting to Google format |
+| `gog_drive_sync_push` | Recursively push a local directory's contents into a Drive folder (additive; no remote deletes) |
 | `gog_drive_copy` | Copy a file to a new file with the given name |
 | `gog_drive_url` | Print shareable web URLs for one or more files |
 | `gog_drive_permissions` | List permissions on a file |
