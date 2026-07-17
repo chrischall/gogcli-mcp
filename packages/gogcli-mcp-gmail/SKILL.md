@@ -36,7 +36,7 @@ Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 3
 | Tool | What it does |
 |------|-------------|
 | `gog_gmail_raw` | Raw Gmail API JSON for a message |
-| `gog_gmail_attachment` | Download a single attachment |
+| `gog_gmail_attachment` | Download a single attachment (optionally return content inline as base64) |
 | `gog_gmail_url` | Print web URLs for threads |
 | `gog_gmail_history` | List history events since a historyId |
 

@@ -279,6 +279,19 @@ describe('gog_calendar_update', () => {
     );
   });
 
+  // gog 0.34.x (#926): remove-meet clears an event's Google Meet conference data.
+  it('passes --remove-meet', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_update', {
+      calendarId: 'primary', eventId: 'evt1', removeMeet: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--remove-meet'],
+      { account: undefined },
+    );
+  });
+
   it('omits zoom flags when all false', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();

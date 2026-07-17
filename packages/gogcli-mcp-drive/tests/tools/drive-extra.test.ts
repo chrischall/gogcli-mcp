@@ -81,6 +81,36 @@ describe('gog_drive_upload', () => {
   });
 });
 
+describe('gog_drive_sync_push', () => {
+  it('calls runOrDiagnose with localPath and required parent', async () => {
+    await harness.callTool('gog_drive_sync_push', { localPath: '/tmp/dir', parent: 'folder1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'sync', 'push', '/tmp/dir', '--parent=folder1'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --dry-run and --no-all-drives', async () => {
+    await harness.callTool('gog_drive_sync_push', {
+      localPath: '/tmp/dir', parent: 'folder1', dryRun: true, allDrives: false,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'sync', 'push', '/tmp/dir', '--parent=folder1', '--dry-run', '--no-all-drives'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --no-all-drives when allDrives is true and dryRun false', async () => {
+    await harness.callTool('gog_drive_sync_push', {
+      localPath: '/tmp/dir', parent: 'folder1', dryRun: false, allDrives: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'sync', 'push', '/tmp/dir', '--parent=folder1'],
+      { account: undefined },
+    );
+  });
+});
+
 describe('gog_drive_copy', () => {
   it('calls runOrDiagnose with fileId and name', async () => {
     await harness.callTool('gog_drive_copy', { fileId: 'f1', name: 'Copy' });

@@ -99,7 +99,7 @@
     },
     {
       "name": "gog_gmail_attachment",
-      "description": "Download a single attachment from a message"
+      "description": "Download a single attachment from a message, optionally returning its content inline (base64)"
     },
     {
       "name": "gog_gmail_url",

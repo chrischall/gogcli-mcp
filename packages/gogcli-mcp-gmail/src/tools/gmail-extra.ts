@@ -85,19 +85,21 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_attachment', {
-    description: 'Download a single attachment from a Gmail message.',
+    description: 'Download a single attachment from a Gmail message. Set inline=true to also return the content base64-encoded in the response (small attachments only — anything over gog\'s ~3 MB inline limit falls back to the file path with an explanatory reason).',
     annotations: { readOnlyHint: true },
     inputSchema: {
       messageId: z.string().describe('Gmail message ID'),
       attachmentId: z.string().describe('Attachment ID (from the message payload)'),
       out: z.string().optional().describe('Output file path (default: gogcli config dir)'),
       name: z.string().optional().describe('Filename (used when --out is empty or points to a directory)'),
+      inline: z.boolean().optional().describe('Also return the attachment content base64-encoded (contentBase64) in the response; attachments over the inline size limit fall back to the file path only'),
       account: accountParam,
     },
-  }, async ({ messageId, attachmentId, out, name, account }) => {
+  }, async ({ messageId, attachmentId, out, name, inline, account }) => {
     const args = ['gmail', 'attachment', messageId, attachmentId];
     if (out) args.push(`--out=${out}`);
     if (name) args.push(`--name=${name}`);
+    if (inline) args.push('--inline');
     return runOrDiagnose(args, { account });
   });
 

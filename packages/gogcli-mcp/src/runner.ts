@@ -27,7 +27,7 @@ const TIMEOUT_MS = 30_000;
 // so the requirement change is surfaced in the release notes (see
 // .github/release.yml). This is the single source of truth for the required
 // version; keep the README/CLAUDE.md mention in sync.
-export const MIN_GOG_VERSION = '0.34.0';
+export const MIN_GOG_VERSION = '0.34.1';
 
 // Interpret the GOG_READONLY kill-switch. `readEnvVar` already treats blank
 // values, 'undefined'/'null' sentinels, and unresolved .mcpb placeholders

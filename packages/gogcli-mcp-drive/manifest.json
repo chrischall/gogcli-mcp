@@ -122,6 +122,10 @@
       "description": "Upload a local file, optionally replacing an existing file or converting to Google format"
     },
     {
+      "name": "gog_drive_sync_push",
+      "description": "Recursively push a local directory's contents into a Drive folder (additive; no remote deletes)"
+    },
+    {
       "name": "gog_drive_copy",
       "description": "Copy a file to a new file"
     },
