@@ -7,7 +7,7 @@
   },
   "metadata": {
     "description": "Extended Google Slides for Claude via gogcli — auth + full Slides support (create, edit, export, templates, markdown)",
-    "version": "2.14.0"
+    "version": "2.15.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
       "displayName": "gogcli (Slides)",
       "source": "./",
       "description": "Extended Google Slides for Claude via gogcli — auth + full Slides support (create, edit, export, templates, markdown)",
-      "version": "2.14.0",
+      "version": "2.15.0",
       "author": {
         "name": "Chris Hall"
       },
