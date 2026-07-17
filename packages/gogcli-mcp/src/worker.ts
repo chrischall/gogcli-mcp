@@ -1,50 +1,95 @@
-import { createConnector } from '@chrischall/mcp-connector';
-import { BASE_TOOL_REGISTRARS } from './lib.js';
-import type { GogExecutor } from './lib.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpAgent } from 'agents/mcp';
+import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
+import { handleAuthorize } from '@chrischall/mcp-connector';
+import type { ToolRegistrar } from '@chrischall/mcp-utils';
+import {
+  BASE_TOOL_REGISTRARS,
+  registerAuthTools,
+  registerSheetsTools,
+  registerGmailTools,
+  registerDriveTools,
+  registerDocsTools,
+} from './lib.js';
+import { registerExtraSheetsTools } from '../../gogcli-mcp-sheets/src/tools/sheets-extra.js';
+import { registerExtraGmailTools } from '../../gogcli-mcp-gmail/src/tools/gmail-extra.js';
+import { registerExtraDriveTools } from '../../gogcli-mcp-drive/src/tools/drive-extra.js';
+import { registerExtraDocsTools } from '../../gogcli-mcp-docs/src/tools/docs-extra.js';
 import { makeFlyExecutor, wrapServer } from './connector-runtime.js';
 import { gogAuth, type GogProps } from './connector-auth.js';
 
 // The Cloudflare remote-connector entrypoint for gogcli-mcp.
 //
-// It reuses the base package's EXISTING transport-neutral tool registrars
-// (`BASE_TOOL_REGISTRARS`, the same ones the stdio server boots) UNCHANGED, and
-// executes every assembled `gog` arg-array by forwarding it to a Fly.io backend
-// over authenticated HTTPS instead of spawning a local `gog` process (a Worker
-// cannot spawn processes).
+// It reuses the EXISTING transport-neutral tool registrars UNCHANGED and executes
+// every assembled `gog` arg-array by forwarding it to a Fly.io backend (a Worker
+// cannot spawn processes). The bridge is the `runExecutor` AsyncLocalStorage seam
+// in `runner.ts`: `wrapServer` scopes each tool handler in `runExecutor.run(...)`
+// so the handler's `run()` forwards to the per-session Fly executor.
 //
-// The bridge is the `runExecutor` AsyncLocalStorage seam in `runner.ts`: each
-// tool handler runs inside `runExecutor.run({ executor }, ...)`, so when its
-// `run()` call looks up `runExecutor.getStore()` it finds the per-session Fly
-// executor and forwards the arg-array to `POST <FLY_ENDPOINT>/run` rather than
-// spawning. `wrapServer` below is what injects that scope around every handler
-// the unchanged registrars register.
-//
-// Auth is a FIELD LOGIN (a personal connector key), NOT Google OAuth — see
-// `connector-auth.ts`. The Google OAuth handshake lives inside the Fly backend.
+// One Worker serves several MCP endpoints under one OAuth login, each a distinct
+// tool set backed by its own Durable Object:
+//   /mcp          all-services base (BASE_TOOL_REGISTRARS)
+//   /mcp/sheets   auth + Sheets base + Sheets extras
+//   /mcp/gmail    auth + Gmail base + Gmail extras
+//   /mcp/drive    auth + Drive base + Drive extras
+//   /mcp/docs     auth + Docs base + Docs extras
+// Each per-service path exposes the SAME tool set as that sub-package's stdio
+// server, so the ~50-70 extras per service are reachable without swamping one
+// connector with all ~360 tools at once. Add whichever paths you want as separate
+// connectors in claude.ai (each authorizes with the same connector key).
 
-interface GogClient {
-  executor: GogExecutor;
+const VERSION = '2.14.0'; // x-release-please-version
+
+// Build an McpAgent subclass whose init() registers `registrars` onto its server,
+// each handler wrapped in the ALS scope carrying the per-session Fly executor.
+// (Kept in worker.ts, not connector-runtime.ts, because it imports the Worker-only
+// `agents` runtime; the node-testable helpers stay in connector-runtime.ts.)
+function makeAgent(registrars: ToolRegistrar[]): typeof McpAgent {
+  class GogAgent extends McpAgent<unknown, unknown, GogProps> {
+    server = new McpServer({ name: 'gogcli-mcp', version: VERSION });
+    async init() {
+      const executor = makeFlyExecutor((this.env as { FLY_ENDPOINT: string }).FLY_ENDPOINT, this.props.key);
+      const wrapped = wrapServer(this.server, executor);
+      for (const register of registrars) register(wrapped);
+    }
+  }
+  return GogAgent as unknown as typeof McpAgent;
 }
 
-const { Agent, handler } = createConnector<GogProps, GogClient>({
-  name: 'gogcli-mcp',
-  version: '2.14.0', // x-release-please-version
-  auth: gogAuth,
-  buildClient: (props, env) => ({
-    executor: makeFlyExecutor((env as any).FLY_ENDPOINT, props.key),
-  }),
-  // Reuse the base server's registrars unchanged; each one is wrapped so its
-  // handlers run inside the per-session Fly executor's ALS scope.
-  tools: BASE_TOOL_REGISTRARS.map(
-    (reg) => (server: any, client: GogClient) =>
-      // `reg` is a ToolRegistrar (server, deps) — the base registrars ignore the
-      // second arg, but pass `client` to satisfy its arity.
-      reg(wrapServer(server, client.executor), client),
-  ),
-});
+// auth + <service> base + <service> extras — the exact set each sub-package's
+// stdio server exposes.
+const svc = (base: ToolRegistrar, extra: ToolRegistrar): ToolRegistrar[] => [registerAuthTools, base, extra];
 
-// The connector's per-session MCP agent Durable Object
-// (`wrangler.jsonc`'s `MCP_OBJECT` → `GogcliMcpAgent`) resolves this export.
-export { Agent as GogcliMcpAgent };
+export class GogcliMcpAgent extends makeAgent(BASE_TOOL_REGISTRARS) {}
+export class GogcliSheetsAgent extends makeAgent(svc(registerSheetsTools, registerExtraSheetsTools)) {}
+export class GogcliGmailAgent extends makeAgent(svc(registerGmailTools, registerExtraGmailTools)) {}
+export class GogcliDriveAgent extends makeAgent(svc(registerDriveTools, registerExtraDriveTools)) {}
+export class GogcliDocsAgent extends makeAgent(svc(registerDocsTools, registerExtraDocsTools)) {}
+
+const defaultHandler = {
+  fetch(request: Request, env: unknown): Response | Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === '/authorize') return handleAuthorize(request, env, gogAuth);
+    return new Response('Not found', { status: 404 });
+  },
+};
+
+// NOTE: OAuthProvider matches apiHandlers by PREFIX and returns the FIRST match,
+// so the specific per-service paths MUST be listed before the base `/mcp`
+// (otherwise `/mcp` greedily swallows `/mcp/sheets`).
+const handler = new OAuthProvider({
+  apiHandlers: {
+    '/mcp/sheets': GogcliSheetsAgent.serve('/mcp/sheets', { binding: 'SHEETS_MCP' }) as never,
+    '/mcp/gmail': GogcliGmailAgent.serve('/mcp/gmail', { binding: 'GMAIL_MCP' }) as never,
+    '/mcp/drive': GogcliDriveAgent.serve('/mcp/drive', { binding: 'DRIVE_MCP' }) as never,
+    '/mcp/docs': GogcliDocsAgent.serve('/mcp/docs', { binding: 'DOCS_MCP' }) as never,
+    '/mcp': GogcliMcpAgent.serve('/mcp') as never,
+    '/sse': GogcliMcpAgent.serveSSE('/sse') as never,
+  },
+  defaultHandler: defaultHandler as never,
+  authorizeEndpoint: '/authorize',
+  tokenEndpoint: '/token',
+  clientRegistrationEndpoint: '/register',
+});
 
 export default handler;

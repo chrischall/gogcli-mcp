@@ -4,13 +4,27 @@
   "main": "packages/gogcli-mcp/src/worker.ts",
   "compatibility_date": "2025-11-01",
   "compatibility_flags": ["nodejs_compat"],
-  // Only the per-session MCP agent Durable Object is declared — the connector is
-  // stateless beyond the OAuth token store; every `gog` call is forwarded to the
-  // Fly backend (FLY_ENDPOINT), so there is no local cache DO.
+  // One Durable Object per MCP endpoint (worker.ts). Each agent class holds a
+  // distinct tool set: MCP_OBJECT = all-services base (/mcp); the per-service
+  // ones = auth + <service> base + <service> extras (/mcp/<service>). The
+  // connector is otherwise stateless (every gog call is forwarded to
+  // FLY_ENDPOINT), so these DOs hold only the per-session MCP transport state.
   "durable_objects": {
-    "bindings": [{ "name": "MCP_OBJECT", "class_name": "GogcliMcpAgent" }]
+    "bindings": [
+      { "name": "MCP_OBJECT", "class_name": "GogcliMcpAgent" },
+      { "name": "SHEETS_MCP", "class_name": "GogcliSheetsAgent" },
+      { "name": "GMAIL_MCP", "class_name": "GogcliGmailAgent" },
+      { "name": "DRIVE_MCP", "class_name": "GogcliDriveAgent" },
+      { "name": "DOCS_MCP", "class_name": "GogcliDocsAgent" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GogcliMcpAgent"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GogcliMcpAgent"] },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["GogcliSheetsAgent", "GogcliGmailAgent", "GogcliDriveAgent", "GogcliDocsAgent"]
+    }
+  ],
   // gogcli-connector's own OAuth token store (title: gogcli-connector-oauth).
   // Kept separate from any other connector's OAUTH_KV so their OAuth
   // grants/tokens never cross-wire. To stand up a fresh deployment, create your
