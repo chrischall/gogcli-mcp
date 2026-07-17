@@ -7,12 +7,12 @@
     "source": "github",
     "subfolder": "packages/gogcli-mcp-classroom"
   },
-  "version": "2.13.0",
+  "version": "2.14.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "gogcli-mcp-classroom",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "transport": {
         "type": "stdio"
       },
