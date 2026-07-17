@@ -1,0 +1,31 @@
+# fly-gog-runner — Fly.io app config.
+#
+# RUNNER_KEY is NOT set here. It is a secret, injected at runtime via:
+#   fly secrets set RUNNER_KEY=<random-key>
+# (see README.md). Never commit the key to this file.
+
+app = "gogcli-gog-runner"          # placeholder — rename to your Fly app
+primary_region = "iad"             # placeholder — set to your closest region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Scale to zero when idle; the connector's first request wakes the Machine.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+# Persistent volume holding gog's auth/config, mounted at GOG_HOME.
+[[mounts]]
+  source = "gogdata"
+  destination = "/data"
+
+[env]
+  GOG_HOME = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
