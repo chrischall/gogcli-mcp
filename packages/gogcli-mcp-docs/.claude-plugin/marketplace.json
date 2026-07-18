@@ -7,7 +7,7 @@
   },
   "metadata": {
     "description": "Extended Google Docs for Claude via gogcli — auth + full Docs and comments support",
-    "version": "2.15.0"
+    "version": "2.16.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
       "displayName": "gogcli (Docs)",
       "source": "./",
       "description": "Extended Google Docs for Claude via gogcli — auth + full Docs and comments support",
-      "version": "2.15.0",
+      "version": "2.16.0",
       "author": {
         "name": "Chris Hall"
       },
