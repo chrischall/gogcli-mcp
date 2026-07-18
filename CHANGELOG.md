@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.0](https://github.com/chrischall/gogcli-mcp/compare/v2.15.0...v2.16.0) (2026-07-18)
+
+
+### Features
+
+* **gmail:** deliver attachment contents inline or via Drive ([#159](https://github.com/chrischall/gogcli-mcp/issues/159)) ([149ee78](https://github.com/chrischall/gogcli-mcp/commit/149ee7883766ae6b7db63386902dd9ef3675ce54))
+
 ## [2.15.0](https://github.com/chrischall/gogcli-mcp/compare/v2.14.0...v2.15.0) (2026-07-17)
 
 
