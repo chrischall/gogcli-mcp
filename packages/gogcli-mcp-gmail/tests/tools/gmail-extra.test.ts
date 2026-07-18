@@ -2,13 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerExtraGmailTools } from '../../src/tools/gmail-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
 import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
-import { rawTextResult } from '@chrischall/mcp-utils';
+import { rawTextResult, errorResult } from '@chrischall/mcp-utils';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
   return {
     ...actual,
+    run: vi.fn(),
     runOrDiagnose: vi.fn(),
+    diagnose: vi.fn(),
   };
 });
 
@@ -16,7 +18,9 @@ let harness: TestHarness;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  vi.mocked(lib.run).mockResolvedValue('{}');
   vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+  vi.mocked(lib.diagnose).mockResolvedValue(errorResult('diagnosed'));
   harness = await createTestHarness(registerExtraGmailTools);
 });
 
@@ -41,18 +45,16 @@ describe('gog_gmail_raw', () => {
 });
 
 describe('gog_gmail_attachment', () => {
-  it('calls runOrDiagnose with messageId and attachmentId', async () => {
-    await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'attachment', 'm1', 'a1'],
-      { account: undefined },
-    );
-  });
+  // base64 whose first 16 chars decode to the given ASCII/binary prefix.
+  const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'; // "\x89PNG\r\n\x1a\n..."
+  const PDF_B64 = 'JVBERi0xLjUKJVBFRgo='; // "%PDF-1.5\n%PEF\n"
+  const OCTET_B64 = 'AAAAAAAAAAAAAAAA'; // decodes to NUL bytes — no magic match
 
-  it('passes --out and --name when provided', async () => {
+  it('deliver=off passes through to runOrDiagnose (legacy download)', async () => {
     await harness.callTool('gog_gmail_attachment', {
       messageId: 'm1',
       attachmentId: 'a1',
+      deliver: 'off',
       out: '/tmp/file.pdf',
       name: 'report.pdf',
     });
@@ -60,30 +62,126 @@ describe('gog_gmail_attachment', () => {
       ['gmail', 'attachment', 'm1', 'a1', '--out=/tmp/file.pdf', '--name=report.pdf'],
       { account: undefined },
     );
+    expect(lib.run).not.toHaveBeenCalled();
   });
 
-  it('passes --inline when inline is true', async () => {
-    await harness.callTool('gog_gmail_attachment', {
+  it('deliver=off with no out/name uses the bare download args', async () => {
+    await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', deliver: 'off' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'attachment', 'm1', 'a1'], { account: undefined });
+  });
+
+  it('auto (default) inlines a small image as a native image block', async () => {
+    vi.mocked(lib.run).mockResolvedValue(
+      JSON.stringify({ path: '/cfg/logo.png', bytes: 24, contentBase64: PNG_B64 }),
+    );
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
+    expect(lib.run).toHaveBeenCalledWith(['gmail', 'attachment', 'm1', 'a1', '--inline'], { account: undefined });
+    expect(res.content[0]).toMatchObject({ type: 'text' });
+    expect(res.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
+  });
+
+  it('auto inlines a small non-image as an embedded resource blob', async () => {
+    vi.mocked(lib.run).mockResolvedValue(
+      JSON.stringify({ path: '/cfg/report.pdf', bytes: 12, contentBase64: PDF_B64 }),
+    );
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
+    expect(res.content[1]).toEqual({
+      type: 'resource',
+      resource: { uri: 'gmail-attachment://m1/report.pdf', mimeType: 'application/pdf', blob: PDF_B64 },
+    });
+  });
+
+  it('auto uploads to Drive and returns the link when over the inline cap', async () => {
+    vi.mocked(lib.run)
+      .mockResolvedValueOnce(JSON.stringify({ path: '/cfg/big.pdf', bytes: 9_000_000, reason: 'exceeds inline size limit (3145728 bytes)' }))
+      .mockResolvedValueOnce(JSON.stringify({ file: { id: 'F1', name: 'big.pdf', mimeType: 'application/pdf', size: 9_000_000, webViewLink: 'https://drive.google.com/file/d/F1/view' } }));
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
+    expect(lib.run).toHaveBeenNthCalledWith(1, ['gmail', 'attachment', 'm1', 'a1', '--inline'], { account: undefined });
+    expect(lib.run).toHaveBeenNthCalledWith(2, ['drive', 'upload', '/cfg/big.pdf', '--json'], { account: undefined });
+    const payload = JSON.parse((res.content[0] as { text: string }).text);
+    expect(payload).toMatchObject({ deliveredVia: 'drive', id: 'F1', webViewLink: 'https://drive.google.com/file/d/F1/view' });
+  });
+
+  it('deliver=inline errors when the attachment is too large (no reason field)', async () => {
+    // gog omits `reason` in some builds — the handler supplies a default.
+    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ path: '/cfg/big.pdf', bytes: 9_000_000 }));
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', deliver: 'inline' });
+    expect(res.isError).toBe(true);
+    expect((res.content[0] as { text: string }).text).toContain('too large');
+    expect(lib.run).toHaveBeenCalledTimes(1); // no Drive upload
+  });
+
+  it('deliver=drive skips --inline and uploads, honoring driveFolder and name', async () => {
+    vi.mocked(lib.run)
+      .mockResolvedValueOnce(JSON.stringify({ path: '/cfg/small.png', bytes: 24 }))
+      .mockResolvedValueOnce(JSON.stringify({ file: { id: 'F2', webViewLink: 'https://drive.google.com/file/d/F2/view' } }));
+    const res = await harness.callTool('gog_gmail_attachment', {
       messageId: 'm1',
       attachmentId: 'a1',
-      inline: true,
+      deliver: 'drive',
+      driveFolder: 'DIR9',
+      name: 'renamed.png',
+      account: 'me@x.com',
     });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'attachment', 'm1', 'a1', '--inline'],
+    expect(lib.run).toHaveBeenNthCalledWith(1, ['gmail', 'attachment', 'm1', 'a1', '--name=renamed.png'], { account: 'me@x.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(2, ['drive', 'upload', '/cfg/small.png', '--json', '--parent=DIR9', '--name=renamed.png'], { account: 'me@x.com' });
+    const payload = JSON.parse((res.content[0] as { text: string }).text);
+    expect(payload).toMatchObject({ deliveredVia: 'drive', id: 'F2' });
+  });
+
+  it('still reports drive delivery when the upload output lacks a file envelope', async () => {
+    vi.mocked(lib.run)
+      .mockResolvedValueOnce(JSON.stringify({ path: '/cfg/big.pdf', bytes: 9_000_000 }))
+      .mockResolvedValueOnce('{}');
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
+    const payload = JSON.parse((res.content[0] as { text: string }).text);
+    expect(payload).toMatchObject({ deliveredVia: 'drive' });
+    expect(payload.id).toBeUndefined();
+  });
+
+  it('passes --out and --name through to the inline download', async () => {
+    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ path: '/tmp/x.png', bytes: 24, contentBase64: PNG_B64 }));
+    await harness.callTool('gog_gmail_attachment', {
+      messageId: 'm1', attachmentId: 'a1', out: '/tmp/x.png', name: 'x.png',
+    });
+    expect(lib.run).toHaveBeenCalledWith(
+      ['gmail', 'attachment', 'm1', 'a1', '--inline', '--out=/tmp/x.png', '--name=x.png'],
       { account: undefined },
     );
   });
 
-  it('omits --inline when inline is false', async () => {
-    await harness.callTool('gog_gmail_attachment', {
-      messageId: 'm1',
-      attachmentId: 'a1',
-      inline: false,
-    });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'attachment', 'm1', 'a1'],
-      { account: undefined },
+  it('infers MIME by sniffing when the extension is unknown', async () => {
+    vi.mocked(lib.run).mockResolvedValue(
+      JSON.stringify({ path: '/cfg/blob.bin', bytes: 24, contentBase64: PNG_B64 }),
     );
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
+    // .bin isn't in the extension table, but the bytes sniff as PNG → image block.
+    expect(res.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
+  });
+
+  it('falls back to application/octet-stream for unknown extension and unknown bytes', async () => {
+    vi.mocked(lib.run).mockResolvedValue(
+      JSON.stringify({ path: '/cfg/blob.bin', bytes: 12, contentBase64: OCTET_B64 }),
+    );
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
+    expect(res.content[1]).toMatchObject({
+      type: 'resource',
+      resource: { mimeType: 'application/octet-stream', blob: OCTET_B64 },
+    });
+  });
+
+  it('uses a generic filename and "?" size when gog reports no path or bytes', async () => {
+    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ contentBase64: OCTET_B64 }));
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
+    expect((res.content[0] as { text: string }).text).toContain('? bytes');
+    expect(res.content[1]).toMatchObject({ resource: { uri: 'gmail-attachment://m1/attachment' } });
+  });
+
+  it('diagnoses a download failure', async () => {
+    vi.mocked(lib.run).mockRejectedValueOnce(new Error('boom'));
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
+    expect(lib.diagnose).toHaveBeenCalled();
+    expect(res.isError).toBe(true);
   });
 });
 

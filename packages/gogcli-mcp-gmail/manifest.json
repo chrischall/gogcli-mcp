@@ -99,7 +99,7 @@
     },
     {
       "name": "gog_gmail_attachment",
-      "description": "Download a single attachment from a message, optionally returning its content inline (base64)"
+      "description": "Download a Gmail attachment and deliver its contents: inline (base64 image/resource) when within the 3 MiB limit, otherwise uploaded to Google Drive with a shareable link"
     },
     {
       "name": "gog_gmail_url",
