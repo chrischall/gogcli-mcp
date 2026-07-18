@@ -53,7 +53,7 @@ Plus 5 auth tools and 4 base Gmail tools (search, get, send, run).
 | Tool | Description |
 |------|-------------|
 | `gog_gmail_raw` | Dump the raw Gmail API JSON for a message (lossless, for scripting) |
-| `gog_gmail_attachment` | Download a single attachment from a message, optionally returning its content inline (base64) |
+| `gog_gmail_attachment` | Download an attachment and deliver its contents — inline (base64 image/resource) when ≤3 MiB, otherwise uploaded to Google Drive with a shareable link (`deliver`: auto/inline/drive/off) |
 | `gog_gmail_url` | Print Gmail web URLs for one or more threads |
 | `gog_gmail_history` | List Gmail history events since a given historyId |
 
