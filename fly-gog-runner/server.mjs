@@ -178,15 +178,19 @@ export function createServer({ runnerKey, execFn = defaultExecFn, log = defaultL
     server.inFlight += 1;
     const startedAt = Date.now();
     let logged = false;
+    // Per-REQUEST, deliberately closed over rather than hung off `server`:
+    // requests overlap (a slow attachment download runs while a fast metadata
+    // read starts and finishes), so server-wide state would be overwritten by
+    // whichever request is newest and cleared by whichever finishes first.
+    let argsDesc = '';
     const finish = () => {
       if (logged) return;
       logged = true;
       server.inFlight -= 1;
       log(
         `${method} ${(req.url ?? '').split('?')[0]} ${res.statusCode} ` +
-        `${Date.now() - startedAt}ms ${server.pendingArgs ?? ''}`.trimEnd(),
+        `${Date.now() - startedAt}ms ${argsDesc}`.trimEnd(),
       );
-      server.pendingArgs = undefined;
     };
     res.on('finish', finish);
     res.on('close', finish);
@@ -248,7 +252,7 @@ export function createServer({ runnerKey, execFn = defaultExecFn, log = defaultL
         return;
       }
 
-      server.pendingArgs = describeArgs(args);
+      argsDesc = describeArgs(args);
       try {
         const { stdout } = await execFn(args);
         sendJson(res, 200, { stdout });

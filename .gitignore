@@ -8,3 +8,8 @@ coverage/
 # LICENSE copies staged into each package by scripts/bundle.js (root LICENSE is the source)
 packages/*/LICENSE
 .env*
+
+# Node.js diagnostic reports — written on a fatal error or an interrupted
+# test run. They dump the FULL process environment (API tokens, passwords),
+# so they must never be committed.
+report.*.json

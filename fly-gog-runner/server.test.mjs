@@ -367,3 +367,54 @@ test('createServer logs each request without leaking full gog args', async () =>
   server.close();
   await once(server, 'close');
 });
+
+test('concurrent /run calls each log their own gog subcommand', async () => {
+  const lines = [];
+  let releaseSlow;
+  const slowGate = new Promise((resolve) => { releaseSlow = resolve; });
+
+  // The slow call models an attachment download; the fast one a metadata read
+  // that overtakes it. Per-request log state must survive the overlap.
+  const execFn = async (args) => {
+    if (args[1] === 'attachment') { await slowGate; return { stdout: 'pdf' }; }
+    return { stdout: 'meta' };
+  };
+
+  const server = createServer({ runnerKey: RUNNER_KEY, execFn, log: (l) => lines.push(l) });
+  server.listen(0);
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const post = (args) => request(base, {
+    method: 'POST',
+    path: '/run',
+    headers: { ...bearer(RUNNER_KEY), 'content-type': 'application/json' },
+    body: JSON.stringify({ args }),
+  });
+
+  const slow = post(['gmail', 'attachment', 'msgid', 'attid']);
+  while (server.inFlight === 0) await new Promise((r) => setImmediate(r));
+  // The fast request starts and finishes while the slow one is still in flight.
+  const fast = await post(['gmail', 'messages', 'search']);
+  assert.equal(fast.status, 200);
+
+  releaseSlow();
+  assert.equal((await slow).status, 200);
+
+  try {
+    const runLines = lines.filter((l) => l.includes('POST /run'));
+    assert.equal(runLines.length, 2, 'both requests logged');
+    assert.ok(
+      runLines.some((l) => l.includes('gmail attachment') && l.includes('4 args')),
+      `slow request must log its own args, got: ${JSON.stringify(runLines)}`,
+    );
+    assert.ok(
+      runLines.some((l) => l.includes('gmail messages') && l.includes('3 args')),
+      `fast request must log its own args, got: ${JSON.stringify(runLines)}`,
+    );
+  } finally {
+    // Without this the server outlives a failed assertion and hangs the suite.
+    server.close();
+    await once(server, 'close');
+  }
+});
