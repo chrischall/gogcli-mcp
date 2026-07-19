@@ -142,70 +142,17 @@ Do NOT manually bump versions or create tags unless the user explicitly asks. re
 
 release-please (`.github/workflows/release-please.yml`) opens / updates a single combined release PR whenever Conventional-Commit-style commits accumulate on `main` (`feat:`, `fix:`, etc.). Merging the release PR creates one `v<NEXT>` tag for all sub-packages (linked-versions); the second job in the same workflow then builds `.mcpb` bundles + `.skill` files, publishes every sub-package to npm via Trusted-Publisher OIDC, publishes each `server.json` to the MCP Registry, publishes skills to ClawHub (when `CLAWHUB_TOKEN` is set), and attaches all artifacts to the GitHub Release release-please authored.
 
-<!-- pr-workflow:v2 -->
+<!-- pr-workflow:v3 -->
 ## Pull requests & release notes
 
-**Default workflow: branch + PR, even for solo work.** Direct pushes to `main` skip review *and* skip auto-generated release notes — GitHub's `generate_release_notes` (configured in `.github/release.yml`) only picks up merged PRs. Push directly to `main` only when the user explicitly asks for it (e.g. emergency hotfix).
+Fleet policy — Conventional-Commit PR titles, labels, the auto-review /
+auto-merge ladder, auto-review follow-up issues, PR timing, and release PRs —
+lives in `~/.claude/CLAUDE.md`. Don't restate it here; the copies drifted.
 
-For every PR, apply exactly one label so it lands in the right release-notes section:
-
-| Label                | Section in release notes |
-|----------------------|--------------------------|
-| `gogcli-bump`        | ⚠️ Required gogcli version (raises `MIN_GOG_VERSION`) |
-| `enhancement`        | Features                 |
-| `bug`                | Bug Fixes                |
-| `security`           | Security                 |
-| `refactor`           | Refactor                 |
-| `documentation`      | Documentation            |
-| `test`               | Tests                    |
-| `dependencies`       | Dependencies             |
-| `ci` / `github_actions` | CI & Build            |
-| *(none / unmatched)* | Other Changes            |
-| `ignore-for-release` | Hidden from notes        |
-
-**Exception for first-party dependency bumps.** When bumping a package we own (`@chrischall/mcp-utils`, `@chrischall/realty-core`, `@fetchproxy/server` — anything published from a chrischall-owned repo), label the PR `enhancement` or `bug` instead of `dependencies`, and use the matching Conventional-Commit prefix (`feat:` or `fix:`) instead of `chore:`/`build(deps):`. Those bumps deliver real product fixes or features through us, so they should drive a release-please version bump and show up under Features/Bug Fixes in the release notes — not get hidden under "Dependencies" (which doesn't trigger a release).
-
-**The PR title MUST be a Conventional Commit** (`fix(security): refuse stale refresh tokens`, `feat(sheets): add dry-run write guard`), not internal shorthand (`auth tweaks`). This matters twice over:
-
-1. **release-please reads the PR title.** Because the repo squash-merges only (see [How PRs merge](#how-prs-merge)), the PR title *becomes the squash commit's subject line* — and that subject is the only thing release-please parses to decide the version bump and CHANGELOG section. A title without a `feat:`/`fix:`/`docs:`/etc. type is invisible to release-please: it bumps nothing, adds no changelog entry, and the change never gets published. Conventional prefixes in *individual commit messages* don't help — squash discards them; only the PR title survives.
-2. **It's also the GitHub release-notes bullet** (`generate_release_notes`), sectioned by the label above. A clean, user-facing conventional title reads fine in both places.
-
-So: put the conventional type in the **title**, keep it user-facing, and apply the matching label.
-
-### How PRs merge
-
-**Don't run `gh pr merge` yourself.** The automation does it:
-
-1. `pr-auto-review.yml` runs a Claude review on every PR **except** the release-please release PR (which it deliberately skips). On a `pass` **or `warn`** verdict it adds the `ready-to-merge` label — nits (`warn`) ride along and don't block. A `fail` (🔴 important findings) is the only verdict that blocks auto-merge.
-2. `auto-merge.yml`, on the `ready-to-merge` label (or on a dependabot PR), arms `gh pr merge --auto --squash`. The moment CI is green the PR squash-merges itself.
-
-For ordinary feature/fix PRs, opening with `gh pr create --label <label>` (or `--label ignore-for-release` for chores not worth a release-notes line) is the whole job. Only a `fail` verdict needs a manual override to ship — add the label yourself after addressing or accepting the findings: `gh pr edit <num> --add-label ready-to-merge`.
-
-### Auto-review follow-up issues
-
-When a PR's auto-review verdict is `warn` or `fail`, the pipeline opens or updates a single `auto-review-followup` issue ("Auto-review follow-ups for PR #N") whose checklist captures every finding, and links it from the PR's `<!-- auto-review-verdict -->` comment (`📋 Tracking follow-ups: #N`). `warn` (nits only) still auto-merges — the issue carries the nits forward — so most nits are fixed in a *later* PR, not the original; `fail` blocks until the important findings are addressed on the PR itself.
-
-When asked to address the auto-review comments / review findings on a PR:
-
-1. Read the verdict comment, open the linked `auto-review-followup` issue, and treat its checklist as the work list (alongside any inline review comments).
-2. Resolve each item, checking off only what you've **verified** is genuinely fixed.
-3. If every item is resolved on the current PR, add `Closes #<issue>` to that PR's body so the merge closes it; if some are deferred, check off only the resolved ones and leave the issue open.
-4. For nits whose `warn` PR already auto-merged, address them in a follow-up PR that references `Closes #<issue>`.
-
-(This mirrors the fleet-wide convention in `~/.claude/CLAUDE.md`.)
-
-### PR timing — only open when the feature is done
-
-Because PRs auto-merge as soon as auto-review passes, **do not open a PR until the feature is genuinely complete**. There's no draft-PR safety net here:
-
-- Don't open a PR to "stage" work while live verification, follow-up fixes, or final passes are still pending — by the time you finish those, the half-baked PR may already be in `main`.
-- Push commits to the branch first; only run `gh pr create` once tests pass, live verification (if applicable) is green, and you'd be comfortable with the change shipping as-is.
-- If follow-ups land after a PR is already open, they need to land on the same branch *before* auto-review flips to `pass`. Once the PR squash-merges, late commits orphan onto a stale branch and become their own follow-up PR.
-- If you genuinely need a checkpoint review without shipping, open the PR as a GitHub draft (`gh pr create --draft …`) — auto-review skips drafts. Mark it ready-for-review only when the feature is truly done.
-
-**Release PRs are the one manual touch.** release-please opens its own release PR and leaves it open as your staging artifact — `pr-auto-review.yml` skips it on purpose, so it sits there accumulating changes until you decide to ship. When you're ready, add `ready-to-merge` to it the same way: `gh pr edit <num> --add-label ready-to-merge`. The `auto-merge.yml` arm then takes over and the publish job fires the moment the release PR lands.
-
-The repo allows squash-merge only — `--merge` and `--rebase` are blocked at the branch-protection ruleset level.
+Shared technical conventions (publishing, bundling, versioning guards,
+write-verification, transport archetypes, testing traps) live in
+[`chrischall/workflows`](https://github.com/chrischall/workflows):
+`docs/fleet-conventions.md`, plus `README.md` for the CI pipeline contract.
 
 ## gogcli notes
 
