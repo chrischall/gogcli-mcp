@@ -167,6 +167,24 @@ describe('makeFlyExecutor', () => {
     await expect(exec(['x'], {})).rejects.toThrow(/gog-runner did not respond within 35000ms/);
   });
 
+  it('rethrows a non-timeout fetch failure verbatim, not as a timeout', async () => {
+    // A real network error (DNS failure, connection refused) rejects with a
+    // TypeError named 'TypeError' — neither TimeoutError nor AbortError — so it
+    // must pass through untouched rather than be relabelled a timeout.
+    const networkErr = new TypeError('fetch failed');
+    vi.stubGlobal('fetch', vi.fn(async () => { throw networkErr; }));
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(['x'], {})).rejects.toBe(networkErr);
+  });
+
+  it('rethrows a non-Error rejection verbatim', async () => {
+    // Guards the `err instanceof Error ? err.name : ''` false branch: if fetch
+    // ever rejects with a non-Error value, it is rethrown unchanged.
+    vi.stubGlobal('fetch', vi.fn(async () => { throw 'kaboom'; }));
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(['x'], {})).rejects.toBe('kaboom');
+  });
+
   it('throws the backend error message on a non-2xx with a body', async () => {
     vi.stubGlobal(
       'fetch',
