@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.1](https://github.com/chrischall/gogcli-mcp/compare/v2.16.0...v2.16.1) (2026-07-19)
+
+
+### Documentation
+
+* replace duplicated fleet policy with a pointer ([#161](https://github.com/chrischall/gogcli-mcp/issues/161)) ([58a7657](https://github.com/chrischall/gogcli-mcp/commit/58a765747ca6695a899e8f71f185383009364e42))
+
 ## [2.16.0](https://github.com/chrischall/gogcli-mcp/compare/v2.15.0...v2.16.0) (2026-07-18)
 
 
