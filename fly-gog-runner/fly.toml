@@ -7,6 +7,12 @@
 app = "gogcli-gog-runner"          # placeholder — rename to your Fly app
 primary_region = "ewr"             # US-East (Secaucus NJ); set to your closest region
 
+# How long Fly waits after SIGINT before SIGKILL. MUST exceed the server's
+# SHUTDOWN_TIMEOUT_MS (35 s), which in turn covers gog's 30 s exec timeout.
+# The default is 5 s — far too short for an in-flight Gmail attachment download,
+# and the reason autostop used to sever requests into a gateway HTTP 502.
+kill_timeout = "40s"
+
 [build]
   dockerfile = "Dockerfile"
 
