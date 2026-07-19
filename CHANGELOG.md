@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.16.3](https://github.com/chrischall/gogcli-mcp/compare/v2.16.2...v2.16.3) (2026-07-19)
+
+
+### Bug Fixes
+
+* **connector:** arm a client-side deadline on the Fly executor ([#171](https://github.com/chrischall/gogcli-mcp/issues/171)) ([1df64f9](https://github.com/chrischall/gogcli-mcp/commit/1df64f99d86f5d02c95e1eb24ef009d5051140f9))
+* **connector:** drain in-flight requests so Gmail attachments stop 502ing ([#167](https://github.com/chrischall/gogcli-mcp/issues/167)) ([fa8933a](https://github.com/chrischall/gogcli-mcp/commit/fa8933a6d90f6e84f9033039c28ed4f9611be84e))
+
 ## [2.16.2](https://github.com/chrischall/gogcli-mcp/compare/v2.16.1...v2.16.2) (2026-07-19)
 
 
