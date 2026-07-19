@@ -1,7 +1,7 @@
 {
   "name": "gogcli-mcp-docs",
   "displayName": "gogcli (Docs)",
-  "version": "2.16.2",
+  "version": "2.16.3",
   "description": "Extended Google Docs for Claude via gogcli — auth + full Docs and comments support",
   "author": {
     "name": "Chris Hall",
