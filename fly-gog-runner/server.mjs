@@ -19,6 +19,11 @@ const MAX_ARGS = 64;
 const MAX_ARG_LEN = 4096;
 const NUL = '\u0000';
 
+// How long to let in-flight requests finish after a shutdown signal before
+// giving up. Fly autostops an idle Machine with SIGINT; a `gog` call is capped
+// at EXEC_TIMEOUT_MS, so this budget covers the slowest legitimate request.
+export const SHUTDOWN_TIMEOUT_MS = 35_000;
+
 // execFn defaults.
 const EXEC_TIMEOUT_MS = 30_000;
 const EXEC_MAX_BUFFER = 32 * 1024 * 1024; // 32 MB
@@ -139,13 +144,53 @@ export function readBody(req) {
   });
 }
 
-export function createServer({ runnerKey, execFn = defaultExecFn } = {}) {
+// One-line request log. Deliberately records only the gog service+subcommand
+// and the arg COUNT — operands (message ids, attachment ids, `gog <svc> run`
+// passthrough flags) never reach the log.
+function describeArgs(args) {
+  if (!Array.isArray(args) || args.length === 0) return 'no args';
+  const head = args.filter((a) => typeof a === 'string' && !a.startsWith('-')).slice(0, 2);
+  return `${head.join(' ') || 'gog'} (${args.length} args)`;
+}
+
+function defaultLog(line) {
+  // stdout is fine here — this is a standalone service, not an stdio MCP server.
+  console.log(line);
+}
+
+export function createServer({ runnerKey, execFn = defaultExecFn, log = defaultLog } = {}) {
   if (!runnerKey || typeof runnerKey !== 'string') {
     throw new Error('RUNNER_KEY is required; refusing to start without an auth key');
   }
 
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     const { method } = req;
+
+    // Once a shutdown signal has landed, refuse NEW work rather than starting a
+    // `gog` call we cannot finish. A 503 with a retryable flag is a far better
+    // caller experience than the severed socket Fly's proxy turns into a 502.
+    if (server.shuttingDown) {
+      res.setHeader('Connection', 'close');
+      sendJson(res, 503, { error: 'gog-runner is shutting down', retryable: true });
+      return;
+    }
+
+    server.inFlight += 1;
+    const startedAt = Date.now();
+    let logged = false;
+    const finish = () => {
+      if (logged) return;
+      logged = true;
+      server.inFlight -= 1;
+      log(
+        `${method} ${(req.url ?? '').split('?')[0]} ${res.statusCode} ` +
+        `${Date.now() - startedAt}ms ${server.pendingArgs ?? ''}`.trimEnd(),
+      );
+      server.pendingArgs = undefined;
+    };
+    res.on('finish', finish);
+    res.on('close', finish);
+
     // Strip any query string for routing.
     const url = (req.url ?? '').split('?')[0];
 
@@ -203,6 +248,7 @@ export function createServer({ runnerKey, execFn = defaultExecFn } = {}) {
         return;
       }
 
+      server.pendingArgs = describeArgs(args);
       try {
         const { stdout } = await execFn(args);
         sendJson(res, 200, { stdout });
@@ -217,6 +263,64 @@ export function createServer({ runnerKey, execFn = defaultExecFn } = {}) {
 
     sendJson(res, 404, { error: 'not found' });
   });
+
+  server.inFlight = 0;
+  server.shuttingDown = false;
+  return server;
+}
+
+// Drain in-flight requests before exiting.
+//
+// THE BUG THIS FIXES: Fly stops an idle Machine (auto_stop_machines) by sending
+// SIGINT. Node's default SIGINT action is immediate termination — the Machine's
+// event log shows `exit_code=130` (128+SIGINT) — which severs every in-flight
+// connection. Fly's proxy turns that severed upstream into an HTTP 502 whose
+// body is Fly's own HTML, not our JSON, so the connector could only report a
+// bare "gog-runner HTTP 502". Long requests (a Gmail attachment download) sit in
+// that window far longer than a metadata read, which is why attachments failed
+// while searches didn't.
+//
+// Returns a disposer that removes the signal listeners (used by tests).
+export function installGracefulShutdown(server, {
+  signals = ['SIGINT', 'SIGTERM'],
+  timeoutMs = SHUTDOWN_TIMEOUT_MS,
+  log = defaultLog,
+  exit = (code) => process.exit(code),
+} = {}) {
+  const onSignal = (signal) => {
+    if (server.shuttingDown) return; // idempotent: Fly may send SIGINT then SIGTERM
+    server.shuttingDown = true;
+    log(`${signal} received; draining ${server.inFlight} in-flight request(s)`);
+
+    const timer = setTimeout(() => {
+      log(`drain timed out after ${timeoutMs}ms with ${server.inFlight} in flight; forcing exit`);
+      exit(1);
+    }, timeoutMs);
+    timer.unref?.();
+
+    // server.close() waits for ALL sockets, including idle keep-alive ones that
+    // will never send another byte. closeIdleConnections() drops those while
+    // leaving active requests alone — but a socket is only "idle" once its
+    // response has fully flushed, so a single call at signal time misses any
+    // connection still mid-response. Sweep until the server actually closes.
+    const sweep = setInterval(() => server.closeIdleConnections?.(), 100);
+    sweep.unref?.();
+
+    server.close(() => {
+      clearTimeout(timer);
+      clearInterval(sweep);
+      log('drain complete; exiting cleanly');
+      exit(0);
+    });
+    server.closeIdleConnections?.();
+  };
+
+  const handlers = signals.map((signal) => {
+    const handler = () => onSignal(signal);
+    process.on(signal, handler);
+    return [signal, handler];
+  });
+  return () => { for (const [signal, handler] of handlers) process.off(signal, handler); };
 }
 
 // Start the server when run directly.
@@ -224,8 +328,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const runnerKey = process.env.RUNNER_KEY;
   const port = Number(process.env.PORT) || 8080;
   const server = createServer({ runnerKey });
+  installGracefulShutdown(server);
   server.listen(port, () => {
-    // stdout is fine here — this is a standalone service, not an stdio MCP server.
     console.log(`fly-gog-runner listening on :${port}`);
   });
 }

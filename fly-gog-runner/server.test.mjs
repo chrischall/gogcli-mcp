@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { EventEmitter, once } from 'node:events';
-import { createServer, sanitizedEnv, readBody, MAX_BODY_BYTES } from './server.mjs';
+import { createServer, sanitizedEnv, readBody, MAX_BODY_BYTES, installGracefulShutdown } from './server.mjs';
 
 const RUNNER_KEY = 'test-runner-key-123';
 
@@ -238,4 +238,132 @@ test('readBody resolves a small body', async () => {
   req.emit('data', Buffer.from('{"args":["--version"]}'));
   req.emit('end');
   assert.equal(await promise, '{"args":["--version"]}');
+});
+
+// --- Graceful shutdown -------------------------------------------------------
+//
+// Fly autostops an idle Machine by sending SIGINT. Without a handler, Node exits
+// immediately and any in-flight `gog` request dies with it; Fly's proxy then
+// hands the caller a bare HTTP 502 with a non-JSON body, which is exactly the
+// opaque "gog-runner HTTP 502" the connector used to surface. These tests pin
+// the drain behaviour that prevents it.
+
+test('installGracefulShutdown drains an in-flight request before exiting', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  // execFn hangs until we release it, so the request is provably in flight when
+  // the signal arrives.
+  const execFn = async () => { await gate; return { stdout: 'finished' }; };
+
+  const server = createServer({ runnerKey: RUNNER_KEY, execFn, log: () => {} });
+  server.listen(0);
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const exits = [];
+  const stop = installGracefulShutdown(server, {
+    signals: ['SIGUSR2'], // avoid hijacking the test runner's own SIGINT
+    log: () => {},
+    exit: (code) => exits.push(code),
+  });
+
+  const pending = request(base, {
+    method: 'POST',
+    path: '/run',
+    headers: { ...bearer(RUNNER_KEY), 'content-type': 'application/json' },
+    body: JSON.stringify({ args: ['gmail', 'attachment'] }),
+  });
+
+  // Wait until the server has actually accepted the request.
+  while (server.inFlight === 0) await new Promise((r) => setImmediate(r));
+
+  process.emit('SIGUSR2');
+  assert.equal(server.shuttingDown, true);
+  assert.deepEqual(exits, [], 'must not exit while a request is in flight');
+
+  release();
+  const res = await pending;
+  assert.equal(res.status, 200, 'in-flight request completes instead of being severed');
+  assert.deepEqual(res.json, { stdout: 'finished' });
+
+  await once(server, 'close');
+  assert.deepEqual(exits, [0], 'exits cleanly once drained');
+  stop();
+});
+
+// Once draining begins the listening socket closes, so a NEW connection is
+// refused by the OS and Fly's proxy stops routing to the Machine. The 503 guard
+// covers the other case: a request arriving on a keep-alive connection that was
+// already established when the signal landed. Setting the flag directly keeps
+// the listener open so that branch is exercised deterministically.
+test('a request arriving mid-shutdown gets a retryable 503, not a severed socket', async () => {
+  const server = createServer({ runnerKey: RUNNER_KEY, execFn: async () => ({ stdout: 'x' }), log: () => {} });
+  server.listen(0);
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  server.shuttingDown = true;
+
+  const res = await request(base, {
+    method: 'POST',
+    path: '/run',
+    headers: { ...bearer(RUNNER_KEY), 'content-type': 'application/json' },
+    body: JSON.stringify({ args: ['gmail', 'attachment'] }),
+  });
+  assert.equal(res.status, 503);
+  assert.match(res.json.error, /shutting down/i);
+  assert.equal(res.json.retryable, true);
+
+  server.close();
+  await once(server, 'close');
+});
+
+test('shutdown is idempotent across repeated signals', async () => {
+  const server = createServer({ runnerKey: RUNNER_KEY, execFn: async () => ({ stdout: 'x' }), log: () => {} });
+  server.listen(0);
+  await once(server, 'listening');
+
+  const exits = [];
+  const stop = installGracefulShutdown(server, {
+    signals: ['SIGUSR2'],
+    log: () => {},
+    exit: (code) => exits.push(code),
+  });
+
+  process.emit('SIGUSR2');
+  process.emit('SIGUSR2');
+  process.emit('SIGUSR2');
+  await once(server, 'close');
+  assert.deepEqual(exits, [0], 'exits exactly once');
+  stop();
+});
+
+test('createServer logs each request without leaking full gog args', async () => {
+  const lines = [];
+  const server = createServer({
+    runnerKey: RUNNER_KEY,
+    execFn: async () => ({ stdout: 'ok' }),
+    log: (line) => lines.push(line),
+  });
+  server.listen(0);
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const secretish = 'ANGjdJ-verylongattachmentid-shouldnotbelogged';
+  await request(base, {
+    method: 'POST',
+    path: '/run',
+    headers: { ...bearer(RUNNER_KEY), 'content-type': 'application/json' },
+    body: JSON.stringify({ args: ['gmail', 'attachment', 'msgid', secretish] }),
+  });
+
+  const line = lines.find((l) => l.includes('POST /run'));
+  assert.ok(line, 'request was logged');
+  assert.match(line, /200/, 'logs the status');
+  assert.match(line, /gmail attachment/, 'logs the gog subcommand');
+  assert.match(line, /4 args/, 'logs the arg count');
+  assert.ok(!line.includes(secretish), 'does not log operand values');
+
+  server.close();
+  await once(server, 'close');
 });

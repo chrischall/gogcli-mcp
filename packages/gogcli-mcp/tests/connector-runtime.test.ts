@@ -147,4 +147,57 @@ describe('makeFlyExecutor', () => {
     const exec = makeFlyExecutor(ENDPOINT, KEY);
     await expect(exec(['x'], {})).rejects.toThrow('gog-runner HTTP 503');
   });
+
+  // A gateway 502 (Fly's proxy could not reach the Machine) and a runner 502
+  // (gog itself failed) are indistinguishable by status alone. Only the former
+  // is worth retrying, and conflating them is what made the Gmail-attachment
+  // drain race look like an unfixable flake.
+  it('names the gateway hop when a 502 body did not come from the runner', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 502,
+        json: async () => {
+          throw new Error('Fly returned HTML, not JSON');
+        },
+      })),
+    );
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(['gmail', 'attachment'], {})).rejects.toThrow(
+      /never reached gog.*transient/s,
+    );
+  });
+
+  it('surfaces gog stderr verbatim for a runner-authored 502 without retry advice', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 502,
+        json: async () => ({ error: 'gog exited with code 1', stderr: 'invalid attachment id' }),
+      })),
+    );
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    const err = await exec(['gmail', 'attachment'], {}).catch((e: Error) => e);
+    expect((err as Error).message).toContain('invalid attachment id');
+    // Deterministic failure: must NOT tell the caller to retry.
+    expect((err as Error).message).not.toMatch(/retry/i);
+  });
+
+  it('marks the runner drain 503 as retryable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: 'gog-runner is shutting down', retryable: true }),
+      })),
+    );
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(['gmail', 'attachment'], {})).rejects.toThrow(/restarting; retry/i);
+  });
 });

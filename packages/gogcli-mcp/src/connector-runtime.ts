@@ -20,8 +20,32 @@ export function makeFlyExecutor(endpoint: string, key: string): GogExecutor {
       body: JSON.stringify({ args }),
     });
     if (!res.ok) {
-      const b = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(b.error || 'gog-runner HTTP ' + res.status);
+      // Two very different failures arrive as non-2xx, and collapsing them (as
+      // this used to) is what made a real bug look like random flakiness:
+      //
+      //  a) The runner answered with its own JSON — `gog` actually ran on the
+      //     box and failed. Deterministic: the same call will fail the same way.
+      //  b) The body is NOT the runner's JSON (Fly's HTML error page, or empty).
+      //     Then the request never reached `gog` at all; Fly's edge proxy is
+      //     reporting that it could not reach the Machine — typically because
+      //     the Machine was starting from scale-to-zero, or was mid-shutdown.
+      //     Genuinely transient, and the only case worth retrying.
+      const body = (await res.json().catch(() => null)) as
+        | { error?: string; stderr?: string; retryable?: boolean }
+        | null;
+      if (body && typeof body.error === 'string') {
+        const detail = body.stderr ? `${body.error}\n${body.stderr}` : body.error;
+        // The runner's own drain response (503) is the one runner-authored
+        // failure that IS worth retrying; everything else came from gog.
+        throw new Error(
+          body.retryable ? `gog-runner is restarting; retry this call. ${detail}` : detail,
+        );
+      }
+      throw new Error(
+        `gog-runner HTTP ${res.status}: the response did not come from the runner, ` +
+        'so the request never reached gog. The backend Machine was most likely starting ' +
+        'or shutting down — this is transient, retry the same call.',
+      );
     }
     const { stdout } = (await res.json()) as { stdout: string };
     return stdout;
