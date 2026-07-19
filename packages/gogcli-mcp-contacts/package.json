@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp-contacts",
-  "version": "2.16.1",
+  "version": "2.16.2",
   "mcpName": "io.github.chrischall/gogcli-mcp-contacts",
   "description": "Extended Google Contacts + People MCP server via gogcli — auth + Contacts + Workspace directory (People API)",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",

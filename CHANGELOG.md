@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.2](https://github.com/chrischall/gogcli-mcp/compare/v2.16.1...v2.16.2) (2026-07-19)
+
+
+### Bug Fixes
+
+* **deps:** move to workers-oauth-provider 0.8.x ([#165](https://github.com/chrischall/gogcli-mcp/issues/165)) ([82ee88a](https://github.com/chrischall/gogcli-mcp/commit/82ee88abce007c92e9f8689cb5cf595f8993b678))
+
 ## [2.16.1](https://github.com/chrischall/gogcli-mcp/compare/v2.16.0...v2.16.1) (2026-07-19)
 
 
