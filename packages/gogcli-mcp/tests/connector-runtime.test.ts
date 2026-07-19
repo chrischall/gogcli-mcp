@@ -110,14 +110,79 @@ describe('makeFlyExecutor', () => {
     const out = await exec(['sheets', 'get', 'A1'], {});
     expect(out).toBe('gog output');
 
-    expect(fetchMock).toHaveBeenCalledWith('https://runner.example/run', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer secret-key',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ args: ['sheets', 'get', 'A1'] }),
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://runner.example/run');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({
+      Authorization: 'Bearer secret-key',
+      'Content-Type': 'application/json',
     });
+    expect(init.body).toBe(JSON.stringify({ args: ['sheets', 'get', 'A1'] }));
+  });
+
+  // A scale-to-zero Fly backend that never answers would otherwise hang the MCP
+  // request forever: Workers' fetch has no default deadline, and the stdio path's
+  // 30s kill lives in the child process we are NOT spawning here.
+  it('arms a client-side deadline so a cold or wedged backend cannot hang forever', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ stdout: '' }) }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await exec(['x'], {});
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('gives the backend its own timeout plus headroom, so the server wins when it can', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ stdout: '' }) })));
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await exec(['x'], { timeout: 60_000 });
+
+    expect(timeoutSpy).toHaveBeenCalledWith(65_000);
+    timeoutSpy.mockRestore();
+  });
+
+  it('defaults to the stdio path\'s 30s budget (plus headroom) when no timeout is given', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ stdout: '' }) })));
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await exec(['x'], {});
+
+    expect(timeoutSpy).toHaveBeenCalledWith(35_000);
+    timeoutSpy.mockRestore();
+  });
+
+  it('reports an actionable timeout rather than a bare AbortError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw Object.assign(new Error('The operation was aborted'), { name: 'TimeoutError' });
+      }),
+    );
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(['x'], {})).rejects.toThrow(/gog-runner did not respond within 35000ms/);
+  });
+
+  it('rethrows a non-timeout fetch failure verbatim, not as a timeout', async () => {
+    // A real network error (DNS failure, connection refused) rejects with a
+    // TypeError named 'TypeError' — neither TimeoutError nor AbortError — so it
+    // must pass through untouched rather than be relabelled a timeout.
+    const networkErr = new TypeError('fetch failed');
+    vi.stubGlobal('fetch', vi.fn(async () => { throw networkErr; }));
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(['x'], {})).rejects.toBe(networkErr);
+  });
+
+  it('rethrows a non-Error rejection verbatim', async () => {
+    // Guards the `err instanceof Error ? err.name : ''` false branch: if fetch
+    // ever rejects with a non-Error value, it is rethrown unchanged.
+    vi.stubGlobal('fetch', vi.fn(async () => { throw 'kaboom'; }));
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(['x'], {})).rejects.toBe('kaboom');
   });
 
   it('throws the backend error message on a non-2xx with a body', async () => {
