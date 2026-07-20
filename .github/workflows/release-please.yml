@@ -55,16 +55,32 @@ jobs:
           clawhub-token: ${{ secrets.CLAWHUB_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # Deploy the hosted Cloudflare connector at the released tag, so the live
-  # Worker tracks the release instead of drifting behind main (it had drifted far
-  # enough to still serve a removed tool schema — see #170).
+  # Deploy the two halves of the hosted connector at the released tag, so what is
+  # live tracks the release instead of drifting behind main (the Worker had
+  # drifted far enough to still serve a removed tool schema — see #170).
   #
-  # Deliberately NOT `needs: publish`: the connector is independent of npm and
-  # the MCP registry, so a registry hiccup should not leave the connector stale.
-  # It does not gate the release either — if the Cloudflare token is missing the
-  # job warns and passes rather than failing an otherwise-good release.
-  deploy-connector:
+  # Both are deliberately NOT `needs: publish`: the hosted deployment is
+  # independent of npm and the MCP registry, so a registry hiccup should not
+  # leave it stale. Neither gates the release — a missing deploy token warns and
+  # passes rather than failing an otherwise-good release.
+
+  # The Fly backend goes FIRST. The runner and Worker are compatible in both
+  # directions (the executor handles a legacy 5xx body, and an old Worker reads
+  # the new 422 fine), so this is not a correctness requirement — but a new
+  # Worker against an old runner is the combination that leans on the
+  # compatibility fallback, so prefer the other one. If this fails, the Worker
+  # deploy is skipped too, leaving a consistent known-good pair rather than a
+  # half-updated one.
+  deploy-runner:
     needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/deploy-runner.yml
+    with:
+      ref: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
+
+  deploy-connector:
+    needs: [release-please, deploy-runner]
     if: needs.release-please.outputs.release_created == 'true'
     uses: ./.github/workflows/deploy-connector.yml
     with:

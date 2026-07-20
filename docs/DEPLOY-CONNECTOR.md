@@ -120,29 +120,50 @@ if you want `wrangler kv namespace create`/`list` to work from the same token.
 
 #### Automatic deploys
 
-For this project's own deployment the manual step above is a fallback: the
-`deploy-connector` workflow deploys the Worker automatically whenever
-release-please cuts a release, pinned to the release tag, so the live connector
-tracks the release instead of drifting behind `main`. (It had drifted far enough
-to keep serving a tool schema that `main` had already replaced.)
+For this project's own deployment the manual steps are a fallback: **both halves
+deploy automatically** whenever release-please cuts a release, pinned to the
+release tag, so what is live tracks the release instead of drifting behind `main`.
+(The Worker had drifted far enough to keep serving a tool schema `main` had
+already replaced.)
 
-It needs one repository secret:
+```
+release-please ──> deploy-runner (Fly)  ──> deploy-connector (Worker)
+               └─> publish (npm + MCP registry + ClawHub)
+```
+
+The Fly backend goes first. The two halves are compatible in both directions, so
+this isn't a correctness requirement — but a new Worker against an old runner is
+the combination that leans on the compatibility fallback, so the other order is
+preferred. If the runner deploy fails the Worker deploy is skipped, leaving a
+consistent pair rather than a half-updated one.
+
+Repository secrets:
 
 | Secret | Required | Purpose |
 |---|---|---|
 | `CLOUDFLARE_API_TOKEN` | yes | token with **Workers Scripts: Edit** |
 | `CLOUDFLARE_ACCOUNT_ID` | only if the token can reach several accounts | disambiguates the target account |
+| `FLY_API_TOKEN` | yes | app-scoped Fly deploy token |
 
-If `CLOUDFLARE_API_TOKEN` is absent the job warns and passes rather than failing
-an otherwise-good release — so a missing secret shows up as "connector not
-deployed" in the run summary, not as a broken release.
+Create the Fly token scoped to the one app rather than using a personal auth
+token:
 
-You can also deploy any ref on demand — Actions → **deploy-connector** → *Run
-workflow* — which is the way to ship a connector-only fix without cutting a
-release, or to retry a release deploy that failed.
+```sh
+fly tokens create deploy -a gogcli-gog-runner
+```
 
-> Only the Worker is automated. The Fly backend (`fly-gog-runner`) is a separate
-> deployable: a change under `fly-gog-runner/` still needs a manual `fly deploy`.
+If a token is absent that job warns and passes rather than failing an otherwise
+-good release — a missing secret shows up as "not deployed" in the run summary,
+not as a broken release.
+
+You can also deploy any ref on demand — Actions → **deploy-runner** or
+**deploy-connector** → *Run workflow* — which is the way to ship a fix without
+cutting a release, or to retry a release deploy that failed.
+
+The runner's Google auth lives on a persistent volume, not in the image, so
+redeploying does not disturb the stored refresh token. After rollout the workflow
+probes `/healthz`, because a green `fly deploy` means the image rolled out, not
+that the service answers.
 
 On success it prints the deployed URL:
 
