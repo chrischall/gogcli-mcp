@@ -1,37 +1,27 @@
+# Copy to `.github/workflows/deploy-connector.yml` in an MCP repo that ships a
+# hosted connector Worker.
+#
+# This stub is ONLY the on-demand path — redeploy any ref without cutting a
+# release, or retry a release deploy that failed. The automatic path belongs in
+# `release-please.yml`, so the deploy is pinned to the release tag:
+#
+#   deploy-connector:
+#     needs: release-please
+#     if: needs.release-please.outputs.release_created == 'true'
+#     uses: chrischall/workflows/.github/workflows/reusable-mcp-connector-deploy.yml@main
+#     with:
+#       ref: ${{ needs.release-please.outputs.tag_name }}
+#     secrets: inherit
+#
+# Requires a `CLOUDFLARE_API_TOKEN` repo secret (`set-fleet-secrets` adds it to
+# repos carrying a wrangler config).
+#
+# NOTE: workflow_dispatch only appears in the Actions UI once this file is on the
+# repo's DEFAULT branch — you cannot trigger it from a PR branch.
+
 name: deploy-connector
 
-# Deploys the Cloudflare Worker connector (wrangler.jsonc /
-# packages/gogcli-mcp/src/worker.ts).
-#
-# Two entry points:
-#   • workflow_call  — release-please.yml invokes this after a release is cut,
-#                      pinned to the release tag, so the deployed connector
-#                      tracks the released source instead of drifting.
-#   • workflow_dispatch — redeploy any ref on demand (recovering from a failed
-#                      release deploy, or shipping a connector-only fix without
-#                      waiting for a release).
-#
-# Deploying needs a Cloudflare API token with **Workers Scripts: Edit** in
-# `CLOUDFLARE_API_TOKEN`. It does NOT need Workers KV Storage: the OAUTH_KV
-# namespace id is committed in wrangler.jsonc, so wrangler never has to look it
-# up. `CLOUDFLARE_ACCOUNT_ID` is only needed if the token can reach more than one
-# account (wrangler cannot disambiguate on its own).
-#
-# NOTE: this deploys the Worker only. The Fly.io backend (fly-gog-runner) is a
-# separate deployable and is still `fly deploy`-ed by hand — a release touching
-# fly-gog-runner/ will NOT reach production through this workflow.
-
 on:
-  workflow_call:
-    inputs:
-      ref:
-        description: Git ref to deploy (a release tag when called from release-please).
-        type: string
-        required: true
-    # Secrets are inherited rather than declared. A declared workflow_call secret
-    # is populated ONLY on the workflow_call path, so the workflow_dispatch runs
-    # would see an empty token and skip the deploy while reporting success.
-    # Inheriting lets both entry points read the repo secrets by their real names.
   workflow_dispatch:
     inputs:
       ref:
@@ -43,69 +33,15 @@ on:
 permissions:
   contents: read
 
-# Never let two deploys race onto the same Worker; a release deploy and a manual
-# one landing together would make "what is live" a coin flip.
-concurrency:
-  group: deploy-connector
-  cancel-in-progress: false
+# No concurrency block here on purpose. A group declared in THIS file would only
+# serialise workflow_dispatch runs against each other — the release-triggered
+# deploy lives in release-please.yml and inherits that workflow's group instead,
+# so the two could still race onto the same Worker. The reusable workflow
+# declares one shared group per repository, which covers both entry points.
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
-
-      # The token is read into the environment first so the guard below can test
-      # it — `secrets` is not available in a job-level `if:`.
-      - name: Check for a Cloudflare token
-        id: guard
-        env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          if [ -z "$CF_TOKEN" ]; then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Connector not deployed::CLOUDFLARE_API_TOKEN is not set, so the Worker was NOT deployed. The release itself succeeded. Add the secret (Workers Scripts: Edit) and re-run this workflow to deploy."
-            {
-              echo "### ⚠️ Connector not deployed"
-              echo
-              echo "\`CLOUDFLARE_API_TOKEN\` is not set on this repository."
-              echo "The release completed, but the Worker still runs the previously deployed code."
-              echo
-              echo "Add the secret with **Workers Scripts: Edit**, then re-run \`deploy-connector\` against this ref."
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/setup-node@v4
-        if: steps.guard.outputs.ready == 'true'
-        with:
-          node-version: "26"
-          cache: npm
-
-      # wrangler bundles worker.ts itself, but it needs the workspace installed
-      # to resolve the Worker's imports.
-      - name: Install dependencies
-        if: steps.guard.outputs.ready == 'true'
-        run: npm ci
-
-      - name: Deploy Worker
-        if: steps.guard.outputs.ready == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler deploy
-
-      - name: Summarise
-        if: steps.guard.outputs.ready == 'true'
-        run: |
-          {
-            echo "### Connector deployed"
-            echo
-            echo "- ref: \`${{ inputs.ref }}\`"
-            echo "- worker: \`gogcli-connector\`"
-            echo
-            echo "The Fly backend (\`fly-gog-runner\`) is deployed separately and is unchanged by this run."
-          } >> "$GITHUB_STEP_SUMMARY"
+    uses: chrischall/workflows/.github/workflows/reusable-mcp-connector-deploy.yml@main
+    with:
+      ref: ${{ inputs.ref }}
+    secrets: inherit
