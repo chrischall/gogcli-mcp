@@ -1,0 +1,126 @@
+name: deploy-runner
+
+# Deploys the Fly.io backend (fly-gog-runner) — the Machine that actually runs
+# the `gog` binary. Companion to deploy-connector.yml, which deploys the
+# Cloudflare Worker half.
+#
+# Two entry points:
+#   • workflow_call     — release-please.yml invokes this after a release is cut,
+#                         pinned to the release tag.
+#   • workflow_dispatch — redeploy any ref on demand.
+#
+# Needs a Fly deploy token in `FLY_API_TOKEN` (`fly tokens create deploy -a
+# gogcli-gog-runner` — that is scoped to this one app, unlike a personal auth
+# token, and is the right thing to put in a public repo's secrets).
+#
+# The runner's auth lives on a persistent volume, NOT in the image, so a deploy
+# does not disturb the stored Google refresh token. Deploying replaces the
+# Machine's image and restarts it; in-flight requests drain first (the runner
+# handles SIGINT), and the Machine autostops when idle anyway.
+#
+# This deploys on EVERY release rather than only when fly-gog-runner/ changed. A
+# redundant deploy costs a rebuild and a restart; a change-detection heuristic
+# that guesses wrong silently reintroduces the drift this exists to prevent, so
+# the cheap-but-certain option wins.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to deploy (a release tag when called from release-please).
+        type: string
+        required: true
+    # Inherited, not declared — see the note in deploy-connector.yml: a declared
+    # workflow_call secret is empty on the workflow_dispatch path, which would
+    # skip the deploy while reporting success.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy (branch, tag or SHA).
+        type: string
+        default: main
+        required: true
+
+permissions:
+  contents: read
+
+# Serialise deploys so a release deploy and a manual one cannot race onto the
+# same Machine.
+concurrency:
+  group: deploy-runner
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      # `secrets` is not available in a job-level `if:`, so the guard runs here.
+      - name: Check for a Fly token
+        id: guard
+        env:
+          FLY_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_TOKEN" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Runner not deployed::FLY_API_TOKEN is not set, so the Fly backend was NOT deployed. The release itself succeeded. Add the secret and re-run this workflow to deploy."
+            {
+              echo "### ⚠️ Runner not deployed"
+              echo
+              echo "\`FLY_API_TOKEN\` is not set on this repository."
+              echo "The release completed, but the Fly Machine still runs the previously deployed code."
+              echo
+              echo "Create an app-scoped token (\`fly tokens create deploy -a gogcli-gog-runner\`),"
+              echo "add it as \`FLY_API_TOKEN\`, then re-run \`deploy-runner\` against this ref."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        if: steps.guard.outputs.ready == 'true'
+
+      # --remote-only builds on Fly's builders rather than needing a local Docker
+      # daemon, which is the supported path for CI.
+      - name: Deploy runner
+        if: steps.guard.outputs.ready == 'true'
+        working-directory: fly-gog-runner
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only
+
+      # A green `fly deploy` means the image rolled out, not that the service
+      # answers. /healthz is unauthenticated and runs no gog, so it is a safe
+      # post-deploy assertion — and it doubles as the cold-start wake.
+      - name: Verify the runner answers
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          url="https://$(grep -m1 '^app' fly-gog-runner/fly.toml | cut -d'"' -f2).fly.dev/healthz"
+          echo "probing $url"
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -s -o /tmp/health.out -w '%{http_code}' --max-time 120 "$url" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "healthz OK: $(cat /tmp/health.out)"
+              exit 0
+            fi
+            echo "attempt $attempt: HTTP $code — retrying"
+            sleep 10
+          done
+          echo "::error title=Runner unhealthy::/healthz did not return 200 after the deploy"
+          exit 1
+
+      - name: Summarise
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          {
+            echo "### Runner deployed"
+            echo
+            echo "- ref: \`${{ inputs.ref }}\`"
+            echo "- app: \`gogcli-gog-runner\`"
+            echo "- \`/healthz\` verified after rollout"
+          } >> "$GITHUB_STEP_SUMMARY"
