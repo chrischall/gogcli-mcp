@@ -290,6 +290,12 @@ describe('makeFlyExecutor', () => {
     expect(err.message).toContain('gog exited with code 1');
     expect(err.message).toContain('bad flag');
     expect(err.message).not.toMatch(/never reached gog/i);
+    // A runner body proves gog ran, so this is deterministic — nothing may
+    // invite a retry, exactly as for the 422 path.
+    expect(err.message).not.toMatch(/retry|transient/i);
+    // And the status digits must not leak into the message: a literal "502"
+    // matches TRANSIENT_ERROR_PATTERN downstream and re-attaches the hint.
+    expect(err.message).not.toMatch(/\b5\d\d\b/);
   });
 
   it('falls back to an HTTP-status message when the error body is unreadable', async () => {

@@ -105,8 +105,17 @@ export function makeFlyExecutor(endpoint: string, key: string): GogExecutor {
       // Machine, or the Machine answered with something that is not ours. Only
       // claim the request never arrived when there is genuinely no runner body
       // — a runner that did answer deserves to have its own words repeated.
+      //
+      // The status is deliberately NOT interpolated here. A runner body proves
+      // gog ran, so this is a deterministic failure; embedding the literal
+      // status would put "502" into the message, which matches
+      // TRANSIENT_ERROR_PATTERN (/\b5\d\d\b/) in tools/utils.ts and re-attaches
+      // the very "this is transient, retry the same call" hint this change
+      // exists to remove — reintroducing the bug during the rollout window this
+      // branch exists to cover. Anything genuinely transient in gog's own text
+      // (a Google 5xx, say) still matches on its own merits, which is correct.
       if (detail) {
-        throw new Error(`gog-runner HTTP ${res.status}: ${detail}`);
+        throw new Error(detail);
       }
       throw new Error(
         `gog-runner HTTP ${res.status}: the response did not come from the runner, ` +
