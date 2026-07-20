@@ -185,39 +185,76 @@ describe('makeFlyExecutor', () => {
     await expect(exec(['x'], {})).rejects.toBe('kaboom');
   });
 
-  it('throws the backend error message on a non-2xx with a body', async () => {
+  // The runner reports "gog ran and exited non-zero" as 422 — deliberately NOT
+  // a 5xx, so it can never be confused with Fly's edge failing to reach the
+  // Machine, and so it never matches TRANSIENT_ERROR_PATTERN (/\b5\d\d\b/).
+  it('surfaces gog stderr verbatim for a 422 and never advises a retry', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
         ok: false,
-        status: 502,
-        json: async () => ({ error: 'gog exited with code 1' }),
+        status: 422,
+        json: async () => ({
+          error: 'gog exited with code 1',
+          stderr: 'invalid attachment id',
+          retryable: false,
+        }),
       })),
     );
+
     const exec = makeFlyExecutor(ENDPOINT, KEY);
-    await expect(exec(['bogus'], {})).rejects.toThrow('gog exited with code 1');
+    const err = (await exec(['gmail', 'attachment'], {}).catch((e: Error) => e)) as Error;
+    expect(err.message).toContain('gog exited with code 1');
+    expect(err.message).toContain('invalid attachment id');
+    // Deterministic: retrying cannot help, so nothing may invite it.
+    expect(err.message).not.toMatch(/retry/i);
+    expect(err.message).not.toMatch(/transient/i);
+    // It reached gog — the executor must not claim otherwise.
+    expect(err.message).not.toMatch(/never reached gog/i);
   });
 
-  it('falls back to an HTTP-status message when the error body is unreadable', async () => {
+  // The live repro that started this: an --out path from the caller's sandbox
+  // does not exist on the runner, so gog cannot create it. No number of retries
+  // makes the directory appear.
+  it('reports an unwritable --out path as a plain deterministic gog error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 422,
+        json: async () => ({
+          error: 'mkdir /home/claude: operation not supported',
+          stderr: 'mkdir /home/claude: operation not supported',
+          retryable: false,
+        }),
+      })),
+    );
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    const err = (await exec(['gmail', 'attachment'], {}).catch((e: Error) => e)) as Error;
+    expect(err.message).toContain('mkdir /home/claude');
+    expect(err.message).not.toMatch(/retry|transient/i);
+    // stderr duplicating error must not be echoed twice.
+    expect(err.message.match(/mkdir \/home\/claude/g)).toHaveLength(1);
+  });
+
+  it('marks the runner drain 503 as retryable', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
         ok: false,
         status: 503,
-        json: async () => {
-          throw new Error('not json');
-        },
+        json: async () => ({ error: 'gog-runner is shutting down', retryable: true }),
       })),
     );
+
     const exec = makeFlyExecutor(ENDPOINT, KEY);
-    await expect(exec(['x'], {})).rejects.toThrow('gog-runner HTTP 503');
+    await expect(exec(['gmail', 'attachment'], {})).rejects.toThrow(/restarting; retry/i);
   });
 
-  // A gateway 502 (Fly's proxy could not reach the Machine) and a runner 502
-  // (gog itself failed) are indistinguishable by status alone. Only the former
-  // is worth retrying, and conflating them is what made the Gmail-attachment
-  // drain race look like an unfixable flake.
-  it('names the gateway hop when a 502 body did not come from the runner', async () => {
+  // Fly's edge could not reach the Machine: no runner body at all (an HTML error
+  // page or an empty response). This is the ONLY case that is genuinely transient.
+  it('names the gateway hop when a 502 carries no runner body', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
@@ -235,34 +272,53 @@ describe('makeFlyExecutor', () => {
     );
   });
 
-  it('surfaces gog stderr verbatim for a runner-authored 502 without retry advice', async () => {
+  // Belt and braces for the rollout window (and any future runner that answers
+  // 5xx with real detail): if the runner did speak, repeat its words rather than
+  // asserting the request never arrived.
+  it('repeats the runner detail on a 5xx that does carry a body', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
         ok: false,
         status: 502,
-        json: async () => ({ error: 'gog exited with code 1', stderr: 'invalid attachment id' }),
+        json: async () => ({ error: 'gog exited with code 1', stderr: 'bad flag' }),
       })),
     );
 
     const exec = makeFlyExecutor(ENDPOINT, KEY);
-    const err = await exec(['gmail', 'attachment'], {}).catch((e: Error) => e);
-    expect((err as Error).message).toContain('invalid attachment id');
-    // Deterministic failure: must NOT tell the caller to retry.
-    expect((err as Error).message).not.toMatch(/retry/i);
+    const err = (await exec(['bogus'], {}).catch((e: Error) => e)) as Error;
+    expect(err.message).toContain('gog exited with code 1');
+    expect(err.message).toContain('bad flag');
+    expect(err.message).not.toMatch(/never reached gog/i);
   });
 
-  it('marks the runner drain 503 as retryable', async () => {
+  it('falls back to an HTTP-status message when the error body is unreadable', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
         ok: false,
-        status: 503,
-        json: async () => ({ error: 'gog-runner is shutting down', retryable: true }),
+        status: 500,
+        json: async () => {
+          throw new Error('not json');
+        },
       })),
     );
-
     const exec = makeFlyExecutor(ENDPOINT, KEY);
-    await expect(exec(['gmail', 'attachment'], {})).rejects.toThrow(/restarting; retry/i);
+    await expect(exec(['x'], {})).rejects.toThrow('gog-runner HTTP 500');
+  });
+
+  it('handles a 422 whose body is unreadable without pretending it never ran', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 422,
+        json: async () => {
+          throw new Error('not json');
+        },
+      })),
+    );
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(['x'], {})).rejects.toThrow(/gog failed on the runner/i);
   });
 });
