@@ -73,12 +73,30 @@ The command prints something like:
 { "binding": "OAUTH_KV", "id": "abcd1234..." }
 ```
 
-Copy the returned `id` into `wrangler.jsonc`, replacing the
-`"REPLACE_WITH_OAUTH_KV_NAMESPACE_ID"` placeholder:
+**Do not paste that id into `wrangler.jsonc`.** The committed file keeps the
+`"REPLACE_WITH_OAUTH_KV_NAMESPACE_ID"` placeholder on purpose — the id is
+account-identifying and should not live in source. `npm run worker:deploy`
+(step 5) substitutes it at deploy time into a gitignored generated config, so
+there is nothing to edit and nothing to revert afterwards.
 
-```jsonc
-"kv_namespaces": [{ "binding": "OAUTH_KV", "id": "abcd1234..." }],
+It resolves the id from the first source that answers:
+
+| Order | Source | Needs |
+|-------|--------|-------|
+| 1 | `$OAUTH_KV_ID` | nothing — explicit override, no API calls |
+| 2 | `wrangler kv namespace list` | token with **Workers KV Storage: Edit** |
+| 3 | the deployed Worker's live bindings | token with **Workers Scripts** only; requires an already-deployed Worker |
+
+For a brand-new environment source 3 cannot work (nothing is deployed yet), so
+either grant the token **Workers KV Storage: Edit** or pass the id explicitly:
+
+```sh
+OAUTH_KV_ID=abcd1234... npm run worker:deploy
 ```
+
+> Wrangler does **not** interpolate environment variables inside its config
+> (a `"${OAUTH_KV_ID}"` id is uploaded literally), which is why the substitution
+> happens in `scripts/deploy-worker.mjs` rather than in `wrangler.jsonc`.
 
 ### 4. Point the Worker at your Fly backend
 
@@ -98,10 +116,20 @@ Worker.
 npm run worker:deploy
 ```
 
-This runs `wrangler deploy`, which bundles and pushes `packages/gogcli-mcp/src/worker.ts`
-(plus the `GogcliMcpAgent` per-session agent Durable Object and the `OAUTH_KV`
-namespace from step 3). The Cloudflare API token you deploy with needs
-**Workers Scripts: Edit** and **Workers KV Storage: Edit**.
+This runs `scripts/deploy-worker.mjs`, which resolves the `OAUTH_KV` namespace id
+(step 3), writes the gitignored `wrangler.generated.jsonc`, and hands that to
+`wrangler deploy` — bundling and pushing `packages/gogcli-mcp/src/worker.ts` plus
+the per-session agent Durable Objects. The committed `wrangler.jsonc` is never
+modified.
+
+The Cloudflare API token needs **Workers Scripts: Edit**, and
+**Workers KV Storage: Edit** unless you supply the id via `$OAUTH_KV_ID`.
+
+Extra arguments are forwarded to `wrangler deploy`:
+
+```sh
+npm run worker:deploy -- --dry-run   # bundle and show bindings, deploy nothing
+```
 
 On success it prints the deployed URL:
 
@@ -119,9 +147,9 @@ Cloudflare account; if it isn't, remove the `routes` entry and use the
 Sanity-check locally before/after deploying:
 
 ```sh
-npm run worker:dev            # run the Worker locally
-npx wrangler deploy --dry-run # confirm it bundles without deploying
-npm run worker:test           # Worker-specific suite (Miniflare / real Workers runtime)
+npm run worker:dev                 # run the Worker locally
+npm run worker:deploy -- --dry-run # confirm it bundles without deploying
+npm run worker:test                # Worker-specific suite (Miniflare / real Workers runtime)
 ```
 
 ### 6. Add it as a connector in claude.ai

@@ -20,7 +20,7 @@
     "typecheck": "npm run typecheck --workspaces",
     "publish:all": "npm run build && npm publish --access public --workspaces",
     "worker:dev": "wrangler dev",
-    "worker:deploy": "wrangler deploy",
+    "worker:deploy": "node scripts/deploy-worker.mjs",
     "worker:test": "vitest run --config vitest.workers.config.mts"
   }
 }
