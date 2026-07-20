@@ -29,15 +29,17 @@
   // Kept separate from any other connector's OAUTH_KV so their OAuth
   // grants/tokens never cross-wire.
   //
-  // The placeholder below is DELIBERATE — leave it in place. `npm run
-  // worker:deploy` substitutes the real id at deploy time into a gitignored
-  // wrangler.generated.jsonc, so this file stays free of an account-identifying
-  // id and there is no edit to revert. Deploying with plain `wrangler deploy`
-  // will fail here; use the npm script. For a fresh deployment create the
-  // namespace (`wrangler kv namespace create gogcli-connector-oauth`) and pass
-  // its id via $OAUTH_KV_ID — see docs/DEPLOY-CONNECTOR.md.
+  // The id is committed, as it is in every other connector in the fleet: a KV
+  // namespace id is an identifier, not a credential. Reaching the namespace
+  // needs an API token scoped to the account, and any token that could use this
+  // id can already enumerate namespaces without it.
+  //
+  // Standing up your OWN deployment? Create a namespace
+  // (`wrangler kv namespace create gogcli-connector-oauth`) and put its id here
+  // — this one lives in someone else's account and will be rejected with
+  // "KV namespace ... is not valid [code: 10042]". See docs/DEPLOY-CONNECTOR.md.
   "kv_namespaces": [
-    { "binding": "OAUTH_KV", "id": "REPLACE_WITH_OAUTH_KV_NAMESPACE_ID" }
+    { "binding": "OAUTH_KV", "id": "2bcdd3b728ed408da1c85717409c23d5" }
   ],
   // Production custom domain. The zone must be in the deploying account's
   // Cloudflare; wrangler provisions the hostname on deploy (TLS a few minutes
