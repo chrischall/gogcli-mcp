@@ -158,7 +158,11 @@ test('POST /run returns 200 {stdout} on execFn success', async () => {
   });
 });
 
-test('POST /run returns 502 {error,stderr} on execFn failure', async () => {
+// A gog failure MUST NOT use a 5xx. 5xx is reserved for infrastructure (Fly's
+// edge returns 502 when it cannot reach this Machine at all), and the wrapper's
+// TRANSIENT_ERROR_PATTERN treats any 5xx as "retry me" — which for a
+// deterministic gog error means retrying forever. See the comment in server.mjs.
+test('POST /run returns 422 {error,stderr,retryable:false} on execFn failure', async () => {
   const execFn = async () => {
     const err = new Error('gog exited with code 1');
     err.stderr = 'boom: bad flag';
@@ -171,9 +175,35 @@ test('POST /run returns 502 {error,stderr} on execFn failure', async () => {
       headers: { ...bearer(RUNNER_KEY), 'content-type': 'application/json' },
       body: JSON.stringify({ args: ['bogus'] }),
     });
-    assert.equal(res.status, 502);
+    assert.equal(res.status, 422);
+    assert.ok(res.status < 500, 'a gog failure must never be reported as 5xx');
     assert.equal(res.json.error, 'gog exited with code 1');
     assert.equal(res.json.stderr, 'boom: bad flag');
+    assert.equal(res.json.retryable, false);
+  });
+});
+
+// The real-world repro: `--out=/home/claude/...` is a path in the CALLER's
+// sandbox, not on this box, so gog cannot create it. Deterministic by nature —
+// retrying cannot make the directory exist.
+test('an unwritable --out path is reported as deterministic, not transient', async () => {
+  const execFn = async () => {
+    const err = new Error('Command failed: gog gmail attachment\nmkdir /home/claude: operation not supported');
+    err.stderr = 'mkdir /home/claude: operation not supported';
+    throw err;
+  };
+  await withServer(execFn, async (base) => {
+    const res = await request(base, {
+      method: 'POST',
+      path: '/run',
+      headers: { ...bearer(RUNNER_KEY), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        args: ['gmail', 'attachment', 'mid', 'aid', '--out=/home/claude/x.pdf'],
+      }),
+    });
+    assert.equal(res.status, 422);
+    assert.equal(res.json.retryable, false);
+    assert.match(res.json.error, /mkdir \/home\/claude/);
   });
 });
 

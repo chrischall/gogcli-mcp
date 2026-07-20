@@ -18,6 +18,17 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 // opaque timeout.
 const DEADLINE_GRACE_MS = 5_000;
 
+// Status codes the Fly runner uses to classify its OWN failures. These must stay
+// in sync with fly-gog-runner/server.mjs — they are the contract that lets this
+// side tell "gog ran and failed" apart from "the request never arrived", without
+// having to guess from the response body.
+//
+// 422: `gog` executed and exited non-zero. Deterministic — never retry.
+// 503: the runner is draining (SIGINT from Fly's autostop). Transient — retry.
+// Any other non-2xx: infrastructure, i.e. Fly's edge, not us.
+const RUNNER_GOG_FAILED = 422;
+const RUNNER_DRAINING = 503;
+
 // Build a GogExecutor that forwards a fully-assembled `gog` arg-array to the Fly
 // backend's `/run` endpoint.
 //
@@ -67,13 +78,44 @@ export function makeFlyExecutor(endpoint: string, key: string): GogExecutor {
       const body = (await res.json().catch(() => null)) as
         | { error?: string; stderr?: string; retryable?: boolean }
         | null;
-      if (body && typeof body.error === 'string') {
-        const detail = body.stderr ? `${body.error}\n${body.stderr}` : body.error;
-        // The runner's own drain response (503) is the one runner-authored
-        // failure that IS worth retrying; everything else came from gog.
+      const detail =
+        body && typeof body.error === 'string'
+          ? body.stderr && body.stderr.trim() && body.stderr.trim() !== body.error.trim()
+            ? `${body.error}\n${body.stderr}`
+            : body.error
+          : '';
+
+      // 422 is the runner's "gog ran and exited non-zero" status. It is only
+      // ever produced by our own handler, so reaching here proves the request
+      // was delivered and executed. Deterministic — say so, and say nothing
+      // that invites a retry.
+      if (res.status === RUNNER_GOG_FAILED) {
+        throw new Error(detail || 'gog failed on the runner (no detail supplied)');
+      }
+
+      // The runner's drain response: it is up, but deliberately refusing new
+      // work while it shuts down. The one runner-authored failure worth retrying.
+      if (res.status === RUNNER_DRAINING || body?.retryable === true) {
         throw new Error(
-          body.retryable ? `gog-runner is restarting; retry this call. ${detail}` : detail,
+          `gog-runner is restarting; retry this call.${detail ? ` ${detail}` : ''}`,
         );
+      }
+
+      // Anything else non-2xx is infrastructure: Fly's edge could not reach the
+      // Machine, or the Machine answered with something that is not ours. Only
+      // claim the request never arrived when there is genuinely no runner body
+      // — a runner that did answer deserves to have its own words repeated.
+      //
+      // The status is deliberately NOT interpolated here. A runner body proves
+      // gog ran, so this is a deterministic failure; embedding the literal
+      // status would put "502" into the message, which matches
+      // TRANSIENT_ERROR_PATTERN (/\b5\d\d\b/) in tools/utils.ts and re-attaches
+      // the very "this is transient, retry the same call" hint this change
+      // exists to remove — reintroducing the bug during the rollout window this
+      // branch exists to cover. Anything genuinely transient in gog's own text
+      // (a Google 5xx, say) still matches on its own merits, which is correct.
+      if (detail) {
+        throw new Error(detail);
       }
       throw new Error(
         `gog-runner HTTP ${res.status}: the response did not come from the runner, ` +

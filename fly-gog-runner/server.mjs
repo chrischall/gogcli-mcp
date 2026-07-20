@@ -257,9 +257,24 @@ export function createServer({ runnerKey, execFn = defaultExecFn, log = defaultL
         const { stdout } = await execFn(args);
         sendJson(res, 200, { stdout });
       } catch (err) {
-        sendJson(res, 502, {
+        // 422, NOT 502. `gog` ran on this box and exited non-zero: the request
+        // was delivered and executed, so nothing upstream is broken and the
+        // caller must NOT retry — the same args will fail identically.
+        //
+        // This used to be 502, which is the SAME code Fly's edge proxy returns
+        // when it cannot reach the Machine at all. Those two failures are
+        // opposites (one deterministic, one transient) and collapsing them onto
+        // one status forced the client to guess from the body. Worse, `502`
+        // matches the wrapper's TRANSIENT_ERROR_PATTERN (/\b5\d\d\b/), so every
+        // deterministic gog error — a bad attachment token, an --out path that
+        // does not exist on this box — came back advising "retry the same
+        // call", producing an endless retry loop that could never succeed.
+        // Keeping 5xx exclusively for infrastructure makes the status alone
+        // carry the classification.
+        sendJson(res, 422, {
           error: (err && err.message) || 'gog failed',
           stderr: (err && err.stderr) || '',
+          retryable: false,
         });
       }
       return;
