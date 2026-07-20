@@ -33,4 +33,5 @@ jobs:
     with:
       ref: ${{ inputs.ref }}
       working-directory: fly-gog-runner
-    secrets: inherit
+    secrets:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
