@@ -13,8 +13,3 @@ packages/*/LICENSE
 # test run. They dump the FULL process environment (API tokens, passwords),
 # so they must never be committed.
 report.*.json
-
-# Generated at deploy time by scripts/deploy-worker.mjs: wrangler.jsonc with the
-# real OAUTH_KV namespace id substituted in. Never commit — the committed
-# wrangler.jsonc keeps the placeholder deliberately.
-wrangler.generated.jsonc
