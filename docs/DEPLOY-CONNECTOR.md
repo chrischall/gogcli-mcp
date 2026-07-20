@@ -118,6 +118,32 @@ and the `OAUTH_KV` namespace from step 3). The Cloudflare API token you deploy
 with needs **Workers Scripts: Edit**; **Workers KV Storage: Edit** is only needed
 if you want `wrangler kv namespace create`/`list` to work from the same token.
 
+#### Automatic deploys
+
+For this project's own deployment the manual step above is a fallback: the
+`deploy-connector` workflow deploys the Worker automatically whenever
+release-please cuts a release, pinned to the release tag, so the live connector
+tracks the release instead of drifting behind `main`. (It had drifted far enough
+to keep serving a tool schema that `main` had already replaced.)
+
+It needs one repository secret:
+
+| Secret | Required | Purpose |
+|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | yes | token with **Workers Scripts: Edit** |
+| `CLOUDFLARE_ACCOUNT_ID` | only if the token can reach several accounts | disambiguates the target account |
+
+If `CLOUDFLARE_API_TOKEN` is absent the job warns and passes rather than failing
+an otherwise-good release — so a missing secret shows up as "connector not
+deployed" in the run summary, not as a broken release.
+
+You can also deploy any ref on demand — Actions → **deploy-connector** → *Run
+workflow* — which is the way to ship a connector-only fix without cutting a
+release, or to retry a release deploy that failed.
+
+> Only the Worker is automated. The Fly backend (`fly-gog-runner`) is a separate
+> deployable: a change under `fly-gog-runner/` still needs a manual `fly deploy`.
+
 On success it prints the deployed URL:
 
 ```

@@ -54,3 +54,19 @@ jobs:
           tag-name: ${{ needs.release-please.outputs.tag_name }}
           clawhub-token: ${{ secrets.CLAWHUB_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Deploy the hosted Cloudflare connector at the released tag, so the live
+  # Worker tracks the release instead of drifting behind main (it had drifted far
+  # enough to still serve a removed tool schema — see #170).
+  #
+  # Deliberately NOT `needs: publish`: the connector is independent of npm and
+  # the MCP registry, so a registry hiccup should not leave the connector stale.
+  # It does not gate the release either — if the Cloudflare token is missing the
+  # job warns and passes rather than failing an otherwise-good release.
+  deploy-connector:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/deploy-connector.yml
+    with:
+      ref: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
