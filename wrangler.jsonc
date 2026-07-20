@@ -27,9 +27,15 @@
   ],
   // gogcli-connector's own OAuth token store (title: gogcli-connector-oauth).
   // Kept separate from any other connector's OAUTH_KV so their OAuth
-  // grants/tokens never cross-wire. To stand up a fresh deployment, create your
-  // own (`wrangler kv namespace create gogcli-connector-oauth`) and replace this
-  // placeholder id — see docs/DEPLOY-CONNECTOR.md.
+  // grants/tokens never cross-wire.
+  //
+  // The placeholder below is DELIBERATE — leave it in place. `npm run
+  // worker:deploy` substitutes the real id at deploy time into a gitignored
+  // wrangler.generated.jsonc, so this file stays free of an account-identifying
+  // id and there is no edit to revert. Deploying with plain `wrangler deploy`
+  // will fail here; use the npm script. For a fresh deployment create the
+  // namespace (`wrangler kv namespace create gogcli-connector-oauth`) and pass
+  // its id via $OAUTH_KV_ID — see docs/DEPLOY-CONNECTOR.md.
   "kv_namespaces": [
     { "binding": "OAUTH_KV", "id": "REPLACE_WITH_OAUTH_KV_NAMESPACE_ID" }
   ],
