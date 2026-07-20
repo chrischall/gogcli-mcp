@@ -1,7 +1,7 @@
 {
   "name": "gogcli-mcp-slides",
   "displayName": "gogcli (Slides)",
-  "version": "2.16.3",
+  "version": "2.16.4",
   "description": "Extended Google Slides for Claude via gogcli — auth + full Slides support (create, edit, export, templates, markdown)",
   "author": {
     "name": "Chris Hall",

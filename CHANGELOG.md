@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.4](https://github.com/chrischall/gogcli-mcp/compare/v2.16.3...v2.16.4) (2026-07-20)
+
+
+### Bug Fixes
+
+* **connector:** stop reporting gog failures as 502 so they stop looking transient ([#174](https://github.com/chrischall/gogcli-mcp/issues/174)) ([1867154](https://github.com/chrischall/gogcli-mcp/commit/18671543d73f8c2844ea5cda4b3171fdc2dc89b4))
+
 ## [2.16.3](https://github.com/chrischall/gogcli-mcp/compare/v2.16.2...v2.16.3) (2026-07-19)
 
 
