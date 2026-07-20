@@ -62,7 +62,8 @@ jobs:
   # Both are deliberately NOT `needs: publish`: the hosted deployment is
   # independent of npm and the MCP registry, so a registry hiccup should not
   # leave it stale. Neither gates the release — a missing deploy token warns and
-  # passes rather than failing an otherwise-good release.
+  # passes rather than failing an otherwise-good release. Serialisation against
+  # the workflow_dispatch stubs is declared by the reusable workflows.
 
   # The Fly backend goes FIRST. The runner and Worker are compatible in both
   # directions (the executor handles a legacy 5xx body, and an old Worker reads
@@ -74,15 +75,16 @@ jobs:
   deploy-runner:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
-    uses: ./.github/workflows/deploy-runner.yml
+    uses: chrischall/workflows/.github/workflows/reusable-fly-deploy.yml@main
     with:
       ref: ${{ needs.release-please.outputs.tag_name }}
+      working-directory: fly-gog-runner
     secrets: inherit
 
   deploy-connector:
     needs: [release-please, deploy-runner]
     if: needs.release-please.outputs.release_created == 'true'
-    uses: ./.github/workflows/deploy-connector.yml
+    uses: chrischall/workflows/.github/workflows/reusable-mcp-connector-deploy.yml@main
     with:
       ref: ${{ needs.release-please.outputs.tag_name }}
     secrets: inherit
