@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, payloadArg } from '../../../gogcli-mcp/src/lib.js';
+import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_copy', {
@@ -937,8 +938,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       docId: z.string().describe('Doc ID (from the URL)'),
       row: z.number().int().describe('1-based row number'),
       col: z.number().int().describe('1-based column number'),
-      content: z.string().optional().describe('Replacement content (omit when using contentFile)'),
-      contentFile: z.string().optional().describe('Read replacement content from a file instead of content'),
+      content: z.string().optional().describe('Replacement content (omit when using contentFile). Pass an empty string to clear the cell. Large values are written to a temp file and passed to gog as --content-file automatically.'),
+      contentFile: z.string().optional().describe('Read replacement content from a file instead of content. Mutually exclusive with content — gog rejects both together.'),
       append: z.boolean().optional().describe('Append inside the cell instead of replacing existing cell content'),
       format: z.enum(['markdown', 'plain']).optional().describe('Content format (default: markdown)'),
       tableIndex: z.number().int().optional().describe('1-based table index in document order; negative counts from the end (default: 1)'),
@@ -946,8 +947,21 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ docId, row, col, content, contentFile, append, format, tableIndex, tab, account }) => {
-    const args = ['docs', 'cell-update', docId, `--row=${row}`, `--col=${col}`];
-    if (content !== undefined) args.push(`--content=${content}`);
+    // gog HARD-ERRORS on both forms ("cannot use both --content and
+    // --content-file"), so reject here with a clearer message before gog runs.
+    // (The slides commands are the opposite: they accept both and the file
+    // wins — see the note in slides-extra.ts.)
+    if (content !== undefined && contentFile) {
+      throw new Error(
+        'gog_docs_cell_update accepts content or contentFile, not both — gog refuses the combination ' +
+        '("cannot use both --content and --content-file"). Drop one of them.',
+      );
+    }
+    const args: GogArg[] = ['docs', 'cell-update', docId, `--row=${row}`, `--col=${col}`];
+    // `content !== undefined` (not truthiness) is deliberate: an empty string is
+    // a meaningful value that clears the cell, so it must reach gog as
+    // `--content=`. contentFile stays on truthiness — an empty path is nothing.
+    if (content !== undefined) args.push(payloadArg('content', 'content-file', content, 'md'));
     if (contentFile) args.push(`--content-file=${contentFile}`);
     if (append) args.push('--append');
     if (format) args.push(`--format=${format}`);

@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool, payloadArg } from './utils.js';
+import type { GogArg } from '../runner.js';
 
 export function registerGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_search', {
@@ -39,7 +40,7 @@ export function registerGmailTools(server: McpServer): void {
     inputSchema: {
       to: z.string().describe('Recipient(s), comma-separated'),
       subject: z.string().describe('Subject line'),
-      body: z.string().describe('Email body (plain text)'),
+      body: z.string().describe('Email body (plain text). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
       cc: z.string().optional().describe('CC recipients, comma-separated'),
       bcc: z.string().optional().describe('BCC recipients, comma-separated'),
       replyToMessageId: z.string().optional().describe('Message ID to reply to'),
@@ -48,7 +49,10 @@ export function registerGmailTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, attach, account }) => {
-    const args = ['gmail', 'send', `--to=${to}`, `--subject=${subject}`, `--body=${body}`];
+    // A long body cannot ride in argv: the hosted runner caps a single arg and
+    // Linux caps MAX_ARG_STRLEN at 128 KiB. payloadArg swaps it for --body-file
+    // past the shared threshold; the executor materializes the temp file.
+    const args: GogArg[] = ['gmail', 'send', `--to=${to}`, `--subject=${subject}`, payloadArg('body', 'body-file', body)];
     if (cc) args.push(`--cc=${cc}`);
     if (bcc) args.push(`--bcc=${bcc}`);
     if (replyToMessageId) args.push(`--reply-to-message-id=${replyToMessageId}`);

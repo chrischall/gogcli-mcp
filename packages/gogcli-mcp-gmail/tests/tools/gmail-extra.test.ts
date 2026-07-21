@@ -922,7 +922,6 @@ describe('gog_gmail_reply', () => {
       messageId: 'm1',
       body: 'Hi',
       bodyHtml: '<p>Hi</p>',
-      bodyHtmlFile: '/tmp/b.html',
       to: ['a@b.com', 'c@d.com'],
       cc: ['cc@x.com'],
       bcc: ['bcc@x.com'],
@@ -941,7 +940,6 @@ describe('gog_gmail_reply', () => {
         'gmail', 'reply', 'm1',
         '--body=Hi',
         '--body-html=<p>Hi</p>',
-        '--body-html-file=/tmp/b.html',
         '--to=a@b.com',
         '--to=c@d.com',
         '--cc=cc@x.com',
@@ -1372,5 +1370,189 @@ describe('non-text result passthrough', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
     expect(result.content).toEqual([]);
+  });
+});
+
+// Large message bodies cannot travel in argv: the hosted Fly runner rejects any
+// single arg over its cap and the Linux kernel caps MAX_ARG_STRLEN at 128 KiB.
+// payloadArg swaps an oversize value for a GogFileArg that the executor
+// materializes as a temp file. These tests pin the boundary behavior at the
+// tool surface: small bodies stay inline, large ones become file args, and the
+// rest of the flag set is unaffected either way.
+describe('large payloads route to file args', () => {
+  const big = 'x'.repeat(lib.PAYLOAD_INLINE_MAX + 1);
+  const bigHtml = `<table>${'<tr><td>cell</td></tr>'.repeat(600)}</table>`;
+
+  // Pull the args array out of the single runOrDiagnose call under test.
+  function args(): lib.GogArg[] {
+    return vi.mocked(lib.runOrDiagnose).mock.calls[0]![0];
+  }
+
+  it('keeps a body at exactly the threshold inline', async () => {
+    const atLimit = 'x'.repeat(lib.PAYLOAD_INLINE_MAX);
+    await harness.callTool('gog_gmail_drafts_create', { subject: 'S', body: atLimit });
+    expect(args()).toEqual(['gmail', 'drafts', 'create', '--subject=S', `--body=${atLimit}`]);
+  });
+
+  it('measures bytes, not characters, so a multibyte body crosses earlier', async () => {
+    // Each emoji is 2 UTF-16 units but 4 UTF-8 bytes, so this sits comfortably
+    // under the threshold by .length yet well over it by byte count.
+    const emoji = '😀'.repeat(600);
+    expect(emoji.length).toBeLessThan(lib.PAYLOAD_INLINE_MAX);
+    expect(Buffer.byteLength(emoji, 'utf8')).toBeGreaterThan(lib.PAYLOAD_INLINE_MAX);
+    await harness.callTool('gog_gmail_drafts_create', { subject: 'S', body: emoji });
+    expect(args()[4]).toEqual({ kind: 'file', flag: 'body-file', contents: emoji, ext: undefined });
+  });
+
+  it('gog_gmail_drafts_create routes a large body to --body-file', async () => {
+    await harness.callTool('gog_gmail_drafts_create', { subject: 'S', body: big });
+    expect(args()).toEqual([
+      'gmail', 'drafts', 'create',
+      '--subject=S',
+      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+    ]);
+  });
+
+  it('gog_gmail_drafts_create routes a large bodyHtml to --body-html-file with an html ext', async () => {
+    expect(Buffer.byteLength(bigHtml)).toBeGreaterThan(12_000);
+    await harness.callTool('gog_gmail_drafts_create', { subject: 'S', body: 'plain', bodyHtml: bigHtml });
+    expect(args()).toEqual([
+      'gmail', 'drafts', 'create',
+      '--subject=S',
+      '--body=plain',
+      { kind: 'file', flag: 'body-html-file', contents: bigHtml, ext: 'html' },
+    ]);
+  });
+
+  it('gog_gmail_drafts_update routes a large body to --body-file', async () => {
+    await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: big });
+    expect(args()).toEqual([
+      'gmail', 'drafts', 'update', 'd1',
+      '--subject=S',
+      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+    ]);
+  });
+
+  it('omitRecipients still suppresses to/cc/bcc alongside a large body', async () => {
+    await harness.callTool('gog_gmail_drafts_create', {
+      subject: 'S', body: big, to: 'a@b.com', cc: 'c@d.com', bcc: 'e@f.com', omitRecipients: true,
+    });
+    expect(args()).toEqual([
+      'gmail', 'drafts', 'create',
+      '--subject=S',
+      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+    ]);
+  });
+
+  it('threading and attachments still apply alongside a large body', async () => {
+    await harness.callTool('gog_gmail_drafts_create', {
+      subject: 'S', body: big, replyToThreadId: 't1', attach: ['/tmp/a.pdf'],
+    });
+    expect(args()).toEqual([
+      'gmail', 'drafts', 'create',
+      '--subject=S',
+      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+      '--thread-id=t1',
+      '--attach=/tmp/a.pdf',
+    ]);
+  });
+
+  it('replyToMessageId still wins over replyToThreadId alongside a large body', async () => {
+    await harness.callTool('gog_gmail_drafts_create', {
+      subject: 'S', body: big, replyToMessageId: 'm1', replyToThreadId: 't1',
+    });
+    expect(args()).toContain('--reply-to-message-id=m1');
+    expect(args()).not.toContain('--thread-id=t1');
+  });
+
+  it('gog_gmail_reply routes a large body and bodyHtml to file args', async () => {
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: big, bodyHtml: bigHtml });
+    expect(args()).toEqual([
+      'gmail', 'reply', 'm1',
+      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+      { kind: 'file', flag: 'body-html-file', contents: bigHtml, ext: 'html' },
+    ]);
+  });
+
+  it('gog_gmail_reply_all routes a large body to --body-file, leaving the signature boolean a bare flag', async () => {
+    await harness.callTool('gog_gmail_reply_all', { messageId: 'm1', body: big, signature: true });
+    expect(args()).toEqual([
+      'gmail', 'reply-all', 'm1',
+      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+      '--signature',
+    ]);
+  });
+
+  it('gog_gmail_forward routes a large note to --note-file', async () => {
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', note: big });
+    expect(args()).toEqual([
+      'gmail', 'forward', 'm1', '--to=a@b.com',
+      { kind: 'file', flag: 'note-file', contents: big, ext: undefined },
+    ]);
+  });
+
+  it('gog_gmail_autoreply routes a large body to --body-file but keeps bodyHtml inline', async () => {
+    // gog 0.34.1 gives `gmail autoreply` a --body-file but no --body-html-file.
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: big, bodyHtml: '<p>Hi</p>' });
+    expect(args()).toEqual([
+      'gmail', 'autoreply', 'is:unread',
+      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+      '--body-html=<p>Hi</p>',
+    ]);
+  });
+
+  it('gog_gmail_vacation_update keeps a large body inline (gog has no --body-file there)', async () => {
+    await harness.callTool('gog_gmail_vacation_update', { enable: true, body: big });
+    expect(args()).toEqual(['gmail', 'settings', 'vacation', 'update', '--enable', `--body=${big}`]);
+  });
+});
+
+// gog hard-errors when an inline flag and its --*-file twin are both present
+// ("use only one of --body-html or --body-html-file"). The tools reject the
+// combination up front so the caller sees which PARAMS collided.
+describe('inline/file param conflicts are rejected before gog runs', () => {
+  it('gog_gmail_drafts_create rejects bodyHtml plus bodyHtmlFile', async () => {
+    const res = await harness.callTool('gog_gmail_drafts_create', {
+      subject: 'S', body: 'B', bodyHtml: '<p>Hi</p>', bodyHtmlFile: '/tmp/b.html',
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content[0] as { text: string }).text).toContain('bodyHtml and bodyHtmlFile are mutually exclusive');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('gog_gmail_drafts_update rejects bodyHtml plus bodyHtmlFile', async () => {
+    const res = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', bodyHtml: '<p>Hi</p>', bodyHtmlFile: '/tmp/b.html',
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content[0] as { text: string }).text).toContain('mutually exclusive');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('gog_gmail_reply rejects bodyHtml plus bodyHtmlFile', async () => {
+    const res = await harness.callTool('gog_gmail_reply', {
+      messageId: 'm1', bodyHtml: '<p>Hi</p>', bodyHtmlFile: '/tmp/b.html',
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content[0] as { text: string }).text).toContain('bodyHtml and bodyHtmlFile are mutually exclusive');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('an empty-string bodyHtml still counts as supplied and conflicts', async () => {
+    // Guards the `!== undefined` check against a falsy-but-present value
+    // sliding through to gog, which rejects the pair regardless of content.
+    const res = await harness.callTool('gog_gmail_reply', {
+      messageId: 'm1', body: 'B', bodyHtml: '', bodyHtmlFile: '/tmp/b.html',
+    });
+    expect(res.isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('bodyHtmlFile alone still passes through as --body-html-file', async () => {
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', bodyHtmlFile: '/tmp/b.html' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'reply', 'm1', '--body=Hi', '--body-html-file=/tmp/b.html'],
+      { account: undefined },
+    );
   });
 });

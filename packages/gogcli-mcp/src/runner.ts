@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ChildProcess } from 'node:child_process';
-import { delimiter } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
 
 export type Spawner = (
@@ -9,14 +9,39 @@ export type Spawner = (
   options: { env: NodeJS.ProcessEnv },
 ) => ChildProcess;
 
+// A payload too large to live in argv. Every argv element is capped — the Fly
+// runner rejects args over 4 KiB, and the Linux kernel hard-caps a single argv
+// string at MAX_ARG_STRLEN (128 KiB) regardless of ARG_MAX — so big values
+// (a long HTML mail body, slide notes) must leave argv entirely. gog exposes
+// `--x-file` companions for exactly these flags; the executor writes the
+// payload to a private temp file and passes the path instead.
+export interface GogFileArg {
+  /** Discriminant separating this from a plain argv string. */
+  kind: 'file';
+  /** Flag NAME without leading dashes, e.g. 'body-html-file'. */
+  flag: string;
+  /** The large payload, verbatim. */
+  contents: string;
+  /** Temp-file extension without the dot, e.g. 'html'. Defaults to 'txt'. */
+  ext?: string;
+}
+
+export type GogArg = string | GogFileArg;
+
+export function isGogFileArg(arg: GogArg): arg is GogFileArg {
+  return typeof arg !== 'string';
+}
+
 // An executor runs a FULLY-ASSEMBLED gog arg list (already including
 // --json/--no-input/--color=never, --account, --readonly, and the service
 // subcommand) and returns its stdout as a string (or throws). This is the
 // injection seam that lets the same tool registrars run either by spawning
 // `gog` (stdio transport) or by forwarding the arg list to a remote HTTP
 // backend (hosted Cloudflare-Worker connector, which cannot spawn processes).
+// Elements may be GogFileArgs; EVERY executor is responsible for materializing
+// them to a private temp file and removing that file afterwards.
 export type GogExecutor = (
-  args: string[],
+  args: GogArg[],
   opts: { timeout?: number; interactive?: boolean },
 ) => Promise<string>;
 
@@ -126,13 +151,68 @@ function formatTimeout(ms: number): string {
   return `${ms}ms`;
 }
 
-// Spawn-based executor: owns everything process-specific — building the
-// sanitized child env, PATH augmentation, spawning, collecting stdout/stderr,
-// and the timeout kill. It returns raw output (no redaction — `run()` wraps
-// that around whichever executor runs). The child_process import is LAZY so a
-// Cloudflare Worker importing this module doesn't eagerly pull node:child_process
-// (which would break the Worker bundle); the injected `spawner` bypasses it.
-async function spawnExecutor(
+// Write every GogFileArg to a private temp file, run gog against the resulting
+// plain argv, and remove the temp dir afterwards — on success, on a non-zero
+// exit, and on timeout alike. A leaked temp file holds user email content.
+//
+// node:fs/promises and node:os are imported LAZILY (matching the lazy
+// node:child_process import below) so a Cloudflare Worker importing this module
+// doesn't eagerly pull node builtins, which would break the Worker bundle.
+async function spawnWithTempFiles(
+  args: GogArg[],
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner },
+): Promise<string> {
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+
+  // mkdtemp creates the directory with mode 0700 (owner-only) on POSIX, so the
+  // payload is never world-readable, not even for the instant between the
+  // directory appearing and writeFile's own 0600 mode landing.
+  const dir = await mkdtemp(join(tmpdir(), 'gogcli-mcp-'));
+  try {
+    const argv: string[] = [];
+    for (const arg of args) {
+      if (!isGogFileArg(arg)) {
+        argv.push(arg);
+        continue;
+      }
+      // Name the file after the flag: one command can carry two payloads
+      // (e.g. --body-file and --signature-file, both .txt), and a fixed
+      // basename would have the second silently clobber the first.
+      const path = join(dir, `${arg.flag}.${arg.ext ?? 'txt'}`);
+      await writeFile(path, arg.contents, { encoding: 'utf8', mode: 0o600 });
+      argv.push(`--${arg.flag}=${path}`);
+    }
+    return await spawnGog(argv, opts);
+  } finally {
+    // Never let a cleanup failure mask the real gog error (or a real result).
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+// Spawn-based executor. Deliberately NOT async: when no element is a
+// GogFileArg (the overwhelmingly common case) it must create no temp dir and
+// introduce no extra microtask tick before `spawn` is called — the spawn has
+// to happen synchronously within the `run()` call, which the fake-timer tests
+// in tests/runner.test.ts depend on.
+function spawnExecutor(
+  args: GogArg[],
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner },
+): Promise<string> {
+  if (args.some(isGogFileArg)) {
+    return spawnWithTempFiles(args, opts);
+  }
+  return spawnGog(args as string[], opts);
+}
+
+// Owns everything process-specific — building the sanitized child env, PATH
+// augmentation, spawning, collecting stdout/stderr, and the timeout kill. It
+// returns raw output (no redaction — `run()` wraps that around whichever
+// executor runs). The child_process import is LAZY so a Cloudflare Worker
+// importing this module doesn't eagerly pull node:child_process (which would
+// break the Worker bundle); the injected `spawner` bypasses it.
+
+async function spawnGog(
   fullArgs: string[],
   opts: { timeout?: number; interactive?: boolean; spawner?: Spawner },
 ): Promise<string> {
@@ -190,12 +270,12 @@ async function spawnExecutor(
   });
 }
 
-export async function run(args: string[], options: RunOptions = {}): Promise<string> {
+export async function run(args: GogArg[], options: RunOptions = {}): Promise<string> {
   const { account, spawner, interactive = false, timeout, readonly = false } = options;
 
   const effectiveAccount = account ?? readEnvVar('GOG_ACCOUNT');
 
-  const fullArgs = ['--json', '--color=never'];
+  const fullArgs: GogArg[] = ['--json', '--color=never'];
   if (!interactive) {
     fullArgs.push('--no-input');
   }

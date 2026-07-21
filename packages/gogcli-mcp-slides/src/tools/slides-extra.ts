@@ -1,6 +1,28 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, payloadArg } from '../../../gogcli-mcp/src/lib.js';
+import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
+
+// Payload routing note — slides differs from gmail/docs.
+//
+// Every `--x` / `--x-file` pair below goes through payloadArg, so a value over
+// PAYLOAD_INLINE_MAX leaves argv and is materialized as a temp file by the
+// executor. What is asymmetric is what gog does when BOTH forms are supplied:
+//
+//   gmail drafts/forward and docs cell-update HARD-ERROR ("use only one of
+//   --body-html or --body-html-file", "cannot use both --content and
+//   --content-file"), so those tools reject the combination before gog runs.
+//
+//   slides create-from-markdown / add-slide / update-notes / replace-slide do
+//   NOT error (measured on gog 0.34.1). Both flags are accepted and the FILE
+//   silently WINS. Callers may already rely on that, so these tools keep it:
+//   the caller-supplied *File flag is pushed last and therefore still wins,
+//   including over a payloadArg-generated file.
+//
+// Second slides-specific quirk: notes read from a file PRESERVE trailing
+// newlines (a 7-byte file comes back as length 7), unlike gmail bodies, where
+// all trailing newlines are stripped. So notes round-trip byte-for-byte on
+// either side of the threshold.
 
 export function registerExtraSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_create_from_markdown', {
@@ -14,8 +36,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ title, content, contentFile, parent, debug, account }) => {
-    const args = ['slides', 'create-from-markdown', title];
-    if (content) args.push(`--content=${content}`);
+    const args: GogArg[] = ['slides', 'create-from-markdown', title];
+    if (content) args.push(payloadArg('content', 'content-file', content, 'md'));
     if (contentFile) args.push(`--content-file=${contentFile}`);
     if (parent) args.push(`--parent=${parent}`);
     if (debug) args.push('--debug');
@@ -57,8 +79,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ presentationId, image, notes, notesFile, before, account }) => {
-    const args = ['slides', 'add-slide', presentationId, image];
-    if (notes) args.push(`--notes=${notes}`);
+    const args: GogArg[] = ['slides', 'add-slide', presentationId, image];
+    if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
     if (before) args.push(`--before=${before}`);
     return runOrDiagnose(args, { account });
@@ -114,8 +136,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ presentationId, slideId, notes, notesFile, account }) => {
-    const args = ['slides', 'update-notes', presentationId, slideId];
-    if (notes) args.push(`--notes=${notes}`);
+    const args: GogArg[] = ['slides', 'update-notes', presentationId, slideId];
+    if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
     return runOrDiagnose(args, { account });
   });
@@ -133,10 +155,10 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ presentationId, slideId, image, url, notes, notesFile, account }) => {
-    const args = ['slides', 'replace-slide', presentationId, slideId];
+    const args: GogArg[] = ['slides', 'replace-slide', presentationId, slideId];
     if (image) args.push(image);
     if (url) args.push(`--url=${url}`);
-    if (notes) args.push(`--notes=${notes}`);
+    if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
     return runOrDiagnose(args, { account });
   });

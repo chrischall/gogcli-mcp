@@ -122,6 +122,74 @@ describe('gog_slides_create_from_template', () => {
   });
 });
 
+// Slides is the asymmetric case: gog accepts both the inline and the *-file
+// flag and lets the FILE win, so these tools keep passing both through rather
+// than rejecting like gog_docs_cell_update / the gmail body pairs do.
+describe('slides payload routing', () => {
+  const big = 'x'.repeat(lib.PAYLOAD_INLINE_MAX + 1);
+
+  it('routes a large create-from-markdown content to --content-file', async () => {
+    await harness.callTool('gog_slides_create_from_markdown', { title: 'Deck', content: big });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'create-from-markdown', 'Deck',
+        { kind: 'file', flag: 'content-file', contents: big, ext: 'md' }],
+      { account: undefined },
+    );
+  });
+
+  it('routes large add-slide notes to --notes-file', async () => {
+    await harness.callTool('gog_slides_add_slide', { presentationId: 'p1', image: '/tmp/i.png', notes: big });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'add-slide', 'p1', '/tmp/i.png',
+        { kind: 'file', flag: 'notes-file', contents: big, ext: undefined }],
+      { account: undefined },
+    );
+  });
+
+  it('routes large update-notes notes to --notes-file', async () => {
+    await harness.callTool('gog_slides_update_notes', { presentationId: 'p1', slideId: 's1', notes: big });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'update-notes', 'p1', 's1',
+        { kind: 'file', flag: 'notes-file', contents: big, ext: undefined }],
+      { account: undefined },
+    );
+  });
+
+  it('routes large replace-slide notes to --notes-file', async () => {
+    await harness.callTool('gog_slides_replace_slide', {
+      presentationId: 'p1', slideId: 's1', image: '/tmp/i.png', notes: big,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'replace-slide', 'p1', 's1', '/tmp/i.png',
+        { kind: 'file', flag: 'notes-file', contents: big, ext: undefined }],
+      { account: undefined },
+    );
+  });
+
+  // A caller-supplied notesFile is pushed last, so it still wins over a
+  // payloadArg-generated file — matching gog's own "last flag wins" behavior.
+  it('keeps a caller-supplied notesFile last so it still wins over a spilled payload', async () => {
+    await harness.callTool('gog_slides_update_notes', {
+      presentationId: 'p1', slideId: 's1', notes: big, notesFile: '/tmp/mine.txt',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'update-notes', 'p1', 's1',
+        { kind: 'file', flag: 'notes-file', contents: big, ext: undefined },
+        '--notes-file=/tmp/mine.txt'],
+      { account: undefined },
+    );
+  });
+
+  // Trailing newlines survive the file round-trip for slides notes (gog 0.34.1),
+  // unlike gmail bodies where they are stripped. Documented as a property.
+  it('preserves trailing newlines in a spilled notes payload', async () => {
+    const padded = `${big}\n\n`;
+    await harness.callTool('gog_slides_update_notes', { presentationId: 'p1', slideId: 's1', notes: padded });
+    const [args] = vi.mocked(lib.runOrDiagnose).mock.calls[0];
+    expect(args[4]).toEqual({ kind: 'file', flag: 'notes-file', contents: padded, ext: undefined });
+  });
+});
+
 describe('gog_slides_add_slide', () => {
   it('calls runOrDiagnose with presentationId and image', async () => {
     await harness.callTool('gog_slides_add_slide', { presentationId: 'p1', image: '/tmp/img.png' });

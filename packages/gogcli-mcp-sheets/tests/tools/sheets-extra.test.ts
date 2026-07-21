@@ -698,6 +698,18 @@ describe('gog_sheets_update_note', () => {
     await harness.callTool('gog_sheets_update_note', { spreadsheetId: 'sid', range: 'A1', note: '' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'update-note', 'sid', 'A1', '--note='], { account: undefined });
   });
+
+  it('spills a large note to a --note-file payload arg', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    const big = 'n'.repeat(lib.PAYLOAD_INLINE_MAX + 1);
+    await harness.callTool('gog_sheets_update_note', { spreadsheetId: 'sid', range: 'A1', note: big });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'update-note', 'sid', 'A1',
+        { kind: 'file', flag: 'note-file', contents: big, ext: undefined }],
+      { account: undefined },
+    );
+  });
 });
 
 // 17. links
