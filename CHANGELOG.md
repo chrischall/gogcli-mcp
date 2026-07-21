@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.5](https://github.com/chrischall/gogcli-mcp/compare/v2.16.4...v2.16.5) (2026-07-21)
+
+
+### Bug Fixes
+
+* lift the 4096-char cap on email bodies and other large payloads ([#185](https://github.com/chrischall/gogcli-mcp/issues/185)) ([acbe74a](https://github.com/chrischall/gogcli-mcp/commit/acbe74a52244008e41f40d0573b9180430c41524))
+
 ## [2.16.4](https://github.com/chrischall/gogcli-mcp/compare/v2.16.3...v2.16.4) (2026-07-20)
 
 
