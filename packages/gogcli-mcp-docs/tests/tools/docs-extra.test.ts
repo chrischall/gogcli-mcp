@@ -987,16 +987,65 @@ describe('gog_docs_cell_update', () => {
     );
   });
 
-  it('supports empty-string content, --content-file, --append, --format, --table-index and --tab', async () => {
+  it('supports empty-string content plus --append, --format, --table-index and --tab', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_cell_update', {
-      docId: 'd1', row: 1, col: 1, content: '', contentFile: '/tmp/c.md', append: true,
+      docId: 'd1', row: 1, col: 1, content: '', append: true,
       format: 'plain', tableIndex: -1, tab: 'Tab2',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['docs', 'cell-update', 'd1', '--row=1', '--col=1', '--content=', '--content-file=/tmp/c.md',
+      ['docs', 'cell-update', 'd1', '--row=1', '--col=1', '--content=',
         '--append', '--format=plain', '--table-index=-1', '--tab=Tab2'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --content-file on its own', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_cell_update', {
+      docId: 'd1', row: 1, col: 1, contentFile: '/tmp/c.md',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cell-update', 'd1', '--row=1', '--col=1', '--content-file=/tmp/c.md'],
+      { account: undefined },
+    );
+  });
+
+  // gog itself refuses --content together with --content-file, so the wrapper
+  // rejects the combination up front rather than shipping a doomed argv.
+  it('rejects content and contentFile together without invoking gog', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_docs_cell_update', {
+      docId: 'd1', row: 1, col: 1, content: 'hi', contentFile: '/tmp/c.md',
+    });
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.content)).toContain('not both');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  // An empty string clears the cell, so it must NOT be treated as "no content"
+  // and must NOT collide with contentFile's truthiness guard.
+  it('treats empty-string content as a conflict with contentFile', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_docs_cell_update', {
+      docId: 'd1', row: 1, col: 1, content: '', contentFile: '/tmp/c.md',
+    });
+    expect(res.isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('routes a large content value to a --content-file payload arg', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    const big = 'c'.repeat(lib.PAYLOAD_INLINE_MAX + 1);
+    await harness.callTool('gog_docs_cell_update', { docId: 'd1', row: 2, col: 3, content: big });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'cell-update', 'd1', '--row=2', '--col=3',
+        { kind: 'file', flag: 'content-file', contents: big, ext: 'md' }],
       { account: undefined },
     );
   });

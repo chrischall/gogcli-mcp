@@ -1,5 +1,5 @@
 import { runExecutor } from './runner.js';
-import type { GogExecutor } from './runner.js';
+import type { GogArg, GogExecutor } from './runner.js';
 
 // Runtime helpers for the Cloudflare connector (worker.ts), split out here so
 // they can be unit-tested under the node pool — worker.ts itself imports the
@@ -16,6 +16,18 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 // backend cannot answer at all (scale-to-zero cold start that never wakes, or a
 // wedged machine). Firing first would turn a useful "gog exited 1" into an
 // opaque timeout.
+//
+// This grace is deliberately NOT widened for GogFileArg payloads. The deadline
+// now covers a request body that carries the payload inline, so upload happens
+// before `gog` starts — but the payloads that take this path are text (a mail
+// body, slide notes), bounded by the MCP request that carried them, and the hop
+// is Cloudflare edge → Fly datacenter, so upload is milliseconds, not seconds.
+// Widening the grace would weaken the property this constant exists to protect:
+// the backend must lose the race only when it genuinely cannot answer, and every
+// extra second is a second of an opaque client timeout replacing a real error.
+// If a payload class ever appears that does NOT upload in well under 5s, the fix
+// is to raise the caller's `opts.timeout` (which this deadline tracks) rather
+// than to inflate the grace, so the runner still gets to answer first.
 const DEADLINE_GRACE_MS = 5_000;
 
 // Status codes the Fly runner uses to classify its OWN failures. These must stay
@@ -38,8 +50,18 @@ const RUNNER_DRAINING = 503;
 // no default timeout, and the stdio path's kill lives in a child process this
 // path never spawns, so without an explicit signal a cold or wedged backend
 // hangs the MCP request indefinitely with nothing to interrupt it.
+//
+// GogFileArg elements pass through STRUCTURED, as objects inside the JSON body.
+// Every other executor materializes them to a temp file itself; this one cannot
+// and must not. A Worker has no filesystem and does not host the `gog` binary,
+// so there is nowhere to put a file that the process which needs it could read.
+// The Fly runner is the only box with both, so it owns materialization — this
+// layer's whole job is to hand the elements over unaltered, in order. Anything
+// clever here (flattening to `--flag=<inline>`, truncating, re-encoding) would
+// put the payload straight back into argv and re-create the size cap this whole
+// change exists to escape.
 export function makeFlyExecutor(endpoint: string, key: string): GogExecutor {
-  return async (args, opts) => {
+  return async (args: GogArg[], opts) => {
     const deadlineMs = (opts?.timeout ?? DEFAULT_TIMEOUT_MS) + DEADLINE_GRACE_MS;
     let res: Response;
     try {

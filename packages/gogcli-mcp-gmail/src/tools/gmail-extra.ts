@@ -2,7 +2,28 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg } from '../../../gogcli-mcp/src/lib.js';
+import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
+
+// gog rejects an inline flag together with its --*-file twin — `gmail drafts
+// create` errors with "use only one of --body-html or --body-html-file", and
+// `gmail forward` does the same for --note (misreporting it as --body). Catch
+// the conflict here so the caller gets a message naming the TOOL params it
+// actually passed, instead of a gog error naming flags it never saw.
+function assertNotBoth(
+  inlineParam: string,
+  fileParam: string,
+  inlineValue: string | undefined,
+  fileValue: string | undefined,
+): void {
+  if (inlineValue !== undefined && fileValue !== undefined) {
+    throw new Error(
+      `${inlineParam} and ${fileParam} are mutually exclusive — gog accepts only one of them. ` +
+      `Pass ${inlineParam} with the content itself (it is written to a temp file automatically when large), ` +
+      `or ${fileParam} with a path that already exists on the gog server.`,
+    );
+  }
+}
 
 // Pull the text out of a single-text-block tool result; undefined for any
 // other shape (an error result is still a text block, so it parses below).
@@ -557,9 +578,9 @@ export function registerExtraGmailTools(server: McpServer): void {
     cc: z.string().optional().describe('CC recipients (comma-separated)'),
     bcc: z.string().optional().describe('BCC recipients (comma-separated)'),
     subject: z.string().describe('Subject'),
-    body: z.string().describe('Body (plain text)'),
-    bodyHtml: z.string().optional().describe('Body (HTML; optional)'),
-    bodyHtmlFile: z.string().optional().describe('Path to an HTML file (read on the gog server) to use as the HTML body, or "-" to read from stdin. Use instead of bodyHtml for a large pre-rendered HTML body you do not want to inline. If both are given, gog uses the file.'),
+    body: z.string().describe('Body (plain text). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
+    bodyHtml: z.string().optional().describe('Body (HTML; optional). Pass the HTML itself at any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Mutually exclusive with bodyHtmlFile.'),
+    bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server to use as the HTML body, or "-" to read from stdin. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
     replyToMessageId: z.string().optional().describe('Reply to a specific Gmail MESSAGE id — the short hex `id` field from gog_gmail_get / _search / _thread_get (e.g. 19e7593d77fd9636), NOT a thread id and NOT the RFC822 `<…@host>` Message-Id header. Anchors In-Reply-To/References to that exact message. To reply to a thread when you don\'t know the latest message, use replyToThreadId instead. If both are given, replyToMessageId wins.'),
     replyToThreadId: z.string().optional().describe('Reply to a Gmail THREAD id — passed to gog as --thread-id, which threads the draft using the thread\'s latest-message headers (In-Reply-To/References). This is what "reply to this thread" almost always means. Mutually exclusive with replyToMessageId (which wins if both are set). Thread ids and message ids are both 16-hex strings and easy to confuse — use this param, not replyToMessageId, when the id came from a thread.'),
     replyTo: z.string().optional().describe('Reply-To header address'),
@@ -590,16 +611,19 @@ export function registerExtraGmailTools(server: McpServer): void {
     omitRecipients?: boolean;
   };
 
-  function appendDraftFlags(args: string[], f: DraftFlags): void {
+  function appendDraftFlags(args: GogArg[], f: DraftFlags): void {
+    assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
     if (!f.omitRecipients) {
       if (f.to) args.push(`--to=${f.to}`);
       if (f.cc) args.push(`--cc=${f.cc}`);
       if (f.bcc) args.push(`--bcc=${f.bcc}`);
     }
     args.push(`--subject=${f.subject}`);
-    args.push(`--body=${f.body}`);
-    if (f.bodyHtml) args.push(`--body-html=${f.bodyHtml}`);
-    if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
+    // body is required, so this is an either/or swap rather than an extra push:
+    // --body and --body-file together are a hard error in gog.
+    args.push(payloadArg('body', 'body-file', f.body));
+    if (f.bodyHtml) args.push(payloadArg('body-html', 'body-html-file', f.bodyHtml, 'html'));
+    else if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
     // A draft can reply to a specific message (--reply-to-message-id) or thread
     // off the latest message in a thread (--thread-id, which gog resolves
     // server-side). replyToMessageId wins when both are supplied.
@@ -619,7 +643,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   // front; for creates it's read from the write response's draftId. Degrades to
   // the raw write result if the id can't be determined.
   async function writeDraft(
-    args: string[],
+    args: GogArg[],
     account: string | undefined,
     returnFull: boolean | undefined,
     knownDraftId?: string,
@@ -645,7 +669,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     description: 'Create a new Gmail draft. Recipients (to/cc/bcc) are optional; omit them (or set omitRecipients) to create a recipient-less draft as an accidental-send guard. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) — don\'t pass a thread id into replyToMessageId, which mis-threads silently.',
     inputSchema: draftWriteSchema,
   }, async ({ account, returnFull, ...flags }) => {
-    const args = ['gmail', 'drafts', 'create'];
+    const args: GogArg[] = ['gmail', 'drafts', 'create'];
     appendDraftFlags(args, flags);
     return writeDraft(args, account, returnFull);
   });
@@ -659,7 +683,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       clearAttachments: z.boolean().optional().describe('Remove all attachments from the draft. By default, omitting attach preserves the draft\'s existing attachments; this intentionally clears them. Ignored if attach is also supplied (attach replaces).'),
     },
   }, async ({ draftId, account, returnFull, clearAttachments, ...flags }) => {
-    const args = ['gmail', 'drafts', 'update', draftId];
+    const args: GogArg[] = ['gmail', 'drafts', 'update', draftId];
     appendDraftFlags(args, flags);
     if (clearAttachments) args.push('--clear-attachments');
     return writeDraft(args, account, returnFull, draftId);
@@ -704,10 +728,10 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, account }) => {
-    const args = ['gmail', 'forward', messageId, `--to=${to}`];
+    const args: GogArg[] = ['gmail', 'forward', messageId, `--to=${to}`];
     if (cc) args.push(`--cc=${cc}`);
     if (bcc) args.push(`--bcc=${bcc}`);
-    if (note) args.push(`--note=${note}`);
+    if (note) args.push(payloadArg('note', 'note-file', note));
     if (from) args.push(`--from=${from}`);
     if (skipAttachments) args.push('--skip-attachments');
     return runOrDiagnose(args, { account });
@@ -721,9 +745,9 @@ export function registerExtraGmailTools(server: McpServer): void {
   // the draft tools.
   const replySchema = {
     messageId: z.string().describe('Gmail message ID to reply to — the short hex `id` from gog_gmail_get / _search / _messages_search (NOT the threadId, NOT the RFC822 `<…@host>` Message-Id header).'),
-    body: z.string().optional().describe('Reply body (plain text; required unless bodyHtml or bodyHtmlFile is set)'),
-    bodyHtml: z.string().optional().describe('Reply body (HTML; optional)'),
-    bodyHtmlFile: z.string().optional().describe('Path to an HTML file (read on the gog server) for the reply body, or "-" for stdin. Use instead of bodyHtml for a large pre-rendered HTML body. If both are given, gog uses the file.'),
+    body: z.string().optional().describe('Reply body (plain text; required unless bodyHtml or bodyHtmlFile is set). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
+    bodyHtml: z.string().optional().describe('Reply body (HTML; optional). Pass the HTML itself at any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Mutually exclusive with bodyHtmlFile.'),
+    bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server for the reply body, or "-" for stdin. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
     to: z.array(z.string()).optional().describe('Add or move recipients to To (repeatable). Added on top of the recipients inherited from the original message.'),
     cc: z.array(z.string()).optional().describe('Add or move recipients to Cc (repeatable)'),
     bcc: z.array(z.string()).optional().describe('Add or move recipients to Bcc (repeatable)'),
@@ -755,10 +779,11 @@ export function registerExtraGmailTools(server: McpServer): void {
     signatureFile?: string;
   };
 
-  function appendReplyFlags(args: string[], f: ReplyFlags): void {
-    if (f.body) args.push(`--body=${f.body}`);
-    if (f.bodyHtml) args.push(`--body-html=${f.bodyHtml}`);
-    if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
+  function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
+    assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
+    if (f.body) args.push(payloadArg('body', 'body-file', f.body));
+    if (f.bodyHtml) args.push(payloadArg('body-html', 'body-html-file', f.bodyHtml, 'html'));
+    else if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
     if (f.to) for (const r of f.to) args.push(`--to=${r}`);
     if (f.cc) for (const r of f.cc) args.push(`--cc=${r}`);
     if (f.bcc) for (const r of f.bcc) args.push(`--bcc=${r}`);
@@ -777,7 +802,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { destructiveHint: true },
     inputSchema: replySchema,
   }, async ({ messageId, account, ...flags }) => {
-    const args = ['gmail', 'reply', messageId];
+    const args: GogArg[] = ['gmail', 'reply', messageId];
     appendReplyFlags(args, flags);
     return runOrDiagnose(args, { account });
   });
@@ -787,7 +812,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { destructiveHint: true },
     inputSchema: replySchema,
   }, async ({ messageId, account, ...flags }) => {
-    const args = ['gmail', 'reply-all', messageId];
+    const args: GogArg[] = ['gmail', 'reply-all', messageId];
     appendReplyFlags(args, flags);
     return runOrDiagnose(args, { account });
   });
@@ -811,10 +836,13 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     },
   }, async ({ query, max, subject, body, bodyHtml, from, replyTo, label, archive, markRead, skipBulk, allowSelf, account }) => {
-    const args = ['gmail', 'autoreply', query];
+    const args: GogArg[] = ['gmail', 'autoreply', query];
     if (max !== undefined) args.push(`--max=${max}`);
     if (subject) args.push(`--subject=${subject}`);
-    if (body) args.push(`--body=${body}`);
+    if (body) args.push(payloadArg('body', 'body-file', body));
+    // `gmail autoreply` has --body-file but NO --body-html-file (verified against
+    // gog 0.34.1), so an HTML autoreply body stays inline and is still bounded by
+    // the runner's per-arg cap. Route it through payloadArg if gog ever adds one.
     if (bodyHtml) args.push(`--body-html=${bodyHtml}`);
     if (from) args.push(`--from=${from}`);
     if (replyTo) args.push(`--reply-to=${replyTo}`);
@@ -898,6 +926,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (enable) args.push('--enable');
     if (disable) args.push('--disable');
     if (subject) args.push(`--subject=${subject}`);
+    // `gmail settings vacation update` exposes only --body — there is no
+    // --body-file variant (verified against gog 0.34.1), so this stays inline.
     if (body) args.push(`--body=${body}`);
     if (start) args.push(`--start=${start}`);
     if (end) args.push(`--end=${end}`);

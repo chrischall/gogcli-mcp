@@ -1,0 +1,9 @@
+{
+  "name": "fly-gog-runner",
+  "private": true,
+  "type": "module",
+  "description": "Fly.io backend that runs the `gog` CLI for the Cloudflare Worker connector. Zero npm dependencies by design — node built-ins only, so this file carries no `dependencies` block and adds nothing to the root lockfile.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -16,7 +16,9 @@
   },
   "scripts": {
     "build": "npm run build --workspaces",
-    "test": "npm test --workspaces",
+    "test": "node scripts/run-tests.js",
+    "test:workspaces": "npm test --workspaces",
+    "test:runner": "npm test --prefix fly-gog-runner",
     "typecheck": "npm run typecheck --workspaces",
     "publish:all": "npm run build && npm publish --access public --workspaces",
     "worker:dev": "wrangler dev",

@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, errorText } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, errorText, payloadArg } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
 // other shape (error results are still text blocks, so they parse below).
@@ -433,11 +433,18 @@ export function registerExtraSheetsTools(server: McpServer): void {
     inputSchema: {
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Cell or range to set the note on (e.g. Sheet1!A1)'),
-      note: z.string().describe('Note text (empty string clears the note)'),
+      note: z.string().describe('Note text (empty string clears the note). Large notes are written to a temp file and passed to gog as --note-file automatically.'),
       account: accountParam,
     },
   }, async ({ spreadsheetId, range, note, account }) => {
-    return runOrDiagnose(['sheets', 'update-note', spreadsheetId, range, `--note=${note}`], { account });
+    // payloadArg keeps normal notes on `--note=` and spills a large one to a
+    // temp file passed as `--note-file`, so it can't blow the argv size cap.
+    // The wrapper exposes no noteFile param, so there is no both-flags case to
+    // guard here (gog would accept both anyway, letting the file win).
+    return runOrDiagnose(
+      ['sheets', 'update-note', spreadsheetId, range, payloadArg('note', 'note-file', note)],
+      { account },
+    );
   });
 
   server.registerTool('gog_sheets_links', {

@@ -22,15 +22,61 @@ authenticated HTTPS; this box executes it and returns the raw stdout.
 |-----------------|-----------------|-------------------------------------------------------------------------|
 | `GET /healthz`  | none            | Liveness for Fly/uptime checks. Runs no gog. → `200 {"ok":true}`        |
 | `GET /health`   | bearer required | Key verification for the connector's `login()` — proves the key is good without depending on gog being seeded. → `200 {"ok":true}` / `401` |
-| `POST /run`     | bearer required | Runs `gog <args>` verbatim. → `200 {"stdout"}` on exit 0; `502 {"error","stderr"}` on gog failure; `400 {"error"}` on bad input |
+| `POST /run`     | bearer required | Runs `gog <args>` verbatim. → `200 {"stdout"}` on exit 0; `422 {"error","stderr","retryable":false}` on gog failure; `400 {"error"}` on bad input; `500 {"error","retryable":true}` if this box can't write a file arg to disk; `503 {"error","retryable":true}` while draining for shutdown |
 
 Auth is a bearer token compared in constant time against `RUNNER_KEY`. Missing or
 mismatched → `401`. The server **refuses to start** if `RUNNER_KEY` is unset.
 
-`/run` input validation: `args` must be a non-empty array of strings, ≤ 64
-elements, each ≤ 4096 chars, with no NUL byte. Execution uses `execFile` (no
-shell), so shell metacharacters are inert. There is **no subcommand allowlist**
-— it is the operator's own `gog`.
+Note that a gog failure is **`422`, not `5xx`**. `gog` ran here and exited
+non-zero, so the same args will fail identically and the caller must not retry.
+5xx is reserved for infrastructure — which is also what Fly's edge proxy returns
+when it can't reach the Machine at all — so the status alone carries the
+retryable/not-retryable classification.
+
+### `/run` input validation
+
+`args` must be a non-empty array of ≤ 64 elements. Each element is **either** a
+plain string **or** a file arg. Execution uses `execFile` (no shell), so shell
+metacharacters are inert. There is **no subcommand allowlist** — it is the
+operator's own `gog`.
+
+**Plain strings** go through `argv` and are capped at **64 KiB each**, measured
+in bytes, and must contain no NUL byte. The cap exists because Linux caps a
+*single* argv string at `MAX_ARG_STRLEN` (128 KiB, independent of `ARG_MAX`) and
+exceeding it yields an opaque `E2BIG`; 64 KiB sits safely under that while still
+carrying the legitimately-large args gog offers no file variant for (`sheets
+update --values-json` and friends).
+
+**File args** are how a payload leaves `argv` entirely — the only way to send
+something larger than 64 KiB, and the reason a >4 KB Gmail draft body works:
+
+```jsonc
+{ "kind": "file", "flag": "body-html-file", "contents": "<p>…</p>", "ext": "html" }
+```
+
+| Field      | Required | Meaning                                                            |
+|------------|----------|--------------------------------------------------------------------|
+| `kind`     | yes      | Literal `"file"` — the discriminant.                                |
+| `flag`     | yes      | Flag **name without leading dashes**, e.g. `body-html-file`. Must match `^[A-Za-z0-9][A-Za-z0-9-]*$`. |
+| `contents` | yes      | The payload, verbatim. Capped at **8 MB**, measured in bytes.        |
+| `ext`      | no       | Temp-file extension without the dot (`^[A-Za-z0-9]{1,16}$`). Default `txt`. |
+
+The server writes `contents` to `<mkdtemp dir>/body.<ext>` (dir `0700`, file
+`0600`), substitutes the element with the plain string `--<flag>=<path>`, runs
+gog, and removes every temp dir in a `finally` — on success, on a non-zero exit,
+on a timeout, on a throw. A leaked temp file holds user content, so that cleanup
+is a security property, not tidiness.
+
+The server does **not** know which gog flags have file variants; it passes
+`flag` through verbatim. Choosing `--body-html-file` over `--body-html`, and
+respecting gog's per-command quirks (some commands hard-error when both are
+passed, some silently prefer the file; some strip trailing newlines from a file
+payload, some preserve them), is the **caller's** job.
+
+The whole POST body is capped at **32 MB** — 4x the per-file cap, so JSON
+escaping of a max-size payload still leaves the precise per-flag error as the
+one the caller sees. This ceiling sizes the Machine's `memory` in `fly.toml`;
+the two must move together.
 
 ### Safety flags are injected upstream
 
@@ -143,5 +189,5 @@ curl -fsS -X POST https://<app>.fly.dev/run \
 
 ```bash
 node --check server.mjs        # syntax
-node --test .                  # unit tests (node:test, no gog needed)
+npm test                       # unit tests (node:test, no gog needed)
 ```

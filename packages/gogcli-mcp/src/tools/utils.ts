@@ -3,6 +3,40 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
 import { run } from '../runner.js';
+import type { GogArg } from '../runner.js';
+
+// Byte size at or below which a payload stays on the plain inline flag.
+//
+// Two reasons not to route everything through a file. First, gog's semantics
+// differ between the two forms: reading a body from a file strips ALL trailing
+// newlines (measured on gog 0.34.1 — a 5-byte payload padded to 6/7/8 bytes all
+// came back as 5), so a body ending in "\n" cannot round-trip byte-for-byte.
+// Keeping normal-sized mail on the inline path means it stays byte-identical to
+// what it is today and does not inherit that stripping. Second, the file path
+// costs a temp dir, a write, and a delete per call.
+//
+// The value is far under the 4 KiB Fly-runner arg cap, so anything inline is
+// comfortably within every layer's limit.
+export const PAYLOAD_INLINE_MAX = 2000;
+
+// The ONE place the inline-vs-file decision is made. Every tool that has a
+// gog `--x` / `--x-file` flag pair routes its value through here so the
+// threshold cannot drift between tools.
+//
+// Measures BYTES, not characters: the Fly runner's cap and the Linux kernel's
+// MAX_ARG_STRLEN are both byte-based, so a multibyte-heavy body (CJK, emoji)
+// would slip past a `.length` check at up to 4x its real argv cost.
+export function payloadArg(
+  inlineFlag: string,
+  fileFlag: string,
+  value: string,
+  ext?: string,
+): GogArg {
+  if (Buffer.byteLength(value, 'utf8') <= PAYLOAD_INLINE_MAX) {
+    return `--${inlineFlag}=${value}`;
+  }
+  return { kind: 'file', flag: fileFlag, contents: value, ext };
+}
 
 export const accountParam = z.string().optional().describe(
   'Google account email to use, e.g. you@gmail.com — must be the full address, not a bare username. ' +
@@ -165,7 +199,7 @@ export async function diagnose(err: unknown): Promise<CallToolResult> {
 }
 
 export async function runOrDiagnose(
-  args: string[],
+  args: GogArg[],
   options: { account?: string },
 ): Promise<CallToolResult> {
   try {

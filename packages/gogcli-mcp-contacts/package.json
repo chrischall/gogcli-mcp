@@ -19,7 +19,7 @@
     "build": "tsc --noEmit && npm run bundle",
     "bundle": "node ../../scripts/bundle.js src/index.ts dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },

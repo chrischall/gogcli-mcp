@@ -39,4 +39,11 @@ kill_timeout = "40s"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  # MUST be sized against server.mjs's MAX_BODY_BYTES (32 MB). A single max-size
+  # request holds roughly four live copies of the body — the buffered chunks,
+  # Buffer.concat, .toString(), then the JSON.parse'd strings — so ~128 MB, and
+  # requests overlap. Add EXEC_MAX_BUFFER (32 MB) for gog's stdout. 256 MB (the
+  # old value) risks an OOM kill on two concurrent large drafts, and a Fly OOM severs
+  # the socket into the opaque gateway 502 the graceful-shutdown work removed.
+  # Raise this in lockstep if MAX_BODY_BYTES ever grows again.
+  memory = "1gb"

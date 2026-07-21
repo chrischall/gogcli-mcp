@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { run } from '../src/runner.js';
-import type { GogExecutor } from '../src/runner.js';
+import type { GogArg, GogExecutor, GogFileArg } from '../src/runner.js';
 import { makeFlyExecutor, wrapServer } from '../src/connector-runtime.js';
 
 afterEach(() => {
@@ -118,6 +118,132 @@ describe('makeFlyExecutor', () => {
       'Content-Type': 'application/json',
     });
     expect(init.body).toBe(JSON.stringify({ args: ['sheets', 'get', 'A1'] }));
+  });
+
+  // Everything below is the file-arg wire contract. The Worker has no filesystem
+  // and no gog binary, so a GogFileArg must cross the wire STRUCTURED and be
+  // materialized on the Fly runner. If this layer ever flattened it back into an
+  // argv string, the >4 KiB payload it exists to carry would hit the arg cap again.
+  describe('GogFileArg forwarding', () => {
+    function bodyOf(fetchMock: { mock: { calls: unknown[][] } }): { args: GogArg[] } {
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      return JSON.parse(init.body as string) as { args: GogArg[] };
+    }
+
+    function okFetch() {
+      const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ stdout: 'ok' }) }));
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    it('serializes a file arg into the request body with its contents intact', async () => {
+      const fetchMock = okFetch();
+      // Comfortably past the runner's 4 KiB single-arg cap — the whole point.
+      const html = '<p>' + 'x'.repeat(10_000) + '</p>';
+      const fileArg: GogFileArg = {
+        kind: 'file',
+        flag: 'body-html-file',
+        contents: html,
+        ext: 'html',
+      };
+
+      const exec = makeFlyExecutor(ENDPOINT, KEY);
+      await exec(['gmail', 'drafts', 'create', fileArg], {});
+
+      const { args } = bodyOf(fetchMock);
+      expect(args[3]).toEqual(fileArg);
+      // Byte-for-byte: no truncation, no re-encoding, no flattening to argv.
+      expect((args[3] as GogFileArg).contents).toBe(html);
+      expect((args[3] as GogFileArg).contents).toHaveLength(html.length);
+      expect(typeof args[3]).toBe('object');
+    });
+
+    it('preserves order across a mixed array of strings and file args', async () => {
+      const fetchMock = okFetch();
+      const body: GogFileArg = { kind: 'file', flag: 'body-file', contents: 'plain body' };
+      const notes: GogFileArg = {
+        kind: 'file',
+        flag: 'signature-file',
+        contents: 'sig',
+        ext: 'html',
+      };
+      const sent: GogArg[] = [
+        '--json',
+        'gmail',
+        'send',
+        '--to=a@example.com',
+        body,
+        '--subject=Hi',
+        notes,
+        '--no-input',
+      ];
+
+      const exec = makeFlyExecutor(ENDPOINT, KEY);
+      await exec(sent, {});
+
+      // Order is load-bearing: gog parses positionally, so a reordered array is
+      // a different command.
+      expect(bodyOf(fetchMock).args).toEqual(sent);
+    });
+
+    it('round-trips UTF-8 payloads — multibyte, emoji, and interior newlines', async () => {
+      const fetchMock = okFetch();
+      // Multibyte scripts, an astral-plane emoji (surrogate pair), and combining
+      // marks: the classes most likely to be mangled by a naive re-encode.
+      const contents = 'héllo wörld — naïve café\n日本語のテキスト\n🎉 emoji + ZWJ 👩‍💻\né\n';
+      const fileArg: GogFileArg = { kind: 'file', flag: 'body-file', contents };
+
+      const exec = makeFlyExecutor(ENDPOINT, KEY);
+      await exec([fileArg], {});
+
+      const got = bodyOf(fetchMock).args[0] as GogFileArg;
+      expect(got.contents).toBe(contents);
+      // Interior newlines survive; only gog's own per-command trailing-newline
+      // trimming (on the runner) may alter the tail.
+      expect(got.contents.split('\n')).toHaveLength(contents.split('\n').length);
+    });
+
+    it('omits ext when the caller omitted it, leaving the default to the runner', async () => {
+      const fetchMock = okFetch();
+      const exec = makeFlyExecutor(ENDPOINT, KEY);
+      await exec([{ kind: 'file', flag: 'note-file', contents: 'n' }], {});
+
+      const got = bodyOf(fetchMock).args[0] as GogFileArg;
+      // Thresholding and defaulting live in ONE place each; this layer must not
+      // invent an ext, or two boxes would disagree about the temp filename.
+      expect('ext' in got).toBe(false);
+    });
+
+    it('still errors deterministically when a file-arg call fails on the runner', async () => {
+      // Classification must not vary with arg shape: a 422 is "gog ran and
+      // failed" whether or not the call carried a file arg.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: false,
+          status: 422,
+          json: async () => ({ error: 'use only one of --body-html or --body-html-file' }),
+        })),
+      );
+      const exec = makeFlyExecutor(ENDPOINT, KEY);
+      const err = (await exec(
+        [{ kind: 'file', flag: 'body-html-file', contents: 'x'.repeat(9000) }],
+        {},
+      ).catch((e: Error) => e)) as Error;
+      expect(err.message).toContain('use only one of --body-html');
+      expect(err.message).not.toMatch(/retry|transient/i);
+    });
+
+    it('gives a large payload no extra deadline beyond the standard grace', async () => {
+      // Deliberate: upload is a datacenter hop measured in milliseconds, so the
+      // runner must still win the race and return a real error.
+      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+      okFetch();
+      const exec = makeFlyExecutor(ENDPOINT, KEY);
+      await exec([{ kind: 'file', flag: 'body-file', contents: 'y'.repeat(500_000) }], {});
+      expect(timeoutSpy).toHaveBeenCalledWith(35_000);
+      timeoutSpy.mockRestore();
+    });
   });
 
   // A scale-to-zero Fly backend that never answers would otherwise hang the MCP
@@ -250,6 +376,24 @@ describe('makeFlyExecutor', () => {
 
     const exec = makeFlyExecutor(ENDPOINT, KEY);
     await expect(exec(['gmail', 'attachment'], {})).rejects.toThrow(/restarting; retry/i);
+  });
+
+  it('still advises a retry on a drain 503 whose body is unreadable', async () => {
+    // Covers the no-detail arm: a drain that races the response body away is
+    // still the runner refusing work on purpose, so it stays retryable.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 503,
+        json: async () => {
+          throw new Error('not json');
+        },
+      })),
+    );
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    const err = (await exec(['x'], {}).catch((e: Error) => e)) as Error;
+    expect(err.message).toBe('gog-runner is restarting; retry this call.');
   });
 
   // Fly's edge could not reach the Machine: no runner body at all (an HTML error
