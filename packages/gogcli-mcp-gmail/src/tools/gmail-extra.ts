@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // gog rejects an inline flag together with its --*-file twin — `gmail drafts
@@ -88,19 +88,26 @@ function trimThread(
   }
 }
 
-// `gog gmail attachment --inline --json` emits only these fields (no MIME type):
-// base64 content when the attachment is within gog's 3 MiB inline cap, otherwise
-// just the on-disk path plus a `reason` explaining the size fallback.
+// `gog gmail attachment --inline --json` emits these fields (NO filename, NO MIME
+// type): base64 content when the attachment is within gog's 3 MiB inline cap,
+// otherwise just the on-disk path plus a `reason` explaining the size fallback.
 type InlineAttachment = {
   path?: string;
   bytes?: number;
+  cached?: boolean;
   contentBase64?: string;
   reason?: string;
 };
 
-// MIME type by file extension — gog doesn't report one, and the client needs it
-// to render an inline image or label an embedded resource. Sniffing (below)
-// backstops anything not listed here.
+// One entry from `gog gmail get --json` `.attachments[]`: the message part
+// metadata, which carries the TRUE filename and MIME type that the download
+// endpoint itself does not report. `size` is the stable key we match on —
+// Gmail's `attachmentId` is NOT stable across calls (see resolveBySize).
+type AttachmentMeta = { filename?: string; mimeType?: string; attachmentId?: string; size?: number };
+
+// MIME type by file extension — the download endpoint reports none, and the
+// client needs it to render an inline image or label an embedded resource. Part
+// metadata (authoritative) and a magic-byte sniff (below) backstop this.
 const MIME_BY_EXT: Record<string, string> = {
   pdf: 'application/pdf',
   png: 'image/png',
@@ -129,10 +136,30 @@ const MIME_BY_EXT: Record<string, string> = {
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
 
-// Last path segment of a gog-written attachment path (forward slashes on both
-// the local and Fly-backend filesystems), falling back to a generic name.
-function attachmentBasename(path: string | undefined): string {
-  const base = (path ?? '').replace(/^.*\//, '');
+// Reverse map for naming a part that carried no filename: MIME type → a canonical
+// extension. Deliberate: a known type must never be saved as `*.bin`. Later
+// entries win, so image/jpeg resolves to `jpeg` and text/html to `htm` — both fine.
+const EXT_BY_MIME: Record<string, string> = Object.fromEntries(
+  Object.entries(MIME_BY_EXT).map(([ext, mime]) => [mime, ext]),
+);
+
+// Lowercased extension of a filename, or '' if it has none.
+function extOf(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+}
+
+// Make a caller- or part-supplied name safe as a SINGLE path segment: no
+// directory separators or traversal (it is interpolated into an --out path gog
+// creates server-side), no control chars, bounded length.
+function sanitizeFilename(name: string): string {
+  const base = name
+    .replace(/[/\\]+/g, '_')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1f]/g, '')
+    .replace(/^\.+/, '')
+    .trim()
+    .slice(0, 200);
   return base || 'attachment';
 }
 
@@ -155,28 +182,71 @@ function sniffMime(base64: string): string | undefined {
   return undefined;
 }
 
-// Best-effort MIME type: filename extension first, then a magic-byte sniff, then
-// a generic binary fallback.
-function inferMime(filename: string, base64: string): string {
-  const dot = filename.lastIndexOf('.');
-  const ext = dot >= 0 ? filename.slice(dot + 1).toLowerCase() : '';
-  return MIME_BY_EXT[ext] ?? sniffMime(base64) ?? 'application/octet-stream';
+// Resolve the real filename + MIME type from the message part metadata
+// (`gog gmail get` `.attachments[]`), which the download endpoint doesn't return.
+// A lightweight metadata read — no body bytes.
+//
+// The match is by SIZE, not attachmentId: Gmail's attachmentId is not stable
+// across API calls (a fresh `get` re-issues a different id for the same part, as
+// verified live), so the caller's id can't be matched against a fresh listing.
+// The downloaded byte count is stable and, in practice, unique per message — so
+// it identifies the part. An ambiguous (repeated) size yields undefined, and the
+// caller falls back to a magic-byte sniff + a MIME-derived name.
+async function resolveBySize(
+  messageId: string,
+  sizeBytes: number | undefined,
+  account: string | undefined,
+): Promise<AttachmentMeta | undefined> {
+  if (sizeBytes === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(await run(['gmail', 'get', messageId], { account })) as {
+      attachments?: AttachmentMeta[];
+    };
+    const matches = (parsed.attachments ?? []).filter((a) => a.size === sizeBytes);
+    return matches.length === 1 ? matches[0] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-// Return the attachment bytes as an MCP content block: a native image block for
-// images (so clients render them), an embedded resource blob for everything else.
-// A leading text block summarises the attachment for the model.
-function inlineResult(
+// A writable, ephemeral server-side output path. gog MkdirAll's the tree, and
+// /tmp is writable on both the local host and the Fly backend AND is cleared when
+// the machine stops — unlike gog's default (the gogcli config dir), which on the
+// Fly volume would accumulate downloaded attachments indefinitely.
+function defaultOutPath(messageId: string, filename: string): string {
+  return `/tmp/gog-attachments/${messageId}/${filename}`;
+}
+
+// Strip the command echo and any message/attachment ids from a gog failure before
+// it reaches the caller. On the Fly backend gog runs under execFile, whose error
+// message is `Command failed: gog gmail attachment <msg> <token> ...\n<stderr>` —
+// leaking the full command line (opaque attachment token included) and a raw shell
+// error such as `mkdir /home/claude: permission denied`. Keep only the stderr
+// tail, with the ids redacted.
+function sanitizeAttachmentError(err: unknown, messageId: string, attachmentId: string): string {
+  let msg = err instanceof Error ? err.message : String(err);
+  msg = msg.replace(/^Command failed:.*(\n|$)/, ''); // drop the command echo line
+  msg = msg.split(attachmentId).join('<attachment>').split(messageId).join('<message>');
+  return msg.trim() || 'the download failed on the server';
+}
+
+// The attachment bytes as a native image block (so clients render them). A
+// leading text block summarises the attachment for the model.
+function inlineImageResult(summary: string, base64: string, mimeType: string): CallToolResult {
+  return { content: [{ type: 'text', text: summary }, { type: 'image', data: base64, mimeType }] };
+}
+
+// The attachment bytes as an MCP embedded-resource blob. Only some hosts render
+// or accept non-image resources (claude.ai currently rejects application/pdf),
+// so this is reserved for the explicit deliver="inline" escape hatch — deliver
+// "auto" never routes bytes the host would silently drop through here.
+function inlineResourceResult(
   messageId: string,
   filename: string,
-  bytes: number | undefined,
+  summary: string,
   base64: string,
+  mimeType: string,
 ): CallToolResult {
-  const mimeType = inferMime(filename, base64);
-  const summary = `${filename} — ${bytes ?? '?'} bytes, ${mimeType}, returned inline.`;
-  if (mimeType.startsWith('image/')) {
-    return { content: [{ type: 'text', text: summary }, { type: 'image', data: base64, mimeType }] };
-  }
   return {
     content: [
       { type: 'text', text: summary },
@@ -188,18 +258,45 @@ function inlineResult(
   };
 }
 
+// A file-path delivery: the bytes were written server-side and the caller reads
+// them from `path`. Used on the local (stdio) transport, where the caller shares
+// the filesystem — the remote connector uses Drive instead.
+function fileResult(
+  path: string,
+  fileName: string,
+  mimeType: string,
+  bytes: number | undefined,
+): CallToolResult {
+  return textResult({
+    delivery: 'file',
+    path,
+    fileName,
+    mimeType,
+    bytes,
+    note: 'Saved on the server filesystem — read it from `path`.',
+  });
+}
+
+// Prepend an advisory note (e.g. why a caller-supplied `out` was ignored) to a
+// result's content, or return it unchanged when there is nothing to say.
+function withNote(result: CallToolResult, notes: string[]): CallToolResult {
+  if (notes.length === 0) return result;
+  return { ...result, content: [{ type: 'text', text: notes.join(' ') }, ...result.content] };
+}
+
 // Upload the file gog wrote (server-side, on the same box that ran the download)
 // to Google Drive and return its metadata + shareable link. This is how a large
-// attachment — one the connector can't hand back inline — reaches the caller.
+// or non-renderable attachment — one the connector can't hand back inline —
+// reaches the caller.
 async function deliverViaDrive(
   path: string,
-  name: string | undefined,
+  name: string,
   driveFolder: string | undefined,
   account: string | undefined,
 ): Promise<CallToolResult> {
   const args = ['drive', 'upload', path, '--json'];
   if (driveFolder) args.push(`--parent=${driveFolder}`);
-  if (name) args.push(`--name=${name}`);
+  args.push(`--name=${name}`); // callers always resolve a filename first
   // `gog drive upload --json` wraps the created file under a `file` key.
   const parsed = JSON.parse(await run(args, { account })) as {
     file?: { id?: string; name?: string; mimeType?: string; size?: number | string; webViewLink?: string };
@@ -235,57 +332,122 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_attachment', {
     description:
-      'Download a Gmail attachment and deliver its contents. deliver="auto" (default) returns the bytes ' +
-      'inline — a native image block for images, an embedded resource blob otherwise — when the attachment ' +
-      'is within gog\'s 3 MiB inline limit, and otherwise uploads the file to Google Drive and returns a ' +
-      'shareable link (this is how large attachments reach you through the remote connector, whose backend ' +
-      'filesystem you can\'t read). deliver="inline" forces inline and errors if the attachment is too large; ' +
-      'deliver="drive" always uploads to Drive; deliver="off" just writes the file server-side and returns ' +
-      '{path, cached, bytes}. Drive delivery creates a file in your Drive (blocked when GOG_READONLY is set).',
+      'Download a Gmail attachment and deliver its contents so you can actually read them. The real filename ' +
+      'and MIME type are resolved from the message part metadata, so the saved file and response are named ' +
+      'correctly (e.g. Guest_Copy.pdf), never a generic *.bin. deliver="auto" (default) is transport-aware: ' +
+      'images always come back as a native image block; anything else is delivered by the channel that works ' +
+      'on your transport — a readable server-side file PATH on local (stdio) clients that share the filesystem, ' +
+      'or a Google Drive link on the remote connector (whose backend filesystem you can\'t read, and which ' +
+      'rejects inline PDF/binary blobs). deliver="inline" forces the bytes inline as an image or embedded ' +
+      'resource blob (use only if your client consumes resource blobs; errors if over gog\'s 3 MiB cap). ' +
+      'deliver="drive" always uploads to Drive; deliver="off" writes the file server-side and returns ' +
+      '{path, fileName, mimeType, bytes}. Drive delivery creates a file in your Drive (blocked when GOG_READONLY is set).',
     inputSchema: {
       messageId: z.string().describe('Gmail message ID'),
       attachmentId: z.string().describe('Attachment ID (from the message payload)'),
       deliver: z
         .enum(['auto', 'inline', 'drive', 'off'])
         .optional()
-        .describe('How to return the contents: auto (inline if small, else Drive link), inline, drive, or off (server-side download only). Default: auto.'),
-      out: z.string().optional().describe('Server-side path where gog writes the file (also the Drive-upload source). Default: gogcli config dir.'),
-      name: z.string().optional().describe('Filename override (used by gog when --out is a directory, as the Drive copy name, and to infer the MIME type).'),
-      driveFolder: z.string().optional().describe('Destination Google Drive folder ID for the uploaded copy (drive/auto delivery of oversized attachments).'),
+        .describe('How to return the contents: auto (image inline; else a local file path or a Drive link, per transport), inline (force bytes as image/resource blob), drive (always a Drive link), or off (server-side download only). Default: auto.'),
+      out: z.string().optional().describe('Server-side path where gog writes the file. NOTE: this resolves on the CONNECTOR/gog server\'s filesystem, not your machine — on the remote connector it is ignored (you can\'t read it; you get a Drive link instead). Locally it is honored. Omit it to use an ephemeral temp path.'),
+      name: z.string().optional().describe('Filename override. Defaults to the attachment\'s real filename from the message metadata; pass this to skip that lookup or force a name.'),
+      driveFolder: z.string().optional().describe('Destination Google Drive folder ID for the uploaded copy (drive/auto delivery on the remote connector, or oversized attachments).'),
       account: accountParam,
     },
   }, async ({ messageId, attachmentId, deliver = 'auto', out, name, driveFolder, account }) => {
-    // Legacy passthrough: just download server-side and return gog's JSON.
-    if (deliver === 'off') {
-      const args = ['gmail', 'attachment', messageId, attachmentId];
-      if (out) args.push(`--out=${out}`);
-      if (name) args.push(`--name=${name}`);
-      return runOrDiagnose(args, { account });
-    }
+    // On the remote connector, `run` forwards to the Fly backend and this store
+    // is set; on local stdio it is unset. It is the one signal that tells apart
+    // "the caller shares my filesystem" (stdio → deliver a path) from "the caller
+    // can't read my disk and rejects binary blobs" (connector → deliver a Drive
+    // link). It also decides whether a caller-supplied `out` is meaningful.
+    const remote = runExecutor.getStore() !== undefined;
     try {
-      const args = ['gmail', 'attachment', messageId, attachmentId];
-      if (deliver !== 'drive') args.push('--inline'); // only need base64 when we might inline
-      if (out) args.push(`--out=${out}`);
-      if (name) args.push(`--name=${name}`);
-      const info = JSON.parse(await run(args, { account })) as InlineAttachment;
-      const path = info.path ?? '';
-      const filename = name ?? attachmentBasename(info.path);
-      if (deliver === 'drive') {
-        return await deliverViaDrive(path, name, driveFolder, account);
+      // 1. Start from the caller's `name` (the recommended path — the caller got
+      //    the attachmentId from a listing that also carried the filename). The
+      //    download endpoint reports neither name nor MIME; when `name` is absent
+      //    we resolve them AFTER downloading, by matching the byte count against
+      //    the part metadata (attachmentIds aren't stable enough to match on).
+      let filename = name ? sanitizeFilename(name) : undefined;
+      let mimeType: string | undefined = filename ? MIME_BY_EXT[extOf(filename)] : undefined;
+
+      // 2. Choose the server-side output path. A caller `out` only makes sense on
+      //    the local transport; on the connector it resolves on the backend the
+      //    caller can't read, so ignore it (with a note) and use a temp path. The
+      //    on-disk basename is provisional when `name` is absent; the response
+      //    still reports the resolved filename.
+      const notes: string[] = [];
+      let outPath = out;
+      if (out && remote) {
+        notes.push("`out` was ignored: it resolves on the connector's server filesystem, which you can't read. Delivered via Drive instead.");
+        outPath = undefined;
       }
-      if (info.contentBase64) {
-        return inlineResult(messageId, filename, info.bytes, info.contentBase64);
+      if (!outPath) outPath = defaultOutPath(messageId, filename ?? 'attachment');
+
+      // 3. Download. --inline returns the bytes for the image/resource cases; skip
+      //    it when we already know delivery is by path or Drive (don't ship base64
+      //    only to discard it). When the MIME type is still unknown we must
+      //    --inline to sniff it from the bytes.
+      let needInline = deliver === 'auto' || deliver === 'inline';
+      if (deliver === 'auto' && remote && mimeType && !mimeType.startsWith('image/')) {
+        needInline = false; // headed to Drive anyway
+      }
+      if (!mimeType && (deliver === 'auto' || deliver === 'inline')) {
+        needInline = true; // need the bytes to sniff the type
+      }
+      const args = ['gmail', 'attachment', messageId, attachmentId];
+      if (needInline) args.push('--inline');
+      args.push(`--out=${outPath}`, `--name=${filename ?? 'attachment'}`);
+      const info = JSON.parse(await run(args, { account })) as InlineAttachment;
+      const path = info.path ?? outPath;
+
+      // 4. Resolve the real filename/MIME when `name` wasn't supplied, by matching
+      //    the downloaded byte count against the part metadata.
+      if (!filename) {
+        const meta = await resolveBySize(messageId, info.bytes, account);
+        if (meta?.filename) filename = sanitizeFilename(meta.filename);
+        if (!mimeType && meta?.mimeType) mimeType = meta.mimeType;
+      }
+      if (!mimeType && info.contentBase64) mimeType = sniffMime(info.contentBase64);
+      mimeType = mimeType ?? 'application/octet-stream';
+      // Still no filename → derive one from the MIME type; never leave it *.bin.
+      if (!filename) {
+        const ext = EXT_BY_MIME[mimeType];
+        filename = ext ? `attachment.${ext}` : 'attachment';
+      }
+      const isImage = mimeType.startsWith('image/');
+      const summary = `${filename} — ${info.bytes ?? '?'} bytes, ${mimeType}, returned inline.`;
+
+      // 4. Deliver by the requested channel.
+      if (deliver === 'off') {
+        return textResult({ delivery: 'file', path, cached: info.cached, bytes: info.bytes, fileName: filename, mimeType });
+      }
+      if (deliver === 'drive') {
+        return withNote(await deliverViaDrive(path, filename, driveFolder, account), notes);
       }
       if (deliver === 'inline') {
+        if (info.contentBase64) {
+          return isImage
+            ? inlineImageResult(summary, info.contentBase64, mimeType)
+            : inlineResourceResult(messageId, filename, summary, info.contentBase64, mimeType);
+        }
         return errorResult(
-          `Attachment is too large to return inline (${info.reason ?? 'exceeds gog\'s 3 MiB inline limit'}). ` +
+          `Attachment is too large to return inline (${info.reason ?? "exceeds gog's 3 MiB inline limit"}). ` +
           'Use deliver="auto" or deliver="drive" to receive it as a Google Drive link.',
         );
       }
-      // deliver === 'auto' and over the inline cap → hand back a Drive link.
-      return await deliverViaDrive(path, name, driveFolder, account);
+      // deliver === 'auto': images render everywhere; everything else goes by the
+      // channel that works on this transport.
+      if (isImage && info.contentBase64) {
+        return inlineImageResult(summary, info.contentBase64, mimeType);
+      }
+      if (remote) {
+        return withNote(await deliverViaDrive(path, filename, driveFolder, account), notes);
+      }
+      return withNote(fileResult(path, filename, mimeType, info.bytes), notes);
     } catch (err) {
-      return diagnose(err);
+      // Never surface gog's raw error (it echoes the full command line + attachment
+      // token on the backend); redact the ids and let diagnose classify the rest.
+      return diagnose(new Error(sanitizeAttachmentError(err, messageId, attachmentId)));
     }
   });
 
@@ -457,12 +619,12 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_thread_attachments', {
-    description: 'List all attachments in a Gmail thread, optionally downloading them.',
+    description: 'List all attachments in a Gmail thread, optionally downloading them. NOTE: download/outDir write to the CONNECTOR/gog server\'s filesystem — on the remote connector you can\'t read those files, so use gog_gmail_attachment per attachment to receive bytes (image inline, or a Drive link). This tool is best used just to LIST attachments (filenames, ids, sizes) and then fetch the ones you want individually.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       threadId: z.string().describe('Gmail thread ID'),
-      download: z.boolean().optional().describe('Download all attachments'),
-      outDir: z.string().optional().describe('Directory to write attachments to (default: current directory)'),
+      download: z.boolean().optional().describe('Download all attachments to the SERVER filesystem (see the note above; on the remote connector the files aren\'t reachable — fetch individually with gog_gmail_attachment instead).'),
+      outDir: z.string().optional().describe('Directory to write attachments to, resolved on the gog SERVER\'s filesystem (default: current directory). Not your local machine on the remote connector.'),
       account: accountParam,
     },
   }, async ({ threadId, download, outDir, account }) => {

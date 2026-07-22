@@ -50,138 +50,255 @@ describe('gog_gmail_attachment', () => {
   const PDF_B64 = 'JVBERi0xLjUKJVBFRgo='; // "%PDF-1.5\n%PEF\n"
   const OCTET_B64 = 'AAAAAAAAAAAAAAAA'; // decodes to NUL bytes — no magic match
 
-  it('deliver=off passes through to runOrDiagnose (legacy download)', async () => {
-    await harness.callTool('gog_gmail_attachment', {
-      messageId: 'm1',
-      attachmentId: 'a1',
-      deliver: 'off',
-      out: '/tmp/file.pdf',
-      name: 'report.pdf',
+  // Route the mocked `run` by subcommand: the metadata lookup (`gmail get`), the
+  // download (`gmail attachment`), and the Drive upload (`drive upload`).
+  function stubGog(opts: {
+    meta?: unknown;
+    metaError?: Error;
+    download?: unknown;
+    drive?: unknown;
+    downloadError?: unknown;
+  }): void {
+    vi.mocked(lib.run).mockImplementation(async (args) => {
+      const a = args as string[];
+      if (a[0] === 'gmail' && a[1] === 'get') {
+        if (opts.metaError) throw opts.metaError;
+        return JSON.stringify(opts.meta ?? { attachments: [] });
+      }
+      if (a[0] === 'gmail' && a[1] === 'attachment') {
+        if (opts.downloadError) throw opts.downloadError;
+        return JSON.stringify(opts.download ?? {});
+      }
+      if (a[0] === 'drive' && a[1] === 'upload') return JSON.stringify(opts.drive ?? { file: {} });
+      return '{}';
     });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'attachment', 'm1', 'a1', '--out=/tmp/file.pdf', '--name=report.pdf'],
-      { account: undefined },
-    );
-    expect(lib.run).not.toHaveBeenCalled();
+  }
+
+  // A dummy executor store — its mere presence makes runExecutor.getStore()
+  // truthy, which is how the handler detects the remote connector transport.
+  const REMOTE = { executor: async () => '{}' };
+  const asConnector = <T>(fn: () => Promise<T>): Promise<T> => lib.runExecutor.run(REMOTE, fn);
+
+  // The part metadata (`gmail get` `.attachments[]`) is matched by SIZE — Gmail's
+  // attachmentId isn't stable across calls — so every list entry carries a `size`
+  // that the download's `bytes` must equal for the filename/MIME to resolve.
+  const PDF_LIST = { attachments: [{ filename: 'Guest_Copy.pdf', mimeType: 'application/pdf', size: 99723 }] };
+  const PNG_LIST = { attachments: [{ filename: 'photo.png', mimeType: 'image/png', size: 24 }] };
+
+  const call = (args: Record<string, unknown>) =>
+    harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', ...args });
+  const textOf = (res: Awaited<ReturnType<typeof call>>) => (res.content[0] as { text: string }).text;
+  const gotGet = () => vi.mocked(lib.run).mock.calls.some((c) => (c[0] as string[])[1] === 'get');
+  const dlArgs = () => vi.mocked(lib.run).mock.calls.find((c) => (c[0] as string[])[1] === 'attachment')![0] as string[];
+
+  it('the repro: a no-name PDF on stdio comes back as a readable file path, named correctly', async () => {
+    // download writes to a provisional temp path; the real name resolves by size.
+    stubGog({ meta: PDF_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 99723, contentBase64: PDF_B64 } });
+    const res = await call({});
+    // download to the temp path first, then the metadata read to resolve the name.
+    expect(dlArgs()).toEqual(['gmail', 'attachment', 'm1', 'a1', '--inline', '--out=/tmp/gog-attachments/m1/attachment', '--name=attachment']);
+    expect(gotGet()).toBe(true);
+    const payload = JSON.parse(textOf(res));
+    expect(payload).toMatchObject({
+      delivery: 'file', path: '/tmp/gog-attachments/m1/attachment', fileName: 'Guest_Copy.pdf', mimeType: 'application/pdf', bytes: 99723,
+    });
+    // never an embedded-resource blob on auto (the claude.ai host rejects those for PDF).
+    expect(res.content.some((c) => c.type === 'resource')).toBe(false);
   });
 
-  it('deliver=off with no out/name uses the bare download args', async () => {
-    await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', deliver: 'off' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'attachment', 'm1', 'a1'], { account: undefined });
+  it('the repro on the connector: the same PDF is delivered via Drive with the resolved name', async () => {
+    stubGog({
+      meta: PDF_LIST,
+      download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 99723, contentBase64: PDF_B64 },
+      drive: { file: { id: 'F1', name: 'Guest_Copy.pdf', webViewLink: 'https://drive.google.com/file/d/F1/view' } },
+    });
+    const res = await asConnector(() => call({}));
+    // uploads the downloaded temp file, but names the Drive copy with the resolved filename.
+    expect(lib.run).toHaveBeenCalledWith(
+      ['drive', 'upload', '/tmp/gog-attachments/m1/attachment', '--json', '--name=Guest_Copy.pdf'], { account: undefined });
+    expect(JSON.parse(textOf(res))).toMatchObject({ deliveredVia: 'drive', id: 'F1' });
   });
 
-  it('auto (default) inlines a small image as a native image block', async () => {
-    vi.mocked(lib.run).mockResolvedValue(
-      JSON.stringify({ path: '/cfg/logo.png', bytes: 24, contentBase64: PNG_B64 }),
-    );
-    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
-    expect(lib.run).toHaveBeenCalledWith(['gmail', 'attachment', 'm1', 'a1', '--inline'], { account: undefined });
-    expect(res.content[0]).toMatchObject({ type: 'text' });
+  it('an image renders inline (image block), on stdio and connector alike', async () => {
+    stubGog({ meta: PNG_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 24, contentBase64: PNG_B64 } });
+    const local = await call({});
+    expect(local.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
+    expect(textOf(local)).toContain('photo.png');
+    vi.clearAllMocks();
+    stubGog({ meta: PNG_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 24, contentBase64: PNG_B64 } });
+    const remote = await asConnector(() => call({}));
+    expect(remote.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
+    expect(lib.run).not.toHaveBeenCalledWith(expect.arrayContaining(['drive', 'upload']), expect.anything());
+  });
+
+  it('a caller-supplied name skips the metadata lookup and names the file directly', async () => {
+    stubGog({ download: { path: '/tmp/gog-attachments/m1/report.pdf', bytes: 12, contentBase64: PDF_B64 } });
+    await call({ name: 'report.pdf' });
+    expect(gotGet()).toBe(false);
+    expect(dlArgs()).toEqual(['gmail', 'attachment', 'm1', 'a1', '--inline', '--out=/tmp/gog-attachments/m1/report.pdf', '--name=report.pdf']);
+  });
+
+  it('a named non-image on the connector skips --inline (headed straight to Drive)', async () => {
+    stubGog({ download: { path: '/tmp/gog-attachments/m1/report.pdf', bytes: 12 }, drive: { file: { id: 'F9' } } });
+    await asConnector(() => call({ name: 'report.pdf' }));
+    expect(gotGet()).toBe(false);
+    expect(dlArgs()).toEqual(['gmail', 'attachment', 'm1', 'a1', '--out=/tmp/gog-attachments/m1/report.pdf', '--name=report.pdf']);
+  });
+
+  it('resolves the real filename by size and sanitizes path separators (no traversal)', async () => {
+    stubGog({
+      meta: { attachments: [{ filename: '../../etc/evil.pdf', mimeType: 'application/pdf', size: 10 }] },
+      download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 10, contentBase64: PDF_B64 },
+    });
+    const res = await call({});
+    const fileName = JSON.parse(textOf(res)).fileName as string;
+    expect(fileName).not.toMatch(/[/\\]/); // single safe segment, no traversal
+    expect(fileName).toContain('evil.pdf');
+  });
+
+  it('derives an extension from the MIME type when the part has no filename (never *.bin)', async () => {
+    stubGog({
+      meta: { attachments: [{ mimeType: 'application/pdf', size: 10 }] },
+      download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 10, contentBase64: PDF_B64 },
+    });
+    const res = await call({});
+    expect(JSON.parse(textOf(res)).fileName).toBe('attachment.pdf');
+  });
+
+  it('falls back to a magic-byte sniff when the size is ambiguous (repeated)', async () => {
+    stubGog({
+      meta: { attachments: [
+        { filename: 'a.pdf', mimeType: 'application/pdf', size: 10 },
+        { filename: 'b.pdf', mimeType: 'application/pdf', size: 10 },
+      ] },
+      download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 10, contentBase64: PDF_B64 },
+    });
+    const res = await call({});
+    // two parts share the size → no unique match → sniff + derived name.
+    expect(JSON.parse(textOf(res))).toMatchObject({ fileName: 'attachment.pdf', mimeType: 'application/pdf' });
+  });
+
+  it('survives a metadata-lookup failure and still delivers, sniffing the MIME', async () => {
+    stubGog({ metaError: new Error('get failed'), download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 24, contentBase64: PNG_B64 } });
+    const res = await call({});
+    // resolveBySize catches the failure → sniff → image/png.
     expect(res.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
   });
 
-  it('auto inlines a small non-image as an embedded resource blob', async () => {
-    vi.mocked(lib.run).mockResolvedValue(
-      JSON.stringify({ path: '/cfg/report.pdf', bytes: 12, contentBase64: PDF_B64 }),
-    );
-    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
-    expect(res.content[1]).toEqual({
-      type: 'resource',
-      resource: { uri: 'gmail-attachment://m1/report.pdf', mimeType: 'application/pdf', blob: PDF_B64 },
-    });
+  it('summarizes with "? bytes" when the download reports no size (skips the size lookup)', async () => {
+    stubGog({ download: { path: '/tmp/gog-attachments/m1/x.png', contentBase64: PNG_B64 }, meta: PNG_LIST });
+    const res = await call({ name: 'x.png' });
+    expect(gotGet()).toBe(false); // no bytes → no size match needed; name given anyway
+    expect(res.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
+    expect(textOf(res)).toContain('? bytes');
   });
 
-  it('auto uploads to Drive and returns the link when over the inline cap', async () => {
-    vi.mocked(lib.run)
-      .mockResolvedValueOnce(JSON.stringify({ path: '/cfg/big.pdf', bytes: 9_000_000, reason: 'exceeds inline size limit (3145728 bytes)' }))
-      .mockResolvedValueOnce(JSON.stringify({ file: { id: 'F1', name: 'big.pdf', mimeType: 'application/pdf', size: 9_000_000, webViewLink: 'https://drive.google.com/file/d/F1/view' } }));
-    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
-    expect(lib.run).toHaveBeenNthCalledWith(1, ['gmail', 'attachment', 'm1', 'a1', '--inline'], { account: undefined });
-    expect(lib.run).toHaveBeenNthCalledWith(2, ['drive', 'upload', '/cfg/big.pdf', '--json'], { account: undefined });
-    const payload = JSON.parse((res.content[0] as { text: string }).text);
-    expect(payload).toMatchObject({ deliveredVia: 'drive', id: 'F1', webViewLink: 'https://drive.google.com/file/d/F1/view' });
+  it('skips the size lookup entirely when the download reports no bytes and no name', async () => {
+    stubGog({ download: { path: '/tmp/gog-attachments/m1/attachment', contentBase64: OCTET_B64 } });
+    const res = await call({});
+    // info.bytes undefined → resolveBySize short-circuits (no `gmail get`).
+    expect(gotGet()).toBe(false);
+    expect(JSON.parse(textOf(res))).toMatchObject({ delivery: 'file', fileName: 'attachment', mimeType: 'application/octet-stream' });
+  });
+
+  it('falls back to application/octet-stream when the message has no attachments array', async () => {
+    // meta with no `attachments` key exercises the `?? []` guard in resolveBySize.
+    stubGog({ meta: {}, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 12, contentBase64: OCTET_B64 } });
+    const res = await call({});
+    expect(JSON.parse(textOf(res))).toMatchObject({ delivery: 'file', fileName: 'attachment', mimeType: 'application/octet-stream' });
+  });
+
+  it('deliver=inline returns a native image block for an image', async () => {
+    stubGog({ meta: PNG_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 24, contentBase64: PNG_B64 } });
+    const res = await call({ deliver: 'inline' });
+    expect(res.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
+  });
+
+  it('deliver=inline forces an embedded resource blob for a non-image', async () => {
+    stubGog({ download: { path: '/tmp/gog-attachments/m1/doc.pdf', bytes: 12, contentBase64: PDF_B64 } });
+    const res = await call({ deliver: 'inline', name: 'doc.pdf' });
+    expect(res.content[1]).toEqual({
+      type: 'resource',
+      resource: { uri: 'gmail-attachment://m1/doc.pdf', mimeType: 'application/pdf', blob: PDF_B64 },
+    });
   });
 
   it('deliver=inline errors when the attachment is too large (no reason field)', async () => {
-    // gog omits `reason` in some builds — the handler supplies a default.
-    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ path: '/cfg/big.pdf', bytes: 9_000_000 }));
-    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', deliver: 'inline' });
+    // no `path` either → exercises the `info.path ?? outPath` fallback.
+    stubGog({ download: { bytes: 9_000_000 } });
+    const res = await call({ deliver: 'inline', name: 'big.pdf' });
     expect(res.isError).toBe(true);
-    expect((res.content[0] as { text: string }).text).toContain('too large');
-    expect(lib.run).toHaveBeenCalledTimes(1); // no Drive upload
+    expect(textOf(res)).toContain('too large');
+    expect(lib.run).not.toHaveBeenCalledWith(expect.arrayContaining(['drive', 'upload']), expect.anything());
   });
 
   it('deliver=drive skips --inline and uploads, honoring driveFolder and name', async () => {
-    vi.mocked(lib.run)
-      .mockResolvedValueOnce(JSON.stringify({ path: '/cfg/small.png', bytes: 24 }))
-      .mockResolvedValueOnce(JSON.stringify({ file: { id: 'F2', webViewLink: 'https://drive.google.com/file/d/F2/view' } }));
-    const res = await harness.callTool('gog_gmail_attachment', {
-      messageId: 'm1',
-      attachmentId: 'a1',
-      deliver: 'drive',
-      driveFolder: 'DIR9',
-      name: 'renamed.png',
-      account: 'me@x.com',
+    stubGog({ download: { path: '/tmp/gog-attachments/m1/renamed.png', bytes: 24 }, drive: { file: { id: 'F2', webViewLink: 'https://drive.google.com/file/d/F2/view' } } });
+    const res = await call({ deliver: 'drive', driveFolder: 'DIR9', name: 'renamed.png', account: 'me@x.com' });
+    expect(dlArgs()).toEqual(['gmail', 'attachment', 'm1', 'a1', '--out=/tmp/gog-attachments/m1/renamed.png', '--name=renamed.png']);
+    expect(lib.run).toHaveBeenCalledWith(
+      ['drive', 'upload', '/tmp/gog-attachments/m1/renamed.png', '--json', '--parent=DIR9', '--name=renamed.png'], { account: 'me@x.com' });
+    expect(JSON.parse(textOf(res))).toMatchObject({ deliveredVia: 'drive', id: 'F2' });
+  });
+
+  it('deliver=off returns a structured record with the size-resolved filename + mime', async () => {
+    stubGog({ meta: PDF_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 99723, cached: true } });
+    const res = await call({ deliver: 'off' });
+    expect(JSON.parse(textOf(res))).toMatchObject({
+      delivery: 'file', path: '/tmp/gog-attachments/m1/attachment', fileName: 'Guest_Copy.pdf', mimeType: 'application/pdf', bytes: 99723, cached: true,
     });
-    expect(lib.run).toHaveBeenNthCalledWith(1, ['gmail', 'attachment', 'm1', 'a1', '--name=renamed.png'], { account: 'me@x.com' });
-    expect(lib.run).toHaveBeenNthCalledWith(2, ['drive', 'upload', '/cfg/small.png', '--json', '--parent=DIR9', '--name=renamed.png'], { account: 'me@x.com' });
-    const payload = JSON.parse((res.content[0] as { text: string }).text);
-    expect(payload).toMatchObject({ deliveredVia: 'drive', id: 'F2' });
   });
 
   it('still reports drive delivery when the upload output lacks a file envelope', async () => {
-    vi.mocked(lib.run)
-      .mockResolvedValueOnce(JSON.stringify({ path: '/cfg/big.pdf', bytes: 9_000_000 }))
-      .mockResolvedValueOnce('{}');
-    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
-    const payload = JSON.parse((res.content[0] as { text: string }).text);
+    stubGog({ meta: PDF_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 99723 }, drive: {} });
+    const res = await asConnector(() => call({}));
+    const payload = JSON.parse(textOf(res));
     expect(payload).toMatchObject({ deliveredVia: 'drive' });
     expect(payload.id).toBeUndefined();
   });
 
-  it('passes --out and --name through to the inline download', async () => {
-    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ path: '/tmp/x.png', bytes: 24, contentBase64: PNG_B64 }));
-    await harness.callTool('gog_gmail_attachment', {
-      messageId: 'm1', attachmentId: 'a1', out: '/tmp/x.png', name: 'x.png',
-    });
-    expect(lib.run).toHaveBeenCalledWith(
-      ['gmail', 'attachment', 'm1', 'a1', '--inline', '--out=/tmp/x.png', '--name=x.png'],
-      { account: undefined },
-    );
+  it('honors a caller out on stdio', async () => {
+    stubGog({ download: { path: '/home/me/x.png', bytes: 24, contentBase64: PNG_B64 } });
+    await call({ out: '/home/me/x.png', name: 'x.png' });
+    expect(dlArgs()).toEqual(['gmail', 'attachment', 'm1', 'a1', '--inline', '--out=/home/me/x.png', '--name=x.png']);
   });
 
-  it('infers MIME by sniffing when the extension is unknown', async () => {
-    vi.mocked(lib.run).mockResolvedValue(
-      JSON.stringify({ path: '/cfg/blob.bin', bytes: 24, contentBase64: PNG_B64 }),
-    );
-    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
-    // .bin isn't in the extension table, but the bytes sniff as PNG → image block.
-    expect(res.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
+  it('ignores a caller out on the connector and notes it', async () => {
+    stubGog({ download: { path: '/tmp/gog-attachments/m1/report.pdf', bytes: 12 }, drive: { file: { id: 'F3' } } });
+    const res = await asConnector(() => call({ out: '/home/claude/report.pdf', name: 'report.pdf' }));
+    // download used the temp path, NOT the caller's /home/claude path.
+    expect(dlArgs()).toEqual(['gmail', 'attachment', 'm1', 'a1', '--out=/tmp/gog-attachments/m1/report.pdf', '--name=report.pdf']);
+    expect(textOf(res)).toContain('`out` was ignored');
   });
 
-  it('falls back to application/octet-stream for unknown extension and unknown bytes', async () => {
-    vi.mocked(lib.run).mockResolvedValue(
-      JSON.stringify({ path: '/cfg/blob.bin', bytes: 12, contentBase64: OCTET_B64 }),
-    );
-    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
-    expect(res.content[1]).toMatchObject({
-      type: 'resource',
-      resource: { mimeType: 'application/octet-stream', blob: OCTET_B64 },
-    });
+  it('a caller name that sanitizes to empty falls back to "attachment"', async () => {
+    stubGog({ download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 10 } });
+    await call({ name: '...' }); // only dots → sanitizes to '' → 'attachment'
+    expect(dlArgs()).toEqual(expect.arrayContaining(['--name=attachment', '--out=/tmp/gog-attachments/m1/attachment']));
   });
 
-  it('uses a generic filename and "?" size when gog reports no path or bytes', async () => {
-    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ contentBase64: OCTET_B64 }));
-    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
-    expect((res.content[0] as { text: string }).text).toContain('? bytes');
-    expect(res.content[1]).toMatchObject({ resource: { uri: 'gmail-attachment://m1/attachment' } });
-  });
-
-  it('diagnoses a download failure', async () => {
-    vi.mocked(lib.run).mockRejectedValueOnce(new Error('boom'));
-    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1' });
+  it('wraps a download failure without leaking the command line or the attachment token', async () => {
+    stubGog({ downloadError: new Error('Command failed: gog gmail attachment m1 a1 --out=/home/claude/x.pdf\nmkdir /home/claude: permission denied') });
+    const res = await call({});
     expect(lib.diagnose).toHaveBeenCalled();
+    const passed = (vi.mocked(lib.diagnose).mock.calls[0][0] as Error).message;
+    expect(passed).not.toContain('Command failed');
+    expect(passed).not.toContain('a1');
+    expect(passed).not.toContain('m1');
+    expect(passed).toContain('permission denied');
     expect(res.isError).toBe(true);
+  });
+
+  it('wraps a non-Error rejection', async () => {
+    stubGog({ downloadError: 'weird string failure' });
+    await call({});
+    expect((vi.mocked(lib.diagnose).mock.calls[0][0] as Error).message).toBe('weird string failure');
+  });
+
+  it('falls back to a generic message when the error is nothing but the command echo', async () => {
+    stubGog({ downloadError: new Error('Command failed: gog gmail attachment m1 a1\n') });
+    await call({});
+    expect((vi.mocked(lib.diagnose).mock.calls[0][0] as Error).message).toBe('the download failed on the server');
   });
 });
 
