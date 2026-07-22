@@ -27,8 +27,9 @@ import { mkdtemp, chmod, writeFile, rm } from 'node:fs/promises';
 // Buffer.concat copies them, .toString() copies again and JSON.parse
 // materializes the parsed strings — call it ~4 live copies, so ~128 MB per
 // max-size request, times concurrency (requests DO overlap here), plus
-// EXEC_MAX_BUFFER for gog's stdout. fly.toml provisions 1 GB against exactly
-// this arithmetic. Raising this constant without raising `memory` there invites
+// EXEC_MAX_BUFFER for gog's stdout (~160 MB/request total). fly.toml provisions
+// 512 MB against this arithmetic — two concurrent worst-case requests plus
+// Node's baseline, with headroom. Raising this constant without raising `memory` there invites
 // an OOM kill, and a Fly OOM severs the socket into precisely the opaque
 // gateway 502 that installGracefulShutdown below exists to eliminate.
 export const MAX_BODY_BYTES = 32 * 1024 * 1024; // 32 MB
