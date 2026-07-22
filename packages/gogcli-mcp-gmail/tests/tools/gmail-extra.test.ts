@@ -249,6 +249,14 @@ describe('gog_gmail_attachment', () => {
     });
   });
 
+  it('deliver=off on the connector still surfaces the ignored-out note', async () => {
+    stubGog({ meta: PDF_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 99723 } });
+    const res = await asConnector(() => call({ deliver: 'off', out: '/home/claude/x.pdf' }));
+    expect(res.content[0]).toMatchObject({ type: 'text', text: expect.stringContaining('`out` was ignored') });
+    // the structured record still follows the note.
+    expect(JSON.parse((res.content[1] as { text: string }).text)).toMatchObject({ delivery: 'file', fileName: 'Guest_Copy.pdf' });
+  });
+
   it('still reports drive delivery when the upload output lacks a file envelope', async () => {
     stubGog({ meta: PDF_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 99723 }, drive: {} });
     const res = await asConnector(() => call({}));
