@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.16.6](https://github.com/chrischall/gogcli-mcp/compare/v2.16.5...v2.16.6) (2026-07-22)
+
+
+### Bug Fixes
+
+* **gmail:** keep bodies up to 4096 bytes inline to preserve trailing newlines ([#188](https://github.com/chrischall/gogcli-mcp/issues/188)) ([acd7f75](https://github.com/chrischall/gogcli-mcp/commit/acd7f754e712f65ea8e50ee11227dd3b5384d9d1))
+
 ## [2.16.5](https://github.com/chrischall/gogcli-mcp/compare/v2.16.4...v2.16.5) (2026-07-21)
 
 

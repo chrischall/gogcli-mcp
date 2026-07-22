@@ -7,12 +7,12 @@
     "source": "github",
     "subfolder": "packages/gogcli-mcp-docs"
   },
-  "version": "2.16.5",
+  "version": "2.16.6",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "gogcli-mcp-docs",
-      "version": "2.16.5",
+      "version": "2.16.6",
       "transport": {
         "type": "stdio"
       },
