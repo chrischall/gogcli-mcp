@@ -378,7 +378,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       const notes: string[] = [];
       let outPath = out;
       if (out && remote) {
-        notes.push("`out` was ignored: it resolves on the connector's server filesystem, which you can't read. Delivered via Drive instead.");
+        notes.push("`out` was ignored: it resolves on the connector's server filesystem, which you can't read.");
         outPath = undefined;
       }
       if (!outPath) outPath = defaultOutPath(messageId, filename ?? 'attachment');
@@ -417,18 +417,20 @@ export function registerExtraGmailTools(server: McpServer): void {
       const isImage = mimeType.startsWith('image/');
       const summary = `${filename} — ${info.bytes ?? '?'} bytes, ${mimeType}, returned inline.`;
 
-      // 4. Deliver by the requested channel.
+      // 5. Deliver by the requested channel. Every delivery is wrapped with
+      //    `notes` so an ignored-`out` explanation is never silently dropped,
+      //    whatever the mode or type.
       if (deliver === 'off') {
-        return textResult({ delivery: 'file', path, cached: info.cached, bytes: info.bytes, fileName: filename, mimeType });
+        return withNote(textResult({ delivery: 'file', path, cached: info.cached, bytes: info.bytes, fileName: filename, mimeType }), notes);
       }
       if (deliver === 'drive') {
         return withNote(await deliverViaDrive(path, filename, driveFolder, account), notes);
       }
       if (deliver === 'inline') {
         if (info.contentBase64) {
-          return isImage
+          return withNote(isImage
             ? inlineImageResult(summary, info.contentBase64, mimeType)
-            : inlineResourceResult(messageId, filename, summary, info.contentBase64, mimeType);
+            : inlineResourceResult(messageId, filename, summary, info.contentBase64, mimeType), notes);
         }
         return errorResult(
           `Attachment is too large to return inline (${info.reason ?? "exceeds gog's 3 MiB inline limit"}). ` +
@@ -438,7 +440,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       // deliver === 'auto': images render everywhere; everything else goes by the
       // channel that works on this transport.
       if (isImage && info.contentBase64) {
-        return inlineImageResult(summary, info.contentBase64, mimeType);
+        return withNote(inlineImageResult(summary, info.contentBase64, mimeType), notes);
       }
       if (remote) {
         return withNote(await deliverViaDrive(path, filename, driveFolder, account), notes);
