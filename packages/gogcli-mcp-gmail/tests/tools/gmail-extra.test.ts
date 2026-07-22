@@ -1397,7 +1397,7 @@ describe('large payloads route to file args', () => {
   it('measures bytes, not characters, so a multibyte body crosses earlier', async () => {
     // Each emoji is 2 UTF-16 units but 4 UTF-8 bytes, so this sits comfortably
     // under the threshold by .length yet well over it by byte count.
-    const emoji = '😀'.repeat(600);
+    const emoji = '😀'.repeat(1500);
     expect(emoji.length).toBeLessThan(lib.PAYLOAD_INLINE_MAX);
     expect(Buffer.byteLength(emoji, 'utf8')).toBeGreaterThan(lib.PAYLOAD_INLINE_MAX);
     await harness.callTool('gog_gmail_drafts_create', { subject: 'S', body: emoji });

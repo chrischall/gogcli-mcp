@@ -10,14 +10,19 @@ import type { GogArg } from '../runner.js';
 // Two reasons not to route everything through a file. First, gog's semantics
 // differ between the two forms: reading a body from a file strips ALL trailing
 // newlines (measured on gog 0.34.1 — a 5-byte payload padded to 6/7/8 bytes all
-// came back as 5), so a body ending in "\n" cannot round-trip byte-for-byte.
-// Keeping normal-sized mail on the inline path means it stays byte-identical to
-// what it is today and does not inherit that stripping. Second, the file path
-// costs a temp dir, a write, and a delete per call.
+// came back as 5; tracked upstream at openclaw/gogcli#936), so a body ending in
+// "\n" cannot round-trip byte-for-byte through the file path. Second, the file
+// path costs a temp dir, a write, and a delete per call.
 //
-// The value is far under the 4 KiB Fly-runner arg cap, so anything inline is
-// comfortably within every layer's limit.
-export const PAYLOAD_INLINE_MAX = 2000;
+// The value matches the per-arg byte limit the Fly runner enforced BEFORE large
+// payloads could leave argv (the old MAX_ARG_LEN, 4096). That is deliberate:
+// every body that used to round-trip inline byte-for-byte still does, so this
+// change adds no trailing-newline regression for any body that already worked —
+// only bodies that previously exceeded the cap and hard-failed ("each arg must
+// be at most 4096 chars") now take the file path and its newline trim. The
+// runner's plain-arg cap is now 64 KiB, so a 4096-byte inline value is nowhere
+// near being rejected.
+export const PAYLOAD_INLINE_MAX = 4096;
 
 // The ONE place the inline-vs-file decision is made. Every tool that has a
 // gog `--x` / `--x-file` flag pair routes its value through here so the
