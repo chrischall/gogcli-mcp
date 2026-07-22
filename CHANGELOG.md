@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.16.7](https://github.com/chrischall/gogcli-mcp/compare/v2.16.6...v2.16.7) (2026-07-22)
+
+
+### Bug Fixes
+
+* **gmail:** make every fetched attachment reachable, with its real name ([#190](https://github.com/chrischall/gogcli-mcp/issues/190)) ([cd90911](https://github.com/chrischall/gogcli-mcp/commit/cd90911df8278775bcc8d74a9a9e09ecec052c44))
+* **gmail:** surface the ignored-out note on every delivery path ([#193](https://github.com/chrischall/gogcli-mcp/issues/193)) ([cd32e36](https://github.com/chrischall/gogcli-mcp/commit/cd32e36de3d2cede71f4ef5d2af6f3d4c975c6dc))
+
 ## [2.16.6](https://github.com/chrischall/gogcli-mcp/compare/v2.16.5...v2.16.6) (2026-07-22)
 
 
