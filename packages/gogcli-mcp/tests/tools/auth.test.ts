@@ -105,6 +105,115 @@ describe('gog_auth_add', () => {
   });
 });
 
+describe('gog_auth_health', () => {
+  const CHECK_JSON = JSON.stringify({
+    accounts: [
+      { email: 'chris.c.hall@gmail.com', created_at: '2026-07-17T15:08:39Z', valid: true },
+    ],
+  });
+
+  it('calls run with auth list --check and formats a health summary', async () => {
+    vi.mocked(runner.run).mockResolvedValue(CHECK_JSON);
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_auth_health', {});
+    expect(runner.run).toHaveBeenCalledWith(['auth', 'list', '--check']);
+    expect(result.content[0].text).toContain('chris.c.hall@gmail.com');
+    expect(result.content[0].text).toContain('token valid');
+  });
+
+  it('surfaces a dead-token account with re-auth guidance', async () => {
+    vi.mocked(runner.run).mockResolvedValue(JSON.stringify({
+      accounts: [{
+        email: 'chris.c.hall@gmail.com',
+        created_at: '2026-07-17T15:08:39Z',
+        valid: false,
+        error: 'refresh access token: oauth2: "invalid_grant" "Token has been expired or revoked."',
+      }],
+    }));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_auth_health', {});
+    expect(result.content[0].text).toContain('NEEDS RE-AUTH');
+    expect(result.content[0].text).toContain('gog_auth_add_url');
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('keyring locked'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_auth_health', {});
+    expect(result.content[0].text).toBe('Error: keyring locked');
+  });
+});
+
+describe('gog_auth_add_url', () => {
+  it('runs remote step 1 with force-consent and tokens-only redaction', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"auth_url":"https://accounts.google.com/o/oauth2/auth?...","state_reused":false}');
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_auth_add_url', { email: 'user@gmail.com' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '1', '--services', 'all', '--force-consent'],
+      { redactMode: 'tokens' },
+    );
+    expect(result.content[0].text).toContain('accounts.google.com');
+  });
+
+  it('passes custom services', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"auth_url":"https://x"}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_auth_add_url', { email: 'user@gmail.com', services: 'gmail,drive' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '1', '--services', 'gmail,drive', '--force-consent'],
+      { redactMode: 'tokens' },
+    );
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('client not configured'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_auth_add_url', { email: 'user@gmail.com' });
+    expect(result.content[0].text).toBe('Error: client not configured');
+  });
+});
+
+describe('gog_auth_add_complete', () => {
+  it('runs remote step 2 with the pasted redirect URL', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"email":"user@gmail.com","stored":true}');
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_auth_add_complete', {
+      email: 'user@gmail.com',
+      redirectUrl: 'http://127.0.0.1:59436/oauth2/callback?code=abc&state=xyz',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '2', '--auth-url',
+        'http://127.0.0.1:59436/oauth2/callback?code=abc&state=xyz', '--services', 'all', '--force-consent'],
+    );
+    expect(result.content[0].text).toContain('stored');
+  });
+
+  it('passes custom services matching step 1', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"stored":true}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_auth_add_complete', {
+      email: 'user@gmail.com',
+      redirectUrl: 'http://127.0.0.1/cb?code=c&state=s',
+      services: 'gmail,drive',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '2', '--auth-url',
+        'http://127.0.0.1/cb?code=c&state=s', '--services', 'gmail,drive', '--force-consent'],
+    );
+  });
+
+  it('returns error text on failure (e.g. expired state)', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('no matching manual auth state'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_auth_add_complete', {
+      email: 'user@gmail.com',
+      redirectUrl: 'http://127.0.0.1/cb?code=c&state=s',
+    });
+    expect(result.content[0].text).toBe('Error: no matching manual auth state');
+  });
+});
+
 describe('gog_auth_run', () => {
   it('passes subcommand and args to runner', async () => {
     vi.mocked(runner.run).mockResolvedValue('removed user@gmail.com');
