@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.17.0](https://github.com/chrischall/gogcli-mcp/compare/v2.16.7...v2.17.0) (2026-07-24)
+
+
+### Features
+
+* **auth:** diagnose invalid_grant, add live health check + headless re-auth ([#194](https://github.com/chrischall/gogcli-mcp/issues/194)) ([20d64a9](https://github.com/chrischall/gogcli-mcp/commit/20d64a912f7c2edb81f655278180be9e0ea0bed2))
+
 ## [2.16.7](https://github.com/chrischall/gogcli-mcp/compare/v2.16.6...v2.16.7) (2026-07-22)
 
 
