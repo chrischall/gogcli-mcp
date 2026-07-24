@@ -63,6 +63,18 @@
       "description": "Authorize a Google account via browser-based OAuth"
     },
     {
+      "name": "gog_auth_health",
+      "description": "Live per-account token health: validity, age, and pre-expiry warnings (detects invalid_grant)"
+    },
+    {
+      "name": "gog_auth_add_url",
+      "description": "Begin remote/headless OAuth (step 1): return a sign-in URL to open in any browser"
+    },
+    {
+      "name": "gog_auth_add_complete",
+      "description": "Complete remote/headless OAuth (step 2): exchange the pasted redirect URL and store the token"
+    },
+    {
       "name": "gog_auth_list",
       "description": "List all Google accounts stored in gogcli"
     },

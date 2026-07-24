@@ -569,6 +569,35 @@ describe('run', () => {
     expect(out).toContain('[REDACTED]');
   });
 
+  it("redactMode 'tokens' preserves OAuth scope names the shared redactor mangles", async () => {
+    // The shared redactor treats a `classroom.coursework.students` scope as a
+    // secret and replaces it — corrupting a step-1 auth URL. 'tokens' mode must
+    // leave scope names intact.
+    const authUrl =
+      'https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fclassroom.coursework.students+openid&state=abc123';
+    const spawner = makeSpawner(0, JSON.stringify({ auth_url: authUrl }), '');
+    const full = await run(['auth', 'add'], { spawner });
+    expect(full).toContain('[REDACTED]'); // full mode mangles the scope
+    const spawner2 = makeSpawner(0, JSON.stringify({ auth_url: authUrl }), '');
+    const tokensOnly = await run(['auth', 'add'], { spawner: spawner2, redactMode: 'tokens' });
+    expect(tokensOnly).toContain('classroom.coursework.students');
+    expect(tokensOnly).not.toContain('[REDACTED]');
+  });
+
+  it("redactMode 'tokens' still strips real Google tokens", async () => {
+    const leak = 'url with token ya29.a0Ad52N3-STEP-LEAK and refresh 1//0eSTEP-REFRESH-LEAK';
+    const spawner = makeSpawner(0, leak, '');
+    const out = await run(['auth', 'add'], { spawner, redactMode: 'tokens' });
+    expect(out).not.toContain('ya29.a0Ad52N3-STEP-LEAK');
+    expect(out).not.toContain('1//0eSTEP-REFRESH-LEAK');
+    expect(out).toContain('[REDACTED]');
+  });
+
+  it("redactMode 'tokens' strips tokens from thrown error text too", async () => {
+    const spawner = makeSpawner(1, '', 'boom ya29.a0Ad52N3-ERR-LEAK end');
+    await expect(run(['auth', 'add'], { spawner, redactMode: 'tokens' })).rejects.toThrow('[REDACTED]');
+  });
+
   it('ignores timeout if close event already settled the promise', async () => {
     vi.useFakeTimers();
     const spawner = vi.fn(() => {

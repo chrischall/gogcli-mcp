@@ -108,6 +108,27 @@ When adding a tool, ask: does a user opening the all-services base package want 
 7. Gated deletes need `--force`: if the `gog` subcommand prompts for confirmation, append `--force` to the args — the runner always injects `--no-input`, so without it gog refuses (`refusing to delete … without --force (non-interactive)`). Not every delete is gated; confirm against a real `gog` (the mocked tests can't catch a missing `--force`). See [Gotchas](#gotchas).
 8. Add the new tool to the sub-package's `manifest.json`.
 
+## Auth & re-auth
+
+`gog auth add` uses a **user-owned** OAuth client (`gog` has no built-in shared client). If that
+client's consent screen is in **"Testing"** publishing status, Google expires every refresh token
+**7 days** after authorization — surfacing as an account-wide `invalid_grant` roughly weekly. The
+durable fix is to **publish the consent screen to "In production"** in the owning Google Cloud
+project. Full write-up: [`docs/auth-invalid-grant-diagnosis.md`](docs/auth-invalid-grant-diagnosis.md).
+
+Wrapper support for this:
+
+- **`gog_auth_health`** — live per-account validity (`gog auth list --check`), token age, and a
+  pre-expiry warning near the 7-day cliff. Unlike `gog_auth_status`, it makes a real refresh call.
+- **`gog_auth_add_url` → `gog_auth_add_complete`** — the two-step remote/headless re-auth (gog
+  `--remote --step 1/2`). Works over the hosted connector, where interactive `gog_auth_add`
+  cannot. Pass the same `services` to both; step 2 must run within 10 min of step 1.
+- **`diagnose()`** maps `invalid_grant` to a distinct, actionable error (cause + durable fix +
+  both re-auth paths) on every service.
+- **`redactMode: 'tokens'`** on `run()` — for output that carries no token but that the shared
+  redactor would corrupt (a step-1 consent URL's scope names); applies only the `ya29.`/`1//`
+  token shapes. Default stays `'full'`.
+
 ## Adding a new Google service to base
 
 1. Create `packages/gogcli-mcp/src/tools/<service>.ts` exporting `registerXxxTools(server: McpServer)`.

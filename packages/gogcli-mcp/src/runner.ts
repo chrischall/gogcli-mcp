@@ -58,6 +58,15 @@ export interface RunOptions {
   // Inject gog's global --readonly flag, which blocks mutating API requests at
   // runtime. Independent of (and OR-ed with) the GOG_READONLY env var.
   readonly?: boolean;
+  // How aggressively to redact the output/error before it reaches the client.
+  // 'full' (default) runs the shared mcp-utils redactor plus the Google token
+  // shapes. 'tokens' runs ONLY the Google token shapes (ya29.…/1//…) — use it
+  // for output that is known-safe but that the broad shared redactor mangles,
+  // most notably an OAuth consent URL whose `classroom.coursework.students`-style
+  // scope names the shared redactor mistakes for secrets. A step-1 auth URL
+  // carries no token, so stripping only real token shapes keeps it intact while
+  // still catching any token that unexpectedly appears.
+  redactMode?: 'full' | 'tokens';
 }
 
 const TIMEOUT_MS = 30_000;
@@ -108,12 +117,17 @@ const GOOGLE_TOKEN_PATTERNS: RegExp[] = [
   /ya29\.[A-Za-z0-9._\-]+/g,           // OAuth2 access tokens
   /1\/\/[A-Za-z0-9._\-]+/g,            // OAuth2 refresh tokens
 ];
-export function redactSecrets(text: string): string {
-  let redacted = redactSharedSecrets(text);
+// Strip only Google's OAuth2 token shapes. Precise enough to leave an OAuth
+// consent URL (client_id, scope names, state, code_challenge) untouched.
+export function redactGoogleTokens(text: string): string {
+  let redacted = text;
   for (const re of GOOGLE_TOKEN_PATTERNS) {
     redacted = redacted.replace(re, '[REDACTED]');
   }
   return redacted;
+}
+export function redactSecrets(text: string): string {
+  return redactGoogleTokens(redactSharedSecrets(text));
 }
 
 // MCP desktop clients often spawn servers with a stripped PATH that excludes
@@ -271,7 +285,8 @@ async function spawnGog(
 }
 
 export async function run(args: GogArg[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner, interactive = false, timeout, readonly = false } = options;
+  const { account, spawner, interactive = false, timeout, readonly = false, redactMode = 'full' } = options;
+  const redact = redactMode === 'tokens' ? redactGoogleTokens : redactSecrets;
 
   const effectiveAccount = account ?? readEnvVar('GOG_ACCOUNT');
 
@@ -307,8 +322,8 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
     } else {
       output = await spawnExecutor(fullArgs, { timeout, interactive });
     }
-    return redactSecrets(output);
+    return redact(output);
   } catch (err) {
-    throw new Error(redactSecrets((err as Error).message));
+    throw new Error(redact((err as Error).message));
   }
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as runner from '../../src/runner.js';
-import { runOrDiagnose, pushPaginationFlags, formatAccountList } from '../../src/tools/utils.js';
+import { runOrDiagnose, pushPaginationFlags, formatAccountList, formatAuthHealth } from '../../src/tools/utils.js';
 
 vi.mock('../../src/runner.js');
 
@@ -171,6 +171,31 @@ describe('runOrDiagnose', () => {
     expect(result.content[0].text).toContain('gog_auth_add');
   });
 
+  it('gives invalid_grant a richer hint than a plain 401: cause + durable fix + both re-auth paths', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('oauth2: "invalid_grant" "Token has been expired or revoked."'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['gmail', 'search', 'is:unread'], {});
+    const text = result.content[0].text as string;
+    // plain-English cause
+    expect(text).toContain('7-day');
+    expect(text).toContain('Testing');
+    // both re-auth paths
+    expect(text).toContain('gog_auth_add_url');
+    // durable fix
+    expect(text).toContain('In production');
+  });
+
+  it('does NOT give a plain 401 the invalid_grant durable-fix text', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('Request failed with status 401'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const text = result.content[0].text as string;
+    expect(text).toContain('gog_auth_add');
+    expect(text).not.toContain('In production');
+  });
+
   it('returns plain error with auth hint when auth list also fails on auth error', async () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Request failed with status 401'))
@@ -280,5 +305,90 @@ describe('runOrDiagnose', () => {
     const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
     expect(result.content[0].text).toContain('gog_sheets_insert');
     expect(result.content[0].text).not.toContain('Configured accounts');
+  });
+});
+
+describe('formatAuthHealth', () => {
+  const NOW = Date.parse('2026-07-24T12:00:00.000Z');
+
+  it('flags a dead (invalid_grant) token with a mapped cause, age, and re-auth paths', () => {
+    const raw = JSON.stringify({
+      accounts: [{
+        email: 'chris.c.hall@gmail.com',
+        created_at: '2026-07-17T12:00:00.000Z',
+        valid: false,
+        error: 'refresh access token: oauth2: "invalid_grant" "Token has been expired or revoked."',
+      }],
+    });
+    const out = formatAuthHealth(raw, NOW);
+    expect(out).toContain('✗ chris.c.hall@gmail.com: NEEDS RE-AUTH');
+    expect(out).toContain('7-day limit');
+    expect(out).toContain('Authorized 7.0 day(s) ago');
+    expect(out).toContain('gog_auth_add_url');
+    // never echoes token material
+    expect(out).not.toContain('access token');
+  });
+
+  it('warns a still-valid token as it nears the 7-day testing cliff (with estimated expiry)', () => {
+    const raw = JSON.stringify({
+      accounts: [{ email: 'a@x.com', created_at: '2026-07-18T00:00:00.000Z', valid: true }],
+    });
+    const out = formatAuthHealth(raw, NOW);
+    expect(out).toContain('✓ a@x.com: token valid');
+    expect(out).toContain('⚠');
+    expect(out).toContain('Approaching the 7-day');
+    expect(out).toContain('2026-07-25'); // created_at + 7d
+    expect(out).toContain('In production');
+  });
+
+  it('does not warn a freshly authorized valid token', () => {
+    const raw = JSON.stringify({
+      accounts: [{ email: 'a@x.com', created_at: '2026-07-23T12:00:00.000Z', valid: true }],
+    });
+    const out = formatAuthHealth(raw, NOW);
+    expect(out).toContain('✓ a@x.com: token valid');
+    expect(out).toContain('Authorized 1.0 day(s) ago');
+    expect(out).not.toContain('⚠');
+  });
+
+  it('uses the raw error for a non-invalid_grant invalid token', () => {
+    const raw = JSON.stringify({
+      accounts: [{ email: 'a@x.com', created_at: '2026-07-23T12:00:00.000Z', valid: false, error: 'network unreachable' }],
+    });
+    expect(formatAuthHealth(raw, NOW)).toContain('NEEDS RE-AUTH — network unreachable.');
+  });
+
+  it('says "unknown error" for an invalid token with no error field', () => {
+    const raw = JSON.stringify({ accounts: [{ email: 'a@x.com', valid: false }] });
+    expect(formatAuthHealth(raw, NOW)).toContain('NEEDS RE-AUTH — unknown error.');
+  });
+
+  it('reports unknown validity when the --check field is absent', () => {
+    const raw = JSON.stringify({ accounts: [{ email: 'a@x.com', created_at: '2026-07-23T12:00:00.000Z' }] });
+    const out = formatAuthHealth(raw, NOW);
+    expect(out).toContain('? a@x.com: token validity unknown');
+    expect(out).toContain('Authorized 1.0 day(s) ago');
+  });
+
+  it('omits the age when created_at is missing or unparseable', () => {
+    expect(formatAuthHealth(JSON.stringify({ accounts: [{ email: 'a@x.com', valid: true }] }), NOW))
+      .not.toContain('Authorized');
+    expect(formatAuthHealth(JSON.stringify({ accounts: [{ email: 'a@x.com', created_at: 'not-a-date', valid: true }] }), NOW))
+      .not.toContain('Authorized');
+  });
+
+  it('falls back to a friendly line when no accounts are configured', () => {
+    expect(formatAuthHealth(JSON.stringify({ accounts: [] }), NOW))
+      .toBe('No Google accounts are configured. Use gog_auth_add to authorize one.');
+  });
+
+  it('labels an account with no email', () => {
+    expect(formatAuthHealth(JSON.stringify({ accounts: [{ valid: true }] }), NOW))
+      .toContain('✓ (unknown account): token valid');
+  });
+
+  it('falls back to trimmed raw text when the output is not the expected JSON', () => {
+    expect(formatAuthHealth('  not json\n', NOW)).toBe('not json');
+    expect(formatAuthHealth('{"foo":1}', NOW)).toBe('{"foo":1}');
   });
 });

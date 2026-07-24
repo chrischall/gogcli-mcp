@@ -136,6 +136,12 @@ export function errorText(err: unknown): string {
 
 const AUTH_ERROR_PATTERN = /\b(401|unauthorized|token.*(expired|revoked)|invalid_grant)\b/i;
 
+// A DEAD refresh token — the whole account is signed out, not just a stale
+// access token that would refresh silently. This is the recurring account-wide
+// failure, so it gets its own plain-English cause + durable fix, distinct from
+// the generic 401/unauthorized case.
+const INVALID_GRANT_PATTERN = /invalid_grant|token has been expired or revoked/i;
+
 const TRANSIENT_ERROR_PATTERN =
   /\b429\b|\b5\d\d\b|\bquota\b|rateLimit|\bDEADLINE_EXCEEDED\b/i;
 
@@ -147,6 +153,20 @@ const GRID_LIMIT_ERROR_PATTERN = /exceeds grid limits/i;
 const AUTH_HINT =
   '\n\nAuthentication may have expired. Use gog_auth_add to re-authorize the account. ' +
   'Ask the user if they would like to re-authenticate.';
+
+// invalid_grant means the stored REFRESH token was rejected, so re-auth is
+// mandatory (no silent recovery) and it will recur unless the root cause is
+// fixed. Name the most common cause (the 7-day limit Google puts on OAuth apps
+// still in "Testing"), offer both re-auth paths (browser + remote/headless),
+// and point at the durable fix. Keeps the literal `gog_auth_add` token so the
+// generic auth-recovery guidance still applies.
+const INVALID_GRANT_HINT =
+  '\n\nThe stored refresh token was rejected (invalid_grant): it has expired or been revoked, so the ' +
+  'whole account is signed out and re-authorization is required. The most common cause is the 7-day ' +
+  'refresh-token limit Google applies to OAuth apps whose consent screen is still in "Testing" mode. ' +
+  'Re-authorize with gog_auth_add (opens a browser) or gog_auth_add_url + gog_auth_add_complete (remote/headless). ' +
+  'To stop this recurring, publish the OAuth consent screen to "In production" in the Google Cloud project ' +
+  'that owns the OAuth client. Ask the user if they would like to re-authenticate.';
 
 const TRANSIENT_HINT =
   '\n\nThis error is often transient. Retry the same call before trying a different approach ' +
@@ -185,16 +205,19 @@ export function formatAccountList(raw: string): string {
 // keeps the same diagnostic quality as everywhere else.
 export async function diagnose(err: unknown): Promise<CallToolResult> {
   const errText = errorText(err);
+  const isInvalidGrant = INVALID_GRANT_PATTERN.test(errText);
   const isAuthError = AUTH_ERROR_PATTERN.test(errText);
   const isTransientError = !isAuthError && TRANSIENT_ERROR_PATTERN.test(errText);
   const isGridLimitError = GRID_LIMIT_ERROR_PATTERN.test(errText);
-  const hint = isAuthError
-    ? AUTH_HINT
-    : isTransientError
-      ? TRANSIENT_HINT
-      : isGridLimitError
-        ? GRID_LIMIT_HINT
-        : '';
+  const hint = isInvalidGrant
+    ? INVALID_GRANT_HINT
+    : isAuthError
+      ? AUTH_HINT
+      : isTransientError
+        ? TRANSIENT_HINT
+        : isGridLimitError
+          ? GRID_LIMIT_HINT
+          : '';
   try {
     const accounts = formatAccountList(await run(['auth', 'list']));
     return errorResult(`${errText}\n\nConfigured accounts:\n${accounts || '(none)'}${hint}`);
@@ -212,4 +235,79 @@ export async function runOrDiagnose(
   } catch (err) {
     return diagnose(err);
   }
+}
+
+// Google puts a 7-day cap on refresh tokens issued by OAuth apps whose consent
+// screen is still in "Testing" — the recurring account-wide sign-out this tool
+// exists to warn about. Once the token is this old and still valid, expiry is
+// imminent, so surface it before it becomes a hard failure mid-task.
+const REFRESH_TOKEN_TESTING_TTL_DAYS = 7;
+const HEALTH_WARN_AGE_DAYS = 6;
+const MS_PER_DAY = 86_400_000;
+
+interface AuthHealthAccount {
+  email?: string;
+  created_at?: string;
+  valid?: boolean;
+  error?: string;
+}
+
+// Days between an ISO timestamp and `now`, or null if unparseable/absent.
+function ageInDays(createdAt: string | undefined, now: number): number | null {
+  if (!createdAt) return null;
+  const t = Date.parse(createdAt);
+  if (Number.isNaN(t)) return null;
+  return (now - t) / MS_PER_DAY;
+}
+
+function formatOneAccountHealth(a: AuthHealthAccount, now: number): string {
+  const email = a.email ?? '(unknown account)';
+  const age = ageInDays(a.created_at, now);
+  const ageStr = age === null ? '' : ` Authorized ${age.toFixed(1)} day(s) ago.`;
+
+  if (a.valid === false) {
+    // Map the dead-refresh-token error to a plain cause; fall back to the raw
+    // (already token-redacted by run()) error for anything else.
+    const cause = INVALID_GRANT_PATTERN.test(a.error ?? '')
+      ? 'refresh token expired or revoked — commonly the 7-day limit on OAuth consent screens still in "Testing" mode'
+      : (a.error?.trim() || 'unknown error');
+    return `✗ ${email}: NEEDS RE-AUTH — ${cause}.${ageStr} ` +
+      'Re-authorize with gog_auth_add (browser) or gog_auth_add_url + gog_auth_add_complete (remote/headless).';
+  }
+
+  if (a.valid === true) {
+    let line = `✓ ${email}: token valid.${ageStr}`;
+    if (age !== null && age >= HEALTH_WARN_AGE_DAYS) {
+      const est = new Date(Date.parse(a.created_at as string) + REFRESH_TOKEN_TESTING_TTL_DAYS * MS_PER_DAY)
+        .toISOString()
+        .slice(0, 10);
+      line += ` ⚠ Approaching the 7-day refresh-token limit for OAuth apps in "Testing" mode ` +
+        `(if that applies, expect expiry around ${est}). Re-authorize soon, or publish the OAuth ` +
+        'consent screen to "In production" to stop the weekly expiry.';
+    }
+    return line;
+  }
+
+  // valid absent — the caller ran without --check (or gog omitted the field).
+  return `? ${email}: token validity unknown.${ageStr} Run this check again to probe it live.`;
+}
+
+// Turn `gog auth list --check --json` into a per-account health summary:
+// validity, a mapped cause for dead tokens, token age, and a pre-expiry warning
+// near the 7-day testing-mode cliff. Only email/created_at/valid/error are read
+// — scopes/subject never appear in the summary. Falls back to trimmed raw text
+// when the output isn't the expected JSON shape.
+export function formatAuthHealth(raw: string, now: number): string {
+  let accounts: AuthHealthAccount[];
+  try {
+    const parsed = JSON.parse(raw) as { accounts?: unknown };
+    if (!Array.isArray(parsed?.accounts)) return raw.trim();
+    accounts = parsed.accounts as AuthHealthAccount[];
+  } catch {
+    return raw.trim();
+  }
+  if (accounts.length === 0) {
+    return 'No Google accounts are configured. Use gog_auth_add to authorize one.';
+  }
+  return accounts.map((a) => formatOneAccountHealth(a, now)).join('\n\n');
 }
