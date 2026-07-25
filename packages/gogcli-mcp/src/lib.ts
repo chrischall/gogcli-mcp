@@ -3,6 +3,7 @@ export {
   VERSION,
   registerApiTools,
   registerAuthTools,
+  authToolsFor,
   registerCalendarTools,
   registerClassroomTools,
   registerContactsTools,

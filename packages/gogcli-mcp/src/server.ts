@@ -1,6 +1,6 @@
 import type { ToolRegistrar } from '@chrischall/mcp-utils';
 import { registerApiTools } from './tools/api.js';
-import { registerAuthTools } from './tools/auth.js';
+import { registerAuthTools, authToolsFor } from './tools/auth.js';
 import { registerCalendarTools } from './tools/calendar.js';
 import { registerClassroomTools } from './tools/classroom.js';
 import { registerContactsTools } from './tools/contacts.js';
@@ -38,6 +38,7 @@ export const BASE_TOOL_REGISTRARS: ToolRegistrar[] = [
 export {
   registerApiTools,
   registerAuthTools,
+  authToolsFor,
   registerCalendarTools,
   registerClassroomTools,
   registerContactsTools,

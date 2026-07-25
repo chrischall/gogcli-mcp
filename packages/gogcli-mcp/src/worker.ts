@@ -5,7 +5,7 @@ import { handleAuthorize } from '@chrischall/mcp-connector';
 import type { ToolRegistrar } from '@chrischall/mcp-utils';
 import {
   BASE_TOOL_REGISTRARS,
-  registerAuthTools,
+  authToolsFor,
   registerSheetsTools,
   registerGmailTools,
   registerDriveTools,
@@ -57,14 +57,18 @@ function makeAgent(registrars: ToolRegistrar[]): typeof McpAgent {
 }
 
 // auth + <service> base + <service> extras — the exact set each sub-package's
-// stdio server exposes.
-const svc = (base: ToolRegistrar, extra: ToolRegistrar): ToolRegistrar[] => [registerAuthTools, base, extra];
+// stdio server exposes. The auth registrar is bound to THIS service's default
+// `services` (least-privilege): a per-service connector re-auths requesting only
+// its own scopes, so one unregistered scope for a service it doesn't wrap can't
+// poison its re-auth with invalid_scope. The base /mcp agent keeps 'all'.
+const svc = (service: string, base: ToolRegistrar, extra: ToolRegistrar): ToolRegistrar[] =>
+  [authToolsFor(service), base, extra];
 
 export class GogcliMcpAgent extends makeAgent(BASE_TOOL_REGISTRARS) {}
-export class GogcliSheetsAgent extends makeAgent(svc(registerSheetsTools, registerExtraSheetsTools)) {}
-export class GogcliGmailAgent extends makeAgent(svc(registerGmailTools, registerExtraGmailTools)) {}
-export class GogcliDriveAgent extends makeAgent(svc(registerDriveTools, registerExtraDriveTools)) {}
-export class GogcliDocsAgent extends makeAgent(svc(registerDocsTools, registerExtraDocsTools)) {}
+export class GogcliSheetsAgent extends makeAgent(svc('sheets', registerSheetsTools, registerExtraSheetsTools)) {}
+export class GogcliGmailAgent extends makeAgent(svc('gmail', registerGmailTools, registerExtraGmailTools)) {}
+export class GogcliDriveAgent extends makeAgent(svc('drive,driveactivity,drivelabels', registerDriveTools, registerExtraDriveTools)) {}
+export class GogcliDocsAgent extends makeAgent(svc('docs', registerDocsTools, registerExtraDocsTools)) {}
 
 const defaultHandler = {
   fetch(request: Request, env: unknown): Response | Promise<Response> {
