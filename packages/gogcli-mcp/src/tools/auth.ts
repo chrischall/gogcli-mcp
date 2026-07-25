@@ -4,7 +4,15 @@ import { run } from '../runner.js';
 import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
 import { errorText, formatAuthHealth, registerRunTool } from './utils.js';
 
-export function registerAuthTools(server: McpServer): void {
+// Register the auth tools with a specific least-privilege default `services`.
+// Kept internal so the exported `registerAuthTools` stays a bare
+// `(server) => void` ToolRegistrar; `authToolsFor` binds a narrower default.
+function registerAuthToolsWith(server: McpServer, defaultServices: string): void {
+  const servicesDescribe =
+    `Services to authorize: "all" or comma-separated list (e.g. "sheets,gmail,calendar"). ` +
+    `Default: "${defaultServices}". Prefer the narrowest set you need — requesting a service whose ` +
+    `Google API is not enabled on the OAuth client's project makes Google reject the WHOLE request ` +
+    `with invalid_scope.`;
   server.registerTool('gog_auth_list', {
     description: 'List all Google accounts stored in gogcli. Use this to check which accounts are configured and available.',
     annotations: { readOnlyHint: true },
@@ -71,11 +79,9 @@ export function registerAuthTools(server: McpServer): void {
     annotations: { destructiveHint: true },
     inputSchema: {
       email: z.string().describe('Google account email to authorize'),
-      services: z.string().optional().default('all').describe(
-        'Services to authorize: "all" or comma-separated list (e.g. "sheets,gmail,calendar"). Default: "all"',
-      ),
+      services: z.string().optional().default(defaultServices).describe(servicesDescribe),
     },
-  }, async ({ email, services = 'all' }) => {
+  }, async ({ email, services = defaultServices }) => {
     try {
       return rawTextResult(await run(['auth', 'add', email, '--services', services], {
         interactive: true,
@@ -97,11 +103,9 @@ export function registerAuthTools(server: McpServer): void {
       'gog_auth_add_complete or the second step will not match this one.',
     inputSchema: {
       email: z.string().describe('Google account email to authorize'),
-      services: z.string().optional().default('all').describe(
-        'Services to authorize: "all" or comma-separated list (e.g. "sheets,gmail,calendar"). Default: "all"',
-      ),
+      services: z.string().optional().default(defaultServices).describe(servicesDescribe),
     },
-  }, async ({ email, services = 'all' }) => {
+  }, async ({ email, services = defaultServices }) => {
     try {
       // --force-consent guarantees a refresh token even if a prior grant exists
       // (the whole point when recovering from a dead one). redactMode 'tokens'
@@ -129,11 +133,11 @@ export function registerAuthTools(server: McpServer): void {
         'The full localhost redirect URL the user copied from the browser address bar after signing in ' +
         '(contains code and state; the page itself fails to load, which is expected).',
       ),
-      services: z.string().optional().default('all').describe(
-        'Services authorized — MUST match the value passed to gog_auth_add_url. Default: "all"',
+      services: z.string().optional().default(defaultServices).describe(
+        `Services authorized — MUST match the value passed to gog_auth_add_url. Default: "${defaultServices}".`,
       ),
     },
-  }, async ({ email, redirectUrl, services = 'all' }) => {
+  }, async ({ email, redirectUrl, services = defaultServices }) => {
     try {
       return rawTextResult(await run(
         ['auth', 'add', email, '--remote', '--step', '2', '--auth-url', redirectUrl,
@@ -150,4 +154,18 @@ export function registerAuthTools(server: McpServer): void {
     omitAccount: true,
     note: 'For browser-based authorization, use gog_auth_add instead.',
   });
+}
+
+// The base all-services registrar: bare `(server) => void` so it drops straight
+// into BASE_TOOL_REGISTRARS / ToolRegistrar[]. Requests every service ('all').
+export function registerAuthTools(server: McpServer): void {
+  registerAuthToolsWith(server, 'all');
+}
+
+// A `registerAuthTools` bound to a least-privilege default `services`. A
+// single-service package/agent registers `authToolsFor('gmail')` instead of the
+// bare `registerAuthTools` so its re-auth requests only that service's scopes.
+// The base all-services package keeps the bare registrar (default 'all').
+export function authToolsFor(defaultServices: string): (server: McpServer) => void {
+  return (server) => registerAuthToolsWith(server, defaultServices);
 }

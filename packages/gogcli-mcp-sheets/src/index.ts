@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { runMcp } from '@chrischall/mcp-utils';
-import { VERSION, registerAuthTools, registerSheetsTools } from '../../gogcli-mcp/src/lib.js';
+import { VERSION, authToolsFor, registerSheetsTools } from '../../gogcli-mcp/src/lib.js';
 import { registerExtraSheetsTools } from './tools/sheets-extra.js';
 
 await runMcp({
   name: 'gogcli-sheets',
   version: VERSION,
-  tools: [registerAuthTools, registerSheetsTools, registerExtraSheetsTools],
+  tools: [authToolsFor('sheets'), registerSheetsTools, registerExtraSheetsTools],
 });

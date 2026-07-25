@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { registerAuthTools } from '../../src/tools/auth.js';
+import { registerAuthTools, authToolsFor } from '../../src/tools/auth.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
 
@@ -211,6 +211,53 @@ describe('gog_auth_add_complete', () => {
       redirectUrl: 'http://127.0.0.1/cb?code=c&state=s',
     });
     expect(result.content[0].text).toBe('Error: no matching manual auth state');
+  });
+});
+
+describe('authToolsFor (least-privilege default services)', () => {
+  const gmailHarness = () => createTestHarness(authToolsFor('gmail'));
+
+  it('gog_auth_add_url defaults services to the bound value, not "all"', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"auth_url":"https://accounts.google.com/x"}');
+    const harness = await gmailHarness();
+    await harness.callTool('gog_auth_add_url', { email: 'u@x.com' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'u@x.com', '--remote', '--step', '1', '--services', 'gmail', '--force-consent'],
+      { redactMode: 'tokens' },
+    );
+  });
+
+  it('gog_auth_add defaults services to the bound value', async () => {
+    vi.mocked(runner.run).mockResolvedValue('ok');
+    const harness = await gmailHarness();
+    await harness.callTool('gog_auth_add', { email: 'u@x.com' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'u@x.com', '--services', 'gmail'],
+      { interactive: true, timeout: 300_000 },
+    );
+  });
+
+  it('gog_auth_add_complete defaults services to the bound value', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"stored":true}');
+    const harness = await gmailHarness();
+    await harness.callTool('gog_auth_add_complete', {
+      email: 'u@x.com',
+      redirectUrl: 'http://127.0.0.1/cb?code=c&state=s',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'u@x.com', '--remote', '--step', '2', '--auth-url',
+        'http://127.0.0.1/cb?code=c&state=s', '--services', 'gmail', '--force-consent'],
+    );
+  });
+
+  it('still allows overriding services per call (widen when needed)', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"auth_url":"x"}');
+    const harness = await gmailHarness();
+    await harness.callTool('gog_auth_add_url', { email: 'u@x.com', services: 'gmail,drive' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'u@x.com', '--remote', '--step', '1', '--services', 'gmail,drive', '--force-consent'],
+      { redactMode: 'tokens' },
+    );
   });
 });
 

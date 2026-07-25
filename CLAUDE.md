@@ -125,6 +125,11 @@ Wrapper support for this:
   cannot. Pass the same `services` to both; step 2 must run within 10 min of step 1.
 - **`diagnose()`** maps `invalid_grant` to a distinct, actionable error (cause + durable fix +
   both re-auth paths) on every service.
+- **Least-privilege scopes.** The re-auth tools default `services` to only what the package wraps
+  (`authToolsFor('<service>')`); the base all-services package keeps `all`. This avoids
+  `invalid_scope` (Google rejects the whole request if any one scope is for a non-enabled API — and
+  the wrapper can't catch that, since it happens in the user's browser, not at URL-build time).
+  Overridable per call. Offender scopes → APIs to enable: [`docs/auth-scopes.md`](docs/auth-scopes.md).
 - **`redactMode: 'tokens'`** on `run()` — for output that carries no token but that the shared
   redactor would corrupt (a step-1 consent URL's scope names); applies only the `ya29.`/`1//`
   token shapes. Default stays `'full'`.
