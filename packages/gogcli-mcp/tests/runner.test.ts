@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { spawn as mockedSpawn } from 'node:child_process';
-import { run, runExecutor } from '../src/runner.js';
+import { run, runBinary, runExecutor } from '../src/runner.js';
 import type { Spawner, GogExecutor } from '../src/runner.js';
 
 // The real spawn is dynamically imported inside runner's default executor.
@@ -596,6 +596,24 @@ describe('run', () => {
   it("redactMode 'tokens' strips tokens from thrown error text too", async () => {
     const spawner = makeSpawner(1, '', 'boom ya29.a0Ad52N3-ERR-LEAK end');
     await expect(run(['auth', 'add'], { spawner, redactMode: 'tokens' })).rejects.toThrow('[REDACTED]');
+  });
+
+  it('runBinary returns stdout base64-encoded, not the raw string', async () => {
+    const spawner = makeSpawner(0, '%PDF-1.4 body');
+    const out = await runBinary(['api', 'call', 'drive', 'v3', 'files.get'], { spawner });
+    expect(out).toBe(Buffer.from('%PDF-1.4 body').toString('base64'));
+    expect(out).not.toBe('%PDF-1.4 body'); // base64, so bytes survive intact
+    const callArgs = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    expect(callArgs).toContain('--json');
+    expect(callArgs).toContain('files.get');
+  });
+
+  it('runBinary refuses over the hosted-connector forward executor', async () => {
+    const executor = vi.fn();
+    await expect(
+      runExecutor.run({ executor }, () => runBinary(['api', 'call', 'drive', 'v3', 'files.get'])),
+    ).rejects.toThrow('not available over the hosted connector');
+    expect(executor).not.toHaveBeenCalled();
   });
 
   it('ignores timeout if close event already settled the promise', async () => {

@@ -14,7 +14,7 @@ export {
   registerSlidesTools,
   registerTasksTools,
 } from './server.js';
-export { run, runExecutor, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
+export { run, runBinary, runExecutor, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
 export type { RunOptions, Spawner, GogExecutor, GogArg, GogFileArg } from './runner.js';
 export {
   PAYLOAD_INLINE_MAX,
