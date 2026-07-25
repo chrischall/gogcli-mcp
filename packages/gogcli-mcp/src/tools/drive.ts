@@ -1,6 +1,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
+import { rawTextResult } from '@chrischall/mcp-utils';
+import { run, runBinary } from '../runner.js';
+import { accountParam, diagnose, runOrDiagnose, registerRunTool } from './utils.js';
+
+// A native Google Doc exports to text directly; anything else (PDF, image,
+// docx, …) is first copied WITH conversion to this type, which makes Drive run
+// OCR, before exporting.
+const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document';
+
+// Parse `gog drive get` JSON into { name, mimeType }. gog nests the payload
+// under `file`; fall back to the top level if that ever changes.
+function fileMeta(raw: string): { name?: string; mimeType?: string } {
+  const parsed = JSON.parse(raw) as { file?: { name?: string; mimeType?: string }; name?: string; mimeType?: string };
+  const f = parsed.file ?? parsed;
+  return { name: f.name, mimeType: f.mimeType };
+}
 
 export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_ls', {
@@ -118,6 +134,107 @@ export function registerDriveTools(server: McpServer): void {
     // --no-input, so without --force it refuses at runtime.
     if (to === 'anyone') args.push('--force');
     return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_drive_extract_text', {
+    description:
+      'Extract readable TEXT from a Drive file — PDF, image, docx, or a native Google Doc — and return ' +
+      'it to you directly (closing the webViewLink dead end). Accepts a Drive file id, including the id ' +
+      'from gog_gmail_attachment\'s deliveredVia:"drive" response. For non-Docs it copies the file to a ' +
+      'temporary Google Doc so Drive OCRs it (works for scanned PDFs too), exports plain text, then ' +
+      'deletes the temp Doc. Operates entirely via the Drive API within the existing drive scope — no ' +
+      'host filesystem, no scope widening. For a large file, page through with offset/maxChars.',
+    // Creates and deletes a temporary Doc for non-native files, so not read-only.
+    annotations: { destructiveHint: false },
+    inputSchema: {
+      fileId: z.string().describe('Drive file ID (e.g. the id returned by gog_gmail_attachment)'),
+      ocrLanguage: z.string().optional().describe(
+        'BCP-47 language hint for OCR of scanned/image PDFs (e.g. "en", "fr"). Optional.',
+      ),
+      offset: z.number().int().nonnegative().optional().describe('Character offset to start from (default: 0)'),
+      maxChars: z.number().int().positive().optional().describe('Max characters to return (default: all from offset)'),
+      account: accountParam,
+    },
+  }, async ({ fileId, ocrLanguage, offset = 0, maxChars, account }) => {
+    let tempDocId: string | undefined;
+    try {
+      const { name, mimeType } = fileMeta(await run(['drive', 'get', fileId], { account }));
+
+      // Native Docs export straight to text; everything else is OCR-converted first.
+      let sourceId = fileId;
+      if (mimeType !== GOOGLE_DOC_MIME) {
+        const params = JSON.stringify({ fileId, ...(ocrLanguage ? { ocrLanguage } : {}) });
+        const body = JSON.stringify({ name: `gogcli-ocr-${fileId}`, mimeType: GOOGLE_DOC_MIME });
+        const copied = JSON.parse(await run(
+          ['api', 'call', 'drive', 'v3', 'files.copy', '--allow-write', '--force',
+            `--params=${params}`, `--body=${body}`],
+          { account },
+        )) as { id?: string; result?: { id?: string } };
+        tempDocId = copied.id ?? copied.result?.id;
+        if (!tempDocId) throw new Error('OCR conversion did not return a document id');
+        sourceId = tempDocId;
+      }
+
+      const exportParams = JSON.stringify({ fileId: sourceId, mimeType: 'text/plain' });
+      const raw = await run(['api', 'call', 'drive', 'v3', 'files.export', `--params=${exportParams}`], { account });
+
+      const full = raw.replace(/^﻿/, ''); // drop the export's leading BOM
+      const start = Math.min(offset, full.length);
+      const text = maxChars !== undefined ? full.slice(start, start + maxChars) : full.slice(start);
+      return rawTextResult(JSON.stringify({
+        fileId,
+        name,
+        mimeType,
+        extractedVia: mimeType === GOOGLE_DOC_MIME ? 'native-export' : 'ocr-convert',
+        totalChars: full.length,
+        offset: start,
+        returnedChars: text.length,
+        truncated: start + text.length < full.length,
+        text,
+      }, null, 2));
+    } catch (err) {
+      return diagnose(err);
+    } finally {
+      // Always remove the temp Doc — on success, and on a mid-extraction failure.
+      if (tempDocId) {
+        await run(['drive', 'delete', tempDocId, '--permanent', '--force'], { account }).catch(() => {});
+      }
+    }
+  });
+
+  server.registerTool('gog_drive_read_bytes', {
+    description:
+      'Fetch a Drive file\'s raw bytes and return them base64-encoded as an embedded resource — the ' +
+      'generic fallback for callers that want the file itself (to parse locally) rather than extracted ' +
+      'text. For readable text from a PDF, prefer gog_drive_extract_text. NOTE: only works on the local ' +
+      'stdio server; over the hosted connector the transport is text-only and this returns a clear error ' +
+      '(use gog_drive_extract_text there).',
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      fileId: z.string().describe('Drive file ID'),
+      account: accountParam,
+    },
+  }, async ({ fileId, account }): Promise<CallToolResult> => {
+    try {
+      const { name, mimeType } = fileMeta(await run(['drive', 'get', fileId], { account }));
+      const params = JSON.stringify({ fileId, alt: 'media' });
+      const blob = await runBinary(['api', 'call', 'drive', 'v3', 'files.get', `--params=${params}`], { account });
+      return {
+        content: [
+          { type: 'text', text: `${name ?? fileId} (${mimeType ?? 'application/octet-stream'}) — ${Buffer.from(blob, 'base64').length} bytes, base64 resource below.` },
+          {
+            type: 'resource',
+            resource: {
+              uri: `gogdrive://${fileId}/${encodeURIComponent(name ?? 'file')}`,
+              mimeType: mimeType ?? 'application/octet-stream',
+              blob,
+            },
+          },
+        ],
+      };
+    } catch (err) {
+      return diagnose(err);
+    }
   });
 
   registerRunTool(server, { service: 'drive', examples: '"copy", "upload", "download", "permissions"' });

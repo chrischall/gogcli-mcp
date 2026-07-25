@@ -174,7 +174,7 @@ function formatTimeout(ms: number): string {
 // doesn't eagerly pull node builtins, which would break the Worker bundle.
 async function spawnWithTempFiles(
   args: GogArg[],
-  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner },
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
 ): Promise<string> {
   const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
@@ -211,7 +211,7 @@ async function spawnWithTempFiles(
 // in tests/runner.test.ts depend on.
 function spawnExecutor(
   args: GogArg[],
-  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner },
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
 ): Promise<string> {
   if (args.some(isGogFileArg)) {
     return spawnWithTempFiles(args, opts);
@@ -228,9 +228,9 @@ function spawnExecutor(
 
 async function spawnGog(
   fullArgs: string[],
-  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner },
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
 ): Promise<string> {
-  const { timeout, interactive = false, spawner } = opts;
+  const { timeout, interactive = false, spawner, binary = false } = opts;
   const spawn = spawner ?? (await import('node:child_process')).spawn as unknown as Spawner;
   const effectiveTimeout = timeout ?? TIMEOUT_MS;
 
@@ -254,9 +254,15 @@ async function spawnGog(
       clearTimeout(timer);
       if (settled) return;
       settled = true;
-      const stdout = Buffer.concat(stdoutChunks).toString();
       const stderr = Buffer.concat(stderrChunks).toString().trim();
       if (code === 0) {
+        // Binary mode: return the raw stdout bytes base64-encoded, never a utf8
+        // string (which would corrupt a PDF/image). No stderr append.
+        if (binary) {
+          resolve(Buffer.concat(stdoutChunks).toString('base64'));
+          return;
+        }
+        const stdout = Buffer.concat(stdoutChunks).toString();
         if (interactive && stderr) {
           resolve(stdout + '\n' + stderr);
         } else {
@@ -284,26 +290,36 @@ async function spawnGog(
   });
 }
 
-export async function run(args: GogArg[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner, interactive = false, timeout, readonly = false, redactMode = 'full' } = options;
-  const redact = redactMode === 'tokens' ? redactGoogleTokens : redactSecrets;
-
-  const effectiveAccount = account ?? readEnvVar('GOG_ACCOUNT');
-
+// Assemble the full gog argv: the always-injected flags (--json/--color=never,
+// --no-input unless interactive, --readonly when opted in), --account, then the
+// caller's args. Shared by run() and runBinary() so both get identical flags.
+function assembleArgs(
+  args: GogArg[],
+  opts: { account?: string; interactive: boolean; readonly: boolean },
+): GogArg[] {
+  const effectiveAccount = opts.account ?? readEnvVar('GOG_ACCOUNT');
   const fullArgs: GogArg[] = ['--json', '--color=never'];
-  if (!interactive) {
+  if (!opts.interactive) {
     fullArgs.push('--no-input');
   }
   // Block all mutating gog API requests at runtime when either the caller opts
   // in or GOG_READONLY is set in the environment. gog has no native env binding
   // for --readonly, so the wrapper translates GOG_READONLY into the flag.
-  if (readonly || readonlyEnvEnabled()) {
+  if (opts.readonly || readonlyEnvEnabled()) {
     fullArgs.push('--readonly');
   }
   if (effectiveAccount) {
     fullArgs.push('--account', effectiveAccount);
   }
   fullArgs.push(...args);
+  return fullArgs;
+}
+
+export async function run(args: GogArg[], options: RunOptions = {}): Promise<string> {
+  const { account, spawner, interactive = false, timeout, readonly = false, redactMode = 'full' } = options;
+  const redact = redactMode === 'tokens' ? redactGoogleTokens : redactSecrets;
+
+  const fullArgs = assembleArgs(args, { account, interactive, readonly });
 
   // Pick the executor: an injected spawner keeps the stdio spawn path (and all
   // its tests) intact and always wins; otherwise an ambient runExecutor store
@@ -326,4 +342,25 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
   } catch (err) {
     throw new Error(redact((err as Error).message));
   }
+}
+
+// Run gog and return its stdout as raw bytes, base64-encoded — for binary
+// payloads (a Drive file's bytes) that run()'s utf8 decode + secret redaction
+// would corrupt. Spawn path only: the hosted-connector executor forwards over
+// HTTP and hands back a decoded string, so binary cannot survive it — callers
+// on that path get a clear error instead of a mangled file. No redaction: the
+// base64 of a user's own binary file is opaque and has no token shapes to leak.
+export async function runBinary(args: GogArg[], options: RunOptions = {}): Promise<string> {
+  const { account, spawner, timeout, readonly = false } = options;
+  // An injected spawner is the stdio/test path and always wins. Otherwise, if an
+  // ambient forward executor is installed (the Worker/Fly connector), refuse:
+  // its text-only transport can't carry bytes intact.
+  if (!spawner && runExecutor.getStore()) {
+    throw new Error(
+      'Raw byte retrieval is not available over the hosted connector (its transport is text-only). ' +
+      'Use the text-extraction path instead, or run the local stdio server to fetch bytes.',
+    );
+  }
+  const fullArgs = assembleArgs(args, { account, interactive: false, readonly });
+  return spawnExecutor(fullArgs, { timeout, interactive: false, spawner, binary: true });
 }
