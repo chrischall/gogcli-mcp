@@ -152,8 +152,8 @@ token:
 fly tokens create deploy -a gogcli-gog-runner
 ```
 
-If a token is absent that job warns and passes rather than failing an otherwise
--good release — a missing secret shows up as "not deployed" in the run summary,
+If a token is absent that job warns and passes rather than failing an
+otherwise-good release — a missing secret shows up as "not deployed" in the run summary,
 not as a broken release.
 
 You can also deploy any ref on demand — Actions → **deploy-runner** or
