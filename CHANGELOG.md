@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.2](https://github.com/chrischall/gogcli-mcp/compare/v2.18.1...v2.18.2) (2026-07-27)
+
+
+### Bug Fixes
+
+* harden seed-auth, guard a non-Error throw, extend the OCR timeout ([#211](https://github.com/chrischall/gogcli-mcp/issues/211)) ([9b4d602](https://github.com/chrischall/gogcli-mcp/commit/9b4d6023be78b834110020f5daae3133effad871))
+
 ## [2.18.1](https://github.com/chrischall/gogcli-mcp/compare/v2.18.0...v2.18.1) (2026-07-27)
 
 
