@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.1](https://github.com/chrischall/gogcli-mcp/compare/v2.18.0...v2.18.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* **deps:** require @chrischall/mcp-connector &gt;=1.1.1 ([#207](https://github.com/chrischall/gogcli-mcp/issues/207)) ([5c34ae2](https://github.com/chrischall/gogcli-mcp/commit/5c34ae2991c17c6898c2563195e748c109cf2045))
+
 ## [2.18.0](https://github.com/chrischall/gogcli-mcp/compare/v2.17.0...v2.18.0) (2026-07-27)
 
 
