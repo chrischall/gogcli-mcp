@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.3](https://github.com/chrischall/gogcli-mcp/compare/v2.18.2...v2.18.3) (2026-07-27)
+
+
+### Bug Fixes
+
+* **drive:** name the text fallback when a host won't render the bytes ([#213](https://github.com/chrischall/gogcli-mcp/issues/213)) ([9edfbbb](https://github.com/chrischall/gogcli-mcp/commit/9edfbbbe0efb0b3030166c79272c9fa1d6918b7a))
+
 ## [2.18.2](https://github.com/chrischall/gogcli-mcp/compare/v2.18.1...v2.18.2) (2026-07-27)
 
 
