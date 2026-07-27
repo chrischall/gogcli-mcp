@@ -340,7 +340,10 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
     }
     return redact(output);
   } catch (err) {
-    throw new Error(redact((err as Error).message));
+    // A thrown non-Error would make `.message` undefined and redact() blow up
+    // with a TypeError, masking the real failure. Same instanceof guard the
+    // codebase already uses in errorText() (tools/utils.ts).
+    throw new Error(redact(err instanceof Error ? err.message : String(err)));
   }
 }
 

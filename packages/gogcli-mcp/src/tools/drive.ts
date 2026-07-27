@@ -168,7 +168,9 @@ export function registerDriveTools(server: McpServer): void {
         const copied = JSON.parse(await run(
           ['api', 'call', 'drive', 'v3', 'files.copy', '--allow-write', '--force',
             `--params=${params}`, `--body=${body}`],
-          { account },
+          // OCR on a large scanned PDF routinely outruns the default 30s.
+          // Same precedent as the interactive auth flow in tools/auth.ts.
+          { account, timeout: 300_000 },
         )) as { id?: string; result?: { id?: string } };
         tempDocId = copied.id ?? copied.result?.id;
         if (!tempDocId) throw new Error('OCR conversion did not return a document id');

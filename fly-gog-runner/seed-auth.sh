@@ -30,7 +30,8 @@ CREDS="${CREDS:-$HOME/Library/Application Support/gogcli/credentials.json}"
 [ -f "$CREDS" ] || { echo "!! credentials.json not found at: $CREDS (set CREDS=...)"; exit 1; }
 
 TOK="$(mktemp)"
-trap 'rm -f "$TOK"' EXIT
+CREDS_STAGED=""
+trap 'rm -f "$TOK" "$CREDS_STAGED"' EXIT
 
 echo "0/6  Wake the Machine via HTTP (the Fly edge proxy auto-starts a stopped VM; fly ssh can't reach a stopped one)"
 for i in $(seq 1 6); do
@@ -42,13 +43,23 @@ sleep 3
 echo "1/6  Export the refresh token from the local gog keyring -> temp file"
 gog auth tokens export "$EMAIL" --out "$TOK" --overwrite
 
+# Both files move over sftp rather than as base64 inside a `fly ssh console -C`
+# command string. Anything in that string is process argv on THIS machine, so it
+# is readable by any local user via ps / /proc/<pid>/cmdline for as long as the
+# command runs — a copy of your OAuth client and refresh token, briefly world-
+# readable. sftp keeps the bytes on stdin, where argv never sees them.
+#
+# `put` splits its arguments on whitespace, and the default CREDS path contains
+# spaces ("Application Support"), so stage a space-free copy first.
 echo "2/6  Copy credentials.json (gog's flat OAuth-client file) to the path gog reads under GOG_HOME (/data/data)"
-CREDS_B64="$(base64 < "$CREDS" | tr -d '\n')"
-fly ssh console -a "$APP" -C "/bin/sh -c 'mkdir -p /data/data && echo $CREDS_B64 | base64 -d > /data/data/credentials.json'"
+fly ssh console -a "$APP" -C "/bin/sh -c 'mkdir -p /data/data'"
+CREDS_STAGED="$(mktemp)"
+cp "$CREDS" "$CREDS_STAGED"
+printf 'put %s /data/data/credentials.json\n' "$CREDS_STAGED" | fly sftp shell -a "$APP"
 
 echo "3/6  Push the token and import it into the encrypted file keyring on the volume"
-TOK_B64="$(base64 < "$TOK" | tr -d '\n')"
-fly ssh console -a "$APP" -C "/bin/sh -c 'echo $TOK_B64 | base64 -d > /tmp/tok.json && GOG_HOME=/data GOG_KEYRING_BACKEND=file gog auth tokens import /tmp/tok.json && rm -f /tmp/tok.json'"
+printf 'put %s /tmp/tok.json\n' "$TOK" | fly sftp shell -a "$APP"
+fly ssh console -a "$APP" -C "/bin/sh -c 'GOG_HOME=/data GOG_KEYRING_BACKEND=file gog auth tokens import /tmp/tok.json && rm -f /tmp/tok.json'"
 
 echo "4/6  Fix ownership so the non-root server can read the seeded files"
 fly ssh console -a "$APP" -C "/bin/sh -c 'chown -R app:app /data'"

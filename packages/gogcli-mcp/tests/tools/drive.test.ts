@@ -244,10 +244,13 @@ describe('gog_drive_extract_text', () => {
     const j = JSON.parse(result.content[0].text as string);
     expect(j).toMatchObject({ fileId: 'pdf1', name: 'Guest_Copy.pdf', mimeType: 'application/pdf', extractedVia: 'ocr-convert' });
     expect(j.text).toBe('UTOPIA OF THE SEAS itinerary'); // BOM stripped
+    // The copy is the OCR pass itself and carries an extended timeout: a large
+    // scanned PDF routinely outruns the runner's 30s default, and the whole
+    // conversion is wasted when it does.
     expect(runner.run).toHaveBeenCalledWith(
       ['api', 'call', 'drive', 'v3', 'files.copy', '--allow-write', '--force',
         '--params={"fileId":"pdf1"}', '--body={"name":"gogcli-ocr-pdf1","mimeType":"application/vnd.google-apps.document"}'],
-      { account: undefined },
+      { account: undefined, timeout: 300_000 },
     );
     expect(runner.run).toHaveBeenCalledWith(
       ['api', 'call', 'drive', 'v3', 'files.export', '--params={"fileId":"tmpDoc1","mimeType":"text/plain"}'],
@@ -267,7 +270,7 @@ describe('gog_drive_extract_text', () => {
     expect(runner.run).toHaveBeenCalledWith(
       ['api', 'call', 'drive', 'v3', 'files.copy', '--allow-write', '--force',
         '--params={"fileId":"pdf1","ocrLanguage":"fr"}', '--body={"name":"gogcli-ocr-pdf1","mimeType":"application/vnd.google-apps.document"}'],
-      { account: undefined },
+      { account: undefined, timeout: 300_000 },
     );
     expect(runner.run).toHaveBeenCalledWith(['drive', 'delete', 'tmpDoc2', '--permanent', '--force'], { account: undefined });
   });

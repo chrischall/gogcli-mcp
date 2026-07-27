@@ -202,6 +202,14 @@ describe('run', () => {
       .rejects.toThrow('gog exited with code 2');
   });
 
+  it('surfaces a non-Error throw instead of masking it with a TypeError', async () => {
+    // A custom executor that throws a string used to reach `(err as Error).message`
+    // -> undefined -> redact(undefined) -> TypeError, hiding the real cause.
+    const spawner = vi.fn(() => { throw 'gog binary vanished'; }) as unknown as Spawner;
+    await expect(run(['sheets', 'get', 'x', 'A1'], { spawner }))
+      .rejects.toThrow('gog binary vanished');
+  });
+
   it('rejects on spawn error', async () => {
     const spawner = vi.fn(() => {
       const proc = new EventEmitter() as ReturnType<Spawner>;
