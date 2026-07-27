@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.18.0](https://github.com/chrischall/gogcli-mcp/compare/v2.17.0...v2.18.0) (2026-07-27)
+
+
+### Features
+
+* **drive:** read PDF/file content as text or bytes, not just a webViewLink ([#200](https://github.com/chrischall/gogcli-mcp/issues/200)) ([158687b](https://github.com/chrischall/gogcli-mcp/commit/158687b7460a4275835eed6876d9b51f554e6952))
+
+
+### Bug Fixes
+
+* **auth:** default re-auth to least-privilege per-service scopes ([#196](https://github.com/chrischall/gogcli-mcp/issues/196)) ([775d08d](https://github.com/chrischall/gogcli-mcp/commit/775d08dc1b7929b866c1513f71c74512eeef0b93))
+
 ## [2.17.0](https://github.com/chrischall/gogcli-mcp/compare/v2.16.7...v2.17.0) (2026-07-24)
 
 
