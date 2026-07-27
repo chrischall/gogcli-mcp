@@ -221,14 +221,24 @@ export function registerDriveTools(server: McpServer): void {
       const { name, mimeType } = fileMeta(await run(['drive', 'get', fileId], { account }));
       const params = JSON.stringify({ fileId, alt: 'media' });
       const blob = await runBinary(['api', 'call', 'drive', 'v3', 'files.get', `--params=${params}`], { account });
+      const type = mimeType ?? 'application/octet-stream';
+      // Several hosts (claude.ai among them) render embedded IMAGE resources
+      // and reject every other type outright — "Resources of type
+      // 'application/pdf' are not currently supported". The fetch succeeded and
+      // the bytes are right here, but the caller sees only the text block, so
+      // that text has to carry the way out rather than end on "resource below".
+      const unrenderableHint = type.startsWith('image/')
+        ? ''
+        : ` If your client does not render a ${type} resource, gog_drive_extract_text`
+          + ' returns the same file as text (PDFs included, via OCR).';
       return {
         content: [
-          { type: 'text', text: `${name ?? fileId} (${mimeType ?? 'application/octet-stream'}) — ${Buffer.from(blob, 'base64').length} bytes, base64 resource below.` },
+          { type: 'text', text: `${name ?? fileId} (${type}) — ${Buffer.from(blob, 'base64').length} bytes, base64 resource below.${unrenderableHint}` },
           {
             type: 'resource',
             resource: {
               uri: `gogdrive://${fileId}/${encodeURIComponent(name ?? 'file')}`,
-              mimeType: mimeType ?? 'application/octet-stream',
+              mimeType: type,
               blob,
             },
           },

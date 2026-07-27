@@ -371,6 +371,25 @@ describe('gog_drive_read_bytes', () => {
     );
   });
 
+  it('names the text fallback when the resource type is one hosts refuse to render', async () => {
+    // The bytes arrive fine; some hosts just drop a non-image embedded resource
+    // ("Resources of type 'application/pdf' are not currently supported"), and
+    // then the text block is all the caller gets.
+    vi.mocked(runner.run).mockResolvedValueOnce(JSON.stringify({ file: { name: 'a.pdf', mimeType: 'application/pdf' } }));
+    vi.mocked(runner.runBinary).mockResolvedValueOnce(Buffer.from('%PDF-1.4').toString('base64'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_read_bytes', { fileId: 'f1' });
+    expect(result.content[0].text).toContain('gog_drive_extract_text');
+  });
+
+  it('does not add the fallback hint for an image, which hosts do render', async () => {
+    vi.mocked(runner.run).mockResolvedValueOnce(JSON.stringify({ file: { name: 'a.png', mimeType: 'image/png' } }));
+    vi.mocked(runner.runBinary).mockResolvedValueOnce(Buffer.from('x').toString('base64'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_read_bytes', { fileId: 'f3' });
+    expect(result.content[0].text).not.toContain('gog_drive_extract_text');
+  });
+
   it('falls back to octet-stream and "file" when metadata lacks name/mime', async () => {
     vi.mocked(runner.run).mockResolvedValueOnce('{}');
     vi.mocked(runner.runBinary).mockResolvedValueOnce(Buffer.from('x').toString('base64'));
