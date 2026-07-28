@@ -31,6 +31,12 @@ kill_timeout = "40s"
 
 [env]
   GOG_HOME = "/data"
+  # gog renders message/thread dates in its configured timezone, falling back to
+  # the process's time.Local. This container has no TZ set, so that fallback is
+  # UTC — which silently reported a 10:38 PM Eastern send as 02:38 the NEXT
+  # calendar day. Pin the zone explicitly. IANA name, not a fixed offset, so
+  # Go's tzdata handles DST (-05:00 in January, -04:00 in July).
+  GOG_TIMEZONE = "America/New_York"
   # Force a file-based (encrypted) keyring: the container is headless Linux with
   # no OS keychain, and the token must persist on the volume. Pair with the
   # GOG_KEYRING_PASSWORD secret (`fly secrets set`), which gog uses to

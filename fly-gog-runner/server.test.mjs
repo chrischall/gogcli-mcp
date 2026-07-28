@@ -248,6 +248,7 @@ test('sanitizedEnv strips secrets (incl. our own RUNNER_KEY) but keeps gog confi
     process.env.GOOGLE_APPLICATION_CREDENTIALS = '/creds.json';
     process.env.PORT = '8080';
     process.env.GOG_HOME = '/data';
+    process.env.GOG_TIMEZONE = 'America/New_York';
     process.env.BENIGN_VAR = 'keep-me';
     const env = sanitizedEnv();
     // The box's own bearer secret must never reach a child gog process.
@@ -259,10 +260,14 @@ test('sanitizedEnv strips secrets (incl. our own RUNNER_KEY) but keeps gog confi
     assert.equal(env.PORT, undefined);
     // gog's own config and benign vars survive.
     assert.equal(env.GOG_HOME, '/data');
+    // GOG_TIMEZONE must reach the child: without it gog's time.Local is UTC in
+    // this container, which reports a late-evening Eastern send on the NEXT
+    // calendar day. Guards against an exclusion pattern later eating it.
+    assert.equal(env.GOG_TIMEZONE, 'America/New_York');
     assert.equal(env.BENIGN_VAR, 'keep-me');
     assert.ok('PATH' in env);
   } finally {
-    for (const k of ['RUNNER_KEY', 'GOG_ACCESS_TOKEN', 'GITHUB_TOKEN', 'SOME_SECRET', 'GOOGLE_APPLICATION_CREDENTIALS', 'PORT', 'GOG_HOME', 'BENIGN_VAR']) {
+    for (const k of ['RUNNER_KEY', 'GOG_ACCESS_TOKEN', 'GITHUB_TOKEN', 'SOME_SECRET', 'GOOGLE_APPLICATION_CREDENTIALS', 'PORT', 'GOG_HOME', 'GOG_TIMEZONE', 'BENIGN_VAR']) {
       if (!(k in saved)) delete process.env[k];
       else process.env[k] = saved[k];
     }

@@ -4,6 +4,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
 import { run } from '../runner.js';
 import type { GogArg } from '../runner.js';
+import { normalizeTimestamps } from '../timestamps.js';
 
 // Byte size at or below which a payload stays on the plain inline flag.
 //
@@ -231,7 +232,10 @@ export async function runOrDiagnose(
   options: { account?: string },
 ): Promise<CallToolResult> {
   try {
-    return rawTextResult(await run(args, options));
+    // The single seam every tool's output passes through. Normalizing here —
+    // rather than at each call site — is what makes it impossible for a tool to
+    // emit a naive, zone-less timestamp.
+    return rawTextResult(normalizeTimestamps(await run(args, options)));
   } catch (err) {
     return diagnose(err);
   }
