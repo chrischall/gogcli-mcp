@@ -236,7 +236,7 @@ describe('gog_contacts_other_search', () => {
 describe('gog_people_raw', () => {
   it('calls runOrDiagnose with userId', async () => {
     await harness.callTool('gog_people_raw', { userId: 'people/c123' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'raw', 'people/c123'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'raw', 'people/c123'], { account: undefined, lossless: true });
   });
 
   it('passes --person-fields and --pretty when provided', async () => {
@@ -247,12 +247,12 @@ describe('gog_people_raw', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['people', 'raw', 'people/c123', '--person-fields=names,emailAddresses', '--pretty'],
-      { account: undefined },
+      { account: undefined, lossless: true },
     );
   });
 
   it('omits --pretty when false', async () => {
     await harness.callTool('gog_people_raw', { userId: 'people/c123', pretty: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'raw', 'people/c123'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'raw', 'people/c123'], { account: undefined, lossless: true });
   });
 });

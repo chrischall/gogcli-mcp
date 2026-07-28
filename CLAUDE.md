@@ -72,9 +72,13 @@ Sub-packages import from `gogcli-mcp/src/lib.js` (NOT the published `gogcli-mcp/
 GOG_ACCOUNT=<email>   # default account passed as --account to every gog call (per-tool override available)
 GOG_PATH=<path>       # absolute path to the gog binary; defaults to `gog` on PATH
 GOG_READONLY=1        # block all mutating gog API requests (injects gog's --readonly); set to 0/false/no/off (or unset) to allow writes
+DISPLAY_TZ=<IANA>     # zone for *Display fields and for interpreting naive gog values; defaults to America/New_York
+GOG_TIMEZONE=<IANA>   # zone gog itself formats in; pinned on the Fly runner, keep in sync with DISPLAY_TZ
 ```
 
 `runner.ts` treats unresolved `.mcpb` placeholders (`${user_config.xxx}`) and empty strings as unset — useful for desktop clients that pass blank user-config fields through literally.
+
+Every gog response passes through `normalizeTimestamps` (`src/timestamps.ts`) on the `runOrDiagnose` seam, which rewrites allowlisted timestamp fields to ISO-8601 with an explicit offset and adds a `<field>Display` sibling. Both the key and the value shape must match before anything is rewritten — a name-only match would corrupt spreadsheet cell data. See [`docs/timestamps.md`](docs/timestamps.md).
 
 `GOG_READONLY` is a global kill-switch: when set to any value other than `0`/`false`/`no`/`off`, `runner.ts` adds gog's `--readonly` flag to every call so mutating API requests are refused at runtime. gog has no native env binding for `--readonly`, so the wrapper translates the env var into the flag; callers can also opt in per-call via the `readonly` option on `RunOptions`.
 

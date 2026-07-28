@@ -91,7 +91,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       const args = ['docs', 'raw', docId, '--pretty'];
       if (tab) args.push(`--tab=${tab}`);
       if (allTabs) args.push('--all-tabs');
-      return runOrDiagnose(args, { account });
+      // Verbatim by contract: see the `lossless` note on runOrDiagnose.
+      return runOrDiagnose(args, { account, lossless: true });
     }
     const args = ['docs', 'cat', docId];
     if (tab) args.push(`--tab=${tab}`);
