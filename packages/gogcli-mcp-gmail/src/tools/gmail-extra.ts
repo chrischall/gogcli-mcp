@@ -839,17 +839,19 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_drafts_update', {
-    description: 'Update an existing Gmail draft. For replies, prefer replyToThreadId (threads off the thread\'s latest message) or replyToMessageId (a specific message) over passing a thread id into replyToMessageId. Attachment semantics: supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them; set clearAttachments to remove all.',
+    description: 'Update an existing Gmail draft. For replies, prefer replyToThreadId (threads off the thread\'s latest message) or replyToMessageId (a specific message) over passing a thread id into replyToMessageId. An update preserves the draft\'s existing reply context (In-Reply-To/References) and its threadId; it never invents reply headers for a draft that is not a reply. The result reports the effective inReplyTo/references so you can verify threading without a raw-header fetch. Attachment semantics: supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them; set clearAttachments to remove all.',
     annotations: { destructiveHint: true },
     inputSchema: {
       draftId: z.string().describe('Draft ID'),
       ...draftWriteSchema,
       clearAttachments: z.boolean().optional().describe('Remove all attachments from the draft. By default, omitting attach preserves the draft\'s existing attachments; this intentionally clears them. Ignored if attach is also supplied (attach replaces).'),
+      clearReplyContext: z.boolean().optional().describe('Strip In-Reply-To/References from the draft, turning a reply back into a standalone message while keeping the same draft id and threadId. Use this to repair a mis-threaded draft in place instead of deleting and recreating it. Mutually exclusive with replyToMessageId / replyToThreadId.'),
     },
-  }, async ({ draftId, account, returnFull, clearAttachments, ...flags }) => {
+  }, async ({ draftId, account, returnFull, clearAttachments, clearReplyContext, ...flags }) => {
     const args: GogArg[] = ['gmail', 'drafts', 'update', draftId];
     appendDraftFlags(args, flags);
     if (clearAttachments) args.push('--clear-attachments');
+    if (clearReplyContext) args.push('--clear-reply-context');
     return writeDraft(args, account, returnFull, draftId);
   });
 
