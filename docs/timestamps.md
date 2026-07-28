@@ -41,7 +41,19 @@ name-pattern match alone would rewrite spreadsheet cell data, since gog's
 payloads are full of near-miss keys (`updatedCells`, `updatedRange`,
 `updatedRows`, `formattedValue`, `verificationStatus`).
 
-Non-JSON output passes through untouched, so plain-text errors are unaffected.
+Non-JSON output passes through untouched, so plain-text errors are unaffected. A
+response in which nothing was rewritten is returned byte-for-byte rather than
+re-serialized, so no payload is reflowed gratuitously.
+
+### Lossless tools opt out
+
+`gog_gmail_raw`, `gog_people_raw`, `gog_slides_raw` and `gog_docs_read --format=json`
+dump the upstream API response verbatim and pass `lossless: true` to
+`runOrDiagnose`, which skips normalization entirely. Rewriting them would turn
+the API's own epoch-millis `internalDate` into an ISO string and flatten the
+caller's `--pretty` formatting — so the one tool you reach for when you need
+ground truth would stop telling it. Losslessness wins over presentation there;
+the friendlier views of the same data are normalized as usual.
 
 ### Deliberate non-conversions
 
@@ -75,8 +87,8 @@ allowlisted so the same helper covers the OFW connector's shapes.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `DISPLAY_TZ` | `America/New_York` | IANA zone for all `*Display` fields, and the zone a naive source value is assumed to be wall-clock in. An unrecognised value falls back to the default rather than throwing. |
-| `GOG_TIMEZONE` | `America/New_York` on the Fly runner | The zone **gog itself** formats in. Keep it in sync with `DISPLAY_TZ`: gog emits naive values in its zone, and the wrapper re-attaches the offset using the display zone. |
+| `DISPLAY_TZ` | `America/New_York` | IANA zone for all `*Display` fields. An unrecognised value falls back to the default rather than throwing. |
+| `GOG_TIMEZONE` | `America/New_York` on the Fly runner | The zone **gog itself** formats in — and therefore the zone a naive value is read as. The wrapper reads this var directly rather than assuming it equals `DISPLAY_TZ`, so the two can diverge without silently mis-labelling every naive timestamp. Falls back to `DISPLAY_TZ`. |
 
 Both are IANA names, never fixed offsets — a hardcoded `-04:00` would be an hour
 wrong from November through March. DST comes from the IANA database via `Intl`.

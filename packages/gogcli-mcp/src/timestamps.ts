@@ -39,6 +39,18 @@ export function displayTimeZone(): string {
   return DEFAULT_DISPLAY_TZ;
 }
 
+// The zone a NAIVE source value is wall-clock in — which is whatever zone gog
+// formatted it in, i.e. GOG_TIMEZONE. Reading it directly rather than assuming
+// it equals DISPLAY_TZ removes an invisible "keep these two in sync"
+// requirement: if they ever diverged, every naive value would silently gain the
+// wrong offset and nothing would surface it. Falls back to the display zone,
+// which is the correct guess when gog is running with the same configuration.
+export function naiveSourceTimeZone(): string {
+  const configured = readEnvVar('GOG_TIMEZONE');
+  if (configured && isValidTimeZone(configured)) return configured;
+  return displayTimeZone();
+}
+
 // Offset of `tz` at a given instant, as "+HH:MM"/"-HH:MM". Uses the IANA
 // database via Intl, so DST is handled per-instant rather than per-zone.
 function offsetAt(instant: Date, tz: string): string {
@@ -158,11 +170,27 @@ const ZONE_NAME_KEYS = new Set(['timeZone', 'timezone']);
 
 const RFC3339_WITH_OFFSET = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d{1,9}))?(Z|[+-]\d{2}:?\d{2})$/;
 const NAIVE_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d{1,9}))?$/;
-const EPOCH_MILLIS = /^\d{10,14}$/;
+// Exactly 13 digits: milliseconds. A 10-digit run is epoch SECONDS, and
+// reading one as milliseconds dates it to 1970.
+const EPOCH_MILLIS = /^\d{13}$/;
 
 // A bare YYYY-MM-DD is a DATE, not an instant — Calendar uses it for all-day
 // events. Converting one would invent a time that the source never asserted.
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+// True when the components describe a real calendar instant. Guards against
+// Date.UTC's silent rollover of out-of-range values.
+function isRealCalendarDate(p: {
+  year: number; month: number; day: number; hour: number; minute: number; second: number;
+}): boolean {
+  const utc = new Date(Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second));
+  return utc.getUTCFullYear() === p.year
+    && utc.getUTCMonth() === p.month - 1
+    && utc.getUTCDate() === p.day
+    && utc.getUTCHours() === p.hour
+    && utc.getUTCMinutes() === p.minute
+    && utc.getUTCSeconds() === p.second;
+}
 
 // Resolve a raw field value to an instant, or null when it is not a timestamp.
 // `assumeNaiveIn` is the zone a naive (offset-less) value is wall-clock in.
@@ -190,8 +218,22 @@ export function parseTimestampValue(
   if (naive) {
     const [, y, mo, d, h, mi, s, frac] = naive;
     const ms = frac ? Number(frac.padEnd(3, '0').slice(0, 3)) : 0;
+    const parts = {
+      year: Number(y), month: Number(mo), day: Number(d),
+      hour: Number(h), minute: Number(mi), second: Number(s ?? '0'),
+    };
+    // Date.UTC silently rolls impossible components over — month 99 becomes
+    // 2034, Feb 30 becomes Mar 2 — so a typo would surface as a confident wrong
+    // date rather than a rejection. The RFC3339 branch above already returns
+    // null for the same input; match it.
+    //
+    // Checked in UTC space, deliberately: validating against the ZONE's wall
+    // clock would also reject a non-existent spring-forward time like
+    // 2026-03-08 02:30 ET, and shifting such a value forward (as zone libraries
+    // do) is better than dropping a timestamp we can place to within an hour.
+    if (!isRealCalendarDate(parts)) return null;
     return wallTimeToInstant(
-      Number(y), Number(mo), Number(d), Number(h), Number(mi), Number(s ?? '0'), ms, assumeNaiveIn,
+      parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second, ms, assumeNaiveIn,
     );
   }
   return null;
@@ -205,34 +247,50 @@ export function isNaiveTimestamp(value: unknown): boolean {
 
 // Walk a parsed gog payload, rewriting every allowlisted timestamp to canonical
 // form and attaching its display sibling. Mutates and returns `node`.
-function walk(node: unknown, tz: string): unknown {
+function walk(node: unknown, tz: string, naiveTz: string): boolean {
+  let changed = false;
   if (Array.isArray(node)) {
-    for (const item of node) walk(item, tz);
-    return node;
+    for (const item of node) {
+      if (walk(item, tz, naiveTz)) changed = true;
+    }
+    return changed;
   }
-  if (node === null || typeof node !== 'object') return node;
+  if (node === null || typeof node !== 'object') return false;
 
   const obj = node as Record<string, unknown>;
   for (const key of Object.keys(obj)) {
     const value = obj[key];
     if (value !== null && typeof value === 'object') {
-      walk(value, tz);
+      if (walk(value, tz, naiveTz)) changed = true;
       continue;
     }
     if (ZONE_NAME_KEYS.has(key) || !TIMESTAMP_KEYS.has(key)) continue;
-    const instant = parseTimestampValue(key, value, tz);
+    const instant = parseTimestampValue(key, value, naiveTz);
     if (!instant) continue;
     const { iso, display } = formatInstant(instant, tz);
     obj[key] = iso;
     obj[`${key}Display`] = display;
+    changed = true;
   }
-  return obj;
+  return changed;
+}
+
+// gog's --pretty emits indented JSON. Re-serializing compactly would silently
+// undo a formatting choice the caller explicitly asked for, so mirror whatever
+// indentation the original used.
+function detectIndent(text: string): number {
+  const match = /\n(\s+)\S/.exec(text);
+  return match ? match[1].replace(/\t/g, '  ').length : 0;
 }
 
 // Normalize every timestamp in a gog JSON response. Non-JSON output (plain-text
 // errors, `--plain` results) passes through untouched, as does JSON that is not
 // an object/array, so this can sit on the single response seam safely.
-export function normalizeTimestamps(text: string, tz = displayTimeZone()): string {
+export function normalizeTimestamps(
+  text: string,
+  tz = displayTimeZone(),
+  naiveTz = naiveSourceTimeZone(),
+): string {
   const trimmed = text.trim();
   if (trimmed === '' || !/^[[{]/.test(trimmed)) return text;
   let parsed: unknown;
@@ -243,5 +301,12 @@ export function normalizeTimestamps(text: string, tz = displayTimeZone()): strin
   }
   // The `[`/`{` guard above means anything that parses here is an object or an
   // array, so `walk` always has something to descend into.
-  return JSON.stringify(walk(parsed, tz));
+  //
+  // When nothing was rewritten, return the ORIGINAL text byte-for-byte rather
+  // than a re-serialization. Round-tripping through JSON.parse/stringify is not
+  // lossless — it drops the caller's --pretty formatting and reorders nothing
+  // but reformats everything — and there is no reason to pay that on a response
+  // that carries no timestamps at all.
+  if (!walk(parsed, tz, naiveTz)) return text;
+  return JSON.stringify(parsed, null, detectIndent(text));
 }

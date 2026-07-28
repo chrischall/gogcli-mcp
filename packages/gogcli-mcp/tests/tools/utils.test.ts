@@ -95,6 +95,25 @@ describe('runOrDiagnose', () => {
     expect(result.isError).toBeUndefined();
   });
 
+  // The `*_raw` dumps promise a verbatim copy of the upstream API response.
+  // Normalizing them would rewrite the API's own epoch-millis internalDate into
+  // an ISO string and flatten the caller's --pretty formatting, so the one tool
+  // you reach for when you need ground truth would stop telling it.
+  it('leaves a lossless response byte-for-byte untouched', async () => {
+    const raw = '{\n  "id": "m1",\n  "internalDate": "1785209760000"\n}';
+    vi.mocked(runner.run).mockResolvedValue(raw);
+    const result = await runOrDiagnose(['gmail', 'raw', 'm1'], { lossless: true });
+    expect(result.content[0].text).toBe(raw);
+  });
+
+  it('normalizes timestamps when lossless is not set', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"internalDate":"1785209760000"}');
+    const result = await runOrDiagnose(['gmail', 'messages'], {});
+    const parsed = JSON.parse(result.content[0].text as string);
+    expect(parsed.internalDate).toMatch(/[+-]\d{2}:\d{2}$/);
+    expect(parsed.internalDateDisplay).toBeDefined();
+  });
+
   it('appends auth list on non-auth failure', async () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Doc not found'))

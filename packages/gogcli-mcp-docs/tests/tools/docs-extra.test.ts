@@ -748,7 +748,7 @@ describe('gog_docs_read', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_read', { docId: 'd1', format: 'json' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty'], { account: undefined, lossless: true });
   });
 
   it('passes tab, allTabs, maxBytes in text mode', async () => {
@@ -772,7 +772,7 @@ describe('gog_docs_read', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_read', { docId: 'd1', format: 'json', chips: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty'], { account: undefined, lossless: true });
   });
 });
 
@@ -1576,14 +1576,14 @@ describe('gog_docs_read json tab targeting', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_read', { docId: 'd1', format: 'json', tab: 'T' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty', '--tab=T'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty', '--tab=T'], { account: undefined, lossless: true });
   });
 
   it('passes --all-tabs through to docs raw in json mode', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_read', { docId: 'd1', format: 'json', allTabs: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty', '--all-tabs'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'raw', 'd1', '--pretty', '--all-tabs'], { account: undefined, lossless: true });
   });
 });
 

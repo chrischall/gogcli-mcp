@@ -342,11 +342,11 @@ describe('gog_slides_replace_slide url mode', () => {
 describe('gog_slides_raw', () => {
   it('passes --pretty', async () => {
     await harness.callTool('gog_slides_raw', { presentationId: 'p1', pretty: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'raw', 'p1', '--pretty'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'raw', 'p1', '--pretty'], { account: undefined, lossless: true });
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_raw', { presentationId: 'p1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'raw', 'p1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'raw', 'p1'], { account: undefined, lossless: true });
   });
 });
 

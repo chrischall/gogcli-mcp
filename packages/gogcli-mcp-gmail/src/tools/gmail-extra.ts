@@ -327,7 +327,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     const args = ['gmail', 'raw', messageId];
     if (format) args.push(`--format=${format}`);
     if (pretty) args.push('--pretty');
-    return runOrDiagnose(args, { account });
+    // Verbatim by contract: see the `lossless` note on runOrDiagnose.
+    return runOrDiagnose(args, { account, lossless: true });
   });
 
   server.registerTool('gog_gmail_attachment', {

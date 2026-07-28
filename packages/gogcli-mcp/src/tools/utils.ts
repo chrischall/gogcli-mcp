@@ -229,13 +229,21 @@ export async function diagnose(err: unknown): Promise<CallToolResult> {
 
 export async function runOrDiagnose(
   args: GogArg[],
-  options: { account?: string },
+  options: { account?: string; lossless?: boolean },
 ): Promise<CallToolResult> {
   try {
     // The single seam every tool's output passes through. Normalizing here —
     // rather than at each call site — is what makes it impossible for a tool to
     // emit a naive, zone-less timestamp.
-    return rawTextResult(normalizeTimestamps(await run(args, options)));
+    //
+    // `lossless` opts a tool out. The `*_raw` dumps promise a verbatim copy of
+    // the upstream API response: normalizing them would rewrite the API's own
+    // epoch-millis `internalDate` into an ISO string and flatten the caller's
+    // `--pretty` formatting, so the one tool you reach for when you need ground
+    // truth would stop telling it. Losslessness wins over presentation there —
+    // the friendlier views of the same data are already normalized.
+    const raw = await run(args, options);
+    return rawTextResult(options.lossless ? raw : normalizeTimestamps(raw));
   } catch (err) {
     return diagnose(err);
   }

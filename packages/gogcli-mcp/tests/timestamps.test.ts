@@ -4,6 +4,7 @@ import {
   displayTimeZone,
   formatInstant,
   isNaiveTimestamp,
+  naiveSourceTimeZone,
   normalizeTimestamps,
   parseTimestampValue,
 } from '../src/timestamps.js';
@@ -236,7 +237,7 @@ describe('normalizeTimestamps', () => {
   // wall time needs no correction at all.
   it('renders UTC as +00:00 with no drift correction', () => {
     const out = JSON.parse(normalizeTimestamps(
-      JSON.stringify({ date: '2026-07-28 03:36' }), 'UTC',
+      JSON.stringify({ date: '2026-07-28 03:36' }), 'UTC', 'UTC',
     ));
     expect(out.date).toBe('2026-07-28T03:36:00+00:00');
     expect(out.dateDisplay).toContain('Jul 28');
@@ -244,7 +245,7 @@ describe('normalizeTimestamps', () => {
 
   it('preserves sub-second precision on a naive value', () => {
     const out = JSON.parse(normalizeTimestamps(
-      JSON.stringify({ fetchedBodyAt: '2026-07-28T12:11:19.106' }), 'UTC',
+      JSON.stringify({ fetchedBodyAt: '2026-07-28T12:11:19.106' }), 'UTC', 'UTC',
     ));
     expect(out.fetchedBodyAt).toBe('2026-07-28T12:11:19.106+00:00');
   });
@@ -260,6 +261,50 @@ describe('normalizeTimestamps', () => {
     const payload = { date: 'sometime last week', updated: '' };
     const out = JSON.parse(normalizeTimestamps(JSON.stringify(payload), ET));
     expect(out).toEqual(payload);
+  });
+
+  // Re-serializing a response that carries no timestamps would silently reflow
+  // it — including flattening a caller's --pretty formatting.
+  it('returns the original text byte-for-byte when nothing was rewritten', () => {
+    const pretty = '{\n  "id": "m1",\n  "subject": "S"\n}';
+    expect(normalizeTimestamps(pretty, ET)).toBe(pretty);
+  });
+
+  it('preserves the caller’s pretty indentation when it does rewrite', () => {
+    const pretty = '{\n  "id": "m1",\n  "date": "2026-07-27 23:36"\n}';
+    const out = normalizeTimestamps(pretty, ET);
+    expect(out).toContain('\n  "date"');
+    expect(JSON.parse(out).date).toBe('2026-07-27T23:36:00-04:00');
+  });
+
+  // Date.UTC rolls impossible components over instead of rejecting them, so a
+  // typo would surface as a confident wrong date.
+  it('rejects impossible naive dates rather than rolling them over', () => {
+    for (const bad of ['2026-13-05T10:00:00', '2026-02-30T10:00:00', '2026-01-01T25:00:00']) {
+      expect(parseTimestampValue('date', bad, ET)).toBeNull();
+    }
+  });
+
+  // 10 digits is epoch SECONDS; reading it as milliseconds dates it to 1970.
+  it('only treats a 13-digit internalDate as epoch milliseconds', () => {
+    expect(parseTimestampValue('internalDate', '1785209760', ET)).toBeNull();
+    expect(parseTimestampValue('internalDate', '1785209760000', ET)).not.toBeNull();
+  });
+
+  it('reads the naive-source zone from GOG_TIMEZONE, independent of DISPLAY_TZ', () => {
+    vi.stubEnv('GOG_TIMEZONE', 'UTC');
+    vi.stubEnv('DISPLAY_TZ', 'America/New_York');
+    // gog formatted this in UTC; it must be read as UTC and displayed in ET.
+    const out = JSON.parse(normalizeTimestamps(JSON.stringify({ date: '2026-07-28 03:36' })));
+    expect(out.date).toBe('2026-07-27T23:36:00-04:00');
+    expect(out.dateDisplay).toContain('Jul 27');
+  });
+
+  it('naiveSourceTimeZone falls back to the display zone', () => {
+    vi.stubEnv('DISPLAY_TZ', 'America/Los_Angeles');
+    expect(naiveSourceTimeZone()).toBe('America/Los_Angeles');
+    vi.stubEnv('GOG_TIMEZONE', 'Mars/Olympus_Mons');
+    expect(naiveSourceTimeZone()).toBe('America/Los_Angeles');
   });
 
   it('handles a DST spring-forward wall time without drifting a day', () => {
