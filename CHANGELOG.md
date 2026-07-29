@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.4](https://github.com/chrischall/gogcli-mcp/compare/v2.18.3...v2.18.4) (2026-07-28)
+
+
+### Bug Fixes
+
+* emit every timestamp with an explicit offset and a display value ([#216](https://github.com/chrischall/gogcli-mcp/issues/216)) ([a33d8ad](https://github.com/chrischall/gogcli-mcp/commit/a33d8ad28ff7011b601c9832a2045a7868137760)), closes [#217](https://github.com/chrischall/gogcli-mcp/issues/217)
+
 ## [2.18.3](https://github.com/chrischall/gogcli-mcp/compare/v2.18.2...v2.18.3) (2026-07-27)
 
 
