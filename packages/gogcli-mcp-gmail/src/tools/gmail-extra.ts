@@ -845,7 +845,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       draftId: z.string().describe('Draft ID'),
       ...draftWriteSchema,
       clearAttachments: z.boolean().optional().describe('Remove all attachments from the draft. By default, omitting attach preserves the draft\'s existing attachments; this intentionally clears them. Ignored if attach is also supplied (attach replaces).'),
-      clearReplyContext: z.boolean().optional().describe('Strip In-Reply-To/References from the draft, turning a reply back into a standalone message while keeping the same draft id and threadId. Use this to repair a mis-threaded draft in place instead of deleting and recreating it. Mutually exclusive with replyToMessageId / replyToThreadId.'),
+      clearReplyContext: z.boolean().optional().describe('Strip In-Reply-To/References from the draft, turning a reply back into a standalone message while keeping the same draft id and threadId. Use this to repair a mis-threaded draft in place instead of deleting and recreating it. Mutually exclusive with replyToMessageId, replyToThreadId and quote — gog rejects the call if any of them is combined with this.'),
     },
   }, async ({ draftId, account, returnFull, clearAttachments, clearReplyContext, ...flags }) => {
     const args: GogArg[] = ['gmail', 'drafts', 'update', draftId];
