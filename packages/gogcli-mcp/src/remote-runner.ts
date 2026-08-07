@@ -1,3 +1,4 @@
+import { readEnvVar } from '@chrischall/mcp-utils';
 import { runExecutor } from './runner.js';
 import { makeFlyExecutor } from './connector-runtime.js';
 
@@ -32,14 +33,12 @@ import { makeFlyExecutor } from './connector-runtime.js';
  * Call before the server starts, so no tool can be serviced ahead of it.
  */
 export function useRemoteGogRunner(env: NodeJS.ProcessEnv = process.env): boolean {
-  // Read directly and trim: an MCP host that passes an unexpanded `${...}`
-  // placeholder or a blank string should read as "not configured", not as a URL.
-  const clean = (v: string | undefined): string | undefined => {
-    const t = (v ?? '').trim();
-    return !t || t.startsWith('${') ? undefined : t;
-  };
-  const endpoint = clean(env.GOG_RUNNER_URL);
-  const key = clean(env.GOG_RUNNER_KEY);
+  // The shared reader, not a local trim: it already treats blanks, unexpanded
+  // `${...}` placeholders AND the literal strings "undefined"/"null" as unset.
+  // Those last two are what a hand-rolled check misses, and they arrive whenever
+  // a host stringifies a missing value into an env block.
+  const endpoint = readEnvVar('GOG_RUNNER_URL', { env });
+  const key = readEnvVar('GOG_RUNNER_KEY', { env });
   // Both or neither. A URL with no key would send unauthenticated requests the
   // runner rejects, and a key with no URL is a credential configured for
   // nothing — either alone is a misconfiguration, and silently spawning

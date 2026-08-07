@@ -74,7 +74,16 @@ GOG_PATH=<path>       # absolute path to the gog binary; defaults to `gog` on PA
 GOG_READONLY=1        # block all mutating gog API requests (injects gog's --readonly); set to 0/false/no/off (or unset) to allow writes
 DISPLAY_TZ=<IANA>     # zone for *Display fields and for interpreting naive gog values; defaults to America/New_York
 GOG_TIMEZONE=<IANA>   # zone gog itself formats in; pinned on the Fly runner, keep in sync with DISPLAY_TZ
+GOG_RUNNER_URL=<url>  # run gog on the Fly backend instead of spawning the binary (remote-runner.ts)
+GOG_RUNNER_KEY=<key>  # bearer for that backend; BOTH or neither — either alone is refused, not silently spawned
 ```
+
+`GOG_RUNNER_URL` + `GOG_RUNNER_KEY` are what let a host with no `gog` binary
+serve at all — notably mcp-host, whose runner image is Node + git + tar and
+nothing else. Set them and `useRemoteGogRunner()` installs the same executor the
+Cloudflare connector uses, forwarding arg-arrays to `<runner>/run`; leave either
+unset and nothing changes. `GOG_PATH` is then irrelevant, since nothing is
+spawned.
 
 `runner.ts` treats unresolved `.mcpb` placeholders (`${user_config.xxx}`) and empty strings as unset — useful for desktop clients that pass blank user-config fields through literally.
 

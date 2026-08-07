@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import { runMcp } from '@chrischall/mcp-utils';
-import { VERSION, authToolsFor, registerDriveTools } from '../../gogcli-mcp/src/lib.js';
+import { VERSION, authToolsFor, registerDriveTools, useRemoteGogRunner } from '../../gogcli-mcp/src/lib.js';
 import { registerExtraDriveTools } from './tools/drive-extra.js';
-import { useRemoteGogRunner } from '../../gogcli-mcp/src/remote-runner.js';
 
 
 // Execute `gog` on the Fly backend when the host points us at one; without

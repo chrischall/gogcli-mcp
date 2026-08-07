@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import { runMcp } from '@chrischall/mcp-utils';
-import { VERSION, authToolsFor, registerGmailTools } from '../../gogcli-mcp/src/lib.js';
+import { VERSION, authToolsFor, registerGmailTools, useRemoteGogRunner } from '../../gogcli-mcp/src/lib.js';
 import { registerExtraGmailTools } from './tools/gmail-extra.js';
-import { useRemoteGogRunner } from '../../gogcli-mcp/src/remote-runner.js';
 
 
 // Execute `gog` on the Fly backend when the host points us at one; without

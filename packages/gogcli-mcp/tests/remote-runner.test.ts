@@ -18,11 +18,16 @@ describe('useRemoteGogRunner', () => {
     expect(useRemoteGogRunner({ GOG_RUNNER_KEY: 'k' })).toBe(false);
   });
 
-  it('treats blank and unexpanded placeholders as unset', () => {
-    // MCP hosts pass env blocks through verbatim; `${GOG_RUNNER_KEY}` arriving
-    // literally must not be mistaken for a credential.
+  it('treats blanks, placeholders and stringified nothings as unset', () => {
+    // MCP hosts pass env blocks through verbatim, so all three of these arrive
+    // in practice: a blank, a literal `${...}` that never expanded, and the
+    // string "undefined" from a host that stringified a missing value. The
+    // shared readEnvVar knows all three; a hand-rolled trim knew only the first
+    // two, which is why this uses the shared one.
     expect(useRemoteGogRunner({ GOG_RUNNER_URL: '  ', GOG_RUNNER_KEY: 'k' })).toBe(false);
     expect(useRemoteGogRunner({ GOG_RUNNER_URL: 'https://r.test', GOG_RUNNER_KEY: '${GOG_RUNNER_KEY}' })).toBe(false);
+    expect(useRemoteGogRunner({ GOG_RUNNER_URL: 'https://r.test', GOG_RUNNER_KEY: 'undefined' })).toBe(false);
+    expect(useRemoteGogRunner({ GOG_RUNNER_URL: 'null', GOG_RUNNER_KEY: 'k' })).toBe(false);
   });
 
   it('installs an executor that survives into a LATER async callback', async () => {
@@ -39,7 +44,7 @@ describe('useRemoteGogRunner', () => {
     const store = runExecutor.getStore();
     expect(store?.executor).toBeTypeOf('function');
 
-    await store!.executor([['--version']] as never, {});
+    await store!.executor(['--version'], {});
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     // Trailing slash trimmed, so the endpoint is never `…//run`.
     expect(url).toBe('https://r.test/run');
