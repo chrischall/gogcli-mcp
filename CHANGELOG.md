@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.19.1](https://github.com/chrischall/gogcli-mcp/compare/v2.19.0...v2.19.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **runner:** wire the remote gog executor into every package bin ([#231](https://github.com/chrischall/gogcli-mcp/issues/231)) ([56dbb19](https://github.com/chrischall/gogcli-mcp/commit/56dbb19418b8c6e1ff08528779e2b90d136b0ccc))
+
 ## [2.19.0](https://github.com/chrischall/gogcli-mcp/compare/v2.18.4...v2.19.0) (2026-08-07)
 
 
