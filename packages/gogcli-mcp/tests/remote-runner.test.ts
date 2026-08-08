@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { useRemoteGogRunner } from '../src/remote-runner.js';
 import { runExecutor } from '../src/runner.js';
@@ -49,5 +52,39 @@ describe('useRemoteGogRunner', () => {
     // Trailing slash trimmed, so the endpoint is never `…//run`.
     expect(url).toBe('https://r.test/run');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer secret');
+  });
+});
+
+/**
+ * The seam is opt-in PER BIN — `useRemoteGogRunner()` is a call in each
+ * package's `index.ts`, and a package that omits it spawns the binary no
+ * matter what the host sets. That shipped: 2.19.0 wired base, sheets, docs,
+ * drive and gmail, and left calendar, classroom, contacts and slides behind,
+ * so those four answered every tool call on mcp-host with "gog executable not
+ * found" — a host with no binary and no way to ask for the backend.
+ *
+ * Nothing caught it because each package's suite covers its TOOLS, and
+ * `src/index.ts` is excluded from the coverage gate in every package (it is
+ * the bin: it boots a server and cannot be imported under test). So this
+ * asserts on the source text instead, across the whole workspace — the one
+ * check that scales to the next sub-package, which will otherwise be added by
+ * copying an index.ts that predates the seam.
+ */
+describe('every package bin', () => {
+  const packagesDir = fileURLToPath(new URL('../../', import.meta.url));
+  const bins = readdirSync(packagesDir)
+    .filter((name) => name.startsWith('gogcli-mcp'))
+    .map((name) => [name, join(packagesDir, name, 'src', 'index.ts')] as const);
+
+  it('finds every package (guards the glob itself against silently matching nothing)', () => {
+    expect(bins.length).toBeGreaterThanOrEqual(9);
+  });
+
+  it.each(bins)('%s installs the remote executor before starting the server', (_name, path) => {
+    const source = readFileSync(path, 'utf8');
+    expect(source).toContain('useRemoteGogRunner()');
+    // Order matters as much as presence: `runMcp` starts serving, so a call
+    // placed after it could be beaten by a tool call and fall back to spawning.
+    expect(source.indexOf('useRemoteGogRunner()')).toBeLessThan(source.indexOf('runMcp({'));
   });
 });
