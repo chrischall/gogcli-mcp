@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.19.0](https://github.com/chrischall/gogcli-mcp/compare/v2.18.4...v2.19.0) (2026-08-07)
+
+
+### Features
+
+* **runner:** let a stdio server run gog on the Fly backend ([#225](https://github.com/chrischall/gogcli-mcp/issues/225)) ([16f7f1b](https://github.com/chrischall/gogcli-mcp/commit/16f7f1b217abc74809e6c992dde7f430b654d55a))
+
+
+### Refactor
+
+* **runner:** use the shared env reader, and reach it through the barrel ([#228](https://github.com/chrischall/gogcli-mcp/issues/228)) ([dcd93ed](https://github.com/chrischall/gogcli-mcp/commit/dcd93ed5824372c29c385ad328462bf8c328b601))
+
 ## [2.18.4](https://github.com/chrischall/gogcli-mcp/compare/v2.18.3...v2.18.4) (2026-07-28)
 
 
