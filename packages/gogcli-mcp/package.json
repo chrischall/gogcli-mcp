@@ -41,8 +41,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@chrischall/mcp-utils": "^0.13.3",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@chrischall/mcp-utils": "^0.14.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
