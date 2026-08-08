@@ -932,6 +932,40 @@ describe('gog_gmail_drafts_update', () => {
     );
   });
 
+  it('passes --clear-reply-context when clearReplyContext is true', async () => {
+    await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', clearReplyContext: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'update', 'd1', '--subject=S', '--body=B', '--clear-reply-context'],
+      { account: undefined },
+    );
+  });
+
+  // A plain update carries no reply flags at all: gog preserves the draft's own
+  // reply context and threadId. Passing a reply target here would re-anchor the
+  // draft, so the wrapper must stay silent when the caller says nothing.
+  it('sends no reply or thread flags when no reply target is supplied', async () => {
+    await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B',
+    });
+    const args = vi.mocked(lib.runOrDiagnose).mock.calls[0]?.[0] as string[];
+    expect(args.some((a) => a.startsWith('--reply-to-message-id'))).toBe(false);
+    expect(args.some((a) => a.startsWith('--thread-id'))).toBe(false);
+    expect(args).not.toContain('--clear-reply-context');
+  });
+
+  it('combines clearAttachments and clearReplyContext', async () => {
+    await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', clearAttachments: true, clearReplyContext: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'update', 'd1', '--subject=S', '--body=B',
+        '--clear-attachments', '--clear-reply-context'],
+      { account: undefined },
+    );
+  });
+
   it('returnFull re-fetches the draft by its known id', async () => {
     vi.mocked(lib.runOrDiagnose)
       .mockResolvedValueOnce(rawTextResult('{"draftId":"d1"}'))
