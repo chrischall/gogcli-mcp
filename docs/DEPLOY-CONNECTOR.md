@@ -195,8 +195,24 @@ npm run worker:test                # Worker-specific suite (Miniflare / real Wor
 3. Claude opens the connector's login page (served by the Worker at
    `/authorize`) and prompts for a **gogcli connector key**. Enter the same
    `RUNNER_KEY` you set on the Fly backend in step 1. The key is verified against
-   the backend's `/health` endpoint before the session is created — an invalid
-   key is rejected on the login page.
+   the backend's `/health` endpoint before the session is created.
+
+**If the login page shows an error, read which of the two it is** — they are not
+the same problem and only one of them is about your key:
+
+| What the login page says | What it means | What to do |
+| --- | --- | --- |
+| `Invalid connector key (backend rejected it)` | The runner received the key, compared it to its own `RUNNER_KEY`, and refused it (HTTP 401/403). | Get the right key — `fly secrets list` will tell you whether `RUNNER_KEY` is the one you think it is. |
+| `…did not answer the key check…` / `…could not reach the gog backend…` | The runner never answered, so **your key was never checked**. | Wait a few seconds and press the button again. The Worker already retried once for you. |
+
+The second row is not hypothetical: the runner answers `503 {"retryable":true}`
+to every request from the moment a shutdown signal lands until it finishes
+draining — i.e. for the whole of **every deploy** — and Fly's proxy answers 502
+while a stopped Machine boots. Both used to be reported as "Invalid connector
+key", which is why a connector can end up stuck showing only `authenticate` and
+`complete_authentication`: the user was told, wrongly, that they had the wrong
+key, and reasonably stopped. If you find a connector in that state, re-add it —
+there is nothing to repair on the backend.
 
 This connector is unlisted: it only shows up for people you've explicitly shared
 the URL with. Anyone with the URL who supplies a valid connector key can drive
@@ -249,17 +265,103 @@ land in the MCP host's server log.
 | `token.mint-failed` | The exchange failed for something other than a dead grant (Google 5xx, unreachable). |
 | `replay.attempted` / `.succeeded` / `.failed` | The one automatic replay after Google refused an access token. A `.succeeded` is a failure the caller never saw. A `.failed` is followed by a second `token.evicted` **only when Google refused the replay's token too**; if the replay died in transport (a drain 503, a client-side timeout) nothing is evicted, because Google never saw that token and it is unproven rather than refused. |
 | `replay.declined` | Google refused the token but the call was not replayable; `reason` says which rule refused. **Four of the six rules are reached after the eviction**, with the rejected token already dropped — a write (not a known read-only subcommand), a token that was already superseded, a deadline with too little left to retry, and a source that produced no token once the eviction had happened. The eviction is the repair; the replay is only the convenience on top of it. The remaining **two are refused before the eviction** and correctly so — no access token was supplied with the call, and the token source cannot mint a replacement — because in neither case is there a cached token of ours to drop. |
+| `connect.google-ok` | Connect time: the Google layer was measured live (the runner ran `gog auth list --check`) and every stored account refreshed successfully. |
+| `connect.google-unhealthy` | Connect time: the probe reached a verdict about the credential and the verdict is bad — Google **refused** it, or there is no account on the volume at all. Emitted only when the runner asserts `measured:true`. The user was connected anyway — see below. `reason` carries the runner's classification, e.g. `invalid_grant`. |
+| `connect.google-unmeasured` | Connect time: nothing was learned about the credential — the runner is older than `GET /health/google` (HTTP 404), was draining, the probe timed out, `gog` could not be run at all, its output could not be parsed, or it declined to state validity (`measured:false`) — or it answered without stating `measured` at all, in which case nothing is read out of its `ok` either. **This is a fact about the probe, not about the credential**; it is never reported as ill health. |
+| `refusal.google-ok` | **The one record that means "we cannot explain this."** Google refused a real hosted call, and a live check of the same credential taken seconds later succeeded — so neither a dead grant nor the 7-day cliff accounts for it. Emitted at `error` level because it is the only evidence that could ever justify building automatic recovery on the hosted path; its continued absence is what retires that idea. |
+| `refusal.google-unhealthy` | Google refused a hosted call and the live check **reached a verdict** that agrees the credential is refused (`measured:true`). `reason` carries the runner's classification (e.g. `invalid_grant`). This is the expected shape of the weekly Testing-mode expiry, and the user must re-authorize. |
+| `refusal.google-unmeasured` | Google refused a hosted call and the live check reached no verdict — the runner predates `GET /health/google` (HTTP 404), the probe was throttled (at most one per minute per session), too little of the call's deadline remained, or the runner answered `measured:false` (it timed out, `gog` could not be run, the output could not be parsed) or did not state `measured` at all. **A fact about the probe, not about the credential.** |
+
+Read `measured` before `ok`, always. The runner reports **both**, because "is the
+Google layer healthy" and "did anything find out" are independent questions and
+only the pair can be read honestly: a probe that timed out or could not be run is
+`ok:false`, and filing that as `-unhealthy` would tell an operator the refresh
+token was dead on evidence nobody gathered. The connector reads the two through
+one shared function (`src/google-probe.ts`) precisely because the two call sites
+previously made this judgement separately. Anything ambiguous — including a
+runner that does not state `measured` — resolves to `-unmeasured`, which
+under-claims and loses nothing, since the runner's own cause string rides on the
+same log line.
 
 Credentials cannot appear in these lines. A credential is named only by
 `credential`, a 12-hex-character slice of the SHA-256 that already keys the
 token cache, and the whole serialized record is passed through the same
 `redactSecrets` that guards every error returned to a client.
 
+One deployment shape silences the `-ok` readings entirely: a Fly volume holding a **service account
+alongside** an OAuth account. gogcli cannot check a service account (it has no refresh token), so it
+stamps that entry `valid:true, error:"service account (not checked)"`, and the runner's `ok` is an
+AND across accounts — the volume answers `ok:false, measured:false` forever. Every reading there is
+`-unmeasured`, so `connect.google-ok` and `refusal.google-ok` are unreachable, and the absence of
+the unexplained-refusal record on such a box means nothing at all. See the mixed-volume paragraph in
+`fly-gog-runner/README.md`. The single-identity volumes this connector actually runs on are
+unaffected.
+
 Note which events a **hosted** connector can actually produce. `worker.ts` builds
 its executor without a per-caller token source, so `gog` runs as the Fly volume's
 own identity: the `token.*` events belong to the stdio/`useRemoteGogRunner` path,
-and the hosted Worker emits `runner.auth-failed` plus, on a Google 401,
-`replay.declined` with `no access token was supplied`.
+and the hosted Worker emits `runner.auth-failed` plus, on a Google 401, a
+`refusal.google-*` reading followed by `replay.declined` with `no access token
+was supplied`. It also emits exactly one `connect.google-*` line per successful
+login, from `connector-auth.ts`.
+
+### Why a hosted Google 401 is measured rather than retried
+
+The instinct on reading "the hosted path has no automatic recovery" is to build
+one. It should not be built. `gog` is spawned fresh for every `POST /run` and
+re-reads the keyring each time, so there is no cross-spawn in-memory token that
+could go stale — a Google 401 here means the **stored** credential was refused,
+and no retry can repair that. (The stdio/`useRemoteGogRunner` path is different:
+there a token source holds a cached access token, which is exactly what the
+`token.evicted` / `replay.*` machinery exists for.)
+
+What was missing was never a retry. It was an answer to the question nobody
+could answer after the incident: *at the moment Google refused that call, was the
+refresh token on the volume alive or dead?* `replay.declined` records only that
+**we** did nothing. So the hosted path now takes one live reading — the same
+`GET /health/google` probe the connect path uses — and writes down what it heard,
+immediately before the decision record. Read as a pair, the two lines say "here
+is what Google said, and here is why we did nothing about it".
+
+The reading is deliberately cheap and deliberately powerless:
+
+- It runs **only** when Google refused a call that carried no token of ours, i.e.
+  the hosted shape. A runner transport 401 and an ordinary `gog` failure are
+  never probed — asking Google about a failure Google never saw would re-create,
+  one layer down in the log, the misattribution 2.21.1 removed from the user's
+  screen.
+- It is **skipped when `gog` already said `invalid_grant`** (that path logs
+  `grant.dead`). Spending a Google API call to be told what gog just said would
+  cost the most on the single most common failure and learn nothing.
+- It is **throttled to one per minute per session** and bounded by whatever is
+  left of the tool call's own deadline. `/health/google` spawns a real `gog auth
+  list --check`, which costs a Google API call and takes the keyring's exclusive
+  `flock` — `auth list` → `store.ListTokens()` → `withWriteLock` →
+  `unix.LOCK_EX`, in gogcli v0.34.1, the tag the Dockerfile pins; a model
+  retrying a refused call must not turn one diagnostic into a queue of them on
+  the box that is already failing.
+- It **never changes what the caller sees**, never throws, and never decides
+  anything. The error the tool returns is byte-identical with the probe present
+  or absent.
+
+### Why a `connect.google-unhealthy` login still succeeds
+
+Because the tools that repair a dead Google credential — `gog_auth_add_url` and
+`gog_auth_add_complete` — are MCP tools, and MCP tools are reachable only once
+the connector is connected. Refusing the login on a dead Google grant would lock
+the user out of the only path that fixes it. The probe exists so that status
+never claims health nobody measured, **not** so that a bad measurement can refuse
+a connection.
+
+Two limits worth knowing before you read these lines as a live status:
+
+- They are written on the **connect** path only. claude.ai's later "refreshed" is
+  an OAuth exchange inside `OAUTH_KV` and reaches neither Fly nor Google —
+  `ConnectorAuth` exposes only a `login` hook, so there is nowhere to run a probe
+  from. A `connect.google-ok` from last Tuesday says nothing about today.
+- They describe the credential on the **Fly volume**, which every connector for
+  that machine shares. A `connect.google-unhealthy` on `gog_docs` is not a
+  docs-specific fault.
 
 ## Rotation / teardown
 

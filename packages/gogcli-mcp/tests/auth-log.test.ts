@@ -129,6 +129,20 @@ describe('logAuthTransition', () => {
     expect(log.emitted.map((e) => e.method)).toEqual(['warn', 'error']);
   });
 
+  it('separates a MEASURED dead Google layer from one nobody could measure', () => {
+    // The connect-time probe has three honest answers, and conflating the last
+    // two is exactly the defect it exists to remove: "I asked Google and it said
+    // no" is a failure, while "I could not ask" is not evidence of anything.
+    const log = captureLog();
+    logAuthTransition('connect.google-ok', { endpoint: 'https://runner.example' });
+    logAuthTransition('connect.google-unhealthy', { endpoint: 'https://runner.example', reason: 'invalid_grant' });
+    logAuthTransition('connect.google-unmeasured', { endpoint: 'https://runner.example', reason: 'HTTP 404' });
+
+    expect(log.events()).toEqual(['connect.google-ok', 'connect.google-unhealthy', 'connect.google-unmeasured']);
+    expect(log.emitted.map((e) => e.method)).toEqual(['warn', 'error', 'warn']);
+    expect(log.toStdout).toEqual([]);
+  });
+
   it('omits absent context rather than writing nulls', () => {
     const log = captureLog();
     logAuthTransition('token.evicted', { credential: 'abc' });
@@ -370,8 +384,16 @@ describe('connector-runtime records the transitions the runner path authors', ()
       vi.stubGlobal('fetch', vi.fn(async () => gogFailed(stderr)));
       const log = captureLog();
       await expect(invoke()).rejects.toThrow();
-      expect(log.emitted, name).toHaveLength(1);
-      const [record] = log.records();
+      // The 'no token' case — the HOSTED shape — now writes a second record
+      // BEFORE its decision: the live reading of the Google layer this branch
+      // added, which here reports `refusal.google-unmeasured` because the stub
+      // answers /health/google with the same non-2xx it answers /run with. The
+      // decision is still the LAST word in every case, which is what this test
+      // is about.
+      const records = log.records();
+      expect(records.length, name).toBe(name === 'no token' ? 2 : 1);
+      if (name === 'no token') expect(records[0].event).toBe('refusal.google-unmeasured');
+      const record = records[records.length - 1];
       expect(record.event, name).toBe(name === 'invalid_grant' ? 'grant.dead' : 'replay.declined');
       expect(record.reason as string, name).toMatch(expected);
     }

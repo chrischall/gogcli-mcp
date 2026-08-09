@@ -69,6 +69,20 @@ describe('gog_auth_status', () => {
     const result = await harness.callTool('gog_auth_status', {});
     expect(result.content[0].text).toBe('Error: Status failed');
   });
+
+  it('does not present itself as a health check', async () => {
+    // `gog auth status` prints the keyring backend and where the credential
+    // files live. It contacts nothing. Named "status" next to a connector whose
+    // UI says "connected", it reads as the answer to "is my auth OK?" — which is
+    // the question only gog_auth_health can answer.
+    const harness = await setupHandlers();
+    const { tools } = await harness.client.listTools();
+    const desc = tools.find((t) => t.name === 'gog_auth_status')!.description!;
+
+    expect(desc).toMatch(/does not contact Google/i);
+    expect(desc).toContain('gog_auth_health');
+    await harness.close();
+  });
 });
 
 describe('gog_auth_services', () => {
@@ -127,6 +141,20 @@ describe('gog_auth_add', () => {
 });
 
 describe('gog_auth_health', () => {
+  it('names itself as the only live measurement of the Google layer', async () => {
+    // DEFECT 1's wording half: the hosted connector's "connected" / "refreshed"
+    // is an OAuth refresh inside OAUTH_KV that contacts neither Fly nor Google.
+    // Nothing in this repo can change that word, so the tool that DOES measure
+    // has to say that it is the one that does.
+    const harness = await setupHandlers();
+    const { tools } = await harness.client.listTools();
+    const desc = tools.find((t) => t.name === 'gog_auth_health')!.description!;
+
+    expect(desc).toMatch(/connected|refreshed/i);
+    expect(desc).toMatch(/only|nothing else/i);
+    await harness.close();
+  });
+
   const CHECK_JSON = JSON.stringify({
     accounts: [
       { email: 'chris.c.hall@gmail.com', created_at: '2026-07-17T15:08:39Z', valid: true },

@@ -16,7 +16,7 @@ import { registerExtraGmailTools } from '../../gogcli-mcp-gmail/src/tools/gmail-
 import { registerExtraDriveTools } from '../../gogcli-mcp-drive/src/tools/drive-extra.js';
 import { registerExtraDocsTools } from '../../gogcli-mcp-docs/src/tools/docs-extra.js';
 import { makeFlyExecutor, wrapServer } from './connector-runtime.js';
-import { gogAuth, type GogProps } from './connector-auth.js';
+import { gogAuth, CONNECTOR_INSTRUCTIONS, type GogProps } from './connector-auth.js';
 
 // The Cloudflare remote-connector entrypoint for gogcli-mcp.
 //
@@ -46,7 +46,14 @@ const VERSION = '2.21.1'; // x-release-please-version
 // `agents` runtime; the node-testable helpers stay in connector-runtime.ts.)
 function makeAgent(registrars: ToolRegistrar[]): typeof McpAgent {
   class GogAgent extends McpAgent<unknown, unknown, GogProps> {
-    server = new McpServer({ name: 'gogcli-mcp', version: VERSION });
+    // `instructions` is the connector's only channel to the model that is not a
+    // tool description, and it carries the one thing the client UI gets wrong:
+    // "connected"/"refreshed" is a statement about the connector key, not about
+    // Google. See CONNECTOR_INSTRUCTIONS for why that has to be said out loud.
+    server = new McpServer(
+      { name: 'gogcli-mcp', version: VERSION },
+      { instructions: CONNECTOR_INSTRUCTIONS },
+    );
     async init() {
       // NO third argument, deliberately: the hosted connector supplies no
       // per-caller access token, so `gog` runs as the Fly volume's own identity
@@ -56,9 +63,21 @@ function makeAgent(registrars: ToolRegistrar[]): typeof McpAgent {
       // 401 on this path stops at the `no access token was supplied` guard and
       // logs `replay.declined`. That record is the expected outcome for a
       // hosted connector, not a bug; the transport-failure classification and
-      // the auth log itself do apply here. (docs/DEPLOY-CONNECTOR.md,
-      // "Reading the auth log", says the same thing for whoever is reading logs
-      // rather than code.)
+      // the auth log itself do apply here.
+      //
+      // Inert is not the same as unobserved. Because `gog` is spawned fresh per
+      // /run and re-reads the keyring each time, a Google 401 here means the
+      // STORED credential was refused — which no retry can repair, so no retry
+      // is built. Instead that same guard first takes one live reading of the
+      // Google layer (`GET /health/google` on the runner) and records it as
+      // `refusal.google-ok` / `-unhealthy` / `-unmeasured`. It is throttled,
+      // deadline-bounded, cannot throw, and leaves the caller's error
+      // byte-identical; its whole job is to answer, in the log, the question
+      // that could not be answered after the incident: at the moment Google
+      // refused, was the refresh token on the volume alive or dead?
+      // (docs/DEPLOY-CONNECTOR.md, "Reading the auth log" and "Why a hosted
+      // Google 401 is measured rather than retried", says this for whoever is
+      // reading logs rather than code.)
       const executor = makeFlyExecutor((this.env as { FLY_ENDPOINT: string }).FLY_ENDPOINT, this.props.key);
       const wrapped = wrapServer(this.server, executor);
       for (const register of registrars) register(wrapped);

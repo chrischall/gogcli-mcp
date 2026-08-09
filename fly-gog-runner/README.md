@@ -34,6 +34,7 @@ authenticated HTTPS; this box executes it and returns the raw stdout.
 |-----------------|-----------------|-------------------------------------------------------------------------|
 | `GET /healthz`  | none            | Liveness for Fly/uptime checks. Runs no gog. → `200 {"ok":true}`        |
 | `GET /health`   | bearer required | Key verification for the connector's `login()` — proves the key is good without depending on gog being seeded. → `200 {"ok":true}` / `401` |
+| `GET /health/google` | bearer required | **Layer-2 probe.** Runs `gog auth list --check --json` — a REAL token refresh against Google — and reports whether the credential on `/data` still works. → always `200 {"ok":bool,"measured":bool,"accounts":[…],"error"?}` once authorized; `401` otherwise |
 | `POST /run`     | bearer required | Runs `gog <args>` verbatim. → `200 {"stdout"}` on exit 0; `422 {"error","stderr","retryable":false}` on gog failure; `400 {"error"}` on bad input; `500 {"error","retryable":true}` if this box can't write a file arg to disk; `503 {"error","retryable":true}` while draining for shutdown |
 
 Auth is a bearer token compared in constant time against `RUNNER_KEY`. Missing or
@@ -44,6 +45,66 @@ non-zero, so the same args will fail identically and the caller must not retry.
 5xx is reserved for infrastructure — which is also what Fly's edge proxy returns
 when it can't reach the Machine at all — so the status alone carries the
 retryable/not-retryable classification.
+
+### Two health endpoints, because there are two credentials
+
+`/health` and `/health/google` measure **different layers** and must not be conflated:
+
+- **Layer 1** is the connector key (`RUNNER_KEY`): claude.ai → Worker → this box. `/health`
+  answers it, and deliberately **runs no gog**.
+- **Layer 2** is the Google refresh token in gog's file keyring on `/data`. Only
+  `/health/google` answers it, by making gog actually talk to Google.
+
+`/health` passing therefore says *nothing* about whether the next Gmail call will work — that gap
+is why a connector could report "connected" twice and then take a Google 401 on the next call.
+
+**`/health` must never start depending on gog.** The re-auth tools (`gog_auth_add_url` /
+`gog_auth_add_complete`) are MCP tools, reachable only *after* the connector has connected. If a
+dead Google credential could fail layer-1 login, the user would be locked out of the very tools
+that repair it. `THE LOCKOUT GUARD` in `server.test.mjs` pins this: with an `execFn` that throws on
+any call, `/health` and `/healthz` still return `200 {"ok":true}` and gog is never spawned.
+
+`/health/google` returns **`200` even when Google says no**, for the same reason `/run` returns 422
+rather than 502: the status code carries "could I reach the runner", and the `ok` field carries
+"is the credential alive". `ok` is true only when at least one account is stored **and** every one
+of them just refreshed successfully.
+
+**`measured` is the other half of the answer, and callers must read it first.** `ok` says whether the
+Google layer is healthy; `measured` says whether anything found out. They are independent: a probe
+that timed out, could not be run at all (no `gog` on `PATH`, no `credentials.json` on the volume), or
+produced output we cannot parse is `ok:false, measured:false` — and reading that as "Google refused
+the credential" would claim a verdict nobody obtained, which is the very defect this endpoint exists
+to remove, with the alarm inverted. `measured:true` covers exactly the outcomes that ARE facts about
+the credential: `invalid_grant`, a failed live check, and "no account is authorized" (gog answered
+successfully that there is nothing to refuse). `ok:true` always travels with `measured:true` —
+health is a claim only a measurement can license. The partition is `MEASURED_CAUSES` /
+`UNMEASURED_CAUSES` in `server.mjs`, and a cause in neither resolves to `measured:false`, the
+direction that can only under-claim.
+
+An account gogcli says it **did not check** — `annotateAuthListCheck` stamps service accounts
+`valid:true, error:"service account (not checked)"` — is never counted as healthy either. `ok` is an
+AND across accounts, so one unchecked entry makes the whole answer `ok:false, measured:false`.
+
+**Know what that costs on a MIXED volume.** A volume holding one healthy OAuth account *and* one
+service account is `ok:false, measured:false` **permanently** — the service-account entry has no
+refresh token for gogcli to check, so it always carries the marker, and the AND always collapses on
+it. The direction is the safe one (nothing is ever reported healthier than it was measured), but the
+answer stops varying: on such a deployment the endpoint can no longer distinguish a live credential
+from a dead one, and the connector's `connect.google-ok` / `refusal.google-ok` — including the
+unexplained-refusal record that is the whole point of the post-refusal probe — can never be emitted.
+Diagnose those boxes with `/run` and gog's verbatim output instead. A future revision could report a
+per-account verdict so the OAuth accounts still answer; today the whole-volume AND is deliberate and
+this is its price.
+
+Its `error` is drawn from a **closed vocabulary** (`PROBE_CAUSES` in `server.mjs`) — `invalid_grant`,
+timed out, could not run, unrecognized output, no accounts, failed check, unknown validity, not
+checked. gog's stdout/stderr is read only to *classify* and is never relayed, because this response
+is destined for status text and log aggregators. `accounts` entries carry only `email`,
+`created_at`, `valid`, and a reduced `error` marker; `scopes` and `subject` are dropped. Use `/run`
+when you want gog's verbatim words.
+
+The probe runs under its own `GOOGLE_PROBE_TIMEOUT_MS` (10 s), well under `/run`'s 30 s, so an
+unreachable Google cannot hold a health check open.
 
 ### `/run` input validation
 
@@ -171,6 +232,9 @@ curl -fsS https://<app>.fly.dev/healthz
 
 # Key check (bearer):
 curl -fsS -H "Authorization: Bearer $RUNNER_KEY" https://<app>.fly.dev/health
+
+# Google-credential check (bearer) — this one DOES run gog and talks to Google:
+curl -fsS -H "Authorization: Bearer $RUNNER_KEY" https://<app>.fly.dev/health/google
 
 # A real gog call:
 curl -fsS -X POST https://<app>.fly.dev/run \
