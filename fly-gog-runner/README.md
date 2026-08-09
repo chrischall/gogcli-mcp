@@ -1,7 +1,7 @@
 # fly-gog-runner
 
 A tiny, standalone HTTP service that runs the [`gog`](https://github.com/openclaw/gogcli)
-CLI on a [Fly.io](https://fly.io) scale-to-zero Machine. It is the **only** place
+CLI on a single [Fly.io](https://fly.io) Machine. It is the **only** place
 the `gog` binary actually runs in the connector architecture: a Cloudflare Worker
 connector assembles a fully-formed `gog` arg-array and forwards it here over
 authenticated HTTPS; this box executes it and returns the raw stdout.
@@ -11,6 +11,18 @@ authenticated HTTPS; this box executes it and returns the raw stdout.
   root-owned, so the container's entrypoint chowns `/data` to the non-root `app`
   user at boot (gog must write refreshed tokens there) before dropping privileges
   via `gosu` — the server process itself never runs as root.
+- **One Machine, kept warm.** `fly.toml` sets `min_machines_running = 1`. The
+  Fly proxy was otherwise autostopping the Machine after ~3 minutes without a
+  request — ordinary think-time between two tool calls in one conversation turn,
+  and it hits every `gog_*` connector at once because they all share this box.
+  The purchase is latency, not correctness: a cold start measured ~4.1 s against
+  the connector's 35 s deadline, so the runner was never actually failing on it.
+  The price is a shared-cpu-1x/512 MB Machine billed 24/7 — on the order of
+  **$3/month** at Fly's current published rate, versus near-zero usage-based
+  before (the volume is billed either way). Setting it back to `0` is a
+  perfectly defensible way to save that; the runner stays correct across cold
+  starts regardless, since Fly still stops Machines for deploys, host
+  migrations, and OOMs.
 - **Zero npm dependencies.** `server.mjs` is pure Node built-ins.
 - **Not an npm workspace.** This directory sits outside the monorepo's
   `packages/*` glob and is deployed on its own; it does not affect repo CI,

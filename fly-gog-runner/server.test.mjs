@@ -248,6 +248,7 @@ test('sanitizedEnv strips secrets (incl. our own RUNNER_KEY) but keeps gog confi
     process.env.GOOGLE_APPLICATION_CREDENTIALS = '/creds.json';
     process.env.PORT = '8080';
     process.env.GOG_HOME = '/data';
+    process.env.GOG_TIMEZONE = 'America/New_York';
     process.env.BENIGN_VAR = 'keep-me';
     const env = sanitizedEnv();
     // The box's own bearer secret must never reach a child gog process.
@@ -259,10 +260,14 @@ test('sanitizedEnv strips secrets (incl. our own RUNNER_KEY) but keeps gog confi
     assert.equal(env.PORT, undefined);
     // gog's own config and benign vars survive.
     assert.equal(env.GOG_HOME, '/data');
+    // GOG_TIMEZONE must reach the child: without it gog's time.Local is UTC in
+    // this container, which reports a late-evening Eastern send on the NEXT
+    // calendar day. Guards against an exclusion pattern later eating it.
+    assert.equal(env.GOG_TIMEZONE, 'America/New_York');
     assert.equal(env.BENIGN_VAR, 'keep-me');
     assert.ok('PATH' in env);
   } finally {
-    for (const k of ['RUNNER_KEY', 'GOG_ACCESS_TOKEN', 'GITHUB_TOKEN', 'SOME_SECRET', 'GOOGLE_APPLICATION_CREDENTIALS', 'PORT', 'GOG_HOME', 'BENIGN_VAR']) {
+    for (const k of ['RUNNER_KEY', 'GOG_ACCESS_TOKEN', 'GITHUB_TOKEN', 'SOME_SECRET', 'GOOGLE_APPLICATION_CREDENTIALS', 'PORT', 'GOG_HOME', 'GOG_TIMEZONE', 'BENIGN_VAR']) {
       if (!(k in saved)) delete process.env[k];
       else process.env[k] = saved[k];
     }
@@ -1049,4 +1054,157 @@ test('drainAndDestroy destroys once, whichever way the request ends', async () =
     await new Promise((r) => setTimeout(r, 40));
     assert.equal(destroys, 1, `${event} leaves no pending timer behind`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Per-request access token (#230).
+//
+// This box holds ONE Google identity on its volume, so every caller of a hosted
+// gog MCP acted as whoever seeded it. A token supplied WITH a request overrides
+// that identity for that single `gog` invocation — `gog` already prefers a
+// directly-passed token over its store.
+//
+// Request-scoped is the whole point. An env var on this box is shared by every
+// request, so honouring one would rebuild the shared-identity problem from the
+// other direction — which is why the ambient GOG_ACCESS_TOKEN stays stripped no
+// matter what arrives on the wire.
+// ---------------------------------------------------------------------------
+
+test('/run hands a request token to the gog invocation, and only that one', async () => {
+  const seen = [];
+  const execFn = async (args, opts) => {
+    seen.push(opts?.accessToken);
+    return { stdout: 'ok' };
+  };
+  await withServer(execFn, async (base) => {
+    const withToken = await request(base, {
+      method: 'POST',
+      path: '/run',
+      headers: { authorization: `Bearer ${RUNNER_KEY}` },
+      body: JSON.stringify({ args: ['auth', 'status'], accessToken: 'ya29.caller' }),
+    });
+    assert.equal(withToken.status, 200);
+
+    const without = await request(base, {
+      method: 'POST',
+      path: '/run',
+      headers: { authorization: `Bearer ${RUNNER_KEY}` },
+      body: JSON.stringify({ args: ['auth', 'status'] }),
+    });
+    assert.equal(without.status, 200);
+  });
+  // The second call must not inherit the first's identity: that is the bug.
+  assert.deepEqual(seen, ['ya29.caller', undefined]);
+});
+
+test('/run refuses a malformed access token instead of ignoring it', async () => {
+  // Silently dropping an unusable token is the dangerous failure: the call
+  // would succeed AS THE BOX, and the caller would read someone else's mailbox
+  // believing it was their own. A refusal is the only safe answer.
+  const execFn = async () => ({ stdout: 'ok' });
+  await withServer(execFn, async (base) => {
+    for (const accessToken of [42, '', 'a b', 'x'.repeat(8193)]) {
+      const res = await request(base, {
+        method: 'POST',
+        path: '/run',
+        headers: { authorization: `Bearer ${RUNNER_KEY}` },
+        body: JSON.stringify({ args: ['auth', 'status'], accessToken }),
+      });
+      assert.equal(res.status, 400, `expected 400 for ${JSON.stringify(accessToken)}`);
+      assert.match(res.json.error, /accessToken/);
+    }
+  });
+});
+
+test('a request token never reaches a log line', async () => {
+  const lines = [];
+  const server = createServer({
+    runnerKey: RUNNER_KEY,
+    execFn: async () => ({ stdout: 'ok' }),
+    log: (...a) => lines.push(a.join(' ')),
+  });
+  server.listen(0, LOOPBACK);
+  await once(server, 'listening');
+  const { port } = server.address();
+  try {
+    await request(`http://${LOOPBACK}:${port}`, {
+      method: 'POST',
+      path: '/run',
+      headers: { authorization: `Bearer ${RUNNER_KEY}` },
+      body: JSON.stringify({ args: ['auth', 'status'], accessToken: 'ya29.super-secret' }),
+    });
+  } finally {
+    server.close();
+    await once(server, 'close');
+  }
+  assert.ok(!lines.join('\n').includes('ya29.super-secret'), lines.join('\n'));
+});
+
+test('sanitizedEnv honours a request token while still stripping the ambient one', () => {
+  const saved = { ...process.env };
+  try {
+    process.env.GOG_ACCESS_TOKEN = 'ya29.ambient-must-never-win';
+    // No argument: the box's own env var is still not a credential anyone asked
+    // for, so it stays stripped exactly as before.
+    assert.equal(sanitizedEnv().GOG_ACCESS_TOKEN, undefined);
+    // With one: the request's token is what the child sees.
+    assert.equal(sanitizedEnv('ya29.from-the-request').GOG_ACCESS_TOKEN, 'ya29.from-the-request');
+  } finally {
+    process.env = saved;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// fly.toml — deploy config invariants.
+//
+// fly.toml is not code, so nothing else in this suite can catch a regression in
+// it; a one-character edit here changes what the deployed app costs and how it
+// behaves under idle. These tests pin the two settings whose interaction caused
+// a real incident, so that changing them is a deliberate act with a failing test
+// to explain itself.
+// ---------------------------------------------------------------------------
+
+// Read one [table] out of fly.toml. Deliberately not a TOML parser: it handles
+// the flat `key = scalar` lines this file actually contains (numbers, booleans,
+// double-quoted strings) and nothing else. `#` always begins a comment because
+// no value in fly.toml contains one; if that ever stops being true, this helper
+// must grow quoting awareness rather than be worked around.
+function flyTomlTable(tableName) {
+  const toml = fs.readFileSync(new URL('./fly.toml', import.meta.url), 'utf8');
+  const out = {};
+  let inTable = false;
+  for (const raw of toml.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line.startsWith('[')) {
+      inTable = line === `[${tableName}]`;
+      continue;
+    }
+    if (!inTable) continue;
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^#]+?)\s*$/.exec(line);
+    if (m) out[m[1]] = JSON.parse(m[2]);
+  }
+  return out;
+}
+
+test('fly.toml keeps a Machine warm instead of autostopping mid-session', () => {
+  // THE INCIDENT THIS PINS: with min_machines_running = 0 the Fly proxy stopped
+  // the Machine after ~3 minutes of no requests —
+  //   03:52:16  POST /run 200 298ms
+  //   03:55:16  proxy: App gogcli-gog-runner has excess capacity, autostopping
+  // — which is ordinary think-time between two tool calls in ONE conversation
+  // turn. Every gog_* connector shares this single Machine, so the stop lands on
+  // all of them at once.
+  const service = flyTomlTable('http_service');
+
+  assert.ok(
+    service.min_machines_running >= 1,
+    'at least one Machine must stay running so an idle session is not autostopped',
+  );
+  // Belt and braces: the floor only governs the proxy's autostop. A Machine
+  // stopped some other way (deploy, host migration, OOM, `fly machine stop`)
+  // still has to be woken by an incoming request, and that is what
+  // auto_start_machines buys. The runner must survive a cold start either way —
+  // see the ~4 s measurement in the fly.toml comment.
+  assert.equal(service.auto_start_machines, true);
 });

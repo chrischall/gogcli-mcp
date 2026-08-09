@@ -176,7 +176,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
   }, async ({ presentationId, pretty, account }) => {
     const args = ['slides', 'raw', presentationId];
     if (pretty) args.push('--pretty');
-    return runOrDiagnose(args, { account });
+    // Verbatim by contract: see the `lossless` note on runOrDiagnose.
+    return runOrDiagnose(args, { account, lossless: true });
   });
 
   server.registerTool('gog_slides_locate', {

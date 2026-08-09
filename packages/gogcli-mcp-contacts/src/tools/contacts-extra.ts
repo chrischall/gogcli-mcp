@@ -209,6 +209,7 @@ export function registerExtraContactsTools(server: McpServer): void {
     const args = ['people', 'raw', userId];
     if (personFields) args.push(`--person-fields=${personFields}`);
     if (pretty) args.push('--pretty');
-    return runOrDiagnose(args, { account });
+    // Verbatim by contract: see the `lossless` note on runOrDiagnose.
+    return runOrDiagnose(args, { account, lossless: true });
   });
 }

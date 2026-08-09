@@ -2,8 +2,9 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
-import { run } from '../runner.js';
-import type { GogArg } from '../runner.js';
+import { run, isRunnerTransportError } from '../runner.js';
+import type { GogArg, RunnerFailureKind } from '../runner.js';
+import { normalizeTimestamps } from '../timestamps.js';
 
 // Byte size at or below which a payload stays on the plain inline flag.
 //
@@ -134,7 +135,30 @@ export function errorText(err: unknown): string {
   return err instanceof Error ? `Error: ${err.message}` : String(err);
 }
 
-const AUTH_ERROR_PATTERN = /\b(401|unauthorized|token.*(expired|revoked)|invalid_grant)\b/i;
+// Google saying "not authenticated" in its own words. Definitive: a retry
+// cannot turn a 401 into a success, so this outranks the transient signal below.
+// `unauthorized` and `invalid_grant` are unambiguous words, but 401 is also
+// just an integer, and gog's output is full of integers that are row indices,
+// ranges and counts. A bare `\b401\b` therefore classified "row 401 is outside
+// the sheet grid" — a pure Sheets range error — as a definite auth failure, and
+// sent the caller off to re-authorize a perfectly healthy account.
+//
+// That is the same defect this module's transport-vs-credential split exists to
+// remove, just reached through gog's stderr instead of the runner's status line.
+// So a 401 has to look like a STATUS: either introduced by a status-ish word, or
+// immediately followed by "Unauthorized". `A401:B401` never matched anyway (no
+// word boundary after `A`), but `row 401` did.
+const DEFINITE_AUTH_PATTERN =
+  /\b(?:unauthorized|invalid_grant)\b|\b401\s+unauthorized\b|\b(?:error|status|code|http|responded|response)\s*[:=]?\s*401\b/i;
+
+// A message that TALKS about an expired token. Suggestive, not definitive — and
+// it used to be `/token.*(expired|revoked)/`, whose greedy `.*` matched a token
+// mentioned anywhere and an expiry mentioned anywhere later in the same line
+// ("page token accepted; the export link has expired"). Now the two words must
+// actually be about each other.
+const STALE_TOKEN_PATTERN = /\b(?:access[ _-]?)?token\b[^.;\n]{0,40}\b(?:has\s+)?(?:been\s+)?(?:expired|revoked)\b|\b(?:expired|revoked)\s+(?:access[ _-]?)?token\b/i;
+
+const AUTH_ERROR_PATTERN = new RegExp(`${DEFINITE_AUTH_PATTERN.source}|${STALE_TOKEN_PATTERN.source}`, 'i');
 
 // A DEAD refresh token — the whole account is signed out, not just a stale
 // access token that would refresh silently. This is the recurring account-wide
@@ -176,6 +200,31 @@ const GRID_LIMIT_HINT =
   '\n\nThe target range is outside the sheet\'s current grid. Add the missing rows or columns ' +
   'first with gog_sheets_insert (dimension: rows or cols), then retry the write.';
 
+// The hint for each RUNNER-authored failure kind (see RunnerTransportError in
+// runner.ts). These are chosen by the error's TYPE, never by reading its text.
+//
+// transport-auth is the one that motivated all of this. The runner answers a
+// bad bearer with the single word "unauthorized"; read as prose that is
+// indistinguishable from Google rejecting a credential, and the caller was
+// being told all session to re-authorize an account that had never been asked
+// for anything. So this hint names the real cause and says outright that
+// re-authorizing cannot help. It deliberately does NOT contain the literal
+// `gog_auth_add`, which is the token the rest of the auth guidance keys on.
+const RUNNER_TRANSPORT_AUTH_HINT =
+  '\n\nThis is the CONNECTOR\'s own transport auth failing, not your Google sign-in. The gog-runner ' +
+  'backend rejected the bearer token this server sent, so the request never reached gog and no Google ' +
+  'credential was checked — the Google account is not the problem and re-authorizing it cannot fix this. ' +
+  'An operator must make the Worker secret GOG_RUNNER_KEY equal RUNNER_KEY on the Fly app ' +
+  '(wrangler secret put GOG_RUNNER_KEY / fly secrets set RUNNER_KEY), then retry.';
+
+const RUNNER_TRANSPORT_HINTS: Record<RunnerFailureKind, string> = {
+  'transport-auth': RUNNER_TRANSPORT_AUTH_HINT,
+  // The request itself was malformed, so the runner will refuse it identically
+  // every time. Nothing to advise beyond the message the runner already gave.
+  'transport-request': '',
+  'transport-retryable': TRANSIENT_HINT,
+};
+
 // Reduce `gog auth list --json` output to just the configured email addresses.
 // The raw JSON also carries OAuth scopes, the Google subject id, and creation
 // timestamps — none of which belong in an error surfaced to the model, and
@@ -205,11 +254,41 @@ export function formatAccountList(raw: string): string {
 // keeps the same diagnostic quality as everywhere else.
 export async function diagnose(err: unknown): Promise<CallToolResult> {
   const errText = errorText(err);
+
+  // STRUCTURE BEFORE PROSE. A RunnerTransportError is this connector's own
+  // transport failing — its bearer, its request validation, its drain. Nothing
+  // was shown to Google, so none of the patterns below may be consulted for it:
+  // they exist to read gog's/Google's words, and the runner's words are not
+  // those. Read as prose, the runner's `unauthorized` matched
+  // DEFINITE_AUTH_PATTERN and produced AUTH_HINT — a human being told to
+  // re-authorize a healthy account over what was really a key mismatch.
+  //
+  // This short-circuits the ladder rather than joining it, so it is not a new
+  // rung in the precedence order documented below; that order still governs
+  // every error that genuinely came from gog.
+  const transportHint = isRunnerTransportError(err)
+    ? RUNNER_TRANSPORT_HINTS[err.kind]
+    : undefined;
+
   const isInvalidGrant = INVALID_GRANT_PATTERN.test(errText);
-  const isAuthError = AUTH_ERROR_PATTERN.test(errText);
-  const isTransientError = !isAuthError && TRANSIENT_ERROR_PATTERN.test(errText);
+
+  // Precedence, and the reason for it. Reporting needs-auth is EXPENSIVE to be
+  // wrong about: re-authorization is a manual, human step, and it does not fix
+  // a 429. So a transient signal beats a merely SUGGESTIVE auth signal (a
+  // message that mentions an expired token) — the reported bug was servers
+  // flapping into needs-auth and working again seconds later, which is what
+  // being told to re-auth over a rate-limit looks like.
+  //
+  // It does NOT beat a definitive one. A literal 401 or invalid_grant is Google
+  // saying the credential will not work, and calling that "retry" would loop a
+  // caller forever against a request that can never succeed.
+  const isTransientError = !DEFINITE_AUTH_PATTERN.test(errText) && TRANSIENT_ERROR_PATTERN.test(errText);
+  const isAuthError = !isTransientError && AUTH_ERROR_PATTERN.test(errText);
   const isGridLimitError = GRID_LIMIT_ERROR_PATTERN.test(errText);
-  const hint = isInvalidGrant
+  // `??`, not `||`: 'transport-request' maps to the empty string on purpose —
+  // "this failure is ours and there is nothing to advise" — and `||` would fall
+  // through to the prose ladder for exactly the errors that must never reach it.
+  const hint = transportHint ?? (isInvalidGrant
     ? INVALID_GRANT_HINT
     : isAuthError
       ? AUTH_HINT
@@ -217,7 +296,7 @@ export async function diagnose(err: unknown): Promise<CallToolResult> {
         ? TRANSIENT_HINT
         : isGridLimitError
           ? GRID_LIMIT_HINT
-          : '';
+          : '');
   try {
     const accounts = formatAccountList(await run(['auth', 'list']));
     return errorResult(`${errText}\n\nConfigured accounts:\n${accounts || '(none)'}${hint}`);
@@ -228,10 +307,21 @@ export async function diagnose(err: unknown): Promise<CallToolResult> {
 
 export async function runOrDiagnose(
   args: GogArg[],
-  options: { account?: string },
+  options: { account?: string; lossless?: boolean },
 ): Promise<CallToolResult> {
   try {
-    return rawTextResult(await run(args, options));
+    // The single seam every tool's output passes through. Normalizing here —
+    // rather than at each call site — is what makes it impossible for a tool to
+    // emit a naive, zone-less timestamp.
+    //
+    // `lossless` opts a tool out. The `*_raw` dumps promise a verbatim copy of
+    // the upstream API response: normalizing them would rewrite the API's own
+    // epoch-millis `internalDate` into an ISO string and flatten the caller's
+    // `--pretty` formatting, so the one tool you reach for when you need ground
+    // truth would stop telling it. Losslessness wins over presentation there —
+    // the friendlier views of the same data are already normalized.
+    const raw = await run(args, options);
+    return rawTextResult(options.lossless ? raw : normalizeTimestamps(raw));
   } catch (err) {
     return diagnose(err);
   }

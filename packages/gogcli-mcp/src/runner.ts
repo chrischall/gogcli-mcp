@@ -45,10 +45,100 @@ export type GogExecutor = (
   opts: { timeout?: number; interactive?: boolean },
 ) => Promise<string>;
 
+// Which layer authored a failure, when the layer was OURS and not gog's.
+//
+// A remote executor (the Fly/Worker path) can fail in two categorically
+// different ways, and every consumer downstream needs to tell them apart:
+//
+//   - `gog` ran on the backend and failed. The message is gog's — or Google's,
+//     relayed by gog — so it is PROSE, and the only way to classify it is to
+//     read it. That failure is NOT a RunnerTransportError; it stays a plain
+//     Error so tools/utils.ts keeps applying its patterns to it.
+//   - The request never got that far: the runner rejected our bearer token,
+//     refused the request shape, was draining, or never answered. Nothing was
+//     ever shown to Google, so no amount of re-authorizing a Google account can
+//     help — and the runner's own words ("unauthorized") are indistinguishable
+//     from Google's when read as prose. That is what this type exists for.
+//
+// The kinds, and what each one asks of the caller:
+//   transport-auth      the runner rejected OUR bearer (GOG_RUNNER_KEY on the
+//                       Worker vs RUNNER_KEY on the Fly app). An operator has
+//                       to fix a key; the end user's Google grant is fine.
+//   transport-request   the runner refused the request shape (oversized arg,
+//                       malformed JSON). Deterministic; retrying is pointless.
+//   transport-retryable the runner is draining, could not reach its disk, or
+//                       never answered. The same call can succeed shortly.
+export type RunnerFailureKind = 'transport-auth' | 'transport-request' | 'transport-retryable';
+
+// `Symbol.for`, not a private symbol or a bare `instanceof`: the class can be
+// evaluated more than once in one process (the stdio bundle and the Worker
+// bundle are separate builds of the same source, and vitest can load a module
+// twice across pools), and a second copy of the class would make `instanceof`
+// answer false for an error that IS one. The registry symbol is the same value
+// in every copy, so the brand survives.
+const RUNNER_TRANSPORT_BRAND = Symbol.for('gogcli.RunnerTransportError');
+
+/**
+ * A failure authored by the gog-runner itself (or by the hop to it) rather than
+ * by `gog`/Google. Carries the runner's HTTP status when there was one.
+ */
+export class RunnerTransportError extends Error {
+  readonly kind: RunnerFailureKind;
+  readonly status: number | undefined;
+
+  constructor(message: string, kind: RunnerFailureKind, status?: number) {
+    super(message);
+    this.name = 'RunnerTransportError';
+    this.kind = kind;
+    this.status = status;
+    // Non-enumerable so the brand never shows up in a serialized error body.
+    Object.defineProperty(this, RUNNER_TRANSPORT_BRAND, { value: true });
+  }
+}
+
+/** Structural check for the above — see RUNNER_TRANSPORT_BRAND on why not `instanceof`. */
+export function isRunnerTransportError(err: unknown): err is RunnerTransportError {
+  return err instanceof Error && (err as unknown as Record<symbol, unknown>)[RUNNER_TRANSPORT_BRAND] === true;
+}
+
 // Ambient override for the executor `run()` uses when no options.spawner is
 // given. The Worker/Fly path wraps request handling in
 // `runExecutor.run({ executor }, ...)`; unset, `run()` falls back to spawning.
 export const runExecutor = new AsyncLocalStorage<{ executor: GogExecutor }>();
+
+/**
+ * The PROCESS-WIDE executor, for a host that has exactly one backend for the
+ * whole process — a stdio bin pointed at a Fly runner (`useRemoteGogRunner`).
+ *
+ * It exists because AsyncLocalStorage cannot express that. `enterWith` sets the
+ * store on the async resource that is current when it runs, and a bin runs it
+ * during module evaluation; the tool calls arrive later as I/O events on the
+ * transport's own resources, which are not descendants of that evaluation, so
+ * `getStore()` is undefined exactly where it is needed. That is not a bug in
+ * `enterWith` — a process-lifetime default is simply not a scoped value, and
+ * storing it in a scope meant the seam silently reverted to spawning a binary
+ * the host does not have.
+ *
+ * A per-request store still WINS over this (see `activeExecutor`), because the
+ * Worker serves many callers from one isolate and each has its own backend
+ * credential; this is the fallback for the one-backend case, never a second
+ * answer to "whose backend is this".
+ */
+let defaultExecutor: { executor: GogExecutor } | undefined;
+
+/** Install the process-wide executor. Passing undefined clears it (tests). */
+export function setDefaultGogExecutor(executor: GogExecutor | undefined): void {
+  defaultExecutor = executor ? { executor } : undefined;
+}
+
+/**
+ * Whose executor applies right now: the request's, else the process's, else
+ * none (meaning `run()` spawns the local binary). Both call sites ask through
+ * here so they can never disagree about which of the three it is.
+ */
+function activeExecutor(): { executor: GogExecutor } | undefined {
+  return runExecutor.getStore() ?? defaultExecutor;
+}
 
 export interface RunOptions {
   account?: string;
@@ -328,7 +418,7 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
   // successful `gog auth tokens` (or any command echoing a credential) would
   // otherwise return raw Google tokens (ya29.…/1//…) into model context, where
   // a sibling tool (gog_gmail_send) could exfiltrate them.
-  const store = runExecutor.getStore();
+  const store = activeExecutor();
   try {
     let output: string;
     if (spawner) {
@@ -343,7 +433,16 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
     // A thrown non-Error would make `.message` undefined and redact() blow up
     // with a TypeError, masking the real failure. Same instanceof guard the
     // codebase already uses in errorText() (tools/utils.ts).
-    throw new Error(redact(err instanceof Error ? err.message : String(err)));
+    const message = redact(err instanceof Error ? err.message : String(err));
+    // Redaction must not cost the error its TYPE. `RunnerTransportError` is the
+    // structural claim "this failure was ours, not Google's"; flattening it to a
+    // bare Error here would put diagnose() straight back to guessing from prose,
+    // which is the bug this type exists to close. Rebuilt rather than mutated so
+    // the un-redacted message never survives anywhere.
+    if (isRunnerTransportError(err)) {
+      throw new RunnerTransportError(message, err.kind, err.status);
+    }
+    throw new Error(message);
   }
 }
 
@@ -358,7 +457,7 @@ export async function runBinary(args: GogArg[], options: RunOptions = {}): Promi
   // An injected spawner is the stdio/test path and always wins. Otherwise, if an
   // ambient forward executor is installed (the Worker/Fly connector), refuse:
   // its text-only transport can't carry bytes intact.
-  if (!spawner && runExecutor.getStore()) {
+  if (!spawner && activeExecutor()) {
     throw new Error(
       'Raw byte retrieval is not available over the hosted connector (its transport is text-only). ' +
       'Use the text-extraction path instead, or run the local stdio server to fetch bytes.',

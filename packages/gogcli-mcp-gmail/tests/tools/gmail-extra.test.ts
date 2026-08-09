@@ -27,20 +27,20 @@ beforeEach(async () => {
 describe('gog_gmail_raw', () => {
   it('calls runOrDiagnose with messageId', async () => {
     await harness.callTool('gog_gmail_raw', { messageId: 'm1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'raw', 'm1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'raw', 'm1'], { account: undefined, lossless: true });
   });
 
   it('passes --format and --pretty when provided', async () => {
     await harness.callTool('gog_gmail_raw', { messageId: 'm1', format: 'metadata', pretty: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'raw', 'm1', '--format=metadata', '--pretty'],
-      { account: undefined },
+      { account: undefined, lossless: true },
     );
   });
 
   it('omits --pretty when false', async () => {
     await harness.callTool('gog_gmail_raw', { messageId: 'm1', pretty: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'raw', 'm1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'raw', 'm1'], { account: undefined, lossless: true });
   });
 });
 

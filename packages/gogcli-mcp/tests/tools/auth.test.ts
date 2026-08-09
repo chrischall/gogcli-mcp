@@ -25,6 +25,27 @@ describe('gog_auth_list', () => {
     expect(result.content[0].text).toBe('Error: No accounts configured');
   });
 
+  it('does not advertise itself as proof the account still works', async () => {
+    // `gog auth list` reads the keyring. No network, no validation — it lists a
+    // full scope set for an account whose refresh token died days ago.
+    //
+    // This description used to say "check which accounts are configured and
+    // available", and "available" is exactly the wrong word: it was read as a
+    // liveness check while per-service servers were flapping into needs-auth,
+    // which pointed a whole debugging session away from an expired grant.
+    // gog_auth_health is the tool that actually probes Google.
+    const harness = await setupHandlers();
+    const { tools } = await harness.client.listTools();
+    const desc = tools.find((t) => t.name === 'gog_auth_list')!.description!;
+
+    expect(desc).not.toMatch(/\bavailable\b/i);
+    // It must say what it does NOT do, and where to go instead — a reader who
+    // wants liveness has to be sent somewhere, or they will use this anyway.
+    expect(desc).toMatch(/does not|without/i);
+    expect(desc).toContain('gog_auth_health');
+    await harness.close();
+  });
+
   it('handles non-Error rejection', async () => {
     vi.mocked(runner.run).mockRejectedValue('something went wrong');
     const harness = await setupHandlers();

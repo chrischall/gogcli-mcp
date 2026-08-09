@@ -1,5 +1,59 @@
 # Changelog
 
+## [2.21.0](https://github.com/chrischall/gogcli-mcp/compare/v2.20.0...v2.21.0) (2026-08-09)
+
+
+### Features
+
+* **runner:** mint access tokens from a stored refresh token, so a gog identity belongs to the registration ([#242](https://github.com/chrischall/gogcli-mcp/issues/242)) ([284eef4](https://github.com/chrischall/gogcli-mcp/commit/284eef4832cfbb7a6840a666f779f6c03840d89c))
+
+
+### Bug Fixes
+
+* **auth:** stop reporting a rate limit as a dead credential, and stop implying auth_list proves liveness ([#244](https://github.com/chrischall/gogcli-mcp/issues/244)) ([e7f84c0](https://github.com/chrischall/gogcli-mcp/commit/e7f84c0f71177fccbc9314e04a9c7ddd25445d0c))
+* **deps:** dedupe @chrischall/mcp-utils so sub-package bundles stop inlining it twice ([#240](https://github.com/chrischall/gogcli-mcp/issues/240)) ([69b0bcb](https://github.com/chrischall/gogcli-mcp/commit/69b0bcbdd3ed373ec0544593c98baf0e5bf2f828))
+* **deps:** take @modelcontextprotocol/sdk 1.30 by deduping the tree to one copy ([#237](https://github.com/chrischall/gogcli-mcp/issues/237)) ([0c5fa42](https://github.com/chrischall/gogcli-mcp/commit/0c5fa42b7054ecf07b50cdbc5d4b719b29a0cf59))
+
+## [2.20.0](https://github.com/chrischall/gogcli-mcp/compare/v2.19.2...v2.20.0) (2026-08-09)
+
+
+### Features
+
+* **runner:** let a request carry its own GOG_ACCESS_TOKEN, so a hosted gog acts as its caller ([#235](https://github.com/chrischall/gogcli-mcp/issues/235)) ([74e5a83](https://github.com/chrischall/gogcli-mcp/commit/74e5a83eccda3b2819828aec3da84cb246882ed4))
+
+## [2.19.2](https://github.com/chrischall/gogcli-mcp/compare/v2.19.1...v2.19.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* **runner:** a hosted gog MCP ignored its backend and spawned a binary that isn't there ([#233](https://github.com/chrischall/gogcli-mcp/issues/233)) ([136a90c](https://github.com/chrischall/gogcli-mcp/commit/136a90cc75d78ae7c7685efb75c0d1a943787d02))
+
+## [2.19.1](https://github.com/chrischall/gogcli-mcp/compare/v2.19.0...v2.19.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **runner:** wire the remote gog executor into every package bin ([#231](https://github.com/chrischall/gogcli-mcp/issues/231)) ([56dbb19](https://github.com/chrischall/gogcli-mcp/commit/56dbb19418b8c6e1ff08528779e2b90d136b0ccc))
+
+## [2.19.0](https://github.com/chrischall/gogcli-mcp/compare/v2.18.4...v2.19.0) (2026-08-07)
+
+
+### Features
+
+* **runner:** let a stdio server run gog on the Fly backend ([#225](https://github.com/chrischall/gogcli-mcp/issues/225)) ([16f7f1b](https://github.com/chrischall/gogcli-mcp/commit/16f7f1b217abc74809e6c992dde7f430b654d55a))
+
+
+### Refactor
+
+* **runner:** use the shared env reader, and reach it through the barrel ([#228](https://github.com/chrischall/gogcli-mcp/issues/228)) ([dcd93ed](https://github.com/chrischall/gogcli-mcp/commit/dcd93ed5824372c29c385ad328462bf8c328b601))
+
+## [2.18.4](https://github.com/chrischall/gogcli-mcp/compare/v2.18.3...v2.18.4) (2026-07-28)
+
+
+### Bug Fixes
+
+* emit every timestamp with an explicit offset and a display value ([#216](https://github.com/chrischall/gogcli-mcp/issues/216)) ([a33d8ad](https://github.com/chrischall/gogcli-mcp/commit/a33d8ad28ff7011b601c9832a2045a7868137760)), closes [#217](https://github.com/chrischall/gogcli-mcp/issues/217)
+
 ## [2.18.3](https://github.com/chrischall/gogcli-mcp/compare/v2.18.2...v2.18.3) (2026-07-27)
 
 

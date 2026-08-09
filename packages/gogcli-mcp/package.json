@@ -1,6 +1,6 @@
 {
   "name": "gogcli-mcp",
-  "version": "2.18.3",
+  "version": "2.21.0",
   "mcpName": "io.github.chrischall/gogcli-mcp",
   "description": "MCP server wrapping gogcli for Google service access",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
@@ -41,12 +41,12 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@chrischall/mcp-utils": "^0.13.3",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@chrischall/mcp-utils": "^0.14.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.1.2",
     "@vitest/coverage-v8": "^4.1.8",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",

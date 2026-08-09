@@ -1,8 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as runner from '../../src/runner.js';
 import { runOrDiagnose, pushPaginationFlags, formatAccountList, formatAuthHealth } from '../../src/tools/utils.js';
+import { RunnerTransportError } from '../../src/connector-runtime.js';
 
-vi.mock('../../src/runner.js');
+// PARTIAL mock: only `run` is stubbed. A full automock would also replace
+// `RunnerTransportError` and `isRunnerTransportError`, and diagnose()'s whole
+// point is that it classifies the REAL class structurally — an automocked
+// brand check answers undefined for everything and the tests below would pass
+// while proving nothing.
+vi.mock('../../src/runner.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof runner>()),
+  run: vi.fn(),
+}));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -95,6 +104,25 @@ describe('runOrDiagnose', () => {
     expect(result.isError).toBeUndefined();
   });
 
+  // The `*_raw` dumps promise a verbatim copy of the upstream API response.
+  // Normalizing them would rewrite the API's own epoch-millis internalDate into
+  // an ISO string and flatten the caller's --pretty formatting, so the one tool
+  // you reach for when you need ground truth would stop telling it.
+  it('leaves a lossless response byte-for-byte untouched', async () => {
+    const raw = '{\n  "id": "m1",\n  "internalDate": "1785209760000"\n}';
+    vi.mocked(runner.run).mockResolvedValue(raw);
+    const result = await runOrDiagnose(['gmail', 'raw', 'm1'], { lossless: true });
+    expect(result.content[0].text).toBe(raw);
+  });
+
+  it('normalizes timestamps when lossless is not set', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"internalDate":"1785209760000"}');
+    const result = await runOrDiagnose(['gmail', 'messages'], {});
+    const parsed = JSON.parse(result.content[0].text as string);
+    expect(parsed.internalDate).toMatch(/[+-]\d{2}:\d{2}$/);
+    expect(parsed.internalDateDisplay).toBeDefined();
+  });
+
   it('appends auth list on non-auth failure', async () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Doc not found'))
@@ -169,6 +197,50 @@ describe('runOrDiagnose', () => {
       .mockResolvedValueOnce('user@gmail.com');
     const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
     expect(result.content[0].text).toContain('gog_auth_add');
+  });
+
+  it('calls a rate-limited failure transient even though it says "token expired"', async () => {
+    // The reported symptom was servers flapping into a needs-auth state and
+    // then working seconds later. Telling someone to re-authorize an account
+    // whose credential is fine is the expensive kind of wrong: re-auth is
+    // manual, and it does not fix a 429.
+    //
+    // `invalid_grant` is exempt from this and stays auth (below) — it is the
+    // one signal that definitively means the refresh token is dead.
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('429 rateLimitExceeded: the access token expired mid-request, retry'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['sheets', 'get', 'A1'], {});
+    const text = result.content[0].text as string;
+    expect(text).toContain('often transient');
+    expect(text).not.toContain('gog_auth_add');
+  });
+
+  it('still calls an explicit 401 an auth error even alongside a transient signal', async () => {
+    // The exemption above is for the LOOSE match only. A literal 401 is Google
+    // saying "not authenticated", and downgrading that to "retry" would loop a
+    // caller forever against a request that can never succeed.
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('401 unauthorized (quota project unset)'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['sheets', 'get', 'A1'], {});
+    expect(result.content[0].text).toContain('gog_auth_add');
+  });
+
+  it('does not read "token" and "expired" as auth when they are unrelated sentences', async () => {
+    // The pattern was /token.*(expired|revoked)/ with a greedy `.*`, so any
+    // message mentioning a token anywhere and an expiry anywhere later — across
+    // whole paragraphs — was reported as an auth failure.
+    vi.mocked(runner.run)
+      // Deliberately ONE line: `.` does not cross newlines, so a multi-line
+      // message would pass this test without the greedy match ever being
+      // exercised — and gog's real errors are frequently one long line.
+      .mockRejectedValueOnce(
+        new Error('page token accepted; the requested export link has expired and must be regenerated'),
+      )
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['drive', 'export', 'abc'], {});
+    expect(result.content[0].text).not.toContain('gog_auth_add');
   });
 
   it('gives invalid_grant a richer hint than a plain 401: cause + durable fix + both re-auth paths', async () => {
@@ -390,5 +462,49 @@ describe('formatAuthHealth', () => {
   it('falls back to trimmed raw text when the output is not the expected JSON', () => {
     expect(formatAuthHealth('  not json\n', NOW)).toBe('not json');
     expect(formatAuthHealth('{"foo":1}', NOW)).toBe('{"foo":1}');
+  });
+});
+
+// The connector's own transport failing is NOT the Google credential failing.
+// diagnose() must recognise that structurally, from the error's type, because
+// the runner's prose ("unauthorized") is indistinguishable from Google's.
+describe('diagnose: runner-authored transport failures', () => {
+  it('blames the runner key, not the Google account, for a transport-auth failure', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(
+        new RunnerTransportError('gog-runner rejected the bearer token; GOG_RUNNER_KEY vs RUNNER_KEY', 'transport-auth', 401),
+      )
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['sheets', 'get', 'A1'], {});
+    const text = result.content[0].text as string;
+    expect(text).not.toContain('gog_auth_add');
+    expect(text).not.toMatch(/re-authorize the account/i);
+    expect(text).toContain('GOG_RUNNER_KEY');
+    expect(text).toContain('RUNNER_KEY');
+  });
+
+  it('lets the TYPE beat the prose: runner words that read like Google words get no re-auth hint', async () => {
+    // The regression this whole change exists to prevent. A runner-authored
+    // failure whose text happens to contain every Google auth signal must still
+    // not produce Google auth advice — the request never reached Google.
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(
+        new RunnerTransportError('unauthorized: 401 invalid_grant, token has been expired or revoked', 'transport-request', 400),
+      )
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['sheets', 'get', 'A1'], {});
+    const text = result.content[0].text as string;
+    expect(text).not.toContain('gog_auth_add');
+    expect(text).not.toContain('often transient');
+  });
+
+  it('advises a retry for a retryable transport failure', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new RunnerTransportError('gog-runner is restarting; retry this call.', 'transport-retryable', 503))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['sheets', 'get', 'A1'], {});
+    const text = result.content[0].text as string;
+    expect(text).toContain('often transient');
+    expect(text).not.toContain('gog_auth_add');
   });
 });
