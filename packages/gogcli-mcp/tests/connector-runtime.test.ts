@@ -573,9 +573,10 @@ describe('makeFlyExecutor runner-authored transport failures', () => {
     expect(err.message).toContain('RUNNER_KEY');
     expect(err.message).not.toMatch(/gog_auth_add/i);
     // The runner's own body is the single word "unauthorized". Repeating it is
-    // what fed DEFINITE_AUTH_PATTERN in tools/utils.ts; the status digits do the
-    // same via /\b401\b/. Neither may appear, so that even if the TYPE is lost
-    // at some future boundary the prose cannot be misread as Google's.
+    // what fed DEFINITE_AUTH_PATTERN in tools/utils.ts; the status digits can do
+    // the same whenever a status word sits near them. Neither may appear, so that
+    // even if the TYPE is lost at some future boundary the prose cannot be
+    // misread as Google's.
     expect(err.message).not.toMatch(/unauthorized/i);
     expect(err.message).not.toMatch(/\b401\b/);
   });

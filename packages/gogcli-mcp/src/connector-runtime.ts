@@ -120,9 +120,12 @@ class GogFailedError extends Error {
 // so a caller's own text (`--subject "invoice 401"`) would otherwise decide
 // whether we replay their call.
 //
-// Narrow on purpose. A bare /\b401\b/ is what tools/utils.ts uses to pick a
-// HINT, where being over-eager costs a sentence; here it would cost a replayed
+// Narrow on purpose, and narrower than tools/utils.ts. That module picks a
+// HINT, where being over-eager costs a sentence; here it would cost a REPLAYED
 // request, so this only matches the shapes Google and gog actually emit.
+// (tools/utils.ts no longer uses a bare /\b401\b/ — 58d3e5b made it require a
+// status word, and #246 widened the separator so `Google API error (401 …)`,
+// the very shape below, still matches there too.)
 const GOOGLE_TOKEN_REJECTED_PATTERN =
   /Google API error \(401\b|invalid[ _]authentication[ _]credentials|\bACCESS_TOKEN_EXPIRED\b|\binvalid_token\b/i;
 
