@@ -76,7 +76,19 @@ const EXEC_MAX_BUFFER = 32 * 1024 * 1024; // 32 MB
 // RUNNER_KEY is our OWN bearer secret — since /run executes arbitrary gog
 // subcommands (including the `gog <service> run` escape hatches), the key must
 // never leak into the child environment. PORT is irrelevant to gog.
-export function sanitizedEnv() {
+//
+// `accessToken` is the ONE credential that may be added back, and only because
+// it arrived with a request rather than from this box (#230). This machine
+// holds a single Google identity on its volume, so without this every caller of
+// a hosted gog MCP acts as whoever seeded it; `gog` already prefers a
+// directly-passed token over its store, so handing it one for a single
+// invocation is all "act as the caller" requires.
+//
+// The ambient GOG_ACCESS_TOKEN stays stripped regardless — note the `continue`
+// below still runs. A variable on this box is shared by every request, so
+// honouring one would rebuild the shared-identity problem from the other
+// direction. Only a value that belongs to one call may act for one call.
+export function sanitizedEnv(accessToken) {
   const result = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (key === 'GOG_ACCESS_TOKEN') continue;
@@ -86,20 +98,57 @@ export function sanitizedEnv() {
     if (/(_TOKEN|_SECRET|_API_KEY|_PRIVATE_KEY)$/.test(key)) continue;
     result[key] = value;
   }
+  if (accessToken) result.GOG_ACCESS_TOKEN = accessToken;
   return result;
+}
+
+// How long a Google OAuth access token may be. Real ones are ~1–2 KB; the cap
+// exists so a bad client cannot push an unbounded string into a child's
+// environment, where the kernel's own limit would surface as a confusing spawn
+// failure rather than a clear 400.
+const MAX_ACCESS_TOKEN_LEN = 8192;
+
+// Validate the optional per-request token. Returns an error string, or null.
+//
+// A malformed token is REFUSED rather than ignored, and that choice is the
+// security-relevant one: ignoring it would run the command as the BOX, and the
+// caller would read someone else's mailbox believing it was their own. Failing
+// the request is the only answer that cannot be mistaken for success.
+//
+// Whitespace and control characters are rejected because this value becomes an
+// environment variable: an embedded NUL truncates it silently, and a token with
+// spaces is not a token at all.
+export function validateAccessToken(accessToken) {
+  if (accessToken === undefined) return null;
+  if (typeof accessToken !== 'string') return 'accessToken must be a string';
+  if (accessToken.length === 0) return 'accessToken must not be empty';
+  if (accessToken.length > MAX_ACCESS_TOKEN_LEN) {
+    return `accessToken must be at most ${MAX_ACCESS_TOKEN_LEN} characters`;
+  }
+  // Whitespace plus the C0/DEL control range, spelled as escapes so this
+  // source file carries no literal control bytes of its own. `-` and `_` are
+  // deliberately absent: real Google tokens contain both.
+  // eslint-disable-next-line no-control-regex
+  if (/[\s\u0000-\u001f\u007f]/.test(accessToken)) {
+    return 'accessToken must not contain whitespace or control characters';
+  }
+  return null;
 }
 
 // Default runner: execFile('gog', args) with no shell. Resolves { stdout } on
 // exit 0; rejects with an Error carrying `.stderr` on failure/timeout. No
 // redaction here — redaction happens at the Worker boundary; this box returns
 // raw stdout over HTTPS to the trusted Worker.
-function defaultExecFn(args, opts = {}) {
+// `accessToken` is destructured OUT of the rest rather than spread into
+// execFile's options: it is ours to turn into one env var, and passing it
+// through as an unknown option would silently do nothing.
+function defaultExecFn(args, { accessToken, ...opts } = {}) {
   return new Promise((resolve, reject) => {
     execFile(
       'gog',
       args,
       {
-        env: sanitizedEnv(),
+        env: sanitizedEnv(accessToken),
         timeout: EXEC_TIMEOUT_MS,
         maxBuffer: EXEC_MAX_BUFFER,
         ...opts,
@@ -446,11 +495,20 @@ export function createServer({ runnerKey, execFn = defaultExecFn, log = defaultL
         return;
       }
 
+      // Whose identity this one call runs as (#230). Absent means "this box's",
+      // which is every request that predates per-caller auth.
+      const accessToken = body && body.accessToken;
+      const badToken = validateAccessToken(accessToken);
+      if (badToken) {
+        sendJson(res, 400, { error: badToken });
+        return;
+      }
+
       argsDesc = describeArgs(args);
       try {
         const { stdout } = await withMaterializedArgs(
           args,
-          (resolved) => execFn(resolved),
+          (resolved) => execFn(resolved, accessToken ? { accessToken } : {}),
           { log },
         );
         sendJson(res, 200, { stdout });

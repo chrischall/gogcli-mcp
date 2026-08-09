@@ -54,6 +54,17 @@ export function useRemoteGogRunner(env: NodeJS.ProcessEnv = process.env): boolea
   // nothing — either alone is a misconfiguration, and silently spawning
   // instead would hide it until someone wondered why the binary was needed.
   if (!endpoint || !key) return false;
-  setDefaultGogExecutor(makeFlyExecutor(endpoint.replace(/\/+$/, ''), key));
+  // Whose Google identity this process acts as (#230). The backend holds ONE
+  // identity on its volume, so without this every caller of a hosted gog acts
+  // as whoever seeded it. Under mcp-host's `perUserChild` this process belongs
+  // to a single caller and its environment carries that caller's token, so
+  // forwarding it is the whole of "act as the person calling you".
+  //
+  // Read per call rather than captured here, because the executor outlives any
+  // one request and the claim being made is about a request. Absent when unset,
+  // which is every registration that predates per-caller auth.
+  setDefaultGogExecutor(
+    makeFlyExecutor(endpoint.replace(/\/+$/, ''), key, () => readEnvVar('GOG_ACCESS_TOKEN', { env })),
+  );
   return true;
 }

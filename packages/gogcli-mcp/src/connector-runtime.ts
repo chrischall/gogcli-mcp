@@ -60,9 +60,29 @@ const RUNNER_DRAINING = 503;
 // clever here (flattening to `--flag=<inline>`, truncating, re-encoding) would
 // put the payload straight back into argv and re-create the size cap this whole
 // change exists to escape.
-export function makeFlyExecutor(endpoint: string, key: string): GogExecutor {
+// `readAccessToken` is how a hosted gog acts as its CALLER rather than as
+// whoever seeded the backend's volume (#230). The backend holds one Google
+// identity; a token supplied with the request overrides it for that one `gog`
+// invocation, and `gog` already prefers a directly-passed token over its store.
+//
+// A FUNCTION, read per call, not a string captured at construction. The whole
+// claim being made is "this token belongs to this request", and an executor
+// outlives any one request — on the Worker path a single isolate serves many
+// callers, so a captured token would pin the first caller's identity onto
+// everyone who followed. That is the same shared-identity bug this closes,
+// rebuilt one layer up.
+//
+// Absent when there is no token, rather than null or "": the backend has to
+// tell "act as this caller" from "act as the box", and an empty third state is
+// one neither side has a meaning for.
+export function makeFlyExecutor(
+  endpoint: string,
+  key: string,
+  readAccessToken?: () => string | undefined,
+): GogExecutor {
   return async (args: GogArg[], opts) => {
     const deadlineMs = (opts?.timeout ?? DEFAULT_TIMEOUT_MS) + DEADLINE_GRACE_MS;
+    const accessToken = readAccessToken?.();
     let res: Response;
     try {
       res = await fetch(endpoint + '/run', {
@@ -71,7 +91,7 @@ export function makeFlyExecutor(endpoint: string, key: string): GogExecutor {
           Authorization: 'Bearer ' + key,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ args }),
+        body: JSON.stringify(accessToken ? { args, accessToken } : { args }),
         signal: AbortSignal.timeout(deadlineMs),
       });
     } catch (err) {
