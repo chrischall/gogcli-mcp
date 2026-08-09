@@ -137,7 +137,19 @@ export function errorText(err: unknown): string {
 
 // Google saying "not authenticated" in its own words. Definitive: a retry
 // cannot turn a 401 into a success, so this outranks the transient signal below.
-const DEFINITE_AUTH_PATTERN = /\b(401|unauthorized|invalid_grant)\b/i;
+// `unauthorized` and `invalid_grant` are unambiguous words, but 401 is also
+// just an integer, and gog's output is full of integers that are row indices,
+// ranges and counts. A bare `\b401\b` therefore classified "row 401 is outside
+// the sheet grid" — a pure Sheets range error — as a definite auth failure, and
+// sent the caller off to re-authorize a perfectly healthy account.
+//
+// That is the same defect this module's transport-vs-credential split exists to
+// remove, just reached through gog's stderr instead of the runner's status line.
+// So a 401 has to look like a STATUS: either introduced by a status-ish word, or
+// immediately followed by "Unauthorized". `A401:B401` never matched anyway (no
+// word boundary after `A`), but `row 401` did.
+const DEFINITE_AUTH_PATTERN =
+  /\b(?:unauthorized|invalid_grant)\b|\b401\s+unauthorized\b|\b(?:error|status|code|http|responded|response)\s*[:=]?\s*401\b/i;
 
 // A message that TALKS about an expired token. Suggestive, not definitive — and
 // it used to be `/token.*(expired|revoked)/`, whose greedy `.*` matched a token
