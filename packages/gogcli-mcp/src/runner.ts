@@ -50,6 +50,40 @@ export type GogExecutor = (
 // `runExecutor.run({ executor }, ...)`; unset, `run()` falls back to spawning.
 export const runExecutor = new AsyncLocalStorage<{ executor: GogExecutor }>();
 
+/**
+ * The PROCESS-WIDE executor, for a host that has exactly one backend for the
+ * whole process — a stdio bin pointed at a Fly runner (`useRemoteGogRunner`).
+ *
+ * It exists because AsyncLocalStorage cannot express that. `enterWith` sets the
+ * store on the async resource that is current when it runs, and a bin runs it
+ * during module evaluation; the tool calls arrive later as I/O events on the
+ * transport's own resources, which are not descendants of that evaluation, so
+ * `getStore()` is undefined exactly where it is needed. That is not a bug in
+ * `enterWith` — a process-lifetime default is simply not a scoped value, and
+ * storing it in a scope meant the seam silently reverted to spawning a binary
+ * the host does not have.
+ *
+ * A per-request store still WINS over this (see `activeExecutor`), because the
+ * Worker serves many callers from one isolate and each has its own backend
+ * credential; this is the fallback for the one-backend case, never a second
+ * answer to "whose backend is this".
+ */
+let defaultExecutor: { executor: GogExecutor } | undefined;
+
+/** Install the process-wide executor. Passing undefined clears it (tests). */
+export function setDefaultGogExecutor(executor: GogExecutor | undefined): void {
+  defaultExecutor = executor ? { executor } : undefined;
+}
+
+/**
+ * Whose executor applies right now: the request's, else the process's, else
+ * none (meaning `run()` spawns the local binary). Both call sites ask through
+ * here so they can never disagree about which of the three it is.
+ */
+function activeExecutor(): { executor: GogExecutor } | undefined {
+  return runExecutor.getStore() ?? defaultExecutor;
+}
+
 export interface RunOptions {
   account?: string;
   spawner?: Spawner;
@@ -328,7 +362,7 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
   // successful `gog auth tokens` (or any command echoing a credential) would
   // otherwise return raw Google tokens (ya29.…/1//…) into model context, where
   // a sibling tool (gog_gmail_send) could exfiltrate them.
-  const store = runExecutor.getStore();
+  const store = activeExecutor();
   try {
     let output: string;
     if (spawner) {
@@ -358,7 +392,7 @@ export async function runBinary(args: GogArg[], options: RunOptions = {}): Promi
   // An injected spawner is the stdio/test path and always wins. Otherwise, if an
   // ambient forward executor is installed (the Worker/Fly connector), refuse:
   // its text-only transport can't carry bytes intact.
-  if (!spawner && runExecutor.getStore()) {
+  if (!spawner && activeExecutor()) {
     throw new Error(
       'Raw byte retrieval is not available over the hosted connector (its transport is text-only). ' +
       'Use the text-extraction path instead, or run the local stdio server to fetch bytes.',

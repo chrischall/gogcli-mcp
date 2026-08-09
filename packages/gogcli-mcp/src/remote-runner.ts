@@ -1,5 +1,5 @@
 import { readEnvVar } from '@chrischall/mcp-utils';
-import { runExecutor } from './runner.js';
+import { setDefaultGogExecutor } from './runner.js';
 import { makeFlyExecutor } from './connector-runtime.js';
 
 /**
@@ -19,16 +19,26 @@ import { makeFlyExecutor } from './connector-runtime.js';
  * executes remotely; leave either unset and nothing changes, which is what
  * keeps every existing local install on the binary it already has.
  *
- * ## Why `enterWith` and not `run`
+ * ## Why a process-wide default and not the AsyncLocalStorage
  *
- * `runExecutor` is an AsyncLocalStorage. The Worker wraps each REQUEST in
- * `runExecutor.run(...)` because a Worker isolate serves many of them and the
- * executor differs per user. A stdio process is one user for its whole life,
- * and its tool calls arrive later as I/O callbacks — which would NOT inherit a
- * store established by a `run()` that had already returned. `enterWith` sets it
- * for the remainder of this execution and everything descending from it, which
- * is the whole process. Using `run()` here would look correct and then fall
- * back to spawning on the first actual tool call.
+ * `runExecutor` is an AsyncLocalStorage, and the Worker wraps each REQUEST in
+ * `runExecutor.run(...)` because one isolate serves many callers whose backend
+ * credentials differ. A stdio process is the opposite: one backend for its
+ * whole life.
+ *
+ * This used to reach for `enterWith` on the theory that it "sets the store for
+ * the whole process". It does not. `enterWith` sets the store on the async
+ * resource that is CURRENT when it runs — here, module evaluation — and the
+ * tool calls arrive later as I/O events on the transport's own resources, which
+ * do not descend from that. So `getStore()` was undefined at exactly the moment
+ * `run()` asked, and the seam reverted to spawning a binary the host does not
+ * have. Every hosted gog MCP answered "gog executable not found" while pointed
+ * at a healthy backend, and the unit test missed it because a test that calls
+ * this function itself awaits inside the resource it just mutated.
+ *
+ * A process-lifetime value is not a scoped value, so it does not live in a
+ * scope: `setDefaultGogExecutor` holds it, and a per-request store still beats
+ * it (runner.ts `activeExecutor`) so the Worker path is unchanged.
  *
  * Call before the server starts, so no tool can be serviced ahead of it.
  */
@@ -44,6 +54,6 @@ export function useRemoteGogRunner(env: NodeJS.ProcessEnv = process.env): boolea
   // nothing — either alone is a misconfiguration, and silently spawning
   // instead would hide it until someone wondered why the binary was needed.
   if (!endpoint || !key) return false;
-  runExecutor.enterWith({ executor: makeFlyExecutor(endpoint.replace(/\/+$/, ''), key) });
+  setDefaultGogExecutor(makeFlyExecutor(endpoint.replace(/\/+$/, ''), key));
   return true;
 }
