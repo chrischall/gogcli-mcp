@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.21.1](https://github.com/chrischall/gogcli-mcp/compare/v2.21.0...v2.21.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **auth:** restore matching on the canonical Google 401 shape ([#250](https://github.com/chrischall/gogcli-mcp/issues/250)) ([4a648a5](https://github.com/chrischall/gogcli-mcp/commit/4a648a5ac57e7c86e77f6274a2696f1f86dc3e83))
+* **connector:** re-mint rejected Google tokens and stop blaming a healthy account for runner faults ([#245](https://github.com/chrischall/gogcli-mcp/issues/245)) ([bea6fa4](https://github.com/chrischall/gogcli-mcp/commit/bea6fa4d44c5f25594ba714d7ae0ca04516e55f9))
+* **gmail:** expose clearReplyContext on draft update, require gog 0.35.0 ([#215](https://github.com/chrischall/gogcli-mcp/issues/215)) ([6cac6ae](https://github.com/chrischall/gogcli-mcp/commit/6cac6ae4f4554e6818dddd65d9572853c1d5c826))
+
 ## [2.21.0](https://github.com/chrischall/gogcli-mcp/compare/v2.20.0...v2.21.0) (2026-08-09)
 
 
