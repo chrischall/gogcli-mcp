@@ -230,9 +230,12 @@ async function resolveBySize(
 }
 
 // Resolve the part metadata for a 0-based attachment INDEX (gog >= 0.35.0). Unlike
-// resolveBySize this is deterministic and needs no guessing: `collectAttachments`
-// numbers the parts in traversal order and `gmail get` lists them in that same
-// order, so `attachments[index]` IS the part gog will download for that index.
+// resolveBySize this is deterministic and needs no guessing: each part carries the
+// index gog assigned it, so the lookup matches that DECLARED field rather than the
+// array slot it happens to occupy. `collectAttachments` sets AttachmentIndex = i,
+// so the two agree today — but they are different promises, and resolving by
+// position would name the download after the wrong part on the day they diverge
+// (#252).
 //
 // It also runs BEFORE the download rather than after, so the real filename can be
 // handed to gog as --name/--out instead of the provisional `attachment` basename.
