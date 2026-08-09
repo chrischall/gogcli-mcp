@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.21.0](https://github.com/chrischall/gogcli-mcp/compare/v2.20.0...v2.21.0) (2026-08-09)
+
+
+### Features
+
+* **runner:** mint access tokens from a stored refresh token, so a gog identity belongs to the registration ([#242](https://github.com/chrischall/gogcli-mcp/issues/242)) ([284eef4](https://github.com/chrischall/gogcli-mcp/commit/284eef4832cfbb7a6840a666f779f6c03840d89c))
+
+
+### Bug Fixes
+
+* **auth:** stop reporting a rate limit as a dead credential, and stop implying auth_list proves liveness ([#244](https://github.com/chrischall/gogcli-mcp/issues/244)) ([e7f84c0](https://github.com/chrischall/gogcli-mcp/commit/e7f84c0f71177fccbc9314e04a9c7ddd25445d0c))
+* **deps:** dedupe @chrischall/mcp-utils so sub-package bundles stop inlining it twice ([#240](https://github.com/chrischall/gogcli-mcp/issues/240)) ([69b0bcb](https://github.com/chrischall/gogcli-mcp/commit/69b0bcbdd3ed373ec0544593c98baf0e5bf2f828))
+* **deps:** take @modelcontextprotocol/sdk 1.30 by deduping the tree to one copy ([#237](https://github.com/chrischall/gogcli-mcp/issues/237)) ([0c5fa42](https://github.com/chrischall/gogcli-mcp/commit/0c5fa42b7054ecf07b50cdbc5d4b719b29a0cf59))
+
 ## [2.20.0](https://github.com/chrischall/gogcli-mcp/compare/v2.19.2...v2.20.0) (2026-08-09)
 
 
