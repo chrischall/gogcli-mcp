@@ -24,5 +24,10 @@
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",
     "worker:test": "vitest run --config vitest.workers.config.mts"
+  },
+  "overrides": {
+    "agents": {
+      "@modelcontextprotocol/sdk": "^1.30.0"
+    }
   }
 }
