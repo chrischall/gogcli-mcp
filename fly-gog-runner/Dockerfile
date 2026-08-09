@@ -6,7 +6,12 @@ FROM node:22-bookworm-slim AS builder
 
 # TARGETARCH is amd64/arm64 — matches gog's release asset naming exactly.
 ARG TARGETARCH
-ARG GOG_VERSION=0.34.1
+# MUST be >= packages/gogcli-mcp/src/runner.ts's MIN_GOG_VERSION. The wrapper
+# sends flags this binary has to understand, and an unknown flag is a runtime
+# failure on the hosted connector — not a build error and not a type error, so
+# nothing catches it before a user does. When MIN_GOG_VERSION moves, this moves
+# with it; scripts/check-runner-gog-version.mjs fails CI if they drift.
+ARG GOG_VERSION=0.35.0
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl \
