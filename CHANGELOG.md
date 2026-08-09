@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.20.0](https://github.com/chrischall/gogcli-mcp/compare/v2.19.2...v2.20.0) (2026-08-09)
+
+
+### Features
+
+* **runner:** let a request carry its own GOG_ACCESS_TOKEN, so a hosted gog acts as its caller ([#235](https://github.com/chrischall/gogcli-mcp/issues/235)) ([74e5a83](https://github.com/chrischall/gogcli-mcp/commit/74e5a83eccda3b2819828aec3da84cb246882ed4))
+
 ## [2.19.2](https://github.com/chrischall/gogcli-mcp/compare/v2.19.1...v2.19.2) (2026-08-09)
 
 
