@@ -1,6 +1,7 @@
 import { runExecutor, RunnerTransportError } from './runner.js';
 import type { GogArg, GogExecutor } from './runner.js';
-import { logAuthTransition } from './auth-log.js';
+import { logAuthTransition, type AuthTransition } from './auth-log.js';
+import { readGoogleProbe } from './google-probe.js';
 
 // Re-exported so the runner-transport error type reads as part of THIS module's
 // surface — this is the layer that authors these failures. It is DEFINED in
@@ -51,6 +52,61 @@ const DEADLINE_GRACE_MS = 5_000;
 // eviction has already happened by the time this is consulted, so the caller's
 // own next call mints a fresh token.
 const MIN_REPLAY_BUDGET_MS = 1_000;
+
+// --- The Google-layer measurement taken when a hosted call is refused --------
+//
+// DEFECT 3 was "the hosted path has no automatic recovery, by design", and the
+// instinct was to build one. It should not be built. `gog` is spawned fresh per
+// `/run` and re-reads the keyring every time, so there is no cross-spawn
+// in-memory token that could go stale: a Google 401 on this path means the
+// STORED credential was refused, and no retry can repair that. What was missing
+// was never a retry — it was an answer to the question nobody could answer after
+// the incident: at the moment Google refused that call, was the refresh token on
+// the volume alive or dead? `replay.declined` records only that WE did nothing.
+//
+// So this asks, once, using the probe the runner now exposes, and writes down
+// what it heard. It never decides anything, never alters the caller's error and
+// never throws.
+
+/**
+ * How long the refusal probe may take.
+ *
+ * Deliberately much shorter than the runner's own budget for the same probe
+ * (`GOOGLE_PROBE_TIMEOUT_MS` in server.mjs): the caller is already holding a
+ * failed tool call, and every millisecond spent here delays the error they
+ * actually need. Timing out is a fine outcome — it records "not measured".
+ */
+const REFUSAL_PROBE_TIMEOUT_MS = 4_000;
+
+/**
+ * The smallest slice of the call's REMAINING deadline worth spending on a
+ * diagnostic. Mirrors MIN_REPLAY_BUDGET_MS and for the same reason: below this
+ * the probe can only abort, so it would buy nothing and cost the caller's error
+ * a delay. Skipping is recorded, not silent.
+ */
+const MIN_PROBE_BUDGET_MS = 1_000;
+
+/**
+ * How rarely one executor will re-measure the same backend.
+ *
+ * `/health/google` spawns a real `gog auth list --check`, which costs a Google
+ * API call and takes the keyring's EXCLUSIVE flock. That adjective was
+ * challenged in review as read-only rhetoric, so it is sourced: `auth list`
+ * reaches the keyring through `listAuthTokensWithFallback` →
+ * `store.ListTokens()` (gogcli `internal/cmd/auth_list_helpers.go`), and
+ * `ListTokens` wraps its read in `withWriteLock`, not `withReadLock`
+ * (`internal/secrets/token.go`) → `withFileLock(true, …)` →
+ * `unix.LOCK_EX | LOCK_NB` (`internal/secrets/keyring_lock_unix.go`). Verified
+ * against v0.34.1, the tag this deployment's Dockerfile pins. The shared lock
+ * exists but is taken by `Keys()`, which `auth list` reaches only on the
+ * fallback path after `ListTokens` has already failed.
+ *
+ * A model retrying a call against a genuinely refused credential would
+ * otherwise turn one diagnostic into a queue of them, on the box that is
+ * already failing. One measurement a minute is plenty: the fact being measured
+ * changes on the order of days.
+ */
+const PROBE_INTERVAL_MS = 60_000;
 
 // Status codes the Fly runner uses to classify its OWN failures. These must stay
 // in sync with fly-gog-runner/server.mjs — they are the contract that lets this
@@ -246,6 +302,11 @@ async function remintAfterGoogleRejection(
   args: GogArg[],
   readAccessToken: FlyAccessTokenSource | undefined,
   deadlineAt: number,
+  // Take a live reading of the Google layer. Supplied by `makeFlyExecutor` so
+  // this function keeps knowing nothing about the endpoint, the bearer or how
+  // often measuring is affordable — it decides only WHEN a reading is worth
+  // taking, which is the one part of it that belongs to the replay ladder.
+  probeGoogle: (where: { credential?: string; service?: string }) => Promise<void>,
 ): Promise<Replay | undefined> {
   // Only a failure gog itself authored can carry Google's verdict. A runner
   // transport failure never reached Google, and the runner's own 401 is about
@@ -290,6 +351,22 @@ async function remintAfterGoogleRejection(
   // whatever identity the backend volume holds and only an operator can change
   // that.
   if (!used) {
+    // THE HOSTED PATH, and the only place a reading is worth paying for.
+    //
+    // We are here because Google refused a call that `gog` made as the BACKEND
+    // VOLUME's own identity — the shape `worker.ts` produces on every hosted
+    // connector. Nothing above this line can say whether the credential behind
+    // that identity is dead or alive, and that is precisely the fact the
+    // incident needed and did not have. So measure first, then record the
+    // decision: the pair reads as "here is what Google said, here is why we did
+    // nothing about it".
+    //
+    // Ordered before the `replay.declined` line rather than after it so the log
+    // tells the story in the order it happened. Awaited rather than fired and
+    // forgotten because a Worker may cancel unawaited work at the end of the
+    // request — an unawaited probe is one that silently does not happen, which
+    // is the failure mode this whole branch exists to delete.
+    await probeGoogle(where);
     logAuthTransition('replay.declined', {
       ...where,
       reason:
@@ -424,6 +501,113 @@ export function makeFlyExecutor(
   key: string,
   readAccessToken?: FlyAccessTokenSource,
 ): GogExecutor {
+  // Throttle state for the refusal probe, held PER EXECUTOR rather than in a
+  // module-level map.
+  //
+  // That is the scope the thing being throttled actually has: on the Worker one
+  // executor is built per agent session (`worker.ts` `init()`), on stdio one per
+  // process (`remote-runner.ts`). So a session that is hammering a refused
+  // credential rate-limits itself without a second, unrelated session's probe
+  // being suppressed by it — a module global would let one caller's retry loop
+  // silence everybody else's first and only measurement. It also means the state
+  // dies with the session instead of accumulating endpoints for the isolate's
+  // lifetime.
+  let lastProbeAt = Number.NEGATIVE_INFINITY;
+
+  /**
+   * Ask the runner whether Google still accepts the credential on its volume,
+   * and record the answer. Resolves in EVERY case: it can neither throw nor
+   * return a value, because nothing may make a decision out of what it finds.
+   * The caller's error is already decided by the time this runs.
+   */
+  const probeGoogleAfterRefusal = async (
+    where: { credential?: string; service?: string },
+    deadlineAt: number,
+  ): Promise<void> => {
+    const record = { ...where, endpoint };
+
+    // ONE reading of the clock for both budget and throttle, so the two
+    // decisions cannot disagree about what time it is.
+    const now = Date.now();
+    const remainingMs = deadlineAt - now;
+    if (remainingMs < MIN_PROBE_BUDGET_MS) {
+      logAuthTransition('refusal.google-unmeasured', {
+        ...record,
+        reason:
+          `only ${remainingMs}ms of the call’s deadline remained, so the Google layer was not ` +
+          'measured rather than delay the caller’s own error',
+      });
+      return;
+    }
+    if (now - lastProbeAt < PROBE_INTERVAL_MS) {
+      logAuthTransition('refusal.google-unmeasured', {
+        ...record,
+        // "attempted", not "measured". `lastProbeAt` is stamped before the
+        // fetch and is deliberately NOT reset when the probe comes back with no
+        // verdict (a 404 from a runner too old to have the endpoint, a timeout,
+        // a dead socket) — the backend cost this throttle exists to bound was
+        // paid either way, and resetting it would let a retry loop storm a
+        // runner that is already unwell. So the timestamp stays and the sentence
+        // has to be the true one: on this branch a log line may not assert a
+        // measurement that never happened, and the previous probe may well have
+        // measured nothing at all.
+        reason:
+          'a Google probe was attempted recently, so another was not sent: this probe spawns ' +
+          'gog on the backend and takes the keyring’s exclusive lock',
+      });
+      return;
+    }
+    // Claimed BEFORE the await, so two overlapping refusals cannot both get
+    // past the check and spawn a probe apiece.
+    lastProbeAt = now;
+
+    let event: AuthTransition;
+    let reason: string;
+    try {
+      const res = await fetch(`${endpoint}/health/google`, {
+        headers: { Authorization: `Bearer ${key}` },
+        // Never more than the probe's own budget, never more than the call has
+        // left. `Math.min` rather than a plain constant because the second
+        // bound is the caller's, and it outranks ours.
+        signal: AbortSignal.timeout(Math.min(REFUSAL_PROBE_TIMEOUT_MS, remainingMs)),
+      });
+      if (!res.ok) {
+        // Includes the 404 from a runner deployed before `/health/google`
+        // existed. "I could not ask" is never filed as "Google said no" — that
+        // is the defect this branch exists to delete, with the alarm inverted.
+        event = 'refusal.google-unmeasured';
+        reason = `the runner did not answer the Google probe (HTTP ${res.status})`;
+      } else {
+        // `readGoogleProbe` is the ONE place that judges a probe body, shared
+        // with the connect-time probe in connector-auth.ts. It reads the
+        // runner's `measured` field BEFORE its `ok` field, which is what keeps a
+        // probe that timed out or could not be run from being filed as
+        // `-unhealthy` — the record an operator reads as "the live check agrees
+        // the credential is refused". Its reason strings come from the runner's
+        // CLOSED vocabulary of causes (PROBE_CAUSES in server.mjs), so they
+        // carry a classification and never gog's own output.
+        const verdict = readGoogleProbe(await res.json());
+        if (verdict.kind === 'ok') {
+          event = 'refusal.google-ok';
+          reason =
+            'Google refused this call, yet a live token check on the same volume succeeded — ' +
+            'so a dead or expired refresh token does not explain this refusal';
+        } else {
+          event = verdict.kind === 'unhealthy' ? 'refusal.google-unhealthy' : 'refusal.google-unmeasured';
+          reason = verdict.reason;
+        }
+      }
+    } catch (err) {
+      // A rejected fetch, an abort at the budget, or a body that is not JSON (a
+      // proxy's HTML error page). None of them are facts about Google.
+      event = 'refusal.google-unmeasured';
+      reason = err instanceof Error ? err.message : String(err);
+    }
+    // `reason` can quote text this layer did not author, so the record goes
+    // through the same redactor as every other auth log line.
+    logAuthTransition(event, { ...record, reason });
+  };
+
   return async (args: GogArg[], opts) => {
     const deadlineMs = (opts?.timeout ?? DEFAULT_TIMEOUT_MS) + DEADLINE_GRACE_MS;
     // Awaited, because the token may have to be MINTED (#241): a refresh token
@@ -455,6 +639,7 @@ export function makeFlyExecutor(
         args,
         readAccessToken,
         deadlineAt,
+        (where) => probeGoogleAfterRefusal(where, deadlineAt),
       );
       if (replay === undefined) throw err;
 

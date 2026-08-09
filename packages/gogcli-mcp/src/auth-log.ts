@@ -78,7 +78,38 @@ export type AuthTransition =
   /** The replay failed too; the original failure reaches the caller. */
   | 'replay.failed'
   /** The RUNNER rejected our bearer. gog never ran; no Google credential read. */
-  | 'runner.auth-failed';
+  | 'runner.auth-failed'
+  /** Enrolment: the runner refused the connector key itself (401/403). Layer 1. */
+  | 'connect.key-rejected'
+  /**
+   * Enrolment: the runner never answered, so the key was never judged. A user
+   * who saw this was previously told their key was invalid — see
+   * `connector-auth.ts`. It is filed separately because the two demand opposite
+   * actions from the user: fetch a new key, versus wait and retry.
+   */
+  | 'connect.runner-unreachable'
+  /** Connect time: the Google layer was measured live and answered healthy. */
+  | 'connect.google-ok'
+  /**
+   * Connect time: the probe reached a VERDICT and the verdict is bad — Google
+   * refused the credential, or there is none. The user is connected anyway.
+   * Emitted only when the runner asserts `measured:true`; see google-probe.ts.
+   */
+  | 'connect.google-unhealthy'
+  /** Connect time: the Google layer could NOT be measured. Not evidence of anything. */
+  | 'connect.google-unmeasured'
+  /**
+   * Google refused a call, and a live check taken at that moment says the
+   * credential is HEALTHY. The refusal is therefore unexplained.
+   */
+  | 'refusal.google-ok'
+  /**
+   * Google refused a call, and a live check that REACHED A VERDICT
+   * (`measured:true`) confirms the credential is refused too.
+   */
+  | 'refusal.google-unhealthy'
+  /** Google refused a call and the live check could not be taken. Not evidence of anything. */
+  | 'refusal.google-unmeasured';
 
 /**
  * Which credential, which service, which backend, and why — every field
@@ -111,7 +142,34 @@ const FAILURES: ReadonlySet<AuthTransition> = new Set<AuthTransition>([
   'grant.dead',
   'replay.failed',
   'runner.auth-failed',
+  'connect.key-rejected',
+  // An enrolment that could not proceed is a failure even though nobody is at
+  // fault: it is the only trace a half-enrolled connector leaves behind, and
+  // the absence of exactly this record is why DEFECT 4 could not be explained.
+  'connect.runner-unreachable',
+  'connect.google-unhealthy',
+  'refusal.google-unhealthy',
+  // The loudest record on this branch, and the only one that means "we cannot
+  // explain this". Google refused a real call while a live check of the same
+  // credential, taken seconds later, succeeded — so neither the 7-day cliff nor
+  // a revoked grant accounts for it. It is filed as a failure precisely because
+  // it is the record nobody may scroll past: it is the only evidence that could
+  // ever justify building something on the hosted path, and its absence over
+  // time is what retires that theory for good.
+  'refusal.google-ok',
 ]);
+
+// `connect.google-unmeasured` and `refusal.google-unmeasured` are deliberately
+// NOT failures, and the distinction
+// is the entire point of the connect-time probe. "Google was asked and said no"
+// is a fact about the user's credential; "the probe did not run" is a fact about
+// the probe. Filing the second under the first would rebuild the defect being
+// fixed — a claim about health that nothing measured — with the alarm inverted.
+//
+// That is not a distinction a call site may re-derive by eye: it was got wrong
+// once, at both call sites, by reading the runner's `ok` field alone. It is now
+// decided in exactly one place — `google-probe.ts`, which reads the runner's
+// `measured` field first — and the events below are only names for its verdicts.
 
 /** Marker so one `grep gog-auth` finds every record and nothing else. */
 const PREFIX = 'gog-auth ';

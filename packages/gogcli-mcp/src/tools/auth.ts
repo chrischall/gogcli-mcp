@@ -31,7 +31,10 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
   });
 
   server.registerTool('gog_auth_status', {
-    description: 'Show gogcli auth configuration: keyring backend, credential files, and auth setup.',
+    description:
+      'Show gogcli auth CONFIGURATION: keyring backend, credential files, and auth setup. Despite the ' +
+      'name this is not a health check — it reads local setup and does not contact Google, so it says ' +
+      'nothing about whether an account can still authenticate. Use gog_auth_health for that.',
     annotations: { readOnlyHint: true },
     inputSchema: {},
   }, async () => {
@@ -50,7 +53,10 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'service. Reports per account: whether the token is currently valid, the mapped cause when it is ' +
       'not, how long ago it was authorized, and a warning as it approaches the 7-day refresh-token limit ' +
       'that applies to OAuth apps whose consent screen is still in "Testing" mode. Run it proactively to ' +
-      're-authorize on your own schedule instead of mid-task.',
+      're-authorize on your own schedule instead of mid-task. On the hosted connector this is the ONLY ' +
+      'check that measures Google: a connector showing "connected" or "refreshed" has verified the ' +
+      'connector key that reaches the gog machine, and nothing else — the Google credential lives on ' +
+      'that machine and can be dead while the connection looks perfectly healthy.',
     annotations: { readOnlyHint: true },
     inputSchema: {},
   }, async () => {

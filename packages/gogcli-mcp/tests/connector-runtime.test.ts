@@ -790,7 +790,12 @@ describe('makeFlyExecutor re-mints a rejected access token and replays once', ()
     vi.stubGlobal('fetch', fetchMock);
     const exec = makeFlyExecutor(ENDPOINT, KEY);
     await expect(exec(READ, {})).rejects.toThrow(/Google API error/);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Counted by ENDPOINT, not in total: this same refusal now also takes a
+    // read of the Google layer (`/health/google`, see the refusal-probe block
+    // below), and that reading is a diagnostic, not a second attempt. What
+    // "does not replay" means is that gog ran exactly once.
+    const runs = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/run'));
+    expect(runs).toHaveLength(1);
   });
 
   it('does not replay when the token source cannot invalidate', async () => {
@@ -1194,5 +1199,446 @@ describe('makeFlyExecutor re-mints a rejected access token and replays once', ()
     );
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toBe('{"threads":[]}');
+  });
+});
+
+/**
+ * DEFECT 3, the half of it that survived grounding.
+ *
+ * `worker.ts` builds `makeFlyExecutor(FLY_ENDPOINT, key)` with NO token source,
+ * so the eviction + replay machinery is inert on the hosted path: `gog` runs as
+ * the Fly volume's own identity, and a Google 401 stops at the "no access token
+ * was supplied" guard. That much is by design and stays.
+ *
+ * What did NOT survive is the idea of building a replay for it. `gog` is spawned
+ * fresh per `/run` and re-reads the keyring every time, so there is no
+ * cross-spawn in-memory token that could go stale — a Google 401 here means the
+ * stored credential itself was refused, and no retry can fix that. Building a
+ * retry would have been the fifth plausible theory in a row.
+ *
+ * So this path gets INSTRUMENTATION instead. The one thing nobody could answer
+ * after the incident was: at the moment Google refused that call, was the
+ * refresh token on the volume alive or dead? `replay.declined` records only that
+ * WE did nothing. These tests pin a record of what GOOGLE said, measured at the
+ * moment of the refusal with the probe `/health/google` — and pin that the
+ * measurement changes nothing the caller sees.
+ */
+describe('the Google-layer measurement taken when a hosted call is refused', () => {
+  const ENDPOINT = 'https://gogcli-gog-runner.fly.dev';
+  const KEY = 'k';
+  const PREFIX = 'gog-auth ';
+
+  const GOOGLE_401_STDERR =
+    'Google API error (401 authError): Request had invalid authentication credentials.';
+  const READ = ['--json', '--color=never', '--no-input', 'gmail', 'search', 'q'];
+
+  function gogFailed(stderr: string) {
+    return {
+      ok: false,
+      status: 422,
+      json: async () => ({ error: `Command failed: gog gmail search q\n${stderr}`, stderr }),
+    };
+  }
+  const probeBody = (body: unknown, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  });
+
+  /** A `fetch` that answers `/run` and `/health/google` separately. */
+  function routedFetch(run: () => unknown, probe: () => unknown) {
+    return vi.fn(async (url: string) => {
+      if (url.endsWith('/run')) return run();
+      if (url.endsWith('/health/google')) return probe();
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+  }
+  const urls = (f: { mock: { calls: unknown[][] } }) => f.mock.calls.map((c) => c[0] as string);
+  const runCalls = (f: { mock: { calls: unknown[][] } }) =>
+    urls(f).filter((u) => u.endsWith('/run')).length;
+  const probeCalls = (f: { mock: { calls: unknown[][] } }) =>
+    urls(f).filter((u) => u.endsWith('/health/google')).length;
+
+  function captureLog() {
+    const emitted: Array<{ method: 'warn' | 'error'; line: string }> = [];
+    const toStdout: string[] = [];
+    for (const method of ['warn', 'error'] as const) {
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        emitted.push({ method, line: args.map(String).join(' ') });
+      });
+    }
+    for (const method of ['log', 'info', 'debug', 'trace'] as const) {
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        toStdout.push(args.map(String).join(' '));
+      });
+    }
+    return {
+      emitted,
+      toStdout,
+      records(): Record<string, unknown>[] {
+        return emitted.map((e) => {
+          expect(e.line.startsWith(PREFIX)).toBe(true);
+          return JSON.parse(e.line.slice(PREFIX.length)) as Record<string, unknown>;
+        });
+      },
+      byEvent(event: string): Record<string, unknown> | undefined {
+        return this.records().find((r) => r.event === event);
+      },
+    };
+  }
+
+  it('asks the runner whether Google still accepts the credential, with the same bearer', async () => {
+    const log = captureLog();
+    const fetchMock = routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: true, measured: true, accounts: [{ email: 'a@b.c', valid: true }] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    // The caller's error is untouched — this is instrumentation, not recovery.
+    await expect(exec(READ, {})).rejects.toThrow(/Google API error \(401/);
+
+    expect(runCalls(fetchMock)).toBe(1);
+    expect(probeCalls(fetchMock)).toBe(1);
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(init.headers).toEqual({ Authorization: `Bearer ${KEY}` });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('records an UNEXPLAINED refusal when Google says the credential is fine', async () => {
+    // The narrow theory the plan refused to build a fix for: a stored token
+    // refused by Google while the grant behind it is alive. This record is the
+    // only thing that can ever prove or kill it, so it is emitted at error
+    // level — "we cannot explain this" is the loudest thing a log can say.
+    const log = captureLog();
+    vi.stubGlobal('fetch', routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: true, measured: true, accounts: [{ email: 'a@b.c', valid: true }] }),
+    ));
+
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/401/);
+
+    const record = log.byEvent('refusal.google-ok');
+    expect(record).toBeDefined();
+    expect(record!.service).toBe('gmail');
+    expect(record!.endpoint).toBe(ENDPOINT);
+    expect(log.emitted.find((e) => e.line.includes('refusal.google-ok'))!.method).toBe('error');
+    // Still followed by the decision record, so the pair reads: what Google
+    // said, then what we did about it.
+    expect(log.byEvent('replay.declined')).toBeDefined();
+    expect(log.toStdout).toEqual([]);
+  });
+
+  it('records a dead credential, carrying the runner’s classification and not gog’s words', async () => {
+    const log = captureLog();
+    const cause =
+      'invalid_grant: the stored Google refresh token is expired or revoked — re-authorize the account';
+    vi.stubGlobal('fetch', routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: false, measured: true, accounts: [], error: cause }),
+    ));
+
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/401/);
+
+    const record = log.byEvent('refusal.google-unhealthy');
+    expect(record).toBeDefined();
+    expect(record!.reason).toBe(cause);
+    expect(log.emitted.find((e) => e.line.includes('refusal.google-unhealthy'))!.method).toBe('error');
+  });
+
+  it('reports an unhealthy layer even when the runner names no cause', async () => {
+    const log = captureLog();
+    vi.stubGlobal('fetch', routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: false, measured: true, accounts: [] }),
+    ));
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/401/);
+    expect(log.byEvent('refusal.google-unhealthy')!.reason).toMatch(/no cause/);
+  });
+
+  it('REVIEW DEFECT: a probe that could not RUN never becomes "the credential is refused"', async () => {
+    // This is the record that decides an incident: `refusal.google-unhealthy`
+    // means "Google refused the call AND the live check agrees the credential is
+    // refused". Three of the runner's causes are facts about the probe — it
+    // timed out, it could not be run at all (no `gog` on PATH, no
+    // `credentials.json` on the volume), its output could not be parsed — and
+    // filing those here would tell an operator the refresh token was dead on
+    // evidence nobody gathered. Worse, it silently disables `refusal.google-ok`,
+    // the ONE record that can prove or kill the narrow theory.
+    for (const error of [
+      'the Google probe timed out before gog answered',
+      'the Google probe could not be run',
+      'gog auth list --check returned unrecognized output',
+      'gog did not report token validity',
+      'gog reported an account it explicitly did not check',
+    ]) {
+      const log = captureLog();
+      vi.stubGlobal('fetch', routedFetch(
+        () => gogFailed(GOOGLE_401_STDERR),
+        () => probeBody({ ok: false, measured: false, accounts: [], error }),
+      ));
+
+      // The caller's error is untouched, as always.
+      await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/Google API error \(401/);
+
+      expect(log.byEvent('refusal.google-unhealthy')).toBeUndefined();
+      const record = log.byEvent('refusal.google-unmeasured');
+      expect(record).toBeDefined();
+      expect(record!.reason).toBe(error);
+      expect(log.emitted.find((e) => e.line.includes('refusal.google-unmeasured'))!.method).toBe('warn');
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('will not claim the credential is refused from a runner that never said it measured', async () => {
+    const log = captureLog();
+    vi.stubGlobal('fetch', routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: false, accounts: [], error: 'something went wrong' }),
+    ));
+
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/401/);
+
+    expect(log.byEvent('refusal.google-unhealthy')).toBeUndefined();
+    expect(log.byEvent('refusal.google-unmeasured')!.reason).toContain('something went wrong');
+  });
+
+  it('never turns a probe that could not run into a claim about Google', async () => {
+    // A runner deployed before /health/google existed answers 404. "I could not
+    // ask" must never be filed as "Google said no" — that is the defect this
+    // whole branch exists to delete, with the alarm merely inverted.
+    const log = captureLog();
+    vi.stubGlobal('fetch', routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ error: 'not found' }, 404),
+    ));
+
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/401/);
+
+    const record = log.byEvent('refusal.google-unmeasured');
+    expect(record).toBeDefined();
+    expect(record!.reason).toMatch(/404/);
+    // NOT an error: the absence of a measurement is not evidence of anything.
+    expect(log.emitted.find((e) => e.line.includes('refusal.google-unmeasured'))!.method).toBe('warn');
+    expect(log.byEvent('refusal.google-unhealthy')).toBeUndefined();
+  });
+
+  it('survives a probe that rejects, and still lets the original error through', async () => {
+    const log = captureLog();
+    vi.stubGlobal('fetch', routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => { throw new Error('network down'); },
+    ));
+
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/Google API error \(401/);
+    expect(log.byEvent('refusal.google-unmeasured')!.reason).toMatch(/network down/);
+  });
+
+  it('survives a probe that rejects with a non-Error', async () => {
+    const log = captureLog();
+    vi.stubGlobal('fetch', routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => { throw 'nope'; },
+    ));
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/401/);
+    expect(log.byEvent('refusal.google-unmeasured')!.reason).toBe('nope');
+  });
+
+  it('does not ask a question gog already answered: invalid_grant is not probed', async () => {
+    // gog said the grant is dead. Spending a Google API call to be told the same
+    // thing buys nothing, and this is the COMMON failure — the 7-day cliff — so
+    // probing it would be the one case that costs the most and learns the least.
+    const log = captureLog();
+    const fetchMock = routedFetch(
+      () => gogFailed(`${GOOGLE_401_STDERR}\noauth2: "invalid_grant"`),
+      () => probeBody({ ok: true, measured: true, accounts: [] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/invalid_grant/);
+    expect(probeCalls(fetchMock)).toBe(0);
+    expect(log.byEvent('grant.dead')).toBeDefined();
+  });
+
+  it('MUST NOT REGRESS: a runner transport failure is never probed for Google health', async () => {
+    // The runner's own 401 is about OUR bearer. gog never ran and no Google
+    // credential was read, so asking Google anything here would re-create the
+    // exact misattribution 2.21.1 fixed — one layer down, in the log.
+    const fetchMock = routedFetch(
+      () => ({ ok: false, status: 401, json: async () => ({ error: 'unauthorized' }) }),
+      () => probeBody({ ok: true, measured: true, accounts: [] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    captureLog();
+
+    const err = await makeFlyExecutor(ENDPOINT, KEY)(READ, {}).catch((e: unknown) => e);
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect(probeCalls(fetchMock)).toBe(0);
+  });
+
+  it('MUST NOT REGRESS: an ordinary gog failure is never probed', async () => {
+    const fetchMock = routedFetch(
+      () => gogFailed('row 401 is outside the sheet grid'),
+      () => probeBody({ ok: true, measured: true, accounts: [] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    captureLog();
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/outside the sheet grid/);
+    expect(probeCalls(fetchMock)).toBe(0);
+  });
+
+  it('does not probe when the call carried a token of ours — that path repairs itself', async () => {
+    const fetchMock = routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: true, measured: true, accounts: [] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    captureLog();
+    const readToken = Object.assign(vi.fn(async () => 'ya29.stale'), {
+      invalidate: vi.fn(async () => true),
+    });
+
+    await expect(makeFlyExecutor(ENDPOINT, KEY, readToken)(READ, {})).rejects.toThrow(/401/);
+    // Two /run attempts (the replay), and no probe: the eviction already
+    // answered the question the probe would ask.
+    expect(runCalls(fetchMock)).toBe(2);
+    expect(probeCalls(fetchMock)).toBe(0);
+  });
+
+  it('will not spend the caller’s remaining deadline on a diagnostic', async () => {
+    // The probe shares the tool call's ONE deadline. Below the floor it could
+    // only abort, and an abort here would delay the caller's real error for
+    // nothing.
+    const log = captureLog();
+    const fetchMock = routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: true, measured: true, accounts: [] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    // opts.timeout 0 leaves only DEADLINE_GRACE_MS. The clock is read once to
+    // fix the deadline and once by the probe; making the second read land a
+    // minute later is exactly "the first attempt ran long".
+    const start = Date.now();
+    let reads = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => (reads++ === 0 ? start : start + 60_000));
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, { timeout: 0 })).rejects.toThrow(/401/);
+
+    expect(probeCalls(fetchMock)).toBe(0);
+    expect(log.byEvent('refusal.google-unmeasured')!.reason).toMatch(/deadline/);
+  });
+
+  it('probes at most once per interval, so a retry loop cannot storm the backend', async () => {
+    // /health/google spawns a real gog and takes the keyring's exclusive flock
+    // (gogcli v0.34.1: auth list → ListTokens → withWriteLock → unix.LOCK_EX;
+    // see the sourced note on PROBE_INTERVAL_MS). A model retrying a dead call
+    // must not turn one diagnostic into a queue.
+    const log = captureLog();
+    const fetchMock = routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: true, measured: true, accounts: [] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(READ, {})).rejects.toThrow(/401/);
+    await expect(exec(READ, {})).rejects.toThrow(/401/);
+
+    expect(runCalls(fetchMock)).toBe(2);
+    expect(probeCalls(fetchMock)).toBe(1);
+    expect(log.byEvent('refusal.google-unmeasured')!.reason).toMatch(/attempted recently/);
+  });
+
+  // End to end through the REAL run() and the REAL diagnose(), because the claim
+  // that matters most about this whole feature is a NEGATIVE one: the caller's
+  // result is byte-identical whether the probe ran or not. This also re-pins the
+  // #250 shape — `Google API error (401 authError)` still reaching the auth
+  // hint — with the probe in the loop.
+  it('MUST NOT REGRESS: the caller’s diagnosed result is identical with the probe in the loop', async () => {
+    captureLog();
+    const withProbe = routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: true, measured: true, accounts: [] }),
+    );
+    vi.stubGlobal('fetch', withProbe);
+    const probed = await runExecutor.run({ executor: makeFlyExecutor(ENDPOINT, KEY) }, () =>
+      runOrDiagnose(['gmail', 'search', 'q'], {}),
+    );
+
+    // The same failure through an executor whose probe is skipped outright
+    // (gog said invalid_grant is a different error, so use the throttle: a
+    // second call on the same executor never probes).
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    const twice = routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: true, measured: true, accounts: [] }),
+    );
+    vi.stubGlobal('fetch', twice);
+    await runExecutor.run({ executor: exec }, () => runOrDiagnose(['gmail', 'search', 'q'], {}));
+    const unprobed = await runExecutor.run({ executor: exec }, () =>
+      runOrDiagnose(['gmail', 'search', 'q'], {}),
+    );
+
+    expect(probed.isError).toBe(true);
+    expect(probed.content[0].text).toContain('Google API error (401 authError)');
+    expect(probed.content[0].text).toContain('gog_auth_add');
+    // The whole point: the probe is invisible to the caller.
+    expect(unprobed.content[0].text).toBe(probed.content[0].text);
+  });
+
+  it('MUST NOT CLAIM: the throttle line never asserts a measurement that did not happen', async () => {
+    // The whole thesis of this branch is that a log line may not claim health it
+    // did not measure. The throttle is the one place that rule can be broken
+    // from the inside: `lastProbeAt` is stamped BEFORE the fetch and is not
+    // reset when the probe comes back with no verdict, so every refusal for the
+    // next PROBE_INTERVAL_MS is explained by a sentence about the previous
+    // probe. If that sentence says the layer "was measured", it is describing a
+    // measurement that never occurred — here, a runner too old to have
+    // /health/google at all.
+    //
+    // Stamping before the await is correct and stays: it is what stops two
+    // overlapping refusals from both spawning a probe, and the backend cost the
+    // throttle protects was paid whether or not a verdict came back. So the
+    // sentence is what has to be true, not the timestamp.
+    const log = captureLog();
+    const fetchMock = routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ error: 'not found' }, 404),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(READ, {})).rejects.toThrow(/401/);
+    await expect(exec(READ, {})).rejects.toThrow(/401/);
+
+    // One probe attempted, and it produced no verdict about Google.
+    expect(probeCalls(fetchMock)).toBe(1);
+    const unmeasured = log
+      .records()
+      .filter((r) => r.event === 'refusal.google-unmeasured')
+      .map((r) => r.reason as string);
+    expect(unmeasured).toHaveLength(2);
+    expect(unmeasured[0]).toMatch(/did not answer the Google probe \(HTTP 404\)/);
+
+    // The throttled line: it must say a probe was ATTEMPTED, never that the
+    // Google layer was measured.
+    expect(unmeasured[1]).toMatch(/attempted recently/);
+    expect(unmeasured[1]).not.toMatch(/measured recently|was measured|re-measured/);
+  });
+
+  it('throttles per executor, so one session cannot silence another', async () => {
+    const log = captureLog();
+    const fetchMock = routedFetch(
+      () => gogFailed(GOOGLE_401_STDERR),
+      () => probeBody({ ok: true, measured: true, accounts: [] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/401/);
+    await expect(makeFlyExecutor(ENDPOINT, KEY)(READ, {})).rejects.toThrow(/401/);
+
+    expect(probeCalls(fetchMock)).toBe(2);
+    expect(log.byEvent('refusal.google-unmeasured')).toBeUndefined();
   });
 });

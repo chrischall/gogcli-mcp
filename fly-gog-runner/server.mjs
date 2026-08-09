@@ -72,6 +72,157 @@ export const SHUTDOWN_TIMEOUT_MS = 35_000;
 const EXEC_TIMEOUT_MS = 30_000;
 const EXEC_MAX_BUFFER = 32 * 1024 * 1024; // 32 MB
 
+// --- GET /health/google: the layer-2 (Google) probe --------------------------
+//
+// `--check` is the load-bearing flag: it makes gog perform a REAL token refresh
+// against Google rather than reading the keyring, so the answer reflects what
+// the next /run will actually get. `--json` makes it parseable. This runs as the
+// BOX (no accessToken), because the box's stored credential is exactly the one
+// under suspicion.
+export const GOOGLE_PROBE_ARGS = ['auth', 'list', '--check', '--json'];
+
+// A dedicated budget, deliberately well under EXEC_TIMEOUT_MS. A status probe
+// that hangs for 30 s is worse than one that says "I could not measure": the
+// caller is a health check with its own, shorter patience.
+export const GOOGLE_PROBE_TIMEOUT_MS = 10_000;
+
+// Every cause this endpoint can report, as a CLOSED vocabulary.
+//
+// Nothing gog prints is ever relayed. That is a security property, not
+// tidiness: this response is destined for status text and log aggregators, and
+// a fixed set of literals is structurally incapable of carrying a token out of
+// the child process — where a redaction regex would merely be probable. When a
+// human needs gog's actual words, /run already returns stderr verbatim.
+export const PROBE_CAUSES = {
+  invalidGrant:
+    'invalid_grant: the stored Google refresh token is expired or revoked — re-authorize the account',
+  timedOut: 'the Google probe timed out before gog answered',
+  failed: 'the Google probe could not be run',
+  unparseable: 'gog auth list --check returned unrecognized output',
+  noAccounts: 'no Google account is authorized on this machine',
+  invalidAccount: 'a stored Google account failed a live token check',
+  unknownValidity: 'gog did not report token validity',
+  notChecked: 'gog reported an account it explicitly did not check',
+};
+
+// Which causes are facts about the CREDENTIAL, and which are facts about the
+// PROBE. This partition is the whole of the `measured` field, and it is the
+// reason a caller can tell "Google was asked and said no" from "nothing asked".
+//
+// Collapsing the two — which is what a bare `ok:false` does — is the defect this
+// endpoint exists to delete, with the alarm inverted: an operator grepping for
+// "the credential is dead" would find a line that means "gog is not installed".
+//
+// MEASURED: the probe reached a definite answer about the credential on this
+// volume. `invalidGrant` and `invalidAccount` are Google's own verdict;
+// `noAccounts` is gog answering successfully that there is no credential to
+// refuse — an answer, not a failure to ask.
+export const MEASURED_CAUSES = new Set([
+  PROBE_CAUSES.invalidGrant,
+  PROBE_CAUSES.invalidAccount,
+  PROBE_CAUSES.noAccounts,
+]);
+
+// UNMEASURED: nothing about Google was learned. The probe never ran
+// (`failed` — no `gog` on PATH, no credentials.json on the volume), ran out of
+// time (`timedOut`), produced output we cannot read (`unparseable`), or ran and
+// declined to answer the question (`unknownValidity`, `notChecked`).
+export const UNMEASURED_CAUSES = new Set([
+  PROBE_CAUSES.timedOut,
+  PROBE_CAUSES.failed,
+  PROBE_CAUSES.unparseable,
+  PROBE_CAUSES.unknownValidity,
+  PROBE_CAUSES.notChecked,
+]);
+
+// Build the failure answer for one cause.
+//
+// `measured` is derived from the partition rather than passed in, so the two
+// cannot drift apart at a call site. Membership is required, not assumed: an
+// unrecognised cause resolves to `measured: false`, the direction that can only
+// ever under-claim. Over-claiming is the failure mode with a cost.
+function probeFailure(cause, accounts = []) {
+  return { ok: false, measured: MEASURED_CAUSES.has(cause), accounts, error: cause };
+}
+
+const INVALID_GRANT_RE = /invalid_grant/i;
+
+// Map a rejected probe onto one of the causes above. Reads err.stderr/err.message
+// only to CLASSIFY; neither string is returned or logged.
+export function classifyProbeError(err) {
+  const text = `${(err && err.stderr) || ''}\n${(err && err.message) || ''}`;
+  if (INVALID_GRANT_RE.test(text)) return PROBE_CAUSES.invalidGrant;
+  if ((err && err.killed) || /ETIMEDOUT|timed? ?out/i.test(text)) return PROBE_CAUSES.timedOut;
+  return PROBE_CAUSES.failed;
+}
+
+// Turn gog's `auth list --check --json` stdout into the probe's answer.
+//
+// `ok` means "the Google layer is healthy" — an account exists AND every one of
+// them just refreshed successfully. It deliberately does NOT mean "the probe
+// ran": a probe that ran and found a dead token is the exact case this endpoint
+// exists to surface, and reporting it as ok would rebuild the defect (a status
+// that claims health it did not measure) one level up.
+//
+// `measured` answers the strictly prior question — did anything find out? — and
+// it is the field callers must read FIRST. `ok:false, measured:false` is "I
+// could not ask"; only `ok:false, measured:true` is "Google said no". See the
+// PROBE_CAUSES partition above.
+//
+// Only email/created_at/valid/error are carried forward, and `error` only as a
+// classification. `scopes` and `subject` describe the credential itself and
+// have no place in a health response.
+export function summarizeAuthProbe(stdout) {
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return probeFailure(PROBE_CAUSES.unparseable);
+  }
+  if (!parsed || !Array.isArray(parsed.accounts)) {
+    return probeFailure(PROBE_CAUSES.unparseable);
+  }
+
+  const accounts = parsed.accounts.map((a) => {
+    const entry = {};
+    if (typeof a?.email === 'string') entry.email = a.email;
+    if (typeof a?.created_at === 'string') entry.created_at = a.created_at;
+    if (typeof a?.valid === 'boolean') entry.valid = a.valid;
+    // Reduced to a boolean-ish marker: the presence of an error, not its text.
+    if (a?.error) entry.error = INVALID_GRANT_RE.test(String(a.error)) ? 'invalid_grant' : 'error';
+    return entry;
+  });
+
+  if (accounts.length === 0) return probeFailure(PROBE_CAUSES.noAccounts, accounts);
+
+  const dead = accounts.filter((a) => a.valid === false);
+  if (dead.length > 0) {
+    return probeFailure(
+      dead.some((a) => a.error === 'invalid_grant')
+        ? PROBE_CAUSES.invalidGrant
+        : PROBE_CAUSES.invalidAccount,
+      accounts,
+    );
+  }
+  // An entry that survived the `valid === false` filter and STILL carries an
+  // error marker is gogcli telling us it did not perform the check:
+  // `annotateAuthListCheck` (internal/cmd/auth_list_helpers.go) stamps a
+  // service-account entry `valid:true, error:"service account (not checked)"`.
+  // Taking that `valid:true` at face value would report health from a
+  // credential nothing measured — this endpoint's own defect, one level down —
+  // and would produce the internally inconsistent "healthy account carrying an
+  // error marker". `ok` is an AND across accounts, so one unchecked entry is
+  // enough to make the layer unmeasured.
+  if (accounts.some((a) => a.error !== undefined)) {
+    return probeFailure(PROBE_CAUSES.notChecked, accounts);
+  }
+  if (!accounts.every((a) => a.valid === true)) {
+    return probeFailure(PROBE_CAUSES.unknownValidity, accounts);
+  }
+  // Health is a claim only a measurement can license, so the two travel together.
+  return { ok: true, measured: true, accounts };
+}
+
 // Strip ambient secrets from the child env so gog only sees its own configured
 // credentials (defense-in-depth; the Worker never forwards these, but the box
 // itself may have other secrets in scope). GOG_HOME and PATH are preserved.
@@ -427,8 +578,13 @@ export function createServer({ runnerKey, execFn = defaultExecFn, log = defaultL
       if (logged) return;
       logged = true;
       server.inFlight -= 1;
+      // `close` fires for a caller who walked away as well as for a response we
+      // finished, and the two must not read alike: on the abandoned path
+      // `res.statusCode` is the untouched default 200 that nobody received, so
+      // logging it bare records a success that never happened. Say so instead.
+      const status = res.writableEnded ? `${res.statusCode}` : `${res.statusCode} (abandoned)`;
       log(
-        `${method} ${(req.url ?? '').split('?')[0]} ${res.statusCode} ` +
+        `${method} ${(req.url ?? '').split('?')[0]} ${status} ` +
         `${Date.now() - startedAt}ms ${argsDesc}`.trimEnd(),
       );
     };
@@ -453,6 +609,53 @@ export function createServer({ runnerKey, execFn = defaultExecFn, log = defaultL
         return;
       }
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    // Bearer-required LAYER-2 probe: does the Google credential on this volume
+    // still work RIGHT NOW? /health above answers only layer 1 (is the bearer
+    // key right, is the box up) and runs no gog — see the lockout guard in the
+    // test suite for why that separation is mandatory.
+    //
+    // ALWAYS HTTP 200 once authorized, including when Google says no. The status
+    // line carries "could I reach the runner"; the `ok` field carries "is Google
+    // healthy". Collapsing the two onto the status code is the mistake /run's
+    // 422-not-502 comment already documents.
+    if (method === 'GET' && url === '/health/google') {
+      if (!authed) {
+        sendJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+      // Set BEFORE the await, because `finish` can run before the await
+      // returns: the connector abandons at 4 s while this side's budget is
+      // 10 s, and that gap is by design (an abort there is the caller declining
+      // to wait, not a fault). `res.on('close')` fires at the abandonment, so
+      // without this the one request the operator most wants to read logs an
+      // empty tail.
+      argsDesc = 'google-probe running';
+      let result;
+      try {
+        const { stdout } = await execFn(GOOGLE_PROBE_ARGS, { timeout: GOOGLE_PROBE_TIMEOUT_MS });
+        result = summarizeAuthProbe(stdout);
+      } catch (err) {
+        result = probeFailure(classifyProbeError(err));
+      }
+      // Safe to log: every possible value is a literal from PROBE_CAUSES. The
+      // runner's own log makes the same three-way distinction the response
+      // does, so an operator reading it cannot mistake a probe that never ran
+      // for a credential Google refused.
+      argsDesc = result.ok
+        ? 'google-probe ok'
+        : `google-probe ${result.measured ? 'FAILED' : 'NOT MEASURED'}: ${result.error}`;
+      if (logged) {
+        // The caller is already gone and its request line has already been
+        // written, so `argsDesc` above will never be read by anyone. gog is
+        // slow exactly when Google is slow — the interesting case — and this
+        // line is then the ONLY surviving record of what the probe found, since
+        // the response below goes to a destroyed socket. Emit it separately.
+        log(`${method} ${url} (caller gone) ${Date.now() - startedAt}ms ${argsDesc}`);
+      }
+      sendJson(res, 200, result);
       return;
     }
 

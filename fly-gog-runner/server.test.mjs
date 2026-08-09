@@ -16,6 +16,11 @@ import {
   withMaterializedArgs,
   MaterializationError,
   drainAndDestroy,
+  GOOGLE_PROBE_ARGS,
+  GOOGLE_PROBE_TIMEOUT_MS,
+  PROBE_CAUSES,
+  MEASURED_CAUSES,
+  UNMEASURED_CAUSES,
 } from './server.mjs';
 
 const RUNNER_KEY = 'test-runner-key-123';
@@ -1207,4 +1212,590 @@ test('fly.toml keeps a Machine warm instead of autostopping mid-session', () => 
   // auto_start_machines buys. The runner must survive a cold start either way —
   // see the ~4 s measurement in the fly.toml comment.
   assert.equal(service.auto_start_machines, true);
+});
+
+// ---------------------------------------------------------------------------
+// GET /health/google — the LAYER 2 (Google) probe.
+//
+// /health answers "is this bearer key right and is the box up" and deliberately
+// runs no gog. That is the whole of layer 1, and it is all the connector could
+// ever measure before this endpoint existed — which is why a connector could
+// report "connected" twice and then fail the very next Gmail call with a Google
+// 401. This endpoint is the missing measurement: it actually asks Google.
+// ---------------------------------------------------------------------------
+
+// Build a server whose execFn records every call, so a test can assert both the
+// argv the probe used and the options it ran under.
+function spyServer(impl, log) {
+  const calls = [];
+  const execFn = (args, opts) => {
+    calls.push({ args, opts });
+    return impl(args, opts);
+  };
+  return { calls, execFn, log };
+}
+
+test('GET /health/google requires bearer', async () => {
+  await withServer(async () => ({ stdout: '{"accounts":[]}' }), async (base) => {
+    const noAuth = await request(base, { method: 'GET', path: '/health/google' });
+    assert.equal(noAuth.status, 401);
+    assert.deepEqual(noAuth.json, { error: 'unauthorized' });
+
+    const wrongSameLen = await request(base, {
+      method: 'GET',
+      path: '/health/google',
+      headers: bearer('x'.repeat(RUNNER_KEY.length)),
+    });
+    assert.equal(wrongSameLen.status, 401);
+  });
+});
+
+test('GET /health/google runs a live gog probe and reports healthy accounts', async () => {
+  const spy = spyServer(async () => ({
+    stdout: JSON.stringify({
+      accounts: [
+        {
+          email: 'me@example.com',
+          created_at: '2026-08-01T00:00:00Z',
+          valid: true,
+          scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+          subject: '11223344',
+        },
+      ],
+    }),
+  }));
+  await withServer(spy.execFn, async (base) => {
+    const res = await request(base, {
+      method: 'GET',
+      path: '/health/google',
+      headers: bearer(RUNNER_KEY),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.ok, true);
+    assert.equal(res.json.error, undefined);
+    // Only the four health-relevant fields are echoed. `scopes` and `subject`
+    // describe the credential, and this response is destined for logs.
+    // Exactly these keys — `error` is absent (not null) on a healthy account,
+    // and `scopes`/`subject` were dropped entirely.
+    assert.deepEqual(res.json.accounts, [
+      { email: 'me@example.com', created_at: '2026-08-01T00:00:00Z', valid: true },
+    ]);
+  });
+
+  assert.equal(spy.calls.length, 1);
+  // --check is what makes gog perform a real refresh against Google; --json is
+  // what makes the result parseable. Neither is optional.
+  assert.deepEqual(spy.calls[0].args, GOOGLE_PROBE_ARGS);
+  assert.deepEqual(spy.calls[0].args, ['auth', 'list', '--check', '--json']);
+  // A dedicated, SHORTER budget than /run's: an unreachable Google must not
+  // hold a status probe open for the full 30 s exec timeout.
+  assert.equal(spy.calls[0].opts.timeout, GOOGLE_PROBE_TIMEOUT_MS);
+  assert.ok(GOOGLE_PROBE_TIMEOUT_MS < 30_000, 'probe budget must undercut EXEC_TIMEOUT_MS');
+  // No accessToken: the probe measures the box's own stored credential, which
+  // is precisely the one the next /run will use.
+  assert.equal(spy.calls[0].opts.accessToken, undefined);
+});
+
+test('GET /health/google reports ok:false at HTTP 200 when a stored token is dead', async () => {
+  await withServer(
+    async () => ({
+      stdout: JSON.stringify({
+        accounts: [
+          {
+            email: 'me@example.com',
+            created_at: '2026-08-01T00:00:00Z',
+            valid: false,
+            error: 'oauth2: "invalid_grant" "Token has been expired or revoked."',
+          },
+        ],
+      }),
+    }),
+    async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      // 200, NOT 5xx: the runner is reachable and answered truthfully. Only a
+      // probe that could not run at all gets a non-200, so the caller can tell
+      // "I could not measure" from "I measured, and Google says no".
+      assert.equal(res.status, 200);
+      assert.equal(res.json.ok, false);
+      assert.match(res.json.error, /invalid_grant/);
+      assert.equal(res.json.accounts[0].valid, false);
+    },
+  );
+});
+
+test('GET /health/google reports ok:false when the probe command itself fails', async () => {
+  await withServer(
+    async () => {
+      const err = new Error('Command failed: gog auth list --check --json');
+      err.stderr = 'oauth2: cannot fetch token: invalid_grant';
+      throw err;
+    },
+    async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.json.ok, false);
+      assert.match(res.json.error, /invalid_grant/);
+      assert.deepEqual(res.json.accounts, []);
+    },
+  );
+});
+
+test('GET /health/google reports ok:false when no account is stored at all', async () => {
+  await withServer(async () => ({ stdout: JSON.stringify({ accounts: [] }) }), async (base) => {
+    const res = await request(base, {
+      method: 'GET',
+      path: '/health/google',
+      headers: bearer(RUNNER_KEY),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.ok, false);
+    assert.match(res.json.error, /no Google account/i);
+  });
+});
+
+test('GET /health/google reports ok:false on output it cannot parse', async () => {
+  for (const stdout of ['not json at all', '{"accounts":"nope"}', '']) {
+    await withServer(async () => ({ stdout }), async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.status, 200, `stdout=${JSON.stringify(stdout)}`);
+      assert.equal(res.json.ok, false, `stdout=${JSON.stringify(stdout)}`);
+      assert.match(res.json.error, /unrecognized/i);
+    });
+  }
+});
+
+test('GET /health/google maps a probe timeout to its own cause', async () => {
+  await withServer(
+    async () => {
+      const err = new Error('Command failed: gog auth list --check --json');
+      err.killed = true;
+      err.signal = 'SIGTERM';
+      throw err;
+    },
+    async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.json.ok, false);
+      assert.match(res.json.error, /timed out/i);
+    },
+  );
+});
+
+test('the google probe never echoes gog output into the response or the log', async () => {
+  // gog's stdout/stderr are NOT relayed. The endpoint reports a cause drawn
+  // from a closed vocabulary, so there is no path by which a credential in the
+  // child's output can reach a response body or a log aggregator.
+  const secret = 'ya29.a0AfB_by-super-secret-token';
+  const lines = [];
+  const server = createServer({
+    runnerKey: RUNNER_KEY,
+    execFn: async () => {
+      const err = new Error(`Command failed: gog auth list --check (token ${secret})`);
+      err.stderr = `refresh failed with ${secret}`;
+      throw err;
+    },
+    log: (line) => lines.push(line),
+  });
+  server.listen(0, LOOPBACK);
+  await once(server, 'listening');
+  const { port } = server.address();
+  let res;
+  try {
+    res = await request(`http://${LOOPBACK}:${port}`, {
+      method: 'GET',
+      path: '/health/google',
+      headers: bearer(RUNNER_KEY),
+    });
+  } finally {
+    server.close();
+    await once(server, 'close');
+  }
+  assert.equal(res.status, 200);
+  assert.equal(res.json.ok, false);
+  assert.ok(!res.raw.includes(secret), res.raw);
+  assert.ok(!res.raw.includes('Command failed'), res.raw);
+  assert.ok(!lines.join('\n').includes(secret), lines.join('\n'));
+  // It still leaves an operator-readable trace of the outcome.
+  assert.match(lines.join('\n'), /\/health\/google 200/);
+});
+
+test('THE LOCKOUT GUARD: /health and /healthz still answer when gog is dead', async () => {
+  // Layer 1 (connector key) and layer 2 (Google) must stay independent. The
+  // re-auth tools are themselves MCP tools, reachable only AFTER the connector
+  // connects — so if a dead Google credential could block /health, the user
+  // would be locked out of the very tools that repair it. These two endpoints
+  // must therefore never invoke gog, no matter how broken Google is.
+  const spy = spyServer(async () => {
+    throw new Error('gog must not be invoked by a layer-1 health check');
+  });
+  await withServer(spy.execFn, async (base) => {
+    const healthz = await request(base, { method: 'GET', path: '/healthz' });
+    assert.equal(healthz.status, 200);
+    assert.deepEqual(healthz.json, { ok: true });
+
+    const health = await request(base, {
+      method: 'GET',
+      path: '/health',
+      headers: bearer(RUNNER_KEY),
+    });
+    assert.equal(health.status, 200);
+    assert.deepEqual(health.json, { ok: true });
+  });
+  assert.equal(spy.calls.length, 0, 'a layer-1 health check must never spawn gog');
+});
+
+// ---------------------------------------------------------------------------
+// `measured`: the field that keeps "I could not ask" out of "Google said no".
+//
+// REVIEW DEFECT. Before this, every non-healthy outcome was a bare `ok:false`,
+// and both connector call sites branched on `ok === true` alone — so a probe
+// that TIMED OUT, could not be RUN at all (no `gog` on PATH, no
+// `credentials.json` on the volume), or returned output we could not parse was
+// filed at error level as `connect.google-unhealthy` / `refusal.google-unhealthy`
+// — the events whose documented meaning is "Google was asked and refused". An
+// operator grepping event names would close the incident on evidence that was
+// never gathered, and `refusal.google-ok` — the only record that can ever prove
+// or kill the narrow theory — would be silently unreachable.
+//
+// `ok` answers "is the Google layer healthy". `measured` answers the strictly
+// prior question: "did anything actually find out?" The two are independent, and
+// only the pair can be read honestly.
+// ---------------------------------------------------------------------------
+
+test('every PROBE_CAUSES value is classified as measured or not, exactly once', () => {
+  // The partition is what makes `measured` trustworthy: a cause added later
+  // cannot quietly default into "we measured this".
+  const causes = Object.values(PROBE_CAUSES);
+  for (const cause of causes) {
+    const inMeasured = MEASURED_CAUSES.has(cause);
+    const inUnmeasured = UNMEASURED_CAUSES.has(cause);
+    assert.ok(inMeasured !== inUnmeasured, `cause is in neither or both sets: ${cause}`);
+  }
+  assert.equal(MEASURED_CAUSES.size + UNMEASURED_CAUSES.size, causes.length);
+  // And an unrecognised cause resolves toward "not measured" — the direction
+  // that can only under-claim.
+  assert.equal(MEASURED_CAUSES.has('something nobody wrote down'), false);
+});
+
+test('a probe that could not run reports measured:false, not a verdict about Google', async () => {
+  // gog missing from PATH, credentials.json absent from the volume, an exec
+  // that blew its budget. None of these is a fact about the refresh token.
+  const cases = [
+    {
+      what: 'the command failed',
+      throws: () => {
+        const err = new Error('Command failed: gog auth list --check --json');
+        err.stderr = 'gog: command not found';
+        throw err;
+      },
+      error: PROBE_CAUSES.failed,
+    },
+    {
+      what: 'the command timed out',
+      throws: () => {
+        const err = new Error('Command failed: gog auth list --check --json');
+        err.killed = true;
+        err.signal = 'SIGTERM';
+        throw err;
+      },
+      error: PROBE_CAUSES.timedOut,
+    },
+  ];
+  for (const { what, throws, error } of cases) {
+    await withServer(async () => throws(), async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.status, 200, what);
+      assert.equal(res.json.ok, false, what);
+      assert.equal(res.json.measured, false, what);
+      assert.equal(res.json.error, error, what);
+    });
+  }
+});
+
+test('output we cannot parse is measured:false — it says nothing about Google', async () => {
+  for (const stdout of ['not json at all', '{"accounts":"nope"}', '']) {
+    await withServer(async () => ({ stdout }), async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.json.measured, false, `stdout=${JSON.stringify(stdout)}`);
+      assert.equal(res.json.error, PROBE_CAUSES.unparseable);
+    });
+  }
+});
+
+test('gog declining to report validity is measured:false', async () => {
+  // The probe ran, the output parsed, and gog still did not say whether the
+  // token works. That is an unanswered question, not a refusal.
+  await withServer(
+    async () => ({ stdout: JSON.stringify({ accounts: [{ email: 'me@example.com' }] }) }),
+    async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.json.ok, false);
+      assert.equal(res.json.measured, false);
+      assert.equal(res.json.error, PROBE_CAUSES.unknownValidity);
+    },
+  );
+});
+
+test('an account gogcli says it did NOT check is never counted as healthy', async () => {
+  // gogcli's annotateAuthListCheck (internal/cmd/auth_list_helpers.go) marks a
+  // service-account entry `valid:true, error:"service account (not checked)"`.
+  // Taking that `valid:true` at face value would report health from a
+  // credential nothing measured — this defect, one layer down.
+  await withServer(
+    async () => ({
+      stdout: JSON.stringify({
+        accounts: [
+          {
+            email: 'svc@proj.iam.gserviceaccount.com',
+            auth: 'service-account',
+            valid: true,
+            error: 'service account (not checked)',
+          },
+        ],
+      }),
+    }),
+    async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.json.ok, false);
+      assert.equal(res.json.measured, false);
+      assert.equal(res.json.error, PROBE_CAUSES.notChecked);
+    },
+  );
+});
+
+test('an unchecked account poisons an otherwise healthy answer', async () => {
+  // `ok` is an AND across accounts, so one unmeasured entry is enough: the
+  // layer as a whole was not measured.
+  await withServer(
+    async () => ({
+      stdout: JSON.stringify({
+        accounts: [
+          { email: 'me@example.com', valid: true },
+          { email: 'svc@proj.iam.gserviceaccount.com', valid: true, error: 'service account (not checked)' },
+        ],
+      }),
+    }),
+    async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.json.ok, false);
+      assert.equal(res.json.measured, false);
+      assert.equal(res.json.error, PROBE_CAUSES.notChecked);
+    },
+  );
+});
+
+test('outcomes that ARE facts about the credential report measured:true', async () => {
+  const cases = [
+    {
+      what: 'a dead refresh token',
+      stdout: JSON.stringify({
+        accounts: [
+          { email: 'me@example.com', valid: false, error: 'oauth2: "invalid_grant" "Token has been expired or revoked."' },
+        ],
+      }),
+      error: PROBE_CAUSES.invalidGrant,
+    },
+    {
+      what: 'an account that failed its live check for some other reason',
+      stdout: JSON.stringify({
+        accounts: [{ email: 'me@example.com', valid: false, error: 'oauth2: server refused' }],
+      }),
+      error: PROBE_CAUSES.invalidAccount,
+    },
+    {
+      what: 'no account authorized at all',
+      stdout: JSON.stringify({ accounts: [] }),
+      error: PROBE_CAUSES.noAccounts,
+    },
+  ];
+  for (const { what, stdout, error } of cases) {
+    await withServer(async () => ({ stdout }), async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.json.ok, false, what);
+      assert.equal(res.json.measured, true, what);
+      assert.equal(res.json.error, error, what);
+    });
+  }
+});
+
+test('a rejected probe that carried Google’s own invalid_grant IS a measurement', async () => {
+  // gog exited non-zero, but its stderr contains Google's verdict — the probe
+  // reached Google and was told no. That is measured.
+  await withServer(
+    async () => {
+      const err = new Error('Command failed: gog auth list --check --json');
+      err.stderr = 'oauth2: cannot fetch token: invalid_grant';
+      throw err;
+    },
+    async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.json.ok, false);
+      assert.equal(res.json.measured, true);
+      assert.equal(res.json.error, PROBE_CAUSES.invalidGrant);
+    },
+  );
+});
+
+test('a healthy answer is measured by construction', async () => {
+  await withServer(
+    async () => ({ stdout: JSON.stringify({ accounts: [{ email: 'me@example.com', valid: true }] }) }),
+    async (base) => {
+      const res = await request(base, {
+        method: 'GET',
+        path: '/health/google',
+        headers: bearer(RUNNER_KEY),
+      });
+      assert.equal(res.json.ok, true);
+      // ok:true without measured:true would be incoherent — health is a claim
+      // only a measurement can license.
+      assert.equal(res.json.measured, true);
+    },
+  );
+});
+
+test('the log line distinguishes a failed measurement from a failed credential', async () => {
+  const lines = [];
+  const server = createServer({
+    runnerKey: RUNNER_KEY,
+    execFn: async () => {
+      const err = new Error('Command failed');
+      err.killed = true;
+      throw err;
+    },
+    log: (line) => lines.push(line),
+  });
+  server.listen(0, LOOPBACK);
+  await once(server, 'listening');
+  const { port } = server.address();
+  try {
+    await request(`http://${LOOPBACK}:${port}`, {
+      method: 'GET',
+      path: '/health/google',
+      headers: bearer(RUNNER_KEY),
+    });
+  } finally {
+    server.close();
+    await once(server, 'close');
+  }
+  const joined = lines.join('\n');
+  // "NOT MEASURED", not "FAILED": an operator reading the runner's own log must
+  // not conclude the credential was refused either.
+  assert.match(joined, /google-probe NOT MEASURED/);
+  assert.doesNotMatch(joined, /google-probe FAILED/);
+});
+
+// Poll until `cond()` holds, failing the test rather than hanging forever.
+async function waitUntil(cond, what, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!cond()) {
+    if (Date.now() > deadline) assert.fail(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
+test('a probe the caller abandoned still records what the probe found', async () => {
+  // The connector's patience (4 s: GOOGLE_PROBE_TIMEOUT_MS in connector-auth.ts,
+  // REFUSAL_PROBE_TIMEOUT_MS in connector-runtime.ts) is deliberately shorter
+  // than this side's 10 s budget, so "the caller walked away mid-probe" is a
+  // DESIGNED outcome, not a fault. It is also the case where the runner's own
+  // record matters most: nothing reaches the client at all, so this log line is
+  // the only surviving account of what gog found — and gog is slow precisely
+  // when Google is slow, which is the interesting case.
+  //
+  // `res.on('close')` fires at the abandonment, long before the probe has an
+  // answer, so the request line went out with an empty tail and the verdict was
+  // then written down nowhere.
+  const lines = [];
+  let startProbe;
+  const probeStarted = new Promise((resolve) => { startProbe = resolve; });
+  let releaseProbe;
+  const probeGate = new Promise((resolve) => { releaseProbe = resolve; });
+
+  const server = createServer({
+    runnerKey: RUNNER_KEY,
+    execFn: async () => {
+      startProbe();
+      await probeGate;
+      return {
+        stdout: JSON.stringify({
+          accounts: [{ email: 'a@example.com', valid: false, error: 'invalid_grant: expired' }],
+        }),
+      };
+    },
+    log: (line) => lines.push(line),
+  });
+  server.listen(0, LOOPBACK);
+  await once(server, 'listening');
+  const { port } = server.address();
+
+  try {
+    const req = http.request({
+      host: LOOPBACK,
+      port,
+      method: 'GET',
+      path: '/health/google',
+      headers: bearer(RUNNER_KEY),
+    });
+    req.on('error', () => {}); // we destroy this socket ourselves; ECONNRESET is expected
+    req.end();
+    await probeStarted;
+    req.destroy();
+
+    await waitUntil(() => lines.some((l) => l.includes('/health/google')), 'the abandoned request line');
+    const abandoned = lines.find((l) => l.includes('/health/google'));
+    assert.match(abandoned, /google-probe running/, 'says a probe was in flight');
+    assert.match(abandoned, /abandoned/, 'and does not report a status the caller never received');
+
+    // The verdict must still be written down once gog answers.
+    releaseProbe();
+    await waitUntil(() => lines.length >= 2, 'the probe outcome line');
+    assert.match(lines.join('\n'), /google-probe FAILED: .*invalid_grant/);
+  } finally {
+    releaseProbe();
+    server.close();
+    await once(server, 'close');
+  }
 });

@@ -80,16 +80,41 @@ describe('gogcli Cloudflare connector — OAuth surface', () => {
   }
 
   it('GET /authorize renders the gogcli login page with the connector-key field', async () => {
-    // No `client_id` query param: the login page renders without needing a
-    // registered OAuth client, which is all we verify here.
-    // `redirect_uri` IS required, though — do not remove it. workers-oauth-provider
-    // 0.8.x calls validateRedirectUriScheme() unconditionally from parseAuthRequest,
-    // and it rejects any value with no scheme — including the empty string an ABSENT
-    // `redirect_uri` becomes ("Invalid redirect URI"). client_id stays omitted, so no
-    // client lookup happens and the assertion below is unchanged.
+    // `/authorize` is only reachable for a REGISTERED client, so the request has
+    // to be preceded by a real dynamic client registration.
+    //
+    // It did not always: workers-oauth-provider 0.8.x parsed the request without
+    // a `client_id` (it only called validateRedirectUriScheme unconditionally,
+    // which is why `redirect_uri` was already here). 0.10.x moved the
+    // `client_id is required` check and the client lookup ahead of everything
+    // else in parseAuthRequest, so the old URL now throws before the login page
+    // is ever rendered — an AuthorizationError from inside the library, not from
+    // any code in this repo. Registering first is the fix, and it exercises the
+    // path a real client actually takes.
+    const redirectUri = 'https://example.com/callback';
+    const registration = await SELF.fetch('https://example.com/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'worker test client',
+        redirect_uris: [redirectUri],
+        token_endpoint_auth_method: 'none',
+      }),
+    });
+    expect(registration.status).toBe(201);
+    const { client_id: clientId } = (await registration.json()) as { client_id: string };
+    expect(clientId).toBeTruthy();
+
+    // PKCE is mandatory for a public client (`token_endpoint_auth_method: none`)
+    // on the authorization-code flow, and the provider enforces it during the
+    // same parse. The challenge is never redeemed here — this test stops at the
+    // rendered page — so any well-formed S256 value will do.
+    const codeChallenge = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
     const res = await SELF.fetch(
       'https://example.com/authorize?response_type=code&state=abc' +
-        `&redirect_uri=${encodeURIComponent('https://example.com/callback')}`,
+        `&client_id=${encodeURIComponent(clientId)}` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+        `&code_challenge=${codeChallenge}&code_challenge_method=S256`,
     );
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
