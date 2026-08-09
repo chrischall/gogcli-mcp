@@ -221,6 +221,76 @@ describe('makeAccessTokenSource', () => {
     await expect(source()).rejects.toThrow(/could not be refreshed \(HTTP 502/);
   });
 
+  it('coalesces concurrent callers into ONE token exchange', async () => {
+    // The reported bug was several per-service servers flapping into needs-auth
+    // independently. This is the version of that failure that lives in OUR
+    // code: `get` → `await exchange` → `set` has an await between the miss and
+    // the fill, so N calls arriving together all miss and all exchange.
+    //
+    // One process per caller hides it; a Worker isolate serving many callers,
+    // or simply several tool calls in flight at once, turns one refresh into N
+    // simultaneous hits on Google's token endpoint — which is a good way to be
+    // rate-limited into exactly the intermittent auth errors being debugged.
+    let inFlight = 0;
+    let maxConcurrent = 0;
+    const fetchMock = vi.fn(async () => {
+      inFlight += 1;
+      maxConcurrent = Math.max(maxConcurrent, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return tokenResponse('ya29.shared');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const source = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-1' })!;
+    const results = await Promise.all(Array.from({ length: 8 }, () => source()));
+
+    expect(results).toEqual(Array(8).fill('ya29.shared'));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(maxConcurrent).toBe(1);
+  });
+
+  it('lets a later caller retry after a concurrent exchange failed', async () => {
+    // Coalescing must not make one failure permanent for everyone: the shared
+    // attempt is dropped when it settles, so the next call starts a fresh one.
+    // The failure has to take a tick. An exchange that rejects instantly can
+    // finish and clear itself before the second caller even looks, so that
+    // caller correctly starts its own attempt — which would make this test pass
+    // without any sharing having happened. A real exchange is a network round
+    // trip, so the shared-failure case is the one worth pinning.
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        throw new Error('boom');
+      })
+      .mockResolvedValueOnce(tokenResponse('ya29.after'));
+    vi.stubGlobal('fetch', fetchMock);
+    const source = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-1' })!;
+
+    const settled = await Promise.allSettled([source(), source()]);
+    expect(settled.every((s) => s.status === 'rejected')).toBe(true);
+    // Both shared ONE failed exchange rather than each making their own...
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // ...and the failure was not cached, so the next caller recovers.
+    expect(await source()).toBe('ya29.after');
+  });
+
+  it('does not let two different credentials share one in-flight exchange', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(tokenResponse('ya29.alice'))
+      .mockResolvedValueOnce(tokenResponse('ya29.bob'));
+    vi.stubGlobal('fetch', fetchMock);
+    const alice = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-alice' })!;
+    const bob = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-bob' })!;
+
+    const [a, b] = await Promise.all([alice(), bob()]);
+    expect(a).toBe('ya29.alice');
+    expect(b).toBe('ya29.bob');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('never puts the refresh token in the error it throws', async () => {
     vi.stubGlobal(
       'fetch',
