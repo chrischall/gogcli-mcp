@@ -78,11 +78,16 @@ const RUNNER_DRAINING = 503;
 export function makeFlyExecutor(
   endpoint: string,
   key: string,
-  readAccessToken?: () => string | undefined,
+  readAccessToken?: () => string | undefined | Promise<string | undefined>,
 ): GogExecutor {
   return async (args: GogArg[], opts) => {
     const deadlineMs = (opts?.timeout ?? DEFAULT_TIMEOUT_MS) + DEADLINE_GRACE_MS;
-    const accessToken = readAccessToken?.();
+    // Awaited, because the token may have to be MINTED (#241): a refresh token
+    // is what a registration stores, and the access token it yields lives about
+    // an hour. Deliberately NOT caught here — if the source throws, the call
+    // fails, because the alternative is running it as the backend's identity
+    // and handing this caller someone else's account.
+    const accessToken = await readAccessToken?.();
     let res: Response;
     try {
       res = await fetch(endpoint + '/run', {

@@ -1,5 +1,6 @@
 import { readEnvVar } from '@chrischall/mcp-utils';
 import { setDefaultGogExecutor } from './runner.js';
+import { makeAccessTokenSource } from './google-token.js';
 import { makeFlyExecutor } from './connector-runtime.js';
 
 /**
@@ -63,8 +64,14 @@ export function useRemoteGogRunner(env: NodeJS.ProcessEnv = process.env): boolea
   // Read per call rather than captured here, because the executor outlives any
   // one request and the claim being made is about a request. Absent when unset,
   // which is every registration that predates per-caller auth.
+  //
+  // The source also covers the case where the registration stores a REFRESH
+  // token instead (#241) — the identity then belongs to the registration rather
+  // than to the backend's volume, and the short-lived token it mints is the
+  // only thing that crosses the wire. `undefined` when neither is configured,
+  // which leaves the backend acting as itself exactly as before.
   setDefaultGogExecutor(
-    makeFlyExecutor(endpoint.replace(/\/+$/, ''), key, () => readEnvVar('GOG_ACCESS_TOKEN', { env })),
+    makeFlyExecutor(endpoint.replace(/\/+$/, ''), key, makeAccessTokenSource(env)),
   );
   return true;
 }
