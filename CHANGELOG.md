@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.22.0](https://github.com/chrischall/gogcli-mcp/compare/v2.21.1...v2.22.0) (2026-08-09)
+
+
+### Features
+
+* stable Gmail attachment indexes, EML import, conditional Drive replace, located doc comments ([#251](https://github.com/chrischall/gogcli-mcp/issues/251)) ([f043278](https://github.com/chrischall/gogcli-mcp/commit/f0432780c2502da7a6a3427c05a0b82fd5d3d361))
+
+
+### Bug Fixes
+
+* **connector:** tell unreachable backends from bad keys, and measure Google ([#256](https://github.com/chrischall/gogcli-mcp/issues/256)) ([407a592](https://github.com/chrischall/gogcli-mcp/commit/407a59246efda60e9f93834d4c7b5e5918861f59))
+* **gmail:** resolve an attachment by its declared index, not its array slot ([#254](https://github.com/chrischall/gogcli-mcp/issues/254)) ([9ae34f5](https://github.com/chrischall/gogcli-mcp/commit/9ae34f57e0c40bb5df14ff87941727b210cb025e))
+* **runner:** give the Google probe the flags nothing injects for it ([#259](https://github.com/chrischall/gogcli-mcp/issues/259)) ([171c7f0](https://github.com/chrischall/gogcli-mcp/commit/171c7f02090ab6eded3c4ea9af612d0d26879816))
+* **runner:** install the gog version the wrapper actually requires ([#257](https://github.com/chrischall/gogcli-mcp/issues/257)) ([44681ed](https://github.com/chrischall/gogcli-mcp/commit/44681ed1b0b924864b533a436ee2a854c5480af9))
+
 ## [2.21.1](https://github.com/chrischall/gogcli-mcp/compare/v2.21.0...v2.21.1) (2026-08-09)
 
 
