@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.19.2](https://github.com/chrischall/gogcli-mcp/compare/v2.19.1...v2.19.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* **runner:** a hosted gog MCP ignored its backend and spawned a binary that isn't there ([#233](https://github.com/chrischall/gogcli-mcp/issues/233)) ([136a90c](https://github.com/chrischall/gogcli-mcp/commit/136a90cc75d78ae7c7685efb75c0d1a943787d02))
+
 ## [2.19.1](https://github.com/chrischall/gogcli-mcp/compare/v2.19.0...v2.19.1) (2026-08-08)
 
 
