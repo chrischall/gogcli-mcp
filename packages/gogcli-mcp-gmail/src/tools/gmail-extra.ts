@@ -246,7 +246,24 @@ async function resolveByIndex(
     const parsed = JSON.parse(
       await run(['gmail', 'get', messageId, '--use-indexed-attachment-ids'], { account }),
     ) as { attachments?: AttachmentMeta[] };
-    return parsed.attachments?.[index];
+    const attachments = parsed.attachments;
+    if (!attachments) return undefined;
+    // Match the DECLARED index, not the array slot. gog assigns
+    // AttachmentIndex = i over the collected parts (gmail_attachments.go), so
+    // the two agree today — but they are different promises, and resolveBySize
+    // above already matches on a field rather than a position. If a listing
+    // ever arrives filtered or reordered, position resolution does not fail, it
+    // names the download after the WRONG part, which is worse than an error.
+    const declared = attachments.find((a) => a.attachmentIndex === index);
+    if (declared) return declared;
+    // Nothing declared an index — an older gog, or a listing fetched without
+    // --use-indexed-attachment-ids. Position is then the only reading of the
+    // caller's number, and it is the one gog itself would apply.
+    if (attachments.every((a) => a.attachmentIndex === undefined)) return attachments[index];
+    // Some parts declared an index and none matched: the caller asked for an
+    // index that is not in this message. Guessing by position here would be the
+    // exact silent mis-naming this function exists to avoid.
+    return undefined;
   } catch {
     return undefined;
   }
@@ -1003,7 +1020,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       'the gog SERVER, not your machine.',
     inputSchema: {
       file: z.string().describe('Path to an RFC822/EML file that ALREADY EXISTS on the gog server. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out.'),
-      labels: z.array(z.string()).optional().describe('Labels to apply to the imported message (repeatable). Each may be a label ID or a label name — names are resolved server-side.'),
+      labels: z.array(z.string()).optional().describe('Labels to apply to the imported message (repeatable). Each may be a label ID or a label name — names are resolved server-side. A name containing a COMMA cannot be passed here: gog declares --label as a Kong slice with no separator override, so Kong splits each value on commas and "Clients, Inc" is looked up as two labels ("Clients" and "Inc") and fails. Use that label\'s ID instead — ids never contain a comma; gog_gmail_labels_list gives you one.'),
       internalDateSource: z.enum(['dateHeader', 'receivedTime']).optional().describe('Which clock sets Gmail\'s internal date: dateHeader (gog default — the message\'s own Date header, so it sorts into the mailbox at its original time) or receivedTime (now).'),
       neverMarkSpam: z.boolean().optional().describe('Never classify the imported message as spam.'),
       processForCalendar: z.boolean().optional().describe('Process calendar invitations inside the imported message — this can ADD EVENTS to your calendar.'),
