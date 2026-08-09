@@ -79,6 +79,50 @@ describe('gog_drive_upload', () => {
     await harness.callTool('gog_drive_upload', { localPath: '/tmp/x.txt', keepRevisionForever: false, convert: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'upload', '/tmp/x.txt'], { account: undefined });
   });
+
+  // gog 0.35.0 (openclaw/gogcli 1b26124) adds --if-version: an atomic
+  // If-Match precondition on --replace that turns a blind overwrite into a
+  // compare-and-swap.
+  it('passes --if-version alongside --replace for conditional replacement', async () => {
+    await harness.callTool('gog_drive_upload', { localPath: '/tmp/x.txt', replace: 'file2', ifVersion: 7 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'upload', '/tmp/x.txt', '--replace=file2', '--if-version=7'],
+      { account: undefined },
+    );
+  });
+
+  it('rejects ifVersion without replace instead of spending a gog call', async () => {
+    const result = await harness.callTool('gog_drive_upload', { localPath: '/tmp/x.txt', ifVersion: 7 });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/ifVersion requires replace/);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-positive ifVersion before it reaches gog', async () => {
+    const result = await harness.callTool('gog_drive_upload', { localPath: '/tmp/x.txt', replace: 'file2', ifVersion: 0 });
+    expect(result.isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  // No gog read command surfaces the Drive `version` int: driveFileGetFields
+  // and info_via_drive.go both omit it, and `drive upload` itself is the only
+  // caller that requests it. `drive raw` (fields=*) is the sole way to read it,
+  // and it is reachable only through the gog_drive_run escape hatch — so the
+  // description has to say so or the flag is unusable.
+  it('description explains how to obtain the current version', async () => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const configs = new Map<string, { description?: string }>();
+    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
+      configs.set(name, config as { description?: string });
+      return undefined as never;
+    });
+    registerExtraDriveTools(server);
+    const desc = configs.get('gog_drive_upload')?.description ?? '';
+    expect(desc).toMatch(/gog_drive_run/);
+    expect(desc).toMatch(/raw/);
+    expect(desc).toMatch(/--fields=version/);
+  });
 });
 
 describe('gog_drive_sync_push', () => {
@@ -654,5 +698,26 @@ describe('gog_drive_shortcut_create', () => {
       ['drive', 'shortcut', 'create', 'f1', '--parent=folder9', '--name=My Link'],
       { account: 'a@b.com' },
     );
+  });
+});
+
+// `drive raw <id> --fields=version` returns {"version":"35"} — the Drive v3
+// `version` field is an int64, which Google's JSON encoding serializes as a
+// STRING. ifVersion is z.number().int().positive(), so a model that pastes the
+// value straight back through gets a zod validation error instead of a
+// conditional replace. The description has to say to convert it.
+describe('gog_drive_upload ifVersion description', () => {
+  it('warns that the version reads back as a JSON string', async () => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const schemas = new Map<string, Record<string, { description?: string }>>();
+    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
+      schemas.set(name, (config as { inputSchema: Record<string, { description?: string }> }).inputSchema);
+      return undefined as never;
+    });
+    registerExtraDriveTools(server);
+    const desc = schemas.get('gog_drive_upload')?.ifVersion?.description ?? '';
+    expect(desc).toMatch(/string/i);
+    expect(desc).toMatch(/number/i);
   });
 });

@@ -471,7 +471,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       url: z.string().optional().describe('Hyperlink URL for single-link mode'),
       text: z.string().optional().describe('Display text for single-link mode (defaults to the URL when omitted)'),
       runsJson: z.string().optional().describe('Multi-link cell: JSON array of runs, e.g. [{"text":"Act A","uri":"https://a"},{"text":" / "},{"text":"Act B","uri":"https://b"}]. A run with an empty uri is plain text.'),
-      cellsJson: z.string().optional().describe('Batch: JSON array of {cell,url,text} or {cell,runs:[{text,uri}]} objects, written in one request.'),
+      cellsJson: z.string().optional().describe('Batch: JSON array of {cell,url,text} or {cell,runs:[{text,uri}]} objects, written in one request. Inline JSON or @file (a path gog reads itself — cheaper than inlining a large batch). gog also accepts @- for stdin, but this server never writes to gog\'s stdin, so @- would hang until the call times out.'),
       account: accountParam,
     },
   }, async ({ spreadsheetId, cell, url, text, runsJson, cellsJson, account }) => {

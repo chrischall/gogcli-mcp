@@ -165,7 +165,7 @@
     },
     {
       "name": "gog_docs_comments_list",
-      "description": "List comments on a Google Doc. Returns open comments by default; set includeResolved=true to include resolved comments."
+      "description": "List comments on a Google Doc. Returns open comments by default; set includeResolved=true to include resolved comments, or locate/tab to attach each comment's tab and index ranges in one extra fetch."
     },
     {
       "name": "gog_docs_comments_get",

@@ -22,24 +22,40 @@ export function registerExtraDriveTools(server: McpServer): void {
   });
 
   server.registerTool('gog_drive_upload', {
-    description: 'Upload a local file to Drive. Use --replace to replace the content of an existing file (preserves link/permissions), or --convert to auto-convert to a Google format.',
+    description:
+      'Upload a local file to Drive. Use replace to replace the content of an existing file (preserves link/permissions), ' +
+      'or convert to auto-convert to a Google format. ' +
+      'Pair replace with ifVersion to make the overwrite conditional: gog sends an atomic If-Match precondition and reports ' +
+      'a conflict — applying nothing — if the file changed since you read it, instead of silently clobbering a concurrent edit. ' +
+      'No read tool surfaces the version number: fetch it immediately before uploading with ' +
+      'gog_drive_run { subcommand: "raw", args: ["<fileId>", "--fields=version"] } — it comes back as a JSON string, so pass it on as a number. ' +
+      'Conditional replacement refuses Google Workspace files (Docs/Sheets/Slides), which have no replaceable binary content.',
     annotations: { destructiveHint: true },
     inputSchema: {
       localPath: z.string().describe('Path to the local file to upload'),
       name: z.string().optional().describe('Override filename (create) or rename target (replace)'),
       parent: z.string().optional().describe('Destination folder ID (create only)'),
-      replace: z.string().optional().describe('Replace content of an existing Drive file ID (preserves link/permissions)'),
+      replace: z.string().optional().describe('Replace content of an existing Drive file ID (preserves link/permissions). Unconditional unless ifVersion is set.'),
+      ifVersion: z.number().int().positive().optional().describe(
+        'Replace only if the Drive file is still at this version (requires replace). On mismatch nothing is written and gog reports a conflict — re-read the file and reapply your edit. ' +
+        'Read the current version with gog_drive_run { subcommand: "raw", args: ["<fileId>", "--fields=version"] } — which answers {"version":"35"}, '
+        + 'a JSON STRING (the Drive API serializes its int64 fields as strings). Convert it to a number before passing it here, or this param rejects it.',
+      ),
       mimeType: z.string().optional().describe('Override MIME type inference'),
       keepRevisionForever: z.boolean().optional().describe('Keep the new head revision forever (binary files only)'),
       convert: z.boolean().optional().describe('Auto-convert to native Google format based on file extension (create only)'),
       convertTo: z.string().optional().describe('Convert to a specific Google format: doc | sheet | slides (create only)'),
       account: accountParam,
     },
-  }, async ({ localPath, name, parent, replace, mimeType, keepRevisionForever, convert, convertTo, account }) => {
+  }, async ({ localPath, name, parent, replace, ifVersion, mimeType, keepRevisionForever, convert, convertTo, account }) => {
+    if (ifVersion !== undefined && !replace) {
+      throw new Error('ifVersion requires replace: a version precondition only applies when replacing an existing Drive file.');
+    }
     const args = ['drive', 'upload', localPath];
     if (name) args.push(`--name=${name}`);
     if (parent) args.push(`--parent=${parent}`);
     if (replace) args.push(`--replace=${replace}`);
+    if (ifVersion !== undefined) args.push(`--if-version=${ifVersion}`);
     if (mimeType) args.push(`--mime-type=${mimeType}`);
     if (keepRevisionForever) args.push('--keep-revision-forever');
     if (convert) args.push('--convert');

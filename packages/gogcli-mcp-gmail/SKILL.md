@@ -5,7 +5,7 @@ description: Use when the user asks to read, organize, draft, forward, autoreply
 
 # gogcli-mcp-gmail
 
-Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 32 tools: auth + 4 base Gmail + 23 extra dedicated Gmail tools.
+Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 57 tools: 8 auth + 4 base Gmail + 45 extra dedicated Gmail tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
@@ -36,9 +36,10 @@ Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 3
 | Tool | What it does |
 |------|-------------|
 | `gog_gmail_raw` | Raw Gmail API JSON for a message |
-| `gog_gmail_attachment` | Download an attachment and deliver its contents — inline when ≤3 MiB, else uploaded to Drive with a link (`deliver`: auto/inline/drive/off) |
+| `gog_gmail_attachment` | Download an attachment by `attachmentIndex` (or legacy `attachmentId`) and deliver its contents — inline when within `inlineMaxBytes` (3 MiB default), else uploaded to Drive with a link (`deliver`: auto/inline/drive/off) |
 | `gog_gmail_url` | Print web URLs for threads |
 | `gog_gmail_history` | List history events since a historyId |
+| `gog_gmail_messages_search` | Search individual messages, not threads — one row per message |
 
 ### Threads
 | Tool | What it does |
@@ -56,6 +57,7 @@ Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 3
 | `gog_gmail_labels_rename` | Rename a label |
 | `gog_gmail_labels_delete` | Delete a label |
 | `gog_gmail_labels_modify` | Modify labels on one or more threads |
+| `gog_gmail_labels_style` | Change a label's color or visibility |
 
 ### Bulk operations
 | Tool | What it does |
@@ -81,7 +83,26 @@ Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 3
 ### Write
 | Tool | What it does |
 |------|-------------|
+| `gog_gmail_import` | Import an RFC822/EML message into the mailbox (keeps its headers/date; does not send) |
 | `gog_gmail_forward` | Forward a message |
+| `gog_gmail_reply` | Reply to the original sender |
+| `gog_gmail_reply_all` | Reply to sender plus every To/Cc recipient |
 | `gog_gmail_autoreply` | Reply once to all messages matching a query |
 
-Plus 5 auth tools and 4 base Gmail tools (search, get, send, run). Use `gog_gmail_run` for advanced settings (`filters`, `delegates`, `forwarding`, `sendas`, `vacation`, `watch`) and email tracking (`track`).
+### Settings
+| Tool | What it does |
+|------|-------------|
+| `gog_gmail_vacation_get` | Get the vacation responder settings |
+| `gog_gmail_vacation_update` | Enable/disable the vacation responder |
+| `gog_gmail_filters_list` | List all filters |
+| `gog_gmail_filters_get` | Get a filter by ID |
+| `gog_gmail_filters_create` | Create a filter |
+| `gog_gmail_filters_delete` | Delete a filter |
+| `gog_gmail_sendas_list` | List send-as aliases |
+| `gog_gmail_sendas_get` | Get one send-as alias |
+| `gog_gmail_sendas_create` | Create a send-as alias |
+| `gog_gmail_sendas_update` | Update a send-as alias |
+| `gog_gmail_sendas_delete` | Delete a send-as alias |
+| `gog_gmail_sendas_verify` | Resend an alias verification email |
+
+Plus 8 auth tools and 4 base Gmail tools (search, get, send, run). Use `gog_gmail_run` for the settings with no dedicated tool (`delegates`, `forwarding`, `watch`) and email tracking (`track`).

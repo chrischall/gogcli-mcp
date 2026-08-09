@@ -111,7 +111,7 @@
     },
     {
       "name": "gog_gmail_attachment",
-      "description": "Download a Gmail attachment and deliver its contents: inline (base64 image/resource) when within the 3 MiB limit, otherwise uploaded to Google Drive with a shareable link"
+      "description": "Download a Gmail attachment by 0-based attachmentIndex (or legacy attachmentId) and deliver its contents: inline (base64 image/resource) when within the inline limit, otherwise uploaded to Google Drive with a shareable link"
     },
     {
       "name": "gog_gmail_url",
@@ -208,6 +208,10 @@
     {
       "name": "gog_gmail_drafts_send",
       "description": "Send an existing Gmail draft"
+    },
+    {
+      "name": "gog_gmail_import",
+      "description": "Import an RFC822/EML message into the mailbox (keeps its original headers and date; does not send)"
     },
     {
       "name": "gog_gmail_forward",
