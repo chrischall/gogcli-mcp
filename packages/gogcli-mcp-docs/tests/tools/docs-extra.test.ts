@@ -503,6 +503,82 @@ describe('gog_docs_comments_list', () => {
       { account: undefined },
     );
   });
+
+  // gog 0.35.0 (openclaw/gogcli#965) adds --locate/--tab, which share ONE
+  // documents.get(includeTabsContent=true) across every comment on the page.
+  // The pre-0.35.0 way to answer "which tab is this comment in?" was one
+  // `docs comments locate` per comment — 30 fetches for a 30-comment doc.
+  it('includes --locate when requested', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_comments_list', { docId: 'abc', locate: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'comments', 'list', 'abc', '--locate'],
+      { account: undefined },
+    );
+  });
+
+  it('omits --locate when false', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_comments_list', { docId: 'abc', locate: false });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'comments', 'list', 'abc'], { account: undefined });
+  });
+
+  it('includes --tab, which gog treats as implying --locate', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_comments_list', { docId: 'abc', tab: 'Notes' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'comments', 'list', 'abc', '--tab=Notes'],
+      { account: undefined },
+    );
+  });
+
+  // gog rejects an explicitly empty --tab (`--tab requires a non-empty tab
+  // title or ID`), so an empty string must never reach the arg array.
+  it('never emits an empty --tab', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_comments_list', { docId: 'abc', tab: '' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['docs', 'comments', 'list', 'abc'], { account: undefined });
+  });
+
+  it('combines --locate and --tab with the existing filters and pagination', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_comments_list', {
+      docId: 'abc', includeResolved: true, since: '2026-06-01T00:00:00Z',
+      locate: true, tab: 'Notes', max: 10, page: 'tok', all: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'docs', 'comments', 'list', 'abc',
+        '--include-resolved',
+        '--since=2026-06-01T00:00:00Z',
+        '--locate',
+        '--tab=Notes',
+        '--max=10', '--page=tok', '--all',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('description states the extra fetch, the Docs scope, and that --tab drops orphans', async () => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const configs = new Map<string, { description?: string }>();
+    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
+      configs.set(name, config as { description?: string });
+      return undefined as never;
+    });
+    const { registerExtraDocsTools } = await import('../../src/tools/docs-extra.js');
+    registerExtraDocsTools(server);
+    const desc = configs.get('gog_docs_comments_list')?.description ?? '';
+    expect(desc).toMatch(/one extra/i);
+    expect(desc).toMatch(/Docs scope/);
+    expect(desc).toMatch(/orphan/i);
+  });
 });
 
 describe('gog_docs_table_column_width', () => {
@@ -2154,5 +2230,37 @@ describe('gog_docs_format spacingMode', () => {
       ['docs', 'format', 'd1', '--space-above=6'],
       { account: undefined },
     );
+  });
+});
+
+// Same trap the gmail package documents: gog resolves a "-" path through
+// io.ReadAll(stdinReader(ctx)) (docs_helpers.go resolveContentInput:26 and
+// readTextInput:83 at upstream-v0.35.0 — os.Stdin, unaffected by --no-input),
+// but runner.ts spawns with default stdio and never writes to or ends
+// child.stdin, so the call blocks until the 30s timeout fires. Reproduced
+// against a live gog v0.35.0: the child was still running with zero output
+// after 5s. These descriptions must warn, not offer.
+describe('server-side file params never advertise stdin as usable', () => {
+  const STDIN_PARAMS: Array<[tool: string, param: string]> = [
+    ['gog_docs_append', 'file'],
+    ['gog_docs_insert_footnote', 'file'],
+    ['gog_docs_header_create', 'file'],
+    ['gog_docs_footer_create', 'file'],
+  ];
+
+  it.each(STDIN_PARAMS)('%s.%s warns that stdin hangs instead of offering it', async (tool, param) => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const schemas = new Map<string, Record<string, { description?: string }>>();
+    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
+      schemas.set(name, (config as { inputSchema: Record<string, { description?: string }> }).inputSchema);
+      return undefined as never;
+    });
+    registerExtraDocsTools(server);
+    const desc = schemas.get(tool)?.[param]?.description ?? '';
+    expect(desc).not.toBe('');
+    expect(desc).not.toMatch(/(?:use|or)\s+"?-"?\s*(?:for|to read)/i);
+    expect(desc).toMatch(/stdin/i);
+    expect(desc).toMatch(/hang|never writes/i);
   });
 });

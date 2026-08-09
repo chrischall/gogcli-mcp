@@ -35,7 +35,7 @@ Extended Google Drive MCP server via [gogcli](https://github.com/openclaw/gogcli
 | Tool | What it does |
 |------|-------------|
 | `gog_drive_download` | Download a file (Google Docs → pdf/docx/xlsx/etc.) |
-| `gog_drive_upload` | Upload a local file, replace existing, or convert to Google format |
+| `gog_drive_upload` | Upload a local file, replace existing (optionally only at a given version), or convert to Google format |
 | `gog_drive_sync_push` | Recursively push a local directory into a Drive folder (additive; no remote deletes) |
 | `gog_drive_copy` | Copy a file to a new file |
 | `gog_drive_url` | Print shareable URLs for one or more files |

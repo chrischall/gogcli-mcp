@@ -316,3 +316,55 @@ describe('normalizeTimestamps', () => {
     expect(out.date).toMatch(/[+-]\d{2}:\d{2}$/);
   });
 });
+
+// gog 0.35.0 (#946) adds `internalDateIso` to Gmail message AND thread
+// listings: Gmail's own internalDate rendered RFC3339 with a real offset. It is
+// separately sourced from the neighbouring `date` (a naive reconstruction of
+// the sender's Date header), so the two can legitimately disagree — but only
+// `internalDateIso` carries its own zone, which makes it the field a machine
+// consumer should read.
+describe('internalDateIso (gog >= 0.35.0 Gmail listings)', () => {
+  it('gains a display sibling and survives a DISPLAY_TZ unlike its own offset', () => {
+    const payload = JSON.stringify({
+      messages: [{ id: 'm1', date: '2026-07-28 03:36', internalDateIso: '2026-07-28T03:36:12-04:00' }],
+    });
+    const pt = JSON.parse(normalizeTimestamps(payload, 'America/Los_Angeles', 'UTC'));
+    const row = pt.messages[0];
+    // Re-rendered in the display zone, same instant, offset still explicit.
+    expect(row.internalDateIso).toBe('2026-07-28T00:36:12-07:00');
+    expect(Date.parse(row.internalDateIso)).toBe(Date.parse('2026-07-28T03:36:12-04:00'));
+    expect(row.internalDateIsoDisplay).toContain('Tue, Jul 28');
+    expect(isNaiveTimestamp(row.internalDateIso)).toBe(false);
+  });
+
+  it('keeps sub-second precision when gog emits milliseconds', () => {
+    const out = JSON.parse(normalizeTimestamps(
+      JSON.stringify({ internalDateIso: '2026-07-28T03:36:12.250-04:00' }), ET,
+    ));
+    expect(out.internalDateIso).toBe('2026-07-28T03:36:12.250-04:00');
+    expect(out.internalDateIsoDisplay).toContain('Tue, Jul 28');
+  });
+
+  // The trap: `date` is gog re-formatting the sender header into GOG_TIMEZONE
+  // with no offset, so the wrapper has to re-read it in that zone. Only
+  // `internalDateIso` is self-describing, and the two are allowed to disagree.
+  it('is trusted verbatim while the naive sibling is read in GOG_TIMEZONE', () => {
+    const out = JSON.parse(normalizeTimestamps(JSON.stringify({
+      date: '2026-07-28 03:36',
+      internalDateIso: '2026-07-27T23:36:12-04:00',
+    }), ET, 'UTC'));
+    expect(out.internalDateIso).toBe('2026-07-27T23:36:12-04:00');
+    expect(out.date).toBe('2026-07-27T23:36:00-04:00');
+    expect(out.dateDisplay).toContain('Jul 27');
+    expect(out.internalDateIsoDisplay).toContain('Jul 27');
+  });
+
+  // A thread listing carries the same field (gmail_thread_search_helpers.go).
+  it('normalizes the field on thread listings too', () => {
+    const out = JSON.parse(normalizeTimestamps(
+      JSON.stringify({ threads: [{ id: 't1', internalDateIso: '2026-07-28T03:36:12Z' }] }), ET,
+    ));
+    expect(out.threads[0].internalDateIso).toBe('2026-07-27T23:36:12-04:00');
+    expect(out.threads[0].internalDateIsoDisplay).toContain('Mon, Jul 27');
+  });
+});

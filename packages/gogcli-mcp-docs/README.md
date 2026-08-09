@@ -62,7 +62,7 @@ Plus 5 auth tools and 7 base Docs tools (info, cat, create, write, find-replace,
 | `gog_docs_sed` | Stream-edit with sed-like regex expressions |
 | `gog_docs_trash` | Move a doc to Drive trash |
 | `gog_docs_update` | Update document content at a specific position |
-| `gog_docs_comments_list` | List comments (open or resolved) |
+| `gog_docs_comments_list` | List comments (open or resolved), optionally with each comment's tab and index ranges |
 | `gog_docs_comments_get` | Get a comment with its replies |
 | `gog_docs_comments_add` | Add a comment with optional quoted text |
 | `gog_docs_comments_reply` | Reply to a comment |

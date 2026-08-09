@@ -284,7 +284,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Text content to append'),
-      file: z.string().optional().describe('Path to a text file to append (use "-" for stdin)'),
+      file: z.string().optional().describe('Path to a text file to append, read on the gog server. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out.'),
       markdown: z.boolean().optional().describe('Convert markdown to Google Docs formatting (headings, bold, lists, etc.). See the tool description for known upstream limitations around tables.'),
       tab: z.string().optional().describe('Target tab title or ID (for multi-tab docs)'),
       account: accountParam,
@@ -372,19 +372,28 @@ export function registerExtraDocsTools(server: McpServer): void {
   // Comment-thread tools
   server.registerTool('gog_docs_comments_list', {
     description:
-      'List comments on a Google Doc. Returns open comments by default; set includeResolved=true to include resolved comments.',
+      'List comments on a Google Doc. Returns open comments by default; set includeResolved=true to include resolved comments. ' +
+      'Set locate=true (or pass tab) to attach each comment\'s tab and Docs index ranges as location.matches[] plus location.orphaned — ' +
+      'that costs one extra document fetch, but only one for the whole listing, where gog_docs_comments_locate costs one per comment. ' +
+      'Either flag additionally requires the Docs scope; the plain listing needs only Drive. ' +
+      'matches[] always spans every tab, so a quote appearing in two tabs is visible as an ambiguity rather than silently resolved. ' +
+      'tab keeps only comments with a match in that tab, which drops orphaned comments and comments that quote nothing.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       includeResolved: z.boolean().optional().describe('Include resolved comments (default: false, open only)'),
       since: z.string().optional().describe('Only return comments modified at or after this RFC3339 timestamp (e.g. 2026-06-01T00:00:00Z)'),
+      locate: z.boolean().optional().describe('Attach each comment\'s tab and Docs index ranges (location.matches[] + location.orphaned) using one extra document fetch shared across the whole listing'),
+      tab: z.string().optional().describe('Only return comments whose quoted text resolves inside this tab (title or ID). Implies locate, and drops orphaned and unquoted comments.'),
       ...paginationParams,
       account: accountParam,
     },
-  }, async ({ docId, includeResolved, since, max, page, all, account }) => {
+  }, async ({ docId, includeResolved, since, locate, tab, max, page, all, account }) => {
     const args = ['docs', 'comments', 'list', docId];
     if (includeResolved) args.push('--include-resolved');
     if (since) args.push(`--since=${since}`);
+    if (locate) args.push('--locate');
+    if (tab) args.push(`--tab=${tab}`);
     pushPaginationFlags(args, { max, page, all });
     return runOrDiagnose(args, { account });
   });
@@ -1177,7 +1186,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Footnote text'),
-      file: z.string().optional().describe('Read footnote text from a file ("-" for stdin)'),
+      file: z.string().optional().describe('Read footnote text from a file on the gog server. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out.'),
       index: z.number().int().optional().describe('Character index to place the reference mark at (1 = beginning). Omit or use atEnd for end-of-doc.'),
       atEnd: z.boolean().optional().describe('Target end-of-doc/tab (mutually exclusive with index and at)'),
       at: z.string().optional().describe('Anchor by literal text and place the reference mark at the start of the matched range'),
@@ -1304,7 +1313,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Initial header text'),
-      file: z.string().optional().describe('Read initial header text from a file ("-" for stdin)'),
+      file: z.string().optional().describe('Read initial header text from a file on the gog server. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out.'),
       index: z.number().int().optional().describe('Character index identifying the section the header belongs to (1 = beginning). Omit or use atEnd for end-of-doc.'),
       atEnd: z.boolean().optional().describe('Target end-of-doc/tab (mutually exclusive with index and at)'),
       at: z.string().optional().describe('Anchor by literal text and target the section at the start of the matched range'),
@@ -1361,7 +1370,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Initial footer text'),
-      file: z.string().optional().describe('Read initial footer text from a file ("-" for stdin)'),
+      file: z.string().optional().describe('Read initial footer text from a file on the gog server. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out.'),
       index: z.number().int().optional().describe('Character index identifying the section the footer belongs to (1 = beginning). Omit or use atEnd for end-of-doc.'),
       atEnd: z.boolean().optional().describe('Target end-of-doc/tab (mutually exclusive with index and at)'),
       at: z.string().optional().describe('Anchor by literal text and target the section at the start of the matched range'),

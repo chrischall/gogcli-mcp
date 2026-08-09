@@ -24,9 +24,12 @@ shift moves an event across a date line.
    identical code, different environment. `fly-gog-runner/fly.toml` now pins
    `GOG_TIMEZONE = "America/New_York"`.
 2. **gog's list format is naive by construction.** `listDateLayout` is
-   `"2006-01-02 15:04"` — no offset even when the zone is right. Fixed upstream;
-   until that release lands, the normalization layer below re-attaches the
-   offset.
+   `"2006-01-02 15:04"` — no offset even when the zone is right. Still true as of
+   gog 0.35.0: upstream did **not** change `date`, it added a second,
+   offset-bearing field beside it (`internalDateIso`, gog #946). So the
+   normalization layer below still re-attaches the offset to `date`, and now also
+   carries `internalDateIso` through — see
+   [`date` vs `internalDateIso`](#date-vs-internaldateiso-in-a-gmail-listing).
 
 ## How it works
 
@@ -55,6 +58,35 @@ caller's `--pretty` formatting — so the one tool you reach for when you need
 ground truth would stop telling it. Losslessness wins over presentation there;
 the friendlier views of the same data are normalized as usual.
 
+### `date` vs `internalDateIso` in a Gmail listing
+
+gog 0.35.0 added `internalDateIso` alongside `date` on message **and** thread
+listings. They are **separately sourced**, and only one of them is
+self-describing:
+
+- **`internalDateIso` is authoritative.** It is Gmail's own `internalDate`
+  (epoch millis, the instant Google accepted the message) rendered RFC3339 with
+  a real offset. It arrives already offset-bearing, so normalization trusts it
+  verbatim and merely re-renders the same instant in `DISPLAY_TZ` — lossless in
+  both directions, and correct regardless of how `GOG_TIMEZONE` is set.
+- **`date` is a reconstruction.** It is the sender-written `Date:` header
+  reformatted by gog into `GOG_TIMEZONE` with `listDateLayout`
+  (`"2006-01-02 15:04"` — no offset). The wrapper has to re-attach an offset by
+  re-reading that wall time in `GOG_TIMEZONE`, so its correctness still rests on
+  the wrapper being told the same zone gog formatted in. That is the coupling
+  the `GOG_TIMEZONE` row below exists for.
+
+The two may **legitimately disagree** — a skewed, malformed, or foreign-zone
+`Date:` header is common, and for API-imported mail the two can share a source
+and agree by construction. A disagreement is not a bug in either layer. Prefer
+`internalDateIso` when the answer has to be right; `date` stays the compact
+human column.
+
+`date` normalization is deliberately kept for listings that carry no
+`internalDateIso` (older gog, and every non-Gmail listing that uses the key), and
+neither field is ever used to correct the other — silently substituting one for
+the other would hide exactly the header skew that makes them differ.
+
 ### Deliberate non-conversions
 
 - **Date-only values** (`2026-07-28`) are left alone. Calendar uses them for
@@ -69,6 +101,7 @@ the friendlier views of the same data are normalized as usual.
 |---|---|---|---|
 | `date` | gog gmail message/thread listings | `2026-07-28 03:36` (naive, zone = gog's) | ISO + offset, `dateDisplay` |
 | `internalDate` | Gmail API (authoritative) | epoch milliseconds, UTC | ISO + offset, `internalDateDisplay` |
+| `internalDateIso` | gog gmail message + thread listings (gog ≥ 0.35.0) | RFC3339 with offset, in `GOG_TIMEZONE` | re-rendered in `DISPLAY_TZ`, `internalDateIsoDisplay` added |
 | `dateTime` | Calendar event start/end | RFC3339 with offset | unchanged offset, `dateTimeDisplay` added |
 | `originalStartTime` | Calendar | RFC3339 | + display |
 | `modifiedTime` | Drive | RFC3339 `Z` | offset in display zone, + display |

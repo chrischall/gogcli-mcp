@@ -88,22 +88,42 @@ function trimThread(
   }
 }
 
-// `gog gmail attachment --inline --json` emits these fields (NO filename, NO MIME
-// type): base64 content when the attachment is within gog's 3 MiB inline cap,
-// otherwise just the on-disk path plus a `reason` explaining the size fallback.
+// gog's own default for --inline-max-bytes (gmail_attachment.go:27,
+// `default:"3145728"` at upstream-v0.35.0). Restated here so the wrapper can pin
+// the flag on every call rather than let GOG_GMAIL_INLINE_MAX_BYTES decide.
+const GOG_DEFAULT_INLINE_MAX_BYTES = 3145728;
+
+// `gog gmail attachment --inline --json` emits base64 content when the attachment
+// is within gog's inline cap (3 MiB by default, --inline-max-bytes), otherwise
+// just the on-disk path plus a `reason` explaining the size fallback.
+//
+// `filename`/`mimeType` come from gog's own part lookup and are present whenever
+// that lookup resolved the part — always in indexed mode, and by single-attachment
+// fallback otherwise. They are absent when the opaque id missed against a message
+// with several attachments, which is exactly the case resolveBySize exists for.
 type InlineAttachment = {
   path?: string;
   bytes?: number;
   cached?: boolean;
   contentBase64?: string;
   reason?: string;
+  filename?: string;
+  mimeType?: string;
 };
 
 // One entry from `gog gmail get --json` `.attachments[]`: the message part
-// metadata, which carries the TRUE filename and MIME type that the download
-// endpoint itself does not report. `size` is the stable key we match on —
-// Gmail's `attachmentId` is NOT stable across calls (see resolveBySize).
-type AttachmentMeta = { filename?: string; mimeType?: string; attachmentId?: string; size?: number };
+// metadata, carrying the TRUE filename and MIME type. `size` is the key the
+// legacy path matches on — Gmail's `attachmentId` is NOT stable across calls
+// (see resolveBySize); `attachmentIndex` is, which is why resolveByIndex exists.
+// The two ids are mutually exclusive in gog's output: indexed mode emits the
+// index INSTEAD of the id (`attachmentId,omitempty`).
+type AttachmentMeta = {
+  filename?: string;
+  mimeType?: string;
+  attachmentId?: string;
+  attachmentIndex?: number;
+  size?: number;
+};
 
 // MIME type by file extension — the download endpoint reports none, and the
 // client needs it to render an inline image or label an embedded resource. Part
@@ -209,6 +229,29 @@ async function resolveBySize(
   }
 }
 
+// Resolve the part metadata for a 0-based attachment INDEX (gog >= 0.35.0). Unlike
+// resolveBySize this is deterministic and needs no guessing: `collectAttachments`
+// numbers the parts in traversal order and `gmail get` lists them in that same
+// order, so `attachments[index]` IS the part gog will download for that index.
+//
+// It also runs BEFORE the download rather than after, so the real filename can be
+// handed to gog as --name/--out instead of the provisional `attachment` basename.
+// Same one extra call as resolveBySize — it replaces it, it does not add to it.
+async function resolveByIndex(
+  messageId: string,
+  index: number,
+  account: string | undefined,
+): Promise<AttachmentMeta | undefined> {
+  try {
+    const parsed = JSON.parse(
+      await run(['gmail', 'get', messageId, '--use-indexed-attachment-ids'], { account }),
+    ) as { attachments?: AttachmentMeta[] };
+    return parsed.attachments?.[index];
+  } catch {
+    return undefined;
+  }
+}
+
 // A writable, ephemeral server-side output path. gog MkdirAll's the tree, and
 // /tmp is writable on both the local host and the Fly backend AND is cleared when
 // the machine stops — unlike gog's default (the gogcli config dir), which on the
@@ -223,10 +266,15 @@ function defaultOutPath(messageId: string, filename: string): string {
 // leaking the full command line (opaque attachment token included) and a raw shell
 // error such as `mkdir /home/claude: permission denied`. Keep only the stderr
 // tail, with the ids redacted.
-function sanitizeAttachmentError(err: unknown, messageId: string, attachmentId: string): string {
+//
+// `attachmentId` is undefined in indexed mode: the reference is then a small
+// integer, which is neither secret nor safely substitutable — blind-replacing "0"
+// would corrupt every number in the message.
+function sanitizeAttachmentError(err: unknown, messageId: string, attachmentId: string | undefined): string {
   let msg = err instanceof Error ? err.message : String(err);
   msg = msg.replace(/^Command failed:.*(\n|$)/, ''); // drop the command echo line
-  msg = msg.split(attachmentId).join('<attachment>').split(messageId).join('<message>');
+  if (attachmentId) msg = msg.split(attachmentId).join('<attachment>');
+  msg = msg.split(messageId).join('<message>');
   return msg.trim() || 'the download failed on the server';
 }
 
@@ -333,9 +381,12 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_attachment', {
     description:
-      'Download a Gmail attachment and deliver its contents so you can actually read them. The real filename ' +
-      'and MIME type are resolved from the message part metadata, so the saved file and response are named ' +
-      'correctly (e.g. Guest_Copy.pdf), never a generic *.bin. deliver="auto" (default) is transport-aware: ' +
+      'Download a Gmail attachment and deliver its contents so you can actually read them. Identify the ' +
+      'attachment by attachmentIndex (preferred: the 0-based position from a listing fetched with ' +
+      'useIndexedAttachmentIds — stable, and it resolves the real name before the download) or by the legacy ' +
+      'opaque attachmentId. The real filename and MIME type are resolved from the message part metadata, so ' +
+      'the saved file and response are named correctly (e.g. Guest_Copy.pdf), never a generic *.bin. ' +
+      'deliver="auto" (default) is transport-aware: ' +
       'images always come back as a native image block; anything else is delivered by the channel that works ' +
       'on your transport — a readable server-side file PATH on local (stdio) clients that share the filesystem, ' +
       'or a Google Drive link on the remote connector (whose backend filesystem you can\'t read, and which ' +
@@ -345,7 +396,9 @@ export function registerExtraGmailTools(server: McpServer): void {
       '{path, fileName, mimeType, bytes}. Drive delivery creates a file in your Drive (blocked when GOG_READONLY is set).',
     inputSchema: {
       messageId: z.string().describe('Gmail message ID'),
-      attachmentId: z.string().describe('Attachment ID (from the message payload)'),
+      attachmentId: z.string().optional().describe('The opaque attachment ID from a listing. Legacy addressing: Gmail re-issues a DIFFERENT id for the same part on every API call, so an id copied from an older listing can be stale. Prefer attachmentIndex. Exactly one of attachmentId / attachmentIndex is required.'),
+      attachmentIndex: z.number().int().nonnegative().optional().describe('The attachment\'s 0-based position in its message — the `attachmentIndex` field of a listing fetched with useIndexedAttachmentIds. Stable (a message\'s MIME structure does not change), so this is the reliable way to name an attachment. Exactly one of attachmentId / attachmentIndex is required. NOTE: it is per-MESSAGE — in gog_gmail_thread_attachments the array is flattened across the whole thread, so use each row\'s messageId + attachmentIndex, never its position in that flat list.'),
+      inlineMaxBytes: z.number().int().nonnegative().optional().describe('Byte ceiling under which gog embeds the attachment bytes rather than only writing the file. Defaults to gog\'s own 3145728, which this server pins explicitly on every call so an ambient GOG_GMAIL_INLINE_MAX_BYTES cannot change the answer. Raise it to inline something larger, lower it to force the file/Drive path.'),
       deliver: z
         .enum(['auto', 'inline', 'drive', 'off'])
         .optional()
@@ -355,7 +408,20 @@ export function registerExtraGmailTools(server: McpServer): void {
       driveFolder: z.string().optional().describe('Destination Google Drive folder ID for the uploaded copy (drive/auto delivery on the remote connector, or oversized attachments).'),
       account: accountParam,
     },
-  }, async ({ messageId, attachmentId, deliver = 'auto', out, name, driveFolder, account }) => {
+  }, async ({ messageId, attachmentId, attachmentIndex, deliver = 'auto', out, name, inlineMaxBytes, driveFolder, account }) => {
+    // gog reads the id and the index from the SAME positional argument and is told
+    // which shape it got by --use-indexed-attachment-ids, so the wrapper has to
+    // pick exactly one. Rejected here rather than by zod so the message can say
+    // which one to prefer and why.
+    if ((attachmentId === undefined) === (attachmentIndex === undefined)) {
+      return errorResult(
+        'Pass exactly one of attachmentId or attachmentIndex. Prefer attachmentIndex — the 0-based ' +
+        '`attachmentIndex` from a listing fetched with useIndexedAttachmentIds — because Gmail\'s opaque ' +
+        'attachmentId is not stable across API calls and a copied one may no longer resolve.',
+      );
+    }
+    const indexed = attachmentIndex !== undefined;
+    const attachmentRef = indexed ? String(attachmentIndex) : attachmentId as string;
     // On the remote connector, `run` forwards to the Fly backend and this store
     // is set; on local stdio it is unset. It is the one signal that tells apart
     // "the caller shares my filesystem" (stdio → deliver a path) from "the caller
@@ -370,6 +436,15 @@ export function registerExtraGmailTools(server: McpServer): void {
       //    the part metadata (attachmentIds aren't stable enough to match on).
       let filename = name ? sanitizeFilename(name) : undefined;
       let mimeType: string | undefined = filename ? MIME_BY_EXT[extOf(filename)] : undefined;
+
+      // 1b. Indexed mode resolves the part metadata BEFORE the download, because
+      //     an index identifies the part outright. The file is then written under
+      //     its real name and the post-download size heuristic never runs.
+      if (indexed && !filename) {
+        const meta = await resolveByIndex(messageId, attachmentIndex, account);
+        if (meta?.filename) filename = sanitizeFilename(meta.filename);
+        if (meta?.mimeType) mimeType = meta.mimeType;
+      }
 
       // 2. Choose the server-side output path. A caller `out` only makes sense on
       //    the local transport; on the connector it resolves on the backend the
@@ -395,15 +470,32 @@ export function registerExtraGmailTools(server: McpServer): void {
       if (!mimeType && (deliver === 'auto' || deliver === 'inline')) {
         needInline = true; // need the bytes to sniff the type
       }
-      const args = ['gmail', 'attachment', messageId, attachmentId];
+      const args = ['gmail', 'attachment', messageId, attachmentRef];
+      // PIN the id-vs-index mode on every call. GOG_GMAIL_USE_INDEXED_ATTACHMENT_IDS
+      // in the host env would otherwise make gog parse an opaque attachmentId as an
+      // integer and hard-fail ("the attachment argument must be a 0-based index",
+      // reproduced against a v0.35.0 build). runner.ts strips only credential-shaped
+      // vars, and on the remote runner the child env belongs to a backend we do not
+      // control — an explicit flag is the only setting authoritative on both.
+      args.push(indexed ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false');
       if (needInline) args.push('--inline');
+      // PINNED for the same reason as --use-indexed-attachment-ids above: gog declares
+      // this flag env:"GOG_GMAIL_INLINE_MAX_BYTES" (gmail_attachment.go:27), so an ambient
+      // value in the host — or in the remote runner's backend, whose env is not ours —
+      // would silently decide whether contentBase64 comes back at all. Restating gog's own
+      // default keeps the arg array the single authority on both transports.
+      args.push(`--inline-max-bytes=${inlineMaxBytes ?? GOG_DEFAULT_INLINE_MAX_BYTES}`);
       args.push(`--out=${outPath}`, `--name=${filename ?? 'attachment'}`);
       const info = JSON.parse(await run(args, { account })) as InlineAttachment;
       const path = info.path ?? outPath;
 
-      // 4. Resolve the real filename/MIME when `name` wasn't supplied, by matching
-      //    the downloaded byte count against the part metadata.
-      if (!filename) {
+      // 4. Resolve the real filename/MIME when it is still unknown. gog's own
+      //    --inline response carries the part metadata whenever its lookup hit, so
+      //    prefer that; the size heuristic is the last resort and applies only to
+      //    the legacy id path (an index already resolved above).
+      if (!filename && info.filename) filename = sanitizeFilename(info.filename);
+      if (!mimeType && info.mimeType) mimeType = info.mimeType;
+      if (!filename && !indexed) {
         const meta = await resolveBySize(messageId, info.bytes, account);
         if (meta?.filename) filename = sanitizeFilename(meta.filename);
         if (!mimeType && meta?.mimeType) mimeType = meta.mimeType;
@@ -434,7 +526,7 @@ export function registerExtraGmailTools(server: McpServer): void {
             : inlineResourceResult(messageId, filename, summary, info.contentBase64, mimeType), notes);
         }
         return errorResult(
-          `Attachment is too large to return inline (${info.reason ?? "exceeds gog's 3 MiB inline limit"}). ` +
+          `Attachment is too large to return inline (${info.reason ?? "exceeds gog's inline size limit, 3 MiB by default — raise inlineMaxBytes"}). ` +
           'Use deliver="auto" or deliver="drive" to receive it as a Google Drive link.',
         );
       }
@@ -450,7 +542,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     } catch (err) {
       // Never surface gog's raw error (it echoes the full command line + attachment
       // token on the backend); redact the ids and let diagnose classify the rest.
-      return diagnose(new Error(sanitizeAttachmentError(err, messageId, attachmentId)));
+      return diagnose(new Error(sanitizeAttachmentError(err, messageId, attachmentId))); // opaque id only; an index needs no redaction
     }
   });
 
@@ -591,15 +683,20 @@ export function registerExtraGmailTools(server: McpServer): void {
       sanitizeContent: z.boolean().optional().describe('Strip HTML, remove URLs, omit raw payloads from JSON (largest payload-size reduction)'),
       latestN: z.number().int().positive().optional().describe('Return only the most recent N messages in the thread (wrapper-side trim; avoids overflowing context on long threads)'),
       snippetsOnly: z.boolean().optional().describe('Reduce each message to its id, labels, snippet, and key headers (From/To/Cc/Subject/Date), dropping full bodies'),
+      useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` within its message instead of an opaque `attachmentId`. The index is stable across calls (a message\'s MIME structure does not change) while the id is not, so this is what you want before calling gog_gmail_attachment.'),
       outDir: z.string().optional().describe('Directory to write attachments to (default: current directory)'),
       account: accountParam,
     },
-  }, async ({ threadId, download, full, sanitizeContent, latestN, snippetsOnly, outDir, account }) => {
+  }, async ({ threadId, download, full, sanitizeContent, latestN, snippetsOnly, useIndexedAttachmentIds, outDir, account }) => {
     const args = ['gmail', 'thread', 'get', threadId];
     if (download) args.push('--download');
     if (full) args.push('--full');
     if (sanitizeContent) args.push('--sanitize-content');
     if (outDir) args.push(`--out-dir=${outDir}`);
+    // PINNED, not conditional: GOG_GMAIL_USE_INDEXED_ATTACHMENT_IDS in the host env
+    // swaps `attachmentId` for `attachmentIndex` in every attachments[] entry. Only
+    // an explicit flag makes the response shape the same on both transports.
+    args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false');
     const result = await runOrDiagnose(args, { account });
     if (latestN === undefined && !snippetsOnly) return result;
     return trimThread(result, latestN, snippetsOnly);
@@ -627,13 +724,18 @@ export function registerExtraGmailTools(server: McpServer): void {
     inputSchema: {
       threadId: z.string().describe('Gmail thread ID'),
       download: z.boolean().optional().describe('Download all attachments to the SERVER filesystem (see the note above; on the remote connector the files aren\'t reachable — fetch individually with gog_gmail_attachment instead).'),
+      useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId`. Set this before calling gog_gmail_attachment: the index is stable across calls, the id is not. The index counts WITHIN each message, and this listing flattens every message\'s attachments into one array — so pair each row\'s `messageId` with its own `attachmentIndex`; a row\'s position in the flat array is NOT the index.'),
       outDir: z.string().optional().describe('Directory to write attachments to, resolved on the gog SERVER\'s filesystem (default: current directory). Not your local machine on the remote connector.'),
       account: accountParam,
     },
-  }, async ({ threadId, download, outDir, account }) => {
+  }, async ({ threadId, download, useIndexedAttachmentIds, outDir, account }) => {
     const args = ['gmail', 'thread', 'attachments', threadId];
     if (download) args.push('--download');
     if (outDir) args.push(`--out-dir=${outDir}`);
+    // PINNED — see gog_gmail_thread_get. This listing is the one place the index is
+    // load-bearing: gog concatenates every message's attachments into a single
+    // array, so array position is NOT the per-message index the download expects.
+    args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false');
     return runOrDiagnose(args, { account });
   });
 
@@ -730,11 +832,13 @@ export function registerExtraGmailTools(server: McpServer): void {
     inputSchema: {
       draftId: z.string().describe('Draft ID'),
       download: z.boolean().optional().describe('Download draft attachments'),
+      useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId` (stable across calls, unlike the id).'),
       account: accountParam,
     },
-  }, async ({ draftId, download, account }) => {
+  }, async ({ draftId, download, useIndexedAttachmentIds, account }) => {
     const args = ['gmail', 'drafts', 'get', draftId];
     if (download) args.push('--download');
+    args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false'); // PINNED — see gog_gmail_thread_get
     return runOrDiagnose(args, { account });
   });
 
@@ -745,7 +849,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     subject: z.string().describe('Subject'),
     body: z.string().describe('Body (plain text). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
     bodyHtml: z.string().optional().describe('Body (HTML; optional). Pass the HTML itself at any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Mutually exclusive with bodyHtmlFile.'),
-    bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server to use as the HTML body, or "-" to read from stdin. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
+    bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server to use as the HTML body. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
     replyToMessageId: z.string().optional().describe('Reply to a specific Gmail MESSAGE id — the short hex `id` field from gog_gmail_get / _search / _thread_get (e.g. 19e7593d77fd9636), NOT a thread id and NOT the RFC822 `<…@host>` Message-Id header. Anchors In-Reply-To/References to that exact message. To reply to a thread when you don\'t know the latest message, use replyToThreadId instead. If both are given, replyToMessageId wins.'),
     replyToThreadId: z.string().optional().describe('Reply to a Gmail THREAD id — passed to gog as --thread-id, which threads the draft using the thread\'s latest-message headers (In-Reply-To/References). This is what "reply to this thread" almost always means. Mutually exclusive with replyToMessageId (which wins if both are set). Thread ids and message ids are both 16-hex strings and easy to confuse — use this param, not replyToMessageId, when the id came from a thread.'),
     replyTo: z.string().optional().describe('Reply-To header address'),
@@ -753,6 +857,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyAll: z.boolean().optional().describe('Auto-populate recipients from the original message (reply-all), inferring To/Cc from it. Requires replyToMessageId or replyToThreadId. Explicit to/cc/bcc still apply on top; omitRecipients still suppresses them.'),
     attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Read on the gog server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all).'),
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
+    autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
     omitRecipients: z.boolean().optional().describe('Create the draft with no recipients even if to/cc/bcc are supplied — an accidental-send guard. Populate recipients in a later update before sending.'),
     returnFull: z.boolean().optional().describe('After writing, re-fetch and return the full stored draft (subject, body, recipients) instead of just the write acknowledgement. Costs one extra read.'),
     account: accountParam,
@@ -773,6 +878,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyAll?: boolean;
     attach?: string[];
     from?: string;
+    autoFromAddressedAlias?: boolean;
     omitRecipients?: boolean;
   };
 
@@ -800,6 +906,11 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (f.quote) args.push('--quote');
     if (f.attach) for (const path of f.attach) args.push(`--attach=${path}`);
     if (f.from) args.push(`--from=${f.from}`);
+    // PINNED, not conditional: GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS in the host env
+    // silently changes which address the mail goes out FROM, with nothing in the arg
+    // array to show for it — and the remote runner's backend env is not ours to set.
+    // An explicit flag is the only value authoritative on both transports.
+    args.push(f.autoFromAddressedAlias ? '--auto-from-addressed-alias' : '--auto-from-addressed-alias=false');
   }
 
   // Run a draft write, then — when returnFull is set — re-fetch the stored
@@ -827,7 +938,9 @@ export function registerExtraGmailTools(server: McpServer): void {
     }
     const draftId = knownDraftId ?? parsed.draftId;
     if (!draftId) return result;
-    return runOrDiagnose(['gmail', 'drafts', 'get', draftId], { account });
+    // Same PIN as gog_gmail_drafts_get — this re-fetch is handed to the caller
+    // verbatim, so its attachments[] shape must not depend on the host env.
+    return runOrDiagnose(['gmail', 'drafts', 'get', draftId, '--use-indexed-attachment-ids=false'], { account });
   }
 
   server.registerTool('gog_gmail_drafts_create', {
@@ -881,6 +994,33 @@ export function registerExtraGmailTools(server: McpServer): void {
     return runOrDiagnose(['gmail', 'drafts', 'send', draftId], { account });
   });
 
+  server.registerTool('gog_gmail_import', {
+    description:
+      'Import an existing RFC822/EML message INTO the mailbox. This is Gmail\'s import path, not a send: nothing ' +
+      'leaves the account, and the message keeps its own From/Date/Message-Id headers so it files where it ' +
+      'belongs chronologically. Use it to restore an exported message or to file a .eml under a label; to ' +
+      'actually send mail use gog_gmail_send, and to stage one use gog_gmail_drafts_create. The file is read on ' +
+      'the gog SERVER, not your machine.',
+    inputSchema: {
+      file: z.string().describe('Path to an RFC822/EML file that ALREADY EXISTS on the gog server. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out.'),
+      labels: z.array(z.string()).optional().describe('Labels to apply to the imported message (repeatable). Each may be a label ID or a label name — names are resolved server-side.'),
+      internalDateSource: z.enum(['dateHeader', 'receivedTime']).optional().describe('Which clock sets Gmail\'s internal date: dateHeader (gog default — the message\'s own Date header, so it sorts into the mailbox at its original time) or receivedTime (now).'),
+      neverMarkSpam: z.boolean().optional().describe('Never classify the imported message as spam.'),
+      processForCalendar: z.boolean().optional().describe('Process calendar invitations inside the imported message — this can ADD EVENTS to your calendar.'),
+      account: accountParam,
+    },
+  }, async ({ file, labels, internalDateSource, neverMarkSpam, processForCalendar, account }) => {
+    // Not gated: gogcli's internal/cmd/gmail_import.go has no confirmDestructive /
+    // dryRunAndConfirmDestructive call site (checked at upstream v0.35.0, and a live
+    // `--dry-run` against a v0.35.0 build proceeds), so no --force is appended.
+    const args = ['gmail', 'import', file];
+    if (labels) for (const label of labels) args.push(`--label=${label}`);
+    if (internalDateSource) args.push(`--internal-date-source=${internalDateSource}`);
+    if (neverMarkSpam) args.push('--never-mark-spam');
+    if (processForCalendar) args.push('--process-for-calendar');
+    return runOrDiagnose(args, { account });
+  });
+
   server.registerTool('gog_gmail_forward', {
     description: 'Forward an existing Gmail message to new recipients.',
     annotations: { destructiveHint: true },
@@ -914,7 +1054,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     messageId: z.string().describe('Gmail message ID to reply to — the short hex `id` from gog_gmail_get / _search / _messages_search (NOT the threadId, NOT the RFC822 `<…@host>` Message-Id header).'),
     body: z.string().optional().describe('Reply body (plain text; required unless bodyHtml or bodyHtmlFile is set). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
     bodyHtml: z.string().optional().describe('Reply body (HTML; optional). Pass the HTML itself at any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Mutually exclusive with bodyHtmlFile.'),
-    bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server for the reply body, or "-" for stdin. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
+    bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server for the reply body. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
     to: z.array(z.string()).optional().describe('Add or move recipients to To (repeatable). Added on top of the recipients inherited from the original message.'),
     cc: z.array(z.string()).optional().describe('Add or move recipients to Cc (repeatable)'),
     bcc: z.array(z.string()).optional().describe('Add or move recipients to Bcc (repeatable)'),
@@ -923,6 +1063,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     noQuote: z.boolean().optional().describe('Do not include the original message quoted below the reply (default: the original is quoted)'),
     attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Read on the gog server, base64-encoded with a MIME type inferred from the extension.'),
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
+    autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
     signature: z.boolean().optional().describe('Append the Gmail signature from the active send-as address'),
     signatureFrom: z.string().optional().describe('Append the Gmail signature from this send-as email address'),
     signatureFile: z.string().optional().describe('Append a local signature file (plain text or HTML), read on the gog server'),
@@ -941,6 +1082,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     noQuote?: boolean;
     attach?: string[];
     from?: string;
+    autoFromAddressedAlias?: boolean;
     signature?: boolean;
     signatureFrom?: string;
     signatureFile?: string;
@@ -962,6 +1104,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (f.signature) args.push('--signature');
     if (f.signatureFrom) args.push(`--signature-from=${f.signatureFrom}`);
     if (f.signatureFile) args.push(`--signature-file=${f.signatureFile}`);
+    args.push(f.autoFromAddressedAlias ? '--auto-from-addressed-alias' : '--auto-from-addressed-alias=false'); // PINNED — see appendDraftFlags
   }
 
   server.registerTool('gog_gmail_reply', {
@@ -1032,9 +1175,11 @@ export function registerExtraGmailTools(server: McpServer): void {
       includeBody: z.boolean().optional().describe('Include the decoded message body in each result'),
       full: z.boolean().optional().describe('Show full message bodies without truncation (implies includeBody)'),
       bodyFormat: z.enum(['text', 'html']).optional().describe('Body format preference when includeBody is set'),
+      includeAttachments: z.boolean().optional().describe('Include each message\'s attachment metadata (filename, size, mimeType, id or index). NOT a cheap add-on: like includeBody it makes gog fetch every matching message at format=full, so it costs a full per-message read — narrow the query or lower max before turning it on.'),
+      useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` within its message instead of an opaque `attachmentId` (stable across calls, unlike the id). Only has an effect alongside includeAttachments or includeBody.'),
       account: accountParam,
     },
-  }, async ({ query, max, page, all, includeBody, full, bodyFormat, account }) => {
+  }, async ({ query, max, page, all, includeBody, full, bodyFormat, includeAttachments, useIndexedAttachmentIds, account }) => {
     const args = ['gmail', 'messages', 'search', query];
     if (max !== undefined) args.push(`--max=${max}`);
     if (page) args.push(`--page=${page}`);
@@ -1042,6 +1187,11 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (includeBody) args.push('--include-body');
     if (full) args.push('--full');
     if (bodyFormat) args.push(`--body-format=${bodyFormat}`);
+    // Both PINNED: GOG_GMAIL_INCLUDE_ATTACHMENTS and GOG_GMAIL_USE_INDEXED_ATTACHMENT_IDS
+    // each change the result shape (and the first also the per-message API cost) with
+    // nothing in the arg array to show for it. See gog_gmail_thread_get.
+    args.push(includeAttachments ? '--include-attachments' : '--include-attachments=false');
+    args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false');
     return runOrDiagnose(args, { account });
   });
 

@@ -753,6 +753,38 @@ describe('gog_sheets_links_set', () => {
       { account: undefined },
     );
   });
+
+  // gog 0.35.0 (openclaw/gogcli#941) routes --cells-json through
+  // resolveInlineOrFileBytes, so it now also accepts @file and @- (stdin).
+  // The value is already passed through verbatim, so @file needs no code
+  // change — only the param description, which currently tells the model it
+  // must inline the whole array.
+  it('forwards an @file --cells-json reference verbatim', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_links_set', { spreadsheetId: 'sid', cellsJson: '@/tmp/cells.json' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'links', 'set', 'sid', '--cells-json=@/tmp/cells.json'],
+      { account: undefined },
+    );
+  });
+
+  // runner.ts spawns gog without ever writing to or closing the child's stdin,
+  // so `@-` blocks until the 30 s timeout rather than reading anything. The
+  // description must steer callers away from it.
+  it('cellsJson description documents @file and rules out @- stdin', async () => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const configs = new Map<string, { inputSchema?: Record<string, { description?: string }> }>();
+    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
+      configs.set(name, config as { inputSchema?: Record<string, { description?: string }> });
+      return undefined as never;
+    });
+    registerExtraSheetsTools(server);
+    const desc = configs.get('gog_sheets_links_set')?.inputSchema?.cellsJson?.description ?? '';
+    expect(desc).toMatch(/@file/);
+    expect(desc).toMatch(/@-/);
+  });
 });
 
 // 18. named-ranges list

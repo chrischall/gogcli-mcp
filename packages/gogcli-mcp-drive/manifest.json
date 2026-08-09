@@ -139,7 +139,7 @@
     },
     {
       "name": "gog_drive_upload",
-      "description": "Upload a local file, optionally replacing an existing file or converting to Google format"
+      "description": "Upload a local file, optionally replacing an existing file (unconditionally, or only at a given version) or converting to Google format"
     },
     {
       "name": "gog_drive_sync_push",

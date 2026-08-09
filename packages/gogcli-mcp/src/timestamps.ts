@@ -149,6 +149,13 @@ const TIMESTAMP_KEYS = new Set([
   'date',              // gog gmail message/thread listings ("2026-07-28 03:36")
   'dateTime',          // Calendar event start/end
   'internalDate',      // Gmail, epoch milliseconds (authoritative)
+  // gog >= 0.35.0 Gmail message AND thread listings. Already offset-bearing
+  // (RFC3339 from internalDate), so it needs no offset repair — it is
+  // allowlisted purely to gain a Display sibling, and to be re-rendered in
+  // DISPLAY_TZ like every other instant. Separately sourced from the sibling
+  // `date`, which is a naive re-format of the sender's Date header; the two may
+  // legitimately disagree. See docs/timestamps.md.
+  'internalDateIso',
   'modifiedTime',      // Drive
   'createdTime',       // Drive
   'createTime',
