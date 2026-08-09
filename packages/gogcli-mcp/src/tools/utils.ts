@@ -139,17 +139,26 @@ export function errorText(err: unknown): string {
 // cannot turn a 401 into a success, so this outranks the transient signal below.
 // `unauthorized` and `invalid_grant` are unambiguous words, but 401 is also
 // just an integer, and gog's output is full of integers that are row indices,
-// ranges and counts. A bare `\b401\b` therefore classified "row 401 is outside
-// the sheet grid" — a pure Sheets range error — as a definite auth failure, and
-// sent the caller off to re-authorize a perfectly healthy account.
+// ranges and counts. A bare `\b401\b` classified "row 401 is outside the sheet
+// grid" — a pure Sheets range error — as a definite auth failure and sent the
+// caller off to re-authorize a healthy account. So a 401 has to look like a
+// STATUS: introduced by a status-ish word.
 //
-// That is the same defect this module's transport-vs-credential split exists to
-// remove, just reached through gog's stderr instead of the runner's status line.
-// So a 401 has to look like a STATUS: either introduced by a status-ish word, or
-// immediately followed by "Unauthorized". `A401:B401` never matched anyway (no
-// word boundary after `A`), but `row 401` did.
+// THE SEPARATOR IS THE WHOLE DIFFICULTY (#246). The first attempt used
+// `\s*[:=]?\s*`, which cannot cross an opening paren or a JSON quote — so it
+// silently stopped matching the CANONICAL shape gog emits for a Google auth
+// failure, `Google API error (401 authError)`, and JSON bodies like
+// `{"code": 401}`. That regression is strictly worse than the false positive it
+// was fixing: a false positive costs a pointless re-auth, but a real dead
+// credential with no hint at all leaves the caller with nothing to act on.
+//
+// So the separator admits the punctuation those shapes actually use — quote,
+// paren, colon, equals, comma, space — and is CAPPED at 4 characters so a status
+// word cannot reach across prose to an unrelated integer ("error: could not
+// write row 401" must stay silent). `A401:B401` never matched anyway: there is
+// no word boundary after `A`.
 const DEFINITE_AUTH_PATTERN =
-  /\b(?:unauthorized|invalid_grant)\b|\b401\s+unauthorized\b|\b(?:error|status|code|http|responded|response)\s*[:=]?\s*401\b/i;
+  /\b(?:unauthorized|invalid_grant)\b|\b(?:error|status|code|http|responded|response)["']?[\s:=(,]{0,4}401\b/i;
 
 // A message that TALKS about an expired token. Suggestive, not definitive — and
 // it used to be `/token.*(expired|revoked)/`, whose greedy `.*` matched a token
