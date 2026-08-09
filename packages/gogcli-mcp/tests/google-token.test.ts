@@ -129,6 +129,13 @@ describe('makeAccessTokenSource', () => {
     );
     const source = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-dead' })!;
     await expect(source()).rejects.toThrow(/expired or been revoked|re-?enrol|re-?authoriz/i);
+    // The literal token, not just the prose. tools/utils.ts picks the richer
+    // INVALID_GRANT_HINT (7-day Testing-mode cause + the headless re-auth pair)
+    // by matching `invalid_grant`; a message that only DESCRIBES the failure
+    // earns the generic "authentication may have expired" advice instead, which
+    // is what this mint used to get while the identical failure reported by gog
+    // got the specific guidance.
+    await expect(source()).rejects.toThrow(/invalid_grant/);
   });
 
   it('does not cache a failure, so a transient outage is not sticky', async () => {
@@ -277,10 +284,24 @@ describe('makeAccessTokenSource', () => {
   });
 
   it('does not let two different credentials share one in-flight exchange', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(tokenResponse('ya29.alice'))
-      .mockResolvedValueOnce(tokenResponse('ya29.bob'));
+    // Answers are keyed off the REQUEST's refresh_token, never off call order.
+    //
+    // `mockResolvedValueOnce` twice would assign alice's token to whichever
+    // exchange reaches fetch first, and that is not the order the sources were
+    // called in: each one awaits `crypto.subtle.digest` (via the cache key)
+    // before it reaches fetch, and two digest promises are not guaranteed to
+    // settle in the order they were started. Measured against this very source,
+    // bob's request went first in 4 of 400 races (~1%), which is exactly the
+    // rate at which an order-keyed mock hands alice bob's token and reddens CI
+    // for a reason that has nothing to do with the behaviour under test.
+    //
+    // Keying off the body also makes the assertion say what it means: the point
+    // is that each credential got ITS OWN token, which is a claim about
+    // pairing, not about sequence.
+    const fetchMock = vi.fn(async (_url: string, init: { body: string }) => {
+      const refreshToken = new URLSearchParams(init.body).get('refresh_token');
+      return tokenResponse(refreshToken === 'rt-alice' ? 'ya29.alice' : 'ya29.bob');
+    });
     vi.stubGlobal('fetch', fetchMock);
     const alice = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-alice' })!;
     const bob = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-bob' })!;
@@ -300,5 +321,105 @@ describe('makeAccessTokenSource', () => {
     await expect(source()).rejects.toThrow(
       expect.not.stringContaining('rt-super-secret-value') as unknown as string,
     );
+  });
+});
+
+/**
+ * A token Google has REJECTED must leave the cache.
+ *
+ * The cache's only read guard is time-based (`expiresAt - EXPIRY_MARGIN_MS >
+ * Date.now()`), so before this existed a token Google answered 401 to was
+ * re-served for the rest of its nominal hour — every call in that window failed
+ * identically, retrying changed nothing, and only reconnecting (a fresh isolate
+ * with an empty cache) helped.
+ *
+ * The eviction is deliberately NOT `clearAccessTokenCache()`. That is a test
+ * seam which drops EVERY credential; using it here would mean one caller's dead
+ * token forced a re-mint on every other caller sharing the isolate — a new bug
+ * in the same shape as the ones this module was built to avoid.
+ */
+describe('invalidate', () => {
+  it('evicts the rejected token so the next call mints a fresh one', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(tokenResponse('ya29.first'))
+      .mockResolvedValueOnce(tokenResponse('ya29.second'));
+    vi.stubGlobal('fetch', fetchMock);
+    const source = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-1' })!;
+
+    expect(await source()).toBe('ya29.first');
+    expect(await source()).toBe('ya29.first');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // True: something was actually dropped, so a retry has a chance of using a
+    // DIFFERENT token. That answer is what the caller's retry decision hangs on.
+    expect(await source.invalidate('ya29.first')).toBe(true);
+
+    expect(await source()).toBe('ya29.second');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('evicts only the credential whose token was rejected', async () => {
+    // The multi-tenant property. A Worker isolate serves many callers; one
+    // caller meeting a dead token must not cost everyone else a re-mint.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(tokenResponse('ya29.alice'))
+      .mockResolvedValueOnce(tokenResponse('ya29.bob'));
+    vi.stubGlobal('fetch', fetchMock);
+    const alice = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-alice' })!;
+    const bob = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-bob' })!;
+
+    expect(await alice()).toBe('ya29.alice');
+    expect(await bob()).toBe('ya29.bob');
+    expect(await alice.invalidate('ya29.alice')).toBe(true);
+
+    // Bob's entry is untouched — still served from cache, no third exchange.
+    expect(await bob()).toBe('ya29.bob');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores a rejection naming a token that is no longer the cached one', async () => {
+    // The ABA case. Caller A sends token T; while A is in flight, B refreshes
+    // the entry to T2; A comes back with "T was rejected". Dropping T2 there
+    // would make the next call mint a third token for nothing, and two callers
+    // could keep evicting each other's work indefinitely.
+    const fetchMock = vi.fn(async () => tokenResponse('ya29.current'));
+    vi.stubGlobal('fetch', fetchMock);
+    const source = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-1' })!;
+
+    expect(await source()).toBe('ya29.current');
+    expect(await source.invalidate('ya29.superseded')).toBe(false);
+    expect(await source()).toBe('ya29.current');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports nothing evicted when the credential has no cached token at all', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const source = makeAccessTokenSource({ ...CLIENT, GOG_REFRESH_TOKEN: 'rt-1' })!;
+    expect(await source.invalidate('ya29.never-minted')).toBe(false);
+  });
+
+  it('offers no eviction at all for a directly-supplied token, which cannot be re-minted', async () => {
+    // The #230 path stores an ACCESS token, so there is nothing to mint from:
+    // reading again returns the identical string.
+    //
+    // The ABSENCE of the method is the signal, not a `false` return. A source
+    // that answers false is indistinguishable from a mintable one whose token a
+    // concurrent caller already replaced, and the connector logs those two as
+    // different causes — so a source that attached an always-false `invalidate`
+    // made the auth log blame concurrency for "nothing here can mint a
+    // replacement", which is the one case where re-authorizing IS the repair.
+    const source = makeAccessTokenSource({ GOG_ACCESS_TOKEN: 'ya29.direct' })!;
+    expect(source.invalidate).toBeUndefined();
+    expect(await source()).toBe('ya29.direct');
+  });
+
+  it('offers no eviction for a source that cannot mint at all', async () => {
+    // GOG_REFRESH_TOKEN without an OAuth client: the source exists only to fail
+    // loudly on first use, so there is never a cached token behind it.
+    const source = makeAccessTokenSource({ GOG_REFRESH_TOKEN: 'rt-1', GOG_CLIENT_ID: 'cid' })!;
+    expect(source.invalidate).toBeUndefined();
+    await expect(source()).rejects.toThrow(/GOG_CLIENT_SECRET/);
   });
 });

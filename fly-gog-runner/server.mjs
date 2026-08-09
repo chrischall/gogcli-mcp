@@ -1,5 +1,5 @@
-// fly-gog-runner: a tiny HTTP service that runs the `gog` CLI on a Fly.io
-// scale-to-zero Machine. A Cloudflare Worker connector forwards fully-assembled
+// fly-gog-runner: a tiny HTTP service that runs the `gog` CLI on a single Fly.io
+// Machine. A Cloudflare Worker connector forwards fully-assembled
 // `gog` arg-arrays here over authenticated HTTPS; this box is the only place the
 // `gog` binary actually runs. Single-user (the operator's own Google account);
 // gog's auth lives on a persistent Fly volume mounted at GOG_HOME.
@@ -62,8 +62,10 @@ const EXT_PATTERN = /^[A-Za-z0-9]{1,16}$/;
 const DEFAULT_EXT = 'txt';
 
 // How long to let in-flight requests finish after a shutdown signal before
-// giving up. Fly autostops an idle Machine with SIGINT; a `gog` call is capped
-// at EXEC_TIMEOUT_MS, so this budget covers the slowest legitimate request.
+// giving up. Fly stops a Machine with SIGINT — on deploys, host migrations, and
+// autostop of any Machine above fly.toml's min_machines_running floor; a `gog`
+// call is capped at EXEC_TIMEOUT_MS, so this budget covers the slowest
+// legitimate request.
 export const SHUTDOWN_TIMEOUT_MS = 35_000;
 
 // execFn defaults.

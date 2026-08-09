@@ -48,6 +48,17 @@ function makeAgent(registrars: ToolRegistrar[]): typeof McpAgent {
   class GogAgent extends McpAgent<unknown, unknown, GogProps> {
     server = new McpServer({ name: 'gogcli-mcp', version: VERSION });
     async init() {
+      // NO third argument, deliberately: the hosted connector supplies no
+      // per-caller access token, so `gog` runs as the Fly volume's own identity
+      // and refreshes from its own keyring. That is what makes the eviction +
+      // replay machinery in connector-runtime.ts INERT here — with no token
+      // source there is no module-level cache that can go stale, so a Google
+      // 401 on this path stops at the `no access token was supplied` guard and
+      // logs `replay.declined`. That record is the expected outcome for a
+      // hosted connector, not a bug; the transport-failure classification and
+      // the auth log itself do apply here. (docs/DEPLOY-CONNECTOR.md,
+      // "Reading the auth log", says the same thing for whoever is reading logs
+      // rather than code.)
       const executor = makeFlyExecutor((this.env as { FLY_ENDPOINT: string }).FLY_ENDPOINT, this.props.key);
       const wrapped = wrapServer(this.server, executor);
       for (const register of registrars) register(wrapped);

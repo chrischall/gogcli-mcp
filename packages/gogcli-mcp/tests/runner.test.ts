@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { spawn as mockedSpawn } from 'node:child_process';
-import { run, runBinary, runExecutor } from '../src/runner.js';
+import { run, runBinary, runExecutor, RunnerTransportError, isRunnerTransportError } from '../src/runner.js';
 import type { Spawner, GogExecutor } from '../src/runner.js';
 
 // The real spawn is dynamically imported inside runner's default executor.
@@ -761,6 +761,26 @@ describe('run executor seam', () => {
       expect(msg).not.toContain('1//0eALS-REFRESH-LEAK');
       expect(msg).toContain('[REDACTED]');
     }
+  });
+
+  // run() re-wraps every thrown error to redact secrets from its message. That
+  // rewrap must not cost a RunnerTransportError its TYPE: the type is the only
+  // thing that tells diagnose() the failure was the connector's transport and
+  // not the caller's Google credential, and a bare Error puts it straight back
+  // to guessing from prose.
+  it('preserves a RunnerTransportError through the redacting rewrap', async () => {
+    const executor = vi.fn(async () => {
+      throw new RunnerTransportError('runner key mismatch; saw 1//0eLEAKED-REFRESH end', 'transport-auth', 401);
+    }) as unknown as GogExecutor;
+    const err = await runExecutor
+      .run({ executor }, () => run(['gmail', 'get', 'm1']))
+      .catch((e: unknown) => e);
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect((err as RunnerTransportError).kind).toBe('transport-auth');
+    expect((err as RunnerTransportError).status).toBe(401);
+    // and it is still redacted
+    expect((err as Error).message).not.toContain('1//0eLEAKED-REFRESH');
+    expect((err as Error).message).toContain('[REDACTED]');
   });
 
   it('options.spawner takes precedence over an injected ALS executor', async () => {

@@ -19,10 +19,50 @@ kill_timeout = "40s"
 [http_service]
   internal_port = 8080
   force_https = true
-  # Scale to zero when idle; the connector's first request wakes the Machine.
+
+  # ---------------------------------------------------------------------------
+  # Idle policy. THIS SETTING COSTS MONEY — read before changing it.
+  #
+  # What happened with min_machines_running = 0: the Fly proxy stopped the
+  # Machine after roughly three minutes with no request —
+  #     03:52:16  POST /run 200 298ms   (gmail thread)
+  #     03:55:16  proxy: App gogcli-gog-runner has excess capacity, autostopping
+  # — which is ordinary think-time between two tool calls inside a SINGLE
+  # conversation turn, not an idle app. Every gog_* connector (sheets, gmail,
+  # drive, docs) is backed by this one Machine and this one /data volume, so a
+  # stop lands on all of them simultaneously.
+  #
+  # THE HONEST TRADE-OFF. A cold start was measured at ~4.1 s (Machine started
+  # 03:49:21, reachable 03:49:25, first /run took 4187 ms) against the
+  # connector's 35 s deadline (DEFAULT_TIMEOUT_MS 30 s + DEADLINE_GRACE_MS 5 s).
+  # So a cold start is NOT fatal and was never the cause of the auth incident
+  # this file's sibling changes fix. Keeping a Machine warm buys LATENCY, not
+  # correctness: ~4 s off the first call after a lull, several times a day.
+  #
+  # THE ALTERNATIVE, stated plainly, is to set this back to 0 and pay the ~4 s.
+  # That is a defensible choice and costs nothing. It is not what is configured
+  # here: the floor is 1 because the owner wants the first call of a session to
+  # feel immediate.
+  #
+  # THE PRICE. One shared-cpu-1x/512 MB Machine now runs 24/7 instead of only
+  # while serving requests. At Fly's published rate for that shape (~$3.19 per
+  # month at the time of writing) this is roughly $3/month, ~$38/year, versus
+  # near-zero before — the volume and its storage are billed either way and are
+  # unaffected. Re-check current Fly pricing before assuming this number; the
+  # point is the order of magnitude, and that it is now a fixed monthly cost
+  # rather than usage-based.
+  #
+  # auto_stop_machines stays "stop" so that any Machine ABOVE the floor (a scale
+  # -up, a stuck deploy leftover) is still reclaimed; the floor only protects the
+  # last one. auto_start_machines stays true because the floor governs the
+  # proxy's autostop only — a Machine stopped by a deploy, a host migration, an
+  # OOM, or `fly machine stop` must still be woken by an incoming request. The
+  # runner therefore has to remain correct across a cold start regardless of this
+  # setting; nothing here is allowed to become an excuse for it not to be.
+  # ---------------------------------------------------------------------------
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
 # Persistent volume holding gog's auth/config, mounted at GOG_HOME.
 [[mounts]]
