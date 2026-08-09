@@ -46,9 +46,25 @@ interface CachedToken {
  */
 const cache = new Map<string, CachedToken>();
 
-/** Test seam: the cache is process-wide, so it does not unwind between tests. */
+/**
+ * Exchanges currently in flight, so concurrent callers share ONE of them.
+ *
+ * Without this, `get` → `await exchange` → `set` has an await between the miss
+ * and the fill: every caller that arrives during that window also misses, and
+ * they all hit Google's token endpoint together. One process per caller hides
+ * it, but a Worker isolate serving many callers — or simply several tool calls
+ * in flight — turns a single refresh into a stampede, and being rate-limited
+ * for it produces exactly the intermittent auth failures this was meant to end.
+ *
+ * Keyed identically to `cache`, so two different credentials never wait on each
+ * other's exchange.
+ */
+const inFlight = new Map<string, Promise<CachedToken>>();
+
+/** Test seam: both maps are process-wide, so they do not unwind between tests. */
 export function clearAccessTokenCache(): void {
   cache.clear();
+  inFlight.clear();
 }
 
 /**
@@ -121,8 +137,22 @@ export function makeAccessTokenSource(env: TokenEnv): AccessTokenSource | undefi
     const hit = cache.get(key);
     if (hit && hit.expiresAt - EXPIRY_MARGIN_MS > Date.now()) return hit.accessToken;
 
-    const minted = await exchange(refreshToken, clientId, clientSecret);
-    cache.set(key, minted);
+    // Join the exchange already running for this credential, or start the one
+    // everyone else will join.
+    let pending = inFlight.get(key);
+    if (!pending) {
+      pending = exchange(refreshToken, clientId, clientSecret)
+        .then((minted) => {
+          cache.set(key, minted);
+          return minted;
+        })
+        // Dropped whether it resolved OR threw. Keeping a rejected promise here
+        // would make one transient failure permanent for every later caller —
+        // the opposite of the "failures are not cached" rule above.
+        .finally(() => inFlight.delete(key));
+      inFlight.set(key, pending);
+    }
+    const minted = await pending;
     return minted.accessToken;
   };
 }

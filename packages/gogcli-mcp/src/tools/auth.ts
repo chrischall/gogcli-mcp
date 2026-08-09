@@ -14,7 +14,12 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
     `Google API is not enabled on the OAuth client's project makes Google reject the WHOLE request ` +
     `with invalid_scope.`;
   server.registerTool('gog_auth_list', {
-    description: 'List all Google accounts stored in gogcli. Use this to check which accounts are configured and available.',
+    description:
+      'List the Google accounts stored in gogcli, with their scopes. This reads local ' +
+      'configuration only — it does not contact Google and does NOT tell you whether an account ' +
+      'still works: a signed-out account whose refresh token expired or was revoked is listed here ' +
+      'exactly like a healthy one, scopes and all. Use gog_auth_health to check whether an account ' +
+      'can actually authenticate.',
     annotations: { readOnlyHint: true },
     inputSchema: {},
   }, async () => {

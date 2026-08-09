@@ -135,7 +135,18 @@ export function errorText(err: unknown): string {
   return err instanceof Error ? `Error: ${err.message}` : String(err);
 }
 
-const AUTH_ERROR_PATTERN = /\b(401|unauthorized|token.*(expired|revoked)|invalid_grant)\b/i;
+// Google saying "not authenticated" in its own words. Definitive: a retry
+// cannot turn a 401 into a success, so this outranks the transient signal below.
+const DEFINITE_AUTH_PATTERN = /\b(401|unauthorized|invalid_grant)\b/i;
+
+// A message that TALKS about an expired token. Suggestive, not definitive — and
+// it used to be `/token.*(expired|revoked)/`, whose greedy `.*` matched a token
+// mentioned anywhere and an expiry mentioned anywhere later in the same line
+// ("page token accepted; the export link has expired"). Now the two words must
+// actually be about each other.
+const STALE_TOKEN_PATTERN = /\b(?:access[ _-]?)?token\b[^.;\n]{0,40}\b(?:has\s+)?(?:been\s+)?(?:expired|revoked)\b|\b(?:expired|revoked)\s+(?:access[ _-]?)?token\b/i;
+
+const AUTH_ERROR_PATTERN = new RegExp(`${DEFINITE_AUTH_PATTERN.source}|${STALE_TOKEN_PATTERN.source}`, 'i');
 
 // A DEAD refresh token — the whole account is signed out, not just a stale
 // access token that would refresh silently. This is the recurring account-wide
@@ -207,8 +218,19 @@ export function formatAccountList(raw: string): string {
 export async function diagnose(err: unknown): Promise<CallToolResult> {
   const errText = errorText(err);
   const isInvalidGrant = INVALID_GRANT_PATTERN.test(errText);
-  const isAuthError = AUTH_ERROR_PATTERN.test(errText);
-  const isTransientError = !isAuthError && TRANSIENT_ERROR_PATTERN.test(errText);
+
+  // Precedence, and the reason for it. Reporting needs-auth is EXPENSIVE to be
+  // wrong about: re-authorization is a manual, human step, and it does not fix
+  // a 429. So a transient signal beats a merely SUGGESTIVE auth signal (a
+  // message that mentions an expired token) — the reported bug was servers
+  // flapping into needs-auth and working again seconds later, which is what
+  // being told to re-auth over a rate-limit looks like.
+  //
+  // It does NOT beat a definitive one. A literal 401 or invalid_grant is Google
+  // saying the credential will not work, and calling that "retry" would loop a
+  // caller forever against a request that can never succeed.
+  const isTransientError = !DEFINITE_AUTH_PATTERN.test(errText) && TRANSIENT_ERROR_PATTERN.test(errText);
+  const isAuthError = !isTransientError && AUTH_ERROR_PATTERN.test(errText);
   const isGridLimitError = GRID_LIMIT_ERROR_PATTERN.test(errText);
   const hint = isInvalidGrant
     ? INVALID_GRANT_HINT

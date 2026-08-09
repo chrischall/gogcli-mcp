@@ -190,6 +190,50 @@ describe('runOrDiagnose', () => {
     expect(result.content[0].text).toContain('gog_auth_add');
   });
 
+  it('calls a rate-limited failure transient even though it says "token expired"', async () => {
+    // The reported symptom was servers flapping into a needs-auth state and
+    // then working seconds later. Telling someone to re-authorize an account
+    // whose credential is fine is the expensive kind of wrong: re-auth is
+    // manual, and it does not fix a 429.
+    //
+    // `invalid_grant` is exempt from this and stays auth (below) — it is the
+    // one signal that definitively means the refresh token is dead.
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('429 rateLimitExceeded: the access token expired mid-request, retry'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['sheets', 'get', 'A1'], {});
+    const text = result.content[0].text as string;
+    expect(text).toContain('often transient');
+    expect(text).not.toContain('gog_auth_add');
+  });
+
+  it('still calls an explicit 401 an auth error even alongside a transient signal', async () => {
+    // The exemption above is for the LOOSE match only. A literal 401 is Google
+    // saying "not authenticated", and downgrading that to "retry" would loop a
+    // caller forever against a request that can never succeed.
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('401 unauthorized (quota project unset)'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['sheets', 'get', 'A1'], {});
+    expect(result.content[0].text).toContain('gog_auth_add');
+  });
+
+  it('does not read "token" and "expired" as auth when they are unrelated sentences', async () => {
+    // The pattern was /token.*(expired|revoked)/ with a greedy `.*`, so any
+    // message mentioning a token anywhere and an expiry anywhere later — across
+    // whole paragraphs — was reported as an auth failure.
+    vi.mocked(runner.run)
+      // Deliberately ONE line: `.` does not cross newlines, so a multi-line
+      // message would pass this test without the greedy match ever being
+      // exercised — and gog's real errors are frequently one long line.
+      .mockRejectedValueOnce(
+        new Error('page token accepted; the requested export link has expired and must be regenerated'),
+      )
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['drive', 'export', 'abc'], {});
+    expect(result.content[0].text).not.toContain('gog_auth_add');
+  });
+
   it('gives invalid_grant a richer hint than a plain 401: cause + durable fix + both re-auth paths', async () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('oauth2: "invalid_grant" "Token has been expired or revoked."'))
