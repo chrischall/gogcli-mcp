@@ -1055,3 +1055,101 @@ test('drainAndDestroy destroys once, whichever way the request ends', async () =
     assert.equal(destroys, 1, `${event} leaves no pending timer behind`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Per-request access token (#230).
+//
+// This box holds ONE Google identity on its volume, so every caller of a hosted
+// gog MCP acted as whoever seeded it. A token supplied WITH a request overrides
+// that identity for that single `gog` invocation — `gog` already prefers a
+// directly-passed token over its store.
+//
+// Request-scoped is the whole point. An env var on this box is shared by every
+// request, so honouring one would rebuild the shared-identity problem from the
+// other direction — which is why the ambient GOG_ACCESS_TOKEN stays stripped no
+// matter what arrives on the wire.
+// ---------------------------------------------------------------------------
+
+test('/run hands a request token to the gog invocation, and only that one', async () => {
+  const seen = [];
+  const execFn = async (args, opts) => {
+    seen.push(opts?.accessToken);
+    return { stdout: 'ok' };
+  };
+  await withServer(execFn, async (base) => {
+    const withToken = await request(base, {
+      method: 'POST',
+      path: '/run',
+      headers: { authorization: `Bearer ${RUNNER_KEY}` },
+      body: JSON.stringify({ args: ['auth', 'status'], accessToken: 'ya29.caller' }),
+    });
+    assert.equal(withToken.status, 200);
+
+    const without = await request(base, {
+      method: 'POST',
+      path: '/run',
+      headers: { authorization: `Bearer ${RUNNER_KEY}` },
+      body: JSON.stringify({ args: ['auth', 'status'] }),
+    });
+    assert.equal(without.status, 200);
+  });
+  // The second call must not inherit the first's identity: that is the bug.
+  assert.deepEqual(seen, ['ya29.caller', undefined]);
+});
+
+test('/run refuses a malformed access token instead of ignoring it', async () => {
+  // Silently dropping an unusable token is the dangerous failure: the call
+  // would succeed AS THE BOX, and the caller would read someone else's mailbox
+  // believing it was their own. A refusal is the only safe answer.
+  const execFn = async () => ({ stdout: 'ok' });
+  await withServer(execFn, async (base) => {
+    for (const accessToken of [42, '', 'a b', 'x'.repeat(8193)]) {
+      const res = await request(base, {
+        method: 'POST',
+        path: '/run',
+        headers: { authorization: `Bearer ${RUNNER_KEY}` },
+        body: JSON.stringify({ args: ['auth', 'status'], accessToken }),
+      });
+      assert.equal(res.status, 400, `expected 400 for ${JSON.stringify(accessToken)}`);
+      assert.match(res.json.error, /accessToken/);
+    }
+  });
+});
+
+test('a request token never reaches a log line', async () => {
+  const lines = [];
+  const server = createServer({
+    runnerKey: RUNNER_KEY,
+    execFn: async () => ({ stdout: 'ok' }),
+    log: (...a) => lines.push(a.join(' ')),
+  });
+  server.listen(0, LOOPBACK);
+  await once(server, 'listening');
+  const { port } = server.address();
+  try {
+    await request(`http://${LOOPBACK}:${port}`, {
+      method: 'POST',
+      path: '/run',
+      headers: { authorization: `Bearer ${RUNNER_KEY}` },
+      body: JSON.stringify({ args: ['auth', 'status'], accessToken: 'ya29.super-secret' }),
+    });
+  } finally {
+    server.close();
+    await once(server, 'close');
+  }
+  assert.ok(!lines.join('\n').includes('ya29.super-secret'), lines.join('\n'));
+});
+
+test('sanitizedEnv honours a request token while still stripping the ambient one', () => {
+  const saved = { ...process.env };
+  try {
+    process.env.GOG_ACCESS_TOKEN = 'ya29.ambient-must-never-win';
+    // No argument: the box's own env var is still not a credential anyone asked
+    // for, so it stays stripped exactly as before.
+    assert.equal(sanitizedEnv().GOG_ACCESS_TOKEN, undefined);
+    // With one: the request's token is what the child sees.
+    assert.equal(sanitizedEnv('ya29.from-the-request').GOG_ACCESS_TOKEN, 'ya29.from-the-request');
+  } finally {
+    process.env = saved;
+  }
+});

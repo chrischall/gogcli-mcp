@@ -120,6 +120,57 @@ describe('makeFlyExecutor', () => {
     expect(init.body).toBe(JSON.stringify({ args: ['sheets', 'get', 'A1'] }));
   });
 
+  // A hosted gog authenticates as whoever seeded the Fly volume, not as the
+  // person calling it (#230). mcp-host can give each caller their own child
+  // carrying their own GOG_ACCESS_TOKEN, so the missing link is the child
+  // handing that token to the backend for ITS call only — never as something
+  // ambient on the box, which would be the same shared identity from the other
+  // direction.
+  describe('per-request access token', () => {
+    function okFetch() {
+      const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ stdout: 'ok' }) }));
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+    function bodyOf(fetchMock: { mock: { calls: unknown[][] } }, i = 0): Record<string, unknown> {
+      const [, init] = fetchMock.mock.calls[i] as [string, RequestInit];
+      return JSON.parse(init.body as string) as Record<string, unknown>;
+    }
+
+    it('sends the token with the request when one is available', async () => {
+      const fetchMock = okFetch();
+      const exec = makeFlyExecutor(ENDPOINT, KEY, () => 'ya29.caller-token');
+      await exec(['auth', 'status'], {});
+      expect(bodyOf(fetchMock)).toEqual({ args: ['auth', 'status'], accessToken: 'ya29.caller-token' });
+    });
+
+    it('omits the field entirely when there is no token', async () => {
+      // Absent, not null or "": the backend distinguishes "act as the caller"
+      // from "act as the box", and a present-but-empty field would be a third
+      // state neither side has a meaning for.
+      const fetchMock = okFetch();
+      for (const provider of [undefined, () => undefined, () => '']) {
+        vi.clearAllMocks();
+        const exec = makeFlyExecutor(ENDPOINT, KEY, provider as (() => string | undefined) | undefined);
+        await exec(['auth', 'status'], {});
+        expect(bodyOf(fetchMock)).toEqual({ args: ['auth', 'status'] });
+      }
+    });
+
+    it('reads the token per CALL, not once when the executor is built', async () => {
+      // The whole contract is "this token belongs to this request". Reading it
+      // once at construction would pin the first caller's identity onto an
+      // executor that outlives them — exactly the bug this closes, rebuilt.
+      const fetchMock = okFetch();
+      const tokens = ['first', 'second'];
+      const exec = makeFlyExecutor(ENDPOINT, KEY, () => tokens.shift());
+      await exec(['auth', 'status'], {});
+      await exec(['auth', 'status'], {});
+      expect(bodyOf(fetchMock, 0).accessToken).toBe('first');
+      expect(bodyOf(fetchMock, 1).accessToken).toBe('second');
+    });
+  });
+
   // Everything below is the file-arg wire contract. The Worker has no filesystem
   // and no gog binary, so a GogFileArg must cross the wire STRUCTURED and be
   // materialized on the Fly runner. If this layer ever flattened it back into an

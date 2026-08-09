@@ -101,6 +101,47 @@ describe('useRemoteGogRunner', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('forwards its own GOG_ACCESS_TOKEN so a hosted gog acts as its caller', async () => {
+    // Under mcp-host's perUserChild, THIS PROCESS belongs to one caller and
+    // holds their token (#230). The backend has one Google identity on its
+    // volume, so without forwarding, every caller of a hosted gog acts as
+    // whoever seeded it.
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ stdout: 'ok' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('GOG_PATH', '/nonexistent/gog');
+
+    expect(
+      useRemoteGogRunner({
+        GOG_RUNNER_URL: 'https://r.test',
+        GOG_RUNNER_KEY: 'secret',
+        GOG_ACCESS_TOKEN: 'ya29.the-caller',
+      }),
+    ).toBe(true);
+
+    await runExecutor.exit(() => run(['auth', 'status']));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string).accessToken).toBe('ya29.the-caller');
+  });
+
+  it('sends no token when the caller has not supplied one', async () => {
+    // Absent, not empty: the backend distinguishes "act as this caller" from
+    // "act as the box", and every registration that predates per-caller auth is
+    // the second case.
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ stdout: 'ok' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('GOG_PATH', '/nonexistent/gog');
+
+    expect(useRemoteGogRunner({ GOG_RUNNER_URL: 'https://r.test', GOG_RUNNER_KEY: 'secret' })).toBe(true);
+
+    await runExecutor.exit(() => run(['auth', 'status']));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    // The KEY must be absent, not present-and-empty. Asserted on its own rather
+    // than by matching the whole body: `assembleArgs` folds in ambient settings
+    // like GOG_ACCOUNT, so a whole-body match passes or fails depending on the
+    // developer's shell.
+    expect(JSON.parse(init.body as string)).not.toHaveProperty('accessToken');
+  });
+
   it('lets a per-request store beat the process-wide default', async () => {
     // The Worker path scopes every request in `runExecutor.run({ executor })`
     // because one isolate serves many callers (connector-runtime.ts). A
