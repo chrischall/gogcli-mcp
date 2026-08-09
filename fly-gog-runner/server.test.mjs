@@ -1283,10 +1283,18 @@ test('GET /health/google runs a live gog probe and reports healthy accounts', as
   });
 
   assert.equal(spy.calls.length, 1);
-  // --check is what makes gog perform a real refresh against Google; --json is
-  // what makes the result parseable. Neither is optional.
+  // All four flags are load-bearing, and this probe gets NONE of them for free:
+  // runner.ts injects --json/--no-input/--color=never on the wrapper's calls, but
+  // the probe is spawned here, so nothing injects anything.
+  //   --check         makes gog perform a real refresh against Google (the whole point)
+  //   --json          makes the result parseable
+  //   --no-input      stops a prompt hanging until the probe budget expires
+  //   --color=never   stops ANSI making the JSON unparseable
+  // The last two fail SILENTLY and identically: both land in the catch as
+  // measured:false, on every probe, forever. Flags come first, matching the
+  // wrapper's own convention.
   assert.deepEqual(spy.calls[0].args, GOOGLE_PROBE_ARGS);
-  assert.deepEqual(spy.calls[0].args, ['auth', 'list', '--check', '--json']);
+  assert.deepEqual(spy.calls[0].args, ['--json', '--no-input', '--color=never', 'auth', 'list', '--check']);
   // A dedicated, SHORTER budget than /run's: an unreachable Google must not
   // hold a status probe open for the full 30 s exec timeout.
   assert.equal(spy.calls[0].opts.timeout, GOOGLE_PROBE_TIMEOUT_MS);

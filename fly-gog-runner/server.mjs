@@ -79,7 +79,18 @@ const EXEC_MAX_BUFFER = 32 * 1024 * 1024; // 32 MB
 // the next /run will actually get. `--json` makes it parseable. This runs as the
 // BOX (no accessToken), because the box's stored credential is exactly the one
 // under suspicion.
-export const GOOGLE_PROBE_ARGS = ['auth', 'list', '--check', '--json'];
+// Flags FIRST, then the subcommand — and all three of the wrapper's invariants,
+// because this probe does NOT go through it. `runner.ts` injects
+// `--json --no-input --color=never` on every call it makes, but the probe is
+// spawned here on the runner, so nothing injects anything for it.
+//
+// Each omission fails the same silent way. Without --no-input gog can PROMPT and
+// then sit there until GOOGLE_PROBE_TIMEOUT_MS; without --color=never it can emit
+// ANSI and the JSON parse throws. Either lands in the catch as measured:false —
+// forever, on every probe. That is not a wrong answer, it is a probe that has
+// stopped being one, and #256 exists precisely so nobody reports health they did
+// not measure. A permanently unmeasured probe passes that test and helps no one.
+export const GOOGLE_PROBE_ARGS = ['--json', '--no-input', '--color=never', 'auth', 'list', '--check'];
 
 // A dedicated budget, deliberately well under EXEC_TIMEOUT_MS. A status probe
 // that hangs for 30 s is worse than one that says "I could not measure": the
