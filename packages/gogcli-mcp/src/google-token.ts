@@ -1,4 +1,5 @@
-import { readEnvVar } from '@chrischall/mcp-utils';
+import { parseBoolEnv, readEnvVar } from '@chrischall/mcp-utils';
+import { credentialTag, logAuthTransition } from './auth-log.js';
 
 /**
  * Mint short-lived Google access tokens from a long-lived refresh token, so a
@@ -85,8 +86,54 @@ async function cacheKey(refreshToken: string, clientId: string): Promise<string>
  * What a token source is: something that answers "who is this call acting as",
  * or throws trying. It never answers `undefined` after being configured —
  * see the failure note below.
+ *
+ * It also answers a second question, which is what makes a rejected token
+ * recoverable: `invalidate(rejected)` drops that token if it is still the one
+ * cached for this credential, and REPORTS whether it dropped anything.
+ *
+ * `true` means the next read mints something new, so a replay is worth making;
+ * `false` means a concurrent caller has already replaced the entry. Those are
+ * the only two answers, and a source with nothing to mint from gives neither —
+ * it omits the method entirely (see below).
  */
-export type AccessTokenSource = () => Promise<string | undefined>;
+export interface AccessTokenSource {
+  (): Promise<string | undefined>;
+  /**
+   * Evict `rejected` if it is still this credential's cached token; answer
+   * whether anything was evicted.
+   *
+   * ABSENT exactly when this source holds nothing mintable — a directly-supplied
+   * GOG_ACCESS_TOKEN, or a refresh token with no OAuth client beside it. The
+   * absence has to be the signal, because an always-false return is not
+   * distinguishable from the false a real cache gives when a concurrent caller
+   * beat you to the refresh, and the connector records those as different
+   * causes: "nothing here can mint a replacement" is the one configuration
+   * where re-authorizing genuinely IS the repair, and it must not be logged as
+   * somebody else's concurrent write.
+   *
+   * Scoped to ONE credential on purpose. `clearAccessTokenCache()` drops every
+   * entry and exists only as a test seam — using it here would mean one
+   * caller's dead token forced a re-mint on every other caller sharing the
+   * isolate, which is the same shared-identity mistake this module is built
+   * around, wearing a different hat.
+   *
+   * Matched by VALUE, not just by key. A concurrent caller may already have
+   * replaced the entry while this call was in flight; evicting that fresh token
+   * would waste a mint and let two callers keep undoing each other's work.
+   */
+  invalidate?: (rejected: string) => Promise<boolean>;
+  /**
+   * The log-safe name of the credential behind this source, for correlating
+   * this module's records with the connector's (auth-log.ts).
+   *
+   * Optional, and absent exactly when there is no mintable credential to name.
+   * A directly-supplied GOG_ACCESS_TOKEN emits no records here at all — nothing
+   * is minted, cached or evicted — so a tag for it would identify a story that
+   * is never told. Answering `undefined` says that honestly rather than
+   * inventing an identifier for a credential this module does not hold.
+   */
+  credentialId?: () => Promise<string>;
+}
 
 export interface TokenEnv {
   GOG_ACCESS_TOKEN?: string;
@@ -106,6 +153,10 @@ export interface TokenEnv {
  * the #230 path working untouched.
  */
 export function makeAccessTokenSource(env: TokenEnv): AccessTokenSource | undefined {
+  // A token handed to us whole. Nothing minted it here, so nothing here can
+  // mint another — hence no `invalidate` at all, which is how the caller tells
+  // this apart from a cache that merely lost a race. When THIS is the token
+  // Google rejects, re-authorization really is the repair.
   const direct = readEnvVar('GOG_ACCESS_TOKEN', { env });
   if (direct) return async () => direct;
 
@@ -132,29 +183,109 @@ export function makeAccessTokenSource(env: TokenEnv): AccessTokenSource | undefi
     };
   }
 
-  return async () => {
-    const key = await cacheKey(refreshToken, clientId);
-    const hit = cache.get(key);
-    if (hit && hit.expiresAt - EXPIRY_MARGIN_MS > Date.now()) return hit.accessToken;
+  // Hashed ONCE per source rather than once per call. `read` and `invalidate`
+  // each used to recompute the SHA-256 on every invocation, which is work this
+  // module was already paying for on the request path; memoizing it also gives
+  // the log records a credential tag for free. Lazy rather than eager so a
+  // source that is never used never starts a promise nobody awaits.
+  let keyPromise: Promise<string> | undefined;
+  const key = (): Promise<string> => (keyPromise ??= cacheKey(refreshToken, clientId));
+
+  // Every other transition in the set is an EVENT; a cache hit is the absence
+  // of one. Narrating it writes a line per gog invocation — a Workers Logs line
+  // (and its cost) for every tool call in healthy operation on the Worker, and
+  // a stderr line per call in the MCP host's server log on stdio — which turns
+  // the `gog-auth` stream from a log of transitions into a request log.
+  //
+  // It stays available for the investigation that has to prove WHICH token a
+  // call was served (the shape the original incident took), behind a flag
+  // nobody sets in normal operation. Read once per source rather than per call:
+  // the env cannot change under a running process.
+  const logCacheHits = parseBoolEnv('GOG_AUTH_LOG_CACHE_HITS', { env });
+
+  const read = async (): Promise<string | undefined> => {
+    const k = await key();
+    const hit = cache.get(k);
+    if (hit && hit.expiresAt - EXPIRY_MARGIN_MS > Date.now()) {
+      if (logCacheHits) logAuthTransition('token.cache-hit', { credential: credentialTag(k) });
+      return hit.accessToken;
+    }
 
     // Join the exchange already running for this credential, or start the one
     // everyone else will join.
-    let pending = inFlight.get(key);
+    let pending = inFlight.get(k);
     if (!pending) {
       pending = exchange(refreshToken, clientId, clientSecret)
         .then((minted) => {
-          cache.set(key, minted);
+          cache.set(k, minted);
+          logAuthTransition('token.minted', {
+            credential: credentialTag(k),
+            reason: `valid for ${Math.round((minted.expiresAt - Date.now()) / 1000)}s`,
+          });
           return minted;
+        })
+        // Only the caller that STARTED the exchange records it, because only one
+        // exchange happened; the callers that joined it would otherwise turn one
+        // mint into a burst of identical lines.
+        //
+        // Typed as TokenExchangeError rather than `unknown`: `exchange` catches
+        // the fetch rejection and the JSON parse itself, so this is the only
+        // thing that can arrive here, and pretending otherwise would add an arm
+        // no test could ever reach.
+        .catch((err: TokenExchangeError): never => {
+          logAuthTransition(err.grantDead ? 'grant.dead' : 'token.mint-failed', {
+            credential: credentialTag(k),
+            reason: err.message,
+          });
+          throw err;
         })
         // Dropped whether it resolved OR threw. Keeping a rejected promise here
         // would make one transient failure permanent for every later caller —
         // the opposite of the "failures are not cached" rule above.
-        .finally(() => inFlight.delete(key));
-      inFlight.set(key, pending);
+        .finally(() => inFlight.delete(k));
+      inFlight.set(k, pending);
     }
     const minted = await pending;
     return minted.accessToken;
   };
+
+  /**
+   * Google rejected `rejected`; make sure the next read does not serve it again.
+   *
+   * The read guard above is purely about TIME, so without this a token Google
+   * has already answered 401 to is re-served until its nominal expiry — up to
+   * ~58 minutes of every call failing identically, which is exactly the incident
+   * this closes. `inFlight` is deliberately untouched: an exchange that is
+   * already running was started to produce a NEW token, and cancelling it would
+   * only make the callers waiting on it mint again.
+   */
+  const invalidate = async (rejected: string): Promise<boolean> => {
+    const k = await key();
+    const hit = cache.get(k);
+    if (!hit || hit.accessToken !== rejected) {
+      // The two "nothing happened" cases are worth telling apart in a log: one
+      // says a concurrent caller has already repaired this credential, the
+      // other says the rejected token was never ours to begin with.
+      logAuthTransition('token.evict-noop', {
+        credential: credentialTag(k),
+        reason: hit
+          ? 'a concurrent caller had already replaced this credential’s token'
+          : 'no token was cached for this credential',
+      });
+      return false;
+    }
+    cache.delete(k);
+    logAuthTransition('token.evicted', {
+      credential: credentialTag(k),
+      reason: 'Google rejected this access token; the next read will mint a new one',
+    });
+    return true;
+  };
+
+  return Object.assign(read, {
+    invalidate,
+    credentialId: async () => credentialTag(await key()),
+  });
 }
 
 /**
@@ -168,6 +299,22 @@ export function makeAccessTokenSource(env: TokenEnv): AccessTokenSource | undefi
  * Nothing here is cached on failure either, so a transient Google outage does
  * not become a sticky one.
  */
+class TokenExchangeError extends Error {
+  /**
+   * The REFRESH token is dead (Google's `invalid_grant`), not merely the access
+   * token. Carried as a flag rather than re-read from the message, because
+   * inferring the author of a failure from prose several authors can produce is
+   * precisely the mistake this branch exists to undo. `instanceof` is safe: the
+   * class is thrown and caught inside this one module.
+   */
+  readonly grantDead: boolean;
+
+  constructor(message: string, grantDead: boolean) {
+    super(message);
+    this.grantDead = grantDead;
+  }
+}
+
 async function exchange(refreshToken: string, clientId: string, clientSecret: string): Promise<CachedToken> {
   let res: Response;
   try {
@@ -182,8 +329,9 @@ async function exchange(refreshToken: string, clientId: string, clientSecret: st
       }).toString(),
     });
   } catch (err) {
-    throw new Error(
+    throw new TokenExchangeError(
       `the Google token exchange could not be reached: ${err instanceof Error ? err.message : String(err)}`,
+      false,
     );
   }
 
@@ -199,23 +347,41 @@ async function exchange(refreshToken: string, clientId: string, clientSecret: st
     // transient: the credential is gone and a human has to enrol again. Google
     // expires refresh tokens after 7 days while a consent screen is still in
     // "Testing" mode, which is how this fleet has usually met it.
+    //
+    // The literal `invalid_grant` is in the message ON PURPOSE, and is load
+    // bearing rather than decoration. This mint is a first-class error surface
+    // — it propagates in place of gog's 401 (connector-runtime.ts) — and
+    // tools/utils.ts picks INVALID_GRANT_HINT, the one that names the 7-day
+    // Testing-mode cause and the gog_auth_add_url/gog_auth_add_complete pair,
+    // by matching that exact token. Prose alone does not qualify: the previous
+    // wording ("token has expired or been revoked") missed
+    // INVALID_GRANT_PATTERN's second alternative ("token has been expired or
+    // revoked") by one word, so a dead refresh token surfaced here earned only
+    // the generic "authentication may have expired" advice while the identical
+    // failure reported BY gog earned the specific guidance.
     if (body.error === 'invalid_grant') {
-      throw new Error(
-        'the stored refresh token has expired or been revoked, so this account must be re-authorized ' +
+      throw new TokenExchangeError(
+        'the stored refresh token was rejected (invalid_grant): it has expired or been revoked, so ' +
+          'this account must be re-authorized ' +
           '(commonly the 7-day limit on OAuth consent screens still in "Testing" mode). ' +
           'Re-enrol with gog_auth_add_url + gog_auth_add_complete and store the new refresh token.',
+        true,
       );
     }
     // The refresh token is deliberately absent from this message — it is a
     // long-lived credential and an error string travels into logs and model
     // context.
-    throw new Error(
+    throw new TokenExchangeError(
       `the access token could not be refreshed (HTTP ${res.status}${body.error ? `, ${body.error}` : ''})`,
+      false,
     );
   }
 
   if (!body.access_token) {
-    throw new Error('the access token could not be refreshed: Google returned no access_token');
+    throw new TokenExchangeError(
+      'the access token could not be refreshed: Google returned no access_token',
+      false,
+    );
   }
 
   // Default to an hour if Google omits expires_in; the margin above covers the

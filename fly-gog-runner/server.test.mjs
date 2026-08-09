@@ -1153,3 +1153,58 @@ test('sanitizedEnv honours a request token while still stripping the ambient one
     process.env = saved;
   }
 });
+
+// ---------------------------------------------------------------------------
+// fly.toml — deploy config invariants.
+//
+// fly.toml is not code, so nothing else in this suite can catch a regression in
+// it; a one-character edit here changes what the deployed app costs and how it
+// behaves under idle. These tests pin the two settings whose interaction caused
+// a real incident, so that changing them is a deliberate act with a failing test
+// to explain itself.
+// ---------------------------------------------------------------------------
+
+// Read one [table] out of fly.toml. Deliberately not a TOML parser: it handles
+// the flat `key = scalar` lines this file actually contains (numbers, booleans,
+// double-quoted strings) and nothing else. `#` always begins a comment because
+// no value in fly.toml contains one; if that ever stops being true, this helper
+// must grow quoting awareness rather than be worked around.
+function flyTomlTable(tableName) {
+  const toml = fs.readFileSync(new URL('./fly.toml', import.meta.url), 'utf8');
+  const out = {};
+  let inTable = false;
+  for (const raw of toml.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line.startsWith('[')) {
+      inTable = line === `[${tableName}]`;
+      continue;
+    }
+    if (!inTable) continue;
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^#]+?)\s*$/.exec(line);
+    if (m) out[m[1]] = JSON.parse(m[2]);
+  }
+  return out;
+}
+
+test('fly.toml keeps a Machine warm instead of autostopping mid-session', () => {
+  // THE INCIDENT THIS PINS: with min_machines_running = 0 the Fly proxy stopped
+  // the Machine after ~3 minutes of no requests —
+  //   03:52:16  POST /run 200 298ms
+  //   03:55:16  proxy: App gogcli-gog-runner has excess capacity, autostopping
+  // — which is ordinary think-time between two tool calls in ONE conversation
+  // turn. Every gog_* connector shares this single Machine, so the stop lands on
+  // all of them at once.
+  const service = flyTomlTable('http_service');
+
+  assert.ok(
+    service.min_machines_running >= 1,
+    'at least one Machine must stay running so an idle session is not autostopped',
+  );
+  // Belt and braces: the floor only governs the proxy's autostop. A Machine
+  // stopped some other way (deploy, host migration, OOM, `fly machine stop`)
+  // still has to be woken by an incoming request, and that is what
+  // auto_start_machines buys. The runner must survive a cold start either way —
+  // see the ~4 s measurement in the fly.toml comment.
+  assert.equal(service.auto_start_machines, true);
+});

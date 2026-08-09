@@ -224,6 +224,43 @@ If those work, the deploy is verified end-to-end.
   lives inside the Fly backend's `gog` install; the Worker only ever forwards
   assembled `gog` arg-arrays and gets back stdout.
 
+## Reading the auth log
+
+`wrangler.jsonc` sets `observability.enabled = true`, so the Worker has a
+Workers Logs sink. Every auth-state transition writes exactly one line to it,
+prefixed `gog-auth` and carrying a JSON record:
+
+```
+gog-auth {"at":"2026-08-09T03:52:16.004Z","event":"runner.auth-failed","service":"gmail","endpoint":"https://gogcli-gog-runner.fly.dev","reason":"the gog-runner rejected the connector’s bearer token, …"}
+```
+
+Filter on `gog-auth` in the Workers Logs UI, or tail live with
+`npx wrangler tail --format pretty | grep gog-auth`. On a stdio server the same
+records go to **stderr** (never stdout — that is the JSON-RPC channel), so they
+land in the MCP host's server log.
+
+| `event` | what it means |
+| --- | --- |
+| `runner.auth-failed` | The runner rejected the connector's bearer token. `gog` never ran and **no Google credential was read** — fix `GOG_RUNNER_KEY` / `RUNNER_KEY`, do not re-authorize an account. |
+| `grant.dead` | `invalid_grant`: the refresh token is gone. The only event that legitimately means a human must re-authorize. |
+| `token.minted` | A fresh access token was obtained from the refresh token. |
+| `token.cache-hit` | An unexpired cached token was served without contacting Google. **Off by default** — a cache hit is the steady state, so narrating it would write one line per tool call. Set `GOG_AUTH_LOG_CACHE_HITS=1` to turn it on while investigating which token a call was served. |
+| `token.evicted` / `token.evict-noop` | A rejected access token was dropped, or was already superseded/absent. |
+| `token.mint-failed` | The exchange failed for something other than a dead grant (Google 5xx, unreachable). |
+| `replay.attempted` / `.succeeded` / `.failed` | The one automatic replay after Google refused an access token. A `.succeeded` is a failure the caller never saw. A `.failed` is followed by a second `token.evicted` **only when Google refused the replay's token too**; if the replay died in transport (a drain 503, a client-side timeout) nothing is evicted, because Google never saw that token and it is unproven rather than refused. |
+| `replay.declined` | Google refused the token but the call was not replayable; `reason` says which rule refused. For the three rules that are reached with a token in hand (write, superseded token, deadline already spent) the rejected token is **still evicted** — the replay is the convenience, the eviction is the repair. The other two reasons (no mintable source, no token supplied) are refused before the eviction, and correctly so: in neither case is there a cached token of ours to drop. |
+
+Credentials cannot appear in these lines. A credential is named only by
+`credential`, a 12-hex-character slice of the SHA-256 that already keys the
+token cache, and the whole serialized record is passed through the same
+`redactSecrets` that guards every error returned to a client.
+
+Note which events a **hosted** connector can actually produce. `worker.ts` builds
+its executor without a per-caller token source, so `gog` runs as the Fly volume's
+own identity: the `token.*` events belong to the stdio/`useRemoteGogRunner` path,
+and the hosted Worker emits `runner.auth-failed` plus, on a Google 401,
+`replay.declined` with `no access token was supplied`.
+
 ## Rotation / teardown
 
 - **Rotate the connector key:** set a new `RUNNER_KEY` on the Fly backend

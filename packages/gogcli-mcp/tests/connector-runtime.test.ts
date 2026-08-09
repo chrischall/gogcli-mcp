@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { run } from '../src/runner.js';
+import { run, runExecutor } from '../src/runner.js';
 import type { GogArg, GogExecutor, GogFileArg } from '../src/runner.js';
-import { makeFlyExecutor, wrapServer } from '../src/connector-runtime.js';
+import { makeFlyExecutor, wrapServer, RunnerTransportError, isRunnerTransportError } from '../src/connector-runtime.js';
+import { runOrDiagnose } from '../src/tools/utils.js';
+import { makeAccessTokenSource, clearAccessTokenCache } from '../src/google-token.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -521,5 +523,675 @@ describe('makeFlyExecutor', () => {
     );
     const exec = makeFlyExecutor(ENDPOINT, KEY);
     await expect(exec(['x'], {})).rejects.toThrow(/gog failed on the runner/i);
+  });
+});
+
+// A failure the RUNNER authored — its own bearer check, its own request
+// validation, its own drain — never reached gog and never showed a credential
+// to Google. Those failures must be distinguishable by TYPE, because the layer
+// that diagnoses them (tools/utils.ts) can only otherwise guess from prose, and
+// guessing is what turned the runner's bare `unauthorized` body into "your
+// Google sign-in expired, re-authorize".
+describe('makeFlyExecutor runner-authored transport failures', () => {
+  const ENDPOINT = 'https://gogcli-gog-runner.fly.dev';
+  const KEY = 'k';
+
+  function stubStatus(status: number, body?: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status,
+        json: async () => {
+          if (body === undefined) throw new Error('not json');
+          return body;
+        },
+      })),
+    );
+  }
+
+  async function thrownBy(status: number, body?: unknown): Promise<unknown> {
+    stubStatus(status, body);
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    return exec(['gmail', 'search', 'q'], {}).catch((e: unknown) => e);
+  }
+
+  // The exact body fly-gog-runner/server.mjs sends when its bearer check fails
+  // (server.mjs:450 /health, :460 /run) — nothing to do with Google.
+  const RUNNER_401 = { error: 'unauthorized' };
+
+  it('types the runner bearer rejection as transport auth, not a gog failure', async () => {
+    const err = await thrownBy(401, RUNNER_401);
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect((err as RunnerTransportError).kind).toBe('transport-auth');
+    expect((err as RunnerTransportError).status).toBe(401);
+  });
+
+  it('names the real cause — the runner key mismatch — and never the Google account', async () => {
+    const err = (await thrownBy(401, RUNNER_401)) as Error;
+    expect(err.message).toContain('GOG_RUNNER_KEY');
+    expect(err.message).toContain('RUNNER_KEY');
+    expect(err.message).not.toMatch(/gog_auth_add/i);
+    // The runner's own body is the single word "unauthorized". Repeating it is
+    // what fed DEFINITE_AUTH_PATTERN in tools/utils.ts; the status digits do the
+    // same via /\b401\b/. Neither may appear, so that even if the TYPE is lost
+    // at some future boundary the prose cannot be misread as Google's.
+    expect(err.message).not.toMatch(/unauthorized/i);
+    expect(err.message).not.toMatch(/\b401\b/);
+  });
+
+  it('types the runner request-validation 400s as transport-request, keeping their detail', async () => {
+    for (const detail of [
+      'request body too large',
+      'failed to read request body',
+      'body must be valid JSON',
+      'args must be an array',
+      'accessToken must not contain whitespace or control characters',
+    ]) {
+      const err = await thrownBy(400, { error: detail });
+      expect(isRunnerTransportError(err)).toBe(true);
+      expect((err as RunnerTransportError).kind).toBe('transport-request');
+      expect((err as RunnerTransportError).status).toBe(400);
+      expect((err as Error).message).toBe(detail);
+    }
+  });
+
+  it('still says something when a 400 body is unreadable', async () => {
+    const err = await thrownBy(400);
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect((err as RunnerTransportError).kind).toBe('transport-request');
+    expect((err as Error).message).toMatch(/gog-runner rejected the request/i);
+  });
+
+  it('types the drain 503 as retryable transport, message unchanged', async () => {
+    const err = await thrownBy(503, { error: 'gog-runner is shutting down', retryable: true });
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect((err as RunnerTransportError).kind).toBe('transport-retryable');
+    expect((err as RunnerTransportError).status).toBe(503);
+    expect((err as Error).message).toBe('gog-runner is restarting; retry this call. gog-runner is shutting down');
+  });
+
+  it('types a retryable-flagged 500 (a materialization failure) as retryable transport', async () => {
+    const err = await thrownBy(500, {
+      error: 'failed to write a file arg to disk: ENOSPC: no space left on device',
+      retryable: true,
+    });
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect((err as RunnerTransportError).kind).toBe('transport-retryable');
+    expect((err as RunnerTransportError).status).toBe(500);
+  });
+
+  it('types a bodiless gateway failure as retryable transport', async () => {
+    const err = await thrownBy(502);
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect((err as RunnerTransportError).kind).toBe('transport-retryable');
+    expect((err as RunnerTransportError).status).toBe(502);
+  });
+
+  it('types the client-side deadline as retryable transport with no status', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw Object.assign(new Error('The operation was aborted'), { name: 'TimeoutError' });
+      }),
+    );
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    const err = await exec(['x'], {}).catch((e: unknown) => e);
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect((err as RunnerTransportError).kind).toBe('transport-retryable');
+    expect((err as RunnerTransportError).status).toBeUndefined();
+  });
+
+  // The other half of the contract: an error that carries gog's/Google's OWN
+  // words must stay untyped, so the prose classifier still gets to read it.
+  it('leaves a 422 (gog ran and failed) untyped, for the prose classifier', async () => {
+    const err = await thrownBy(422, { error: 'gog failed', stderr: 'Error 401: invalid_grant' });
+    expect(err).toBeInstanceOf(Error);
+    expect(isRunnerTransportError(err)).toBe(false);
+  });
+
+  it('leaves a detail-bearing non-2xx untyped', async () => {
+    const err = await thrownBy(502, { error: 'gog exited with code 1', stderr: 'bad flag' });
+    expect(isRunnerTransportError(err)).toBe(false);
+  });
+
+  it('recognises only branded errors', () => {
+    expect(isRunnerTransportError(new Error('unauthorized'))).toBe(false);
+    expect(isRunnerTransportError('unauthorized')).toBe(false);
+    expect(isRunnerTransportError(new RunnerTransportError('x', 'transport-auth', 401))).toBe(true);
+  });
+
+  // The whole chain, end to end, with the REAL executor, the REAL run() and the
+  // REAL diagnose(): the incident was a user told all session to re-authorize a
+  // Google account that was never asked for a credential.
+  it('does not tell the caller to re-authorize Google when the RUNNER rejected our bearer', async () => {
+    vi.stubEnv('GOG_ACCOUNT', '');
+    vi.stubEnv('GOG_READONLY', '');
+    stubStatus(401, RUNNER_401);
+    const executor = makeFlyExecutor(ENDPOINT, KEY);
+    const result = await runExecutor.run({ executor }, () =>
+      runOrDiagnose(['sheets', 'get', 'A1'], {}),
+    );
+    const text = result.content[0].text as string;
+    expect(result.isError).toBe(true);
+    expect(text).not.toMatch(/gog_auth_add/);
+    expect(text).not.toMatch(/re-authorize the account/i);
+    expect(text).toContain('GOG_RUNNER_KEY');
+  });
+});
+
+// A Google 401 on the ACCESS token and a dead REFRESH token are opposite
+// failures that used to be told to the user identically.
+//
+//   * The access token is ours to replace. Google rejecting it means "mint
+//     another and try again" — automatic, no human, no re-authorization. Before
+//     this, the rejected token stayed cached for the rest of its nominal hour
+//     and NOTHING retried, so every call in that window failed the same way and
+//     only reconnecting (a fresh isolate, an empty cache) appeared to help.
+//   * invalid_grant means the refresh token is gone. No re-mint is possible and
+//     a human must re-authorize. Retrying that is a loop against a credential
+//     that can never work.
+//
+// So the re-mint is gated hard: gog must actually have run (422), the token must
+// be one WE supplied, gog's own stderr must say Google rejected it, the call
+// must be safe to replay, and our cache must still hold exactly that token.
+describe('makeFlyExecutor re-mints a rejected access token and replays once', () => {
+  const ENDPOINT = 'https://gogcli-gog-runner.fly.dev';
+  const KEY = 'k';
+
+  // gog v0.34.1's real words when the access token it was handed is rejected.
+  const GOOGLE_401_STDERR =
+    'Note: Using direct access token (expires in ~1 hour; no auto-refresh)\n' +
+    'Google API error (401 authError): Request had invalid authentication credentials. ' +
+    'Expected OAuth 2 access token, login cookie or other valid authentication credential.';
+
+  // What the executor really receives: run()'s assembleArgs puts the global
+  // flags in front of the service and subcommand.
+  const READ = ['--json', '--color=never', '--no-input', 'gmail', 'search', 'q'];
+  const WRITE = ['--json', '--color=never', '--no-input', 'gmail', 'send', '--to', 'a@b.c'];
+
+  function gogFailed(stderr: string) {
+    return {
+      ok: false,
+      status: 422,
+      // `error` is Node's execFile message, which embeds the whole command line
+      // AND stderr — see the command-line test below for why that matters.
+      json: async () => ({
+        error: `Command failed: gog gmail search q\n${stderr}`,
+        stderr,
+        retryable: false,
+      }),
+    };
+  }
+  function ok(stdout: string) {
+    return { ok: true, json: async () => ({ stdout }) };
+  }
+  function bodyOf(fetchMock: { mock: { calls: unknown[][] } }, i: number): Record<string, unknown> {
+    const [, init] = fetchMock.mock.calls[i] as [string, RequestInit];
+    return JSON.parse(init.body as string) as Record<string, unknown>;
+  }
+  /** A token source that hands out `tokens` in order and can be invalidated. */
+  function source(tokens: (string | undefined)[], evicted = true) {
+    const fn = vi.fn(async () => tokens.shift());
+    return Object.assign(fn, { invalidate: vi.fn(async () => evicted) });
+  }
+
+  it('mints a new token and replays the call, invisibly to the caller', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(gogFailed(GOOGLE_401_STDERR))
+      .mockResolvedValueOnce(ok('thread json'));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).resolves.toBe('thread json');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(bodyOf(fetchMock, 0).accessToken).toBe('ya29.stale');
+    expect(bodyOf(fetchMock, 1).accessToken).toBe('ya29.fresh');
+    // Evicted by VALUE — only the token that was actually rejected.
+    expect(readToken.invalidate).toHaveBeenCalledTimes(1);
+    expect(readToken.invalidate).toHaveBeenCalledWith('ya29.stale');
+  });
+
+  it('replays exactly once, so a genuinely dead credential cannot loop', async () => {
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh', 'ya29.third']);
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).rejects.toThrow(/Google API error \(401/);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Two evictions, one per token Google refused — the replay's included. The
+    // ATTEMPT count is what "exactly once" is about, and it is still two.
+    expect(readToken.invalidate).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not replay when gog reported invalid_grant — only a human can fix that', async () => {
+    // The stderr deliberately matches BOTH shapes, so this pins the exclusion
+    // rather than the absence of a 401.
+    const fetchMock = vi.fn(async () => gogFailed(`${GOOGLE_401_STDERR}\noauth2: "invalid_grant"`));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).rejects.toThrow(/invalid_grant/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readToken.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('does not replay a call that supplied no token of ours', async () => {
+    // Nothing was minted, so there is nothing to re-mint: gog used whatever
+    // identity the backend volume holds, and only an operator can change that.
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const exec = makeFlyExecutor(ENDPOINT, KEY);
+    await expect(exec(READ, {})).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not replay when the token source cannot invalidate', async () => {
+    // A bare `() => token` (the #230 direct-token wiring) has no cache behind
+    // it, so replaying would re-send the identical rejected token.
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, () => 'ya29.direct');
+    await expect(exec(READ, {})).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not replay when the cache no longer held the rejected token', async () => {
+    // Another caller already refreshed it; the token we would send is the one
+    // that is already in use, so a replay proves nothing.
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh'], false);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readToken.invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  // A subcommand is only a leaf VERB some of the time. `gog tasks lists` is a
+  // NAMESPACE — `lists list` reads, `lists create` writes — and the allow-list
+  // is consulted with the namespace word, never the verb under it. So a
+  // namespace word in the set hands the replay to every child it will ever
+  // grow, including the ones that write.
+  //
+  // `tasks lists create <title> ...` is real in gog v0.34.1 today, and reachable
+  // without any new gog: `gog_tasks_run({subcommand: 'lists', args: ['create',
+  // 'A', 'B']})` assembles exactly this argv. It is variadic, so one invocation
+  // makes N Google calls and a 401 on the second means the first already landed
+  // — the precise double-apply the write rule exists to prevent.
+  it('does not replay `tasks lists create`, a WRITE under a namespace-shaped word', async () => {
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(
+      exec(['--json', '--color=never', '--no-input', 'tasks', 'lists', 'create', 'A', 'B'], {}),
+    ).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The eviction still happens — it runs before the allow-list is consulted.
+    expect(readToken.invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  // The invariant the allow-list's comment states, pinned as behaviour so the
+  // comment is no longer the only thing enforcing it. Every word here is a gog
+  // NAMESPACE that already has, or can grow, a mutating child; none of them may
+  // ever earn a replay, whichever verb follows.
+  it.each([
+    ['tasks', 'lists'],
+    ['gmail', 'labels'],
+    ['gmail', 'drafts'],
+    ['gmail', 'filters'],
+    ['gmail', 'sendas'],
+    ['drive', 'permissions'],
+    ['drive', 'revisions'],
+    ['docs', 'comments'],
+    ['docs', 'replies'],
+  ])('never replays the namespace word %s %s, whatever verb follows it', async (service, namespace) => {
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(
+      exec(['--json', '--color=never', '--no-input', service, namespace, 'create', 'x'], {}),
+    ).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The eviction is unaffected: it runs before the allow-list is consulted.
+    expect(readToken.invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  // Symmetry with the rule the whole fix is built on: a token Google has
+  // refused must not stay cached, and the very same 401 refused the replay's
+  // token. This is NOT a round-trip saving — measured through the real chain
+  // under a sustained non-invalid_grant refusal, a steady-state call costs two
+  // /run round-trips either way, and this eviction adds a mint (2 rather than
+  // 1) by emptying a cache the next call would have hit. What it buys is a
+  // bound on how long a KNOWN-REFUSED token can be served: left cached it is
+  // re-served for the rest of its nominal hour, and a write — which gets the
+  // eviction and no replay — would be sent with it and fail on contact.
+  it('evicts the replayed token too when Google refuses that one as well', async () => {
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).rejects.toThrow(/Google API error/);
+    expect(readToken.invalidate.mock.calls).toEqual([['ya29.stale'], ['ya29.fresh']]);
+  });
+
+  // The other half of that rule, and the one that keeps this branch honest.
+  //
+  // A replay can fail without Google ever seeing the token: the Machine starts
+  // draining between the two attempts, the client-side deadline fires, the
+  // runner's own bearer is rotated mid-call. Evicting on THOSE would throw away
+  // a token nothing has refused and — worse — emit `token.evicted` with
+  // "Google rejected this access token", which is a lie about a service that
+  // was never consulted. Misattributing a runner-side failure to Google is the
+  // exact defect this branch exists to remove; re-introducing it in the log
+  // would just move it from the user's screen to the operator's query.
+  it('does not evict the replayed token when the replay never reached Google', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(gogFailed(GOOGLE_401_STDERR))
+      // The runner drains between the two attempts — a transport failure, not
+      // a verdict on the freshly minted token.
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: 'gog-runner is shutting down', retryable: true }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    const err = await exec(READ, {}).catch((e: unknown) => e);
+    // The replay's own error reaches the caller, and here that is the RIGHT
+    // one to surface: "the runner is restarting, retry" is actionable, where
+    // re-raising the superseded Google 401 would send the user off to
+    // re-authorize an account that is fine.
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect((err as RunnerTransportError).kind).toBe('transport-retryable');
+    // Only the token Google actually refused was dropped. `ya29.fresh` stays
+    // cached: it is unproven, not refused, and the next call may well succeed
+    // with it once the new Machine is up.
+    expect(readToken.invalidate.mock.calls).toEqual([['ya29.stale']]);
+  });
+
+  // The mint is a first-class error surface on this branch, so the error it
+  // raises has to reach the caller with the SAME specificity a gog-authored
+  // invalid_grant gets: the 7-day Testing-mode cause and the headless re-auth
+  // pair. It only does if the message carries the literal `invalid_grant`,
+  // which is what tools/utils.ts keys the richer hint on.
+  it('gives a mint-path invalid_grant the full re-auth guidance, not the generic hint', async () => {
+    vi.stubEnv('GOG_ACCOUNT', '');
+    vi.stubEnv('GOG_READONLY', '');
+    clearAccessTokenCache();
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (String(url).includes('oauth2.googleapis.com')) {
+        return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+      }
+      return gogFailed('unreachable');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const executor = makeFlyExecutor(
+      ENDPOINT,
+      KEY,
+      makeAccessTokenSource({
+        GOG_CLIENT_ID: 'cid',
+        GOG_CLIENT_SECRET: 'cs',
+        GOG_REFRESH_TOKEN: 'rt-dead',
+      }),
+    );
+
+    const result = await runExecutor.run({ executor }, () =>
+      runOrDiagnose(['gmail', 'search', 'q'], {}),
+    );
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    // Text unique to INVALID_GRANT_HINT — the durable fix. The generic
+    // AUTH_HINT (which is what a message omitting `invalid_grant` earns) says
+    // only "Authentication may have expired".
+    expect(text).toContain('publish the OAuth consent screen to "In production"');
+    expect(text).not.toContain('Authentication may have expired');
+    clearAccessTokenCache();
+  });
+
+  it('does not replay a WRITE, but still evicts the token Google rejected', async () => {
+    // The one case an automatic replay must never take. A `gog gmail send` that
+    // failed AFTER the message went out would send it twice.
+    //
+    // The EVICTION is a different question, and the write rule must not answer
+    // it. Refusing to evict is what leaves Google's rejected token in the cache
+    // for the rest of its nominal hour, so every following call — write or read
+    // — re-sends it and fails identically until the isolate is replaced. That
+    // is DEFECT 2 itself, and it is the half a write path used to keep.
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(WRITE, {})).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readToken.invalidate).toHaveBeenCalledTimes(1);
+    expect(readToken.invalidate).toHaveBeenCalledWith('ya29.stale');
+  });
+
+  it('evicts for a READ whose subcommand is outside the allow-list', async () => {
+    // `gog gmail labels list` arrives here as the subcommand `labels`, which is
+    // deliberately not in READ_ONLY_SUBCOMMANDS (a later `labels create` would
+    // inherit the replay). Costing that call its replay is the intended price;
+    // costing it the eviction would poison every call after it.
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(
+      exec(['--json', '--color=never', '--no-input', 'gmail', 'labels', 'list'], {}),
+    ).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readToken.invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a second WRITE mint a fresh token, through the REAL token source', async () => {
+    // The incident, reproduced end to end with nothing stubbed but the network:
+    // two consecutive `gog gmail send` calls after Google has rejected the
+    // cached token. Before the eviction was moved ahead of the write rule, BOTH
+    // shipped `ya29.t1` and both failed, for up to ~58 minutes, and only a
+    // reconnect helped.
+    clearAccessTokenCache();
+    let minted = 0;
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (String(url).includes('oauth2.googleapis.com')) {
+        return new Response(
+          JSON.stringify({ access_token: `ya29.t${(minted += 1)}`, expires_in: 3600 }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return gogFailed(GOOGLE_401_STDERR);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const exec = makeFlyExecutor(
+      ENDPOINT,
+      KEY,
+      makeAccessTokenSource({
+        GOG_CLIENT_ID: 'cid',
+        GOG_CLIENT_SECRET: 'cs',
+        GOG_REFRESH_TOKEN: 'rt-1',
+      }),
+    );
+    await expect(exec(WRITE, {})).rejects.toThrow(/Google API error/);
+    await expect(exec(WRITE, {})).rejects.toThrow(/Google API error/);
+
+    const runBodies = fetchMock.mock.calls
+      .filter(([url]) => !String(url).includes('oauth2.googleapis.com'))
+      .map(([, init]) => JSON.parse((init as RequestInit).body as string) as { accessToken: string });
+    expect(runBodies.map((b) => b.accessToken)).toEqual(['ya29.t1', 'ya29.t2']);
+    clearAccessTokenCache();
+  });
+
+  it('replays with what is LEFT of the deadline, not a second full one', async () => {
+    // 30s default + 5s grace is one tool call's whole budget. Handing the
+    // replay a fresh copy of it makes the worst case ~70s of wall clock, which
+    // can outlast the MCP client's own request timeout and turn a self-healing
+    // read into a client-side hang.
+    const budgets: number[] = [];
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) => {
+      budgets.push(ms);
+      return realTimeout(ms);
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(gogFailed(GOOGLE_401_STDERR))
+      .mockResolvedValueOnce(ok('threads'));
+    vi.stubGlobal('fetch', fetchMock);
+    const base = Date.now();
+    // The clock is read once to fix the deadline, then once more to size the
+    // replay; 5s of the budget is gone by then.
+    vi.spyOn(Date, 'now').mockReturnValueOnce(base).mockReturnValue(base + 5_000);
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY, source(['ya29.stale', 'ya29.fresh']));
+    await expect(exec(READ, {})).resolves.toBe('threads');
+    expect(budgets).toEqual([35_000, 30_000]);
+  });
+
+  it('skips the replay when the first attempt used the whole deadline', async () => {
+    // With no budget left, a replay can only end in an abort, and that
+    // TimeoutError would REPLACE gog's own 401 — trading an actionable error
+    // for an opaque one. The eviction is the durable half of the repair and it
+    // has already happened, so the caller's own next call is the fresh one.
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const base = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValueOnce(base).mockReturnValue(base + 34_900);
+
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readToken.invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('finds the subcommand past --account, whose value is not a subcommand', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(gogFailed(GOOGLE_401_STDERR))
+      .mockResolvedValueOnce(ok('[]'));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(
+      exec(['--json', '--color=never', '--no-input', '--account', 'me@example.com', 'drive', 'ls'], {}),
+    ).resolves.toBe('[]');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not replay an invocation with no subcommand to judge', async () => {
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(['--json', '--color=never', 'gmail'], {})).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads gog stderr, not the command line the runner echoed back', async () => {
+    // execFile's message embeds the whole argv, so a caller's own text lands in
+    // `error`. Classifying on that would let `--subject "invoice 401"` trigger a
+    // replay of a call that failed for an unrelated reason — and if that call
+    // were a write, replay it after it had partly applied.
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        error: 'Command failed: gog gmail search "Google API error (401 authError)"\nno results',
+        stderr: 'no results',
+        retryable: false,
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).rejects.toThrow(/no results/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readToken.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('does not replay a gog failure that has nothing to do with auth', async () => {
+    const fetchMock = vi.fn(async () => gogFailed('invalid attachment id'));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).rejects.toThrow(/invalid attachment id/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the original failure when the re-mint yields no token', async () => {
+    // Sending the request without a token would run it as the BACKEND's
+    // identity and hand this caller someone else's mailbox — never that.
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', undefined]);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).rejects.toThrow(/Google API error/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the re-mint failure, which is the more actionable one', async () => {
+    // Evicting revealed that the refresh token is dead too. That message names
+    // the real repair (re-authorize); gog's 401 does not.
+    const fetchMock = vi.fn(async () => gogFailed(GOOGLE_401_STDERR));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = Object.assign(
+      vi
+        .fn<() => Promise<string | undefined>>()
+        .mockResolvedValueOnce('ya29.stale')
+        .mockRejectedValueOnce(new Error('the stored refresh token has expired or been revoked')),
+      { invalidate: vi.fn(async () => true) },
+    );
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    await expect(exec(READ, {})).rejects.toThrow(/refresh token has expired or been revoked/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('never re-mints for the RUNNER\'s own 401, which never reached Google', async () => {
+    // The defect-1 failure. Its body is the bare word "unauthorized" and no
+    // Google credential was even read, so minting a new one is pure waste — and
+    // replaying would double every call during a key mismatch.
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'unauthorized' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const readToken = source(['ya29.stale', 'ya29.fresh']);
+    const exec = makeFlyExecutor(ENDPOINT, KEY, readToken);
+    const err = await exec(READ, {}).catch((e: unknown) => e);
+    expect(isRunnerTransportError(err)).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readToken.invalidate).not.toHaveBeenCalled();
+  });
+
+  // End to end through the REAL run() and the REAL diagnose(): the user-visible
+  // property is that a stale access token produces no error and no advice at
+  // all, because it healed itself.
+  it('turns a stale-token failure into a plain success, with no re-auth advice', async () => {
+    vi.stubEnv('GOG_ACCOUNT', '');
+    vi.stubEnv('GOG_READONLY', '');
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(gogFailed(GOOGLE_401_STDERR))
+      .mockResolvedValueOnce(ok('{"threads":[]}'));
+    vi.stubGlobal('fetch', fetchMock);
+    const executor = makeFlyExecutor(ENDPOINT, KEY, source(['ya29.stale', 'ya29.fresh']));
+
+    const result = await runExecutor.run({ executor }, () =>
+      runOrDiagnose(['gmail', 'search', 'q'], {}),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toBe('{"threads":[]}');
   });
 });
