@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.23.0](https://github.com/chrischall/gogcli-mcp/compare/v2.22.0...v2.23.0) (2026-08-10)
+
+
+### Features
+
+* **gmail:** make Apple Mail draft forks visible and cheap to reconcile ([#260](https://github.com/chrischall/gogcli-mcp/issues/260)) ([f29a05f](https://github.com/chrischall/gogcli-mcp/commit/f29a05fb86e4afd329b336b5e78a3bf0c6af7cc1))
+
+
+### Bug Fixes
+
+* **gmail:** stop a failed read-back from reporting a successful write as lost ([#263](https://github.com/chrischall/gogcli-mcp/issues/263)) ([dd9dde7](https://github.com/chrischall/gogcli-mcp/commit/dd9dde7bbbde3650ccfcd2aa5d33d9892d50963c))
+
 ## [2.22.0](https://github.com/chrischall/gogcli-mcp/compare/v2.21.1...v2.22.0) (2026-08-09)
 
 
