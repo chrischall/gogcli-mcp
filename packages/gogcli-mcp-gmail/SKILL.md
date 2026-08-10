@@ -5,7 +5,7 @@ description: Use when the user asks to read, organize, draft, forward, autoreply
 
 # gogcli-mcp-gmail
 
-Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 57 tools: 8 auth + 4 base Gmail + 45 extra dedicated Gmail tools.
+Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 58 tools: 8 auth + 4 base Gmail + 46 extra dedicated Gmail tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
@@ -73,12 +73,40 @@ Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 5
 ### Drafts
 | Tool | What it does |
 |------|-------------|
-| `gog_gmail_drafts_list` | List drafts |
+| `gog_gmail_drafts_list` | List drafts (+ free `origin`/`rootsOwnThread`) |
 | `gog_gmail_drafts_get` | Get a draft |
 | `gog_gmail_drafts_create` | Create a draft |
-| `gog_gmail_drafts_update` | Update a draft |
+| `gog_gmail_drafts_update` | Update a draft; `replyToThreadId` re-threads it in place (same id) + `threadingVerification`; `forkSiblingDraftId` blocks a body overwrite that would drop the other copy's text |
 | `gog_gmail_drafts_delete` | Delete a draft |
-| `gog_gmail_drafts_send` | Send a draft |
+| `gog_gmail_drafts_send` | Send a draft (404 → `DRAFT_FORKED`, or `GOOGLE_404_NOT_THE_DRAFT` if the draft is still listed) |
+| `gog_gmail_drafts_diff` | Diff two drafts (body divergence, threading loss, fork verdict) |
+
+A draft edited in a mail client is replaced, not updated: the old id 404s. `drafts_update` / `drafts_send` answer that
+404 with a `DRAFT_FORKED` report (what happened, the drafts that exist, what to do) instead of a bare `notFound`, at a
+bounded cost of ≤2 extra gog calls. It never names a replacement — the 404'd draft cannot be fetched, so no lineage
+signal can exist; use `drafts_diff` on a named pair for that. The 404 is attributed first: `replyToThreadId` and
+`replyToMessageId` resolve their own entities and 404 identically, so if the draft id is still in the listing the answer
+is `GOOGLE_404_NOT_THE_DRAFT` — no fork claimed, reply target named. That listing is capped at 20, so `listingEvidence`
+says what it can carry: only a `complete-listing` (the window came back short, i.e. it covered the folder) claims the
+draft is gone; `capped-listing` and `listing-unavailable` say in words that they establish nothing. A reply target, when
+one was passed, is echoed and explained first.
+
+`drafts_diff` confirms a pairing only on a link from the candidate **to the original** (its `Message-Id` in the
+candidate's `In-Reply-To`/`References`) or on agreement over text **neither draft quoted and neither client generated**
+— the salutation, closing formula, name and signature block are excluded alongside quoting, because a client writes them
+identically on every message (`Hi Jennifer,` + `Thanks,` + `Chris` + `Sent from my iPhone` is 4 lines and 43 characters
+of pure apparatus). A shared reply root is corroboration only — every reply in a thread has one — and `none` means no
+evidence was found, not "unrelated". To adopt the survivor back onto the thread, call
+`drafts_update` with `replyToThreadId`: same draft id, gog resolves the reply headers, `threadingVerification` reports
+whether it worked. It rewrites the whole body, so diff and merge first.
+
+gog requires a body on every update, so there is no header-only edit and every adoption overwrites the body. Pass
+`forkSiblingDraftId` (the other copy's id) and the update reads that draft first — one extra gog call, zero when the param
+is absent — and refuses to write (`DRAFT_CONTENT_LOSS`, nothing changed) if your body drops a line the sibling holds,
+naming the lines; `acceptContentLoss: true` overrides, and `contentLossCheck.written` then reports whether the write it
+authorised actually succeeded — a failed write says so and says nothing was saved. A check that could not run refuses too
+(`DRAFT_CONTENT_LOSS_UNCHECKED`). It compares text only and never claims one draft replaced another — that is
+`drafts_diff`'s job.
 
 ### Write
 | Tool | What it does |
