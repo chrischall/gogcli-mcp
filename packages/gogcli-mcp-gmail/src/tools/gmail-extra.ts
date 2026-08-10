@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // gog rejects an inline flag together with its --*-file twin — `gmail drafts
@@ -807,6 +807,19 @@ export function normalizeFrom(v: string | undefined): string | undefined {
   return addr ? addr.toLowerCase() : undefined;
 }
 
+/** `run()` + the timestamp repair `runOrDiagnose` would have applied.
+ *
+ *  These paths read gog JSON through bare `run()` because they parse it rather
+ *  than hand it back verbatim — but the values they lift out (internalDate,
+ *  internalDateIso) are then re-emitted to the caller, and skipping the seam
+ *  meant they arrived without the explicit offset and without the `<field>Display`
+ *  sibling every other tool in this repo returns. Two shapes of timestamp in one
+ *  response, with nothing marking which is which, is the exact defect
+ *  docs/timestamps.md exists to prevent. */
+async function runNormalized(args: GogArg[], opts: { account?: string }): Promise<string> {
+  return normalizeTimestamps(await run(args, opts));
+}
+
 /** Gmail's `internalDate` is epoch millis as a string. Anything else — absent,
  *  blank, non-numeric — is `undefined`, so ordering is reported as UNKNOWN
  *  rather than silently coerced (Number('') is 0, which would date a draft to
@@ -1389,7 +1402,12 @@ function describeDraftSide(draftId: string, msg: GmailDraftMessage): { side: Dra
     inReplyTo: headerValue(headers, 'In-Reply-To'),
     references: headerValue(headers, 'References'),
     appleIdentitySignals: appleIdentitySignals(msg.payload?.headers),
-    bodyLineCount: normalizeBodyLines(bodyText).length,
+    // The DE-DUPLICATED count, matching diffBodyLines/evaluateContentLoss, which
+    // compare Set members. Counting raw lines here broke the arithmetic a reader
+    // naturally checks: onlyInACount + sharedLineCount === bodyLineCount only
+    // holds when both sides count the same unit, and a body that repeats a line
+    // (a divider, a blank-ish separator) made it not hold.
+    bodyLineCount: new Set(normalizeBodyLines(bodyText)).size,
   };
   return {
     side,
@@ -1744,7 +1762,7 @@ async function checkSiblingContentLoss(
 ): Promise<ContentLossCheck> {
   let raw: string;
   try {
-    raw = await run(['gmail', 'drafts', 'get', siblingDraftId, '--use-indexed-attachment-ids=false'], { account });
+    raw = await runNormalized(['gmail', 'drafts', 'get', siblingDraftId, '--use-indexed-attachment-ids=false'], { account });
   } catch (err) {
     return unreadableSiblingCheck(siblingDraftId, String(err));
   }
@@ -1928,7 +1946,7 @@ async function currentDraftsForForkReport(account: string | undefined): Promise<
   const byMessageId = new Map<string | undefined, EnrichedDraftMessage>();
   let enrichmentNote: string;
   try {
-    const searched = JSON.parse(await run([
+    const searched = JSON.parse(await runNormalized([
       'gmail', 'messages', 'search', 'in:drafts', `--max=${DRAFT_FORK_MAX_CANDIDATES}`,
       '--include-attachments=false', '--use-indexed-attachment-ids=false',
     ], { account })) as { messages?: EnrichedDraftMessage[] };
@@ -2646,11 +2664,16 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (enrich) {
       const searchArgs = ['gmail', 'messages', 'search', 'in:drafts', `--max=${max ?? GOG_DRAFTS_LIST_DEFAULT_MAX}`];
       if (all) searchArgs.push('--all');
+      // The caller's page token, or enrichment silently searches page 1 while the
+      // list is on page N: an extra gog spawn that joins ZERO rows and still
+      // reported applied:true. The token is a drafts-list cursor, so it is only
+      // meaningful to the paged search.
+      if (page) searchArgs.push(`--page=${page}`);
       // Both PINNED for the same reason as gog_gmail_messages_search: the env
       // vars behind them change the result shape (and the per-message cost).
       searchArgs.push('--include-attachments=false', '--use-indexed-attachment-ids=false');
       try {
-        const messages = (JSON.parse(await run(searchArgs, { account })) as { messages?: EnrichedDraftMessage[] }).messages;
+        const messages = (JSON.parse(await runNormalized(searchArgs, { account })) as { messages?: EnrichedDraftMessage[] }).messages;
         if (!Array.isArray(messages)) throw new Error('`gog gmail messages search in:drafts` returned no messages array');
         for (const m of messages) {
           if (m.id) byMessageId.set(m.id, m);
@@ -2731,8 +2754,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     let rawA: string;
     let rawB: string;
     try {
-      rawA = await run(fetchArgs(draftIdA), { account });
-      rawB = await run(fetchArgs(draftIdB), { account });
+      rawA = await runNormalized(fetchArgs(draftIdA), { account });
+      rawB = await runNormalized(fetchArgs(draftIdB), { account });
     } catch (err) {
       return diagnose(new Error(
         `gog_gmail_drafts_diff could not fetch both drafts (${draftIdA}, ${draftIdB}): ${String(err)}. ` +
@@ -2880,6 +2903,27 @@ export function registerExtraGmailTools(server: McpServer): void {
   // separate gog_gmail_drafts_get round trip. For updates the id is known up
   // front; for creates it's read from the write response's draftId. Degrades to
   // the raw write result if the id can't be determined.
+  /** The write succeeded; only the `returnFull` re-read did not. Hand back the
+   *  acknowledgement, and say plainly which half failed — a caller that cannot
+   *  tell those apart will either re-send or delete the wrong copy. */
+  function withRefetchNote(written: CallToolResult, draftId: string): CallToolResult {
+    return {
+      ...written,
+      content: [
+        ...written.content,
+        {
+          type: 'text' as const,
+          text:
+            `Note: the write to draft ${draftId} SUCCEEDED and is acknowledged above. The follow-up ` +
+            'read-back requested by returnFull could not be performed — the id did not resolve, which on ' +
+            'this mailbox usually means the draft was forked by a mail client between the write and the ' +
+            `read. Nothing was lost. Run gog_gmail_drafts_list to find the current id, or ` +
+            `gog_gmail_drafts_get on ${draftId} to confirm.`,
+        },
+      ],
+    };
+  }
+
   async function writeDraft(
     args: GogArg[],
     account: string | undefined,
@@ -2911,7 +2955,22 @@ export function registerExtraGmailTools(server: McpServer): void {
       const draftId = knownDraftId ?? ackDraftId;
       // Same PIN as gog_gmail_drafts_get — this re-fetch is handed to the caller
       // verbatim, so its attachments[] shape must not depend on the host env.
-      if (draftId) final = await runOrDiagnose(['gmail', 'drafts', 'get', draftId, '--use-indexed-attachment-ids=false'], { account });
+      if (draftId) {
+        const refetched = await runOrDiagnose(['gmail', 'drafts', 'get', draftId, '--use-indexed-attachment-ids=false'], { account });
+        // ONLY adopt the re-fetch when it worked. `returnFull` is a convenience
+        // read AFTER an acknowledged write; a 404 here means the draft moved (an
+        // Apple Mail fork between write and read is exactly the case this file
+        // exists for), NOT that the write failed.
+        //
+        // Returning the failed read in place of the successful write made every
+        // downstream consumer read the write as failed: forkAwareDraftFailure
+        // diagnosed DRAFT_FORKED, and the content-loss note told the caller
+        // "NOTHING WAS SAVED" about content that had just been saved. That is the
+        // most destructive thing this tool can say to someone about to tidy up
+        // the sibling copy.
+        if (refetched.isError !== true) final = refetched;
+        else final = withRefetchNote(result, draftId);
+      }
     }
     if (!verification) return final;
     return withThreadingVerification(final, verification);
