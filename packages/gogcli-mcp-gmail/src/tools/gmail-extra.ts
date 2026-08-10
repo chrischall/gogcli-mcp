@@ -2905,8 +2905,22 @@ export function registerExtraGmailTools(server: McpServer): void {
   // the raw write result if the id can't be determined.
   /** The write succeeded; only the `returnFull` re-read did not. Hand back the
    *  acknowledgement, and say plainly which half failed — a caller that cannot
-   *  tell those apart will either re-send or delete the wrong copy. */
-  function withRefetchNote(written: CallToolResult, draftId: string): CallToolResult {
+   *  tell those apart will either re-send or delete the wrong copy.
+   *
+   *  A missing id and any OTHER read failure are different stories and get
+   *  different text. Gating on DRAFT_NOT_FOUND_PATTERN — the same test
+   *  forkAwareDraftFailure uses — keeps the fork explanation for the case that
+   *  actually looks like one; a permission error, a timeout or a transport fault
+   *  keeps its own message instead of being retold as a fork, which would both
+   *  mislead and discard the only text saying what really went wrong. */
+  function withRefetchNote(written: CallToolResult, draftId: string, refetch: CallToolResult): CallToolResult {
+    const detail = resultText(refetch)?.trim();
+    const looksForked = detail !== undefined && DRAFT_NOT_FOUND_PATTERN.test(detail);
+    const because = looksForked
+      ? 'the id did not resolve, which on this mailbox usually means the draft was forked by a mail client ' +
+        'between the write and the read. Run gog_gmail_drafts_list to find the current id'
+      : `the read failed for a different reason, reported verbatim here: ${detail ?? '(no detail supplied)'}. ` +
+        'That is a failure of the READ ONLY';
     return {
       ...written,
       content: [
@@ -2915,10 +2929,8 @@ export function registerExtraGmailTools(server: McpServer): void {
           type: 'text' as const,
           text:
             `Note: the write to draft ${draftId} SUCCEEDED and is acknowledged above. The follow-up ` +
-            'read-back requested by returnFull could not be performed — the id did not resolve, which on ' +
-            'this mailbox usually means the draft was forked by a mail client between the write and the ' +
-            `read. Nothing was lost. Run gog_gmail_drafts_list to find the current id, or ` +
-            `gog_gmail_drafts_get on ${draftId} to confirm.`,
+            `read-back requested by returnFull could not be performed — ${because}. Nothing was lost; ` +
+            `run gog_gmail_drafts_get on ${draftId} to confirm the saved content.`,
         },
       ],
     };
@@ -2969,7 +2981,7 @@ export function registerExtraGmailTools(server: McpServer): void {
         // most destructive thing this tool can say to someone about to tidy up
         // the sibling copy.
         if (refetched.isError !== true) final = refetched;
-        else final = withRefetchNote(result, draftId);
+        else final = withRefetchNote(result, draftId, refetched);
       }
     }
     if (!verification) return final;

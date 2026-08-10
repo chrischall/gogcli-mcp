@@ -53,6 +53,43 @@ describe('a failed returnFull re-read does not erase a successful write', () => 
     expect(res.content.map((c: any) => c.text).join('\n')).toContain('payload');
   });
 
+  it('does NOT retell a non-404 read failure as a fork, and keeps its text', async () => {
+    // #264: any refetch failure used to get the fork explanation, discarding the
+    // only text saying what actually went wrong. A permission error is not a fork.
+    vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: readonly string[]) =>
+      args[2] === 'update' ? rawTextResult(ack) : errorResult('Google API error (403 forbidden): insufficient permission'));
+
+    const res = await harness.callTool('gog_gmail_drafts_update', { draftId: 'r123', subject: 'S', body: 'x', returnFull: true });
+    const text = res.content.map((c: any) => c.text).join('\n');
+
+    expect(res.isError).not.toBe(true);
+    expect(text).toContain('SUCCEEDED');
+    expect(text).toContain('403 forbidden');            // the real cause survives
+    expect(text).not.toMatch(/forked by a mail client/); // and is not retold as a fork
+  });
+
+  it('still gives the fork explanation on a genuine 404', async () => {
+    vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: readonly string[]) =>
+      args[2] === 'update' ? rawTextResult(ack) : errorResult('Google API error (404 notFound)'));
+    const res = await harness.callTool('gog_gmail_drafts_update', { draftId: 'r123', subject: 'S', body: 'x', returnFull: true });
+    expect(res.content.map((c: any) => c.text).join('\n')).toMatch(/forked by a mail client/);
+  });
+
+  it('still says the write succeeded when the read failure carries no text', async () => {
+    // An error result with no content at all: the note must not interpolate
+    // `undefined` into the sentence a caller reads to decide what to do next.
+    vi.mocked(lib.runOrDiagnose).mockImplementation(async (args: readonly string[]) =>
+      args[2] === 'update' ? rawTextResult(ack) : ({ isError: true, content: [] } as any));
+
+    const res = await harness.callTool('gog_gmail_drafts_update', { draftId: 'r123', subject: 'S', body: 'x', returnFull: true });
+    const text = res.content.map((c: any) => c.text).join('\n');
+
+    expect(res.isError).not.toBe(true);
+    expect(text).toContain('SUCCEEDED');
+    expect(text).toContain('(no detail supplied)');
+    expect(text).not.toContain('undefined');
+  });
+
   it('still reports a genuinely failed WRITE as an error', async () => {
     // The guard must not swallow a real failure: here the update itself fails.
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(errorResult('Google API error (404 notFound)'));
