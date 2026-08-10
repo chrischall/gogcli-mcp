@@ -187,7 +187,7 @@
     },
     {
       "name": "gog_gmail_drafts_list",
-      "description": "List Gmail drafts"
+      "description": "List Gmail drafts, annotated free with origin (api / non-api) and rootsOwnThread"
     },
     {
       "name": "gog_gmail_drafts_get",
@@ -199,7 +199,7 @@
     },
     {
       "name": "gog_gmail_drafts_update",
-      "description": "Update an existing Gmail draft"
+      "description": "Update an existing Gmail draft; re-thread it in place with replyToThreadId (same draft id) and verify the result via threadingVerification; forkSiblingDraftId refuses the write when the new body would drop text the named sibling copy still holds; a 404 is attributed to the draft id or to the reply target before it is reported"
     },
     {
       "name": "gog_gmail_drafts_delete",
@@ -207,7 +207,11 @@
     },
     {
       "name": "gog_gmail_drafts_send",
-      "description": "Send an existing Gmail draft"
+      "description": "Send an existing Gmail draft; a 404 comes back diagnosed (DRAFT_FORKED, or GOOGLE_404_NOT_THE_DRAFT when the draft is still listed)"
+    },
+    {
+      "name": "gog_gmail_drafts_diff",
+      "description": "Diff two named drafts: what each body has that the other lost, how their threading differs, and (only on a link back to the original or on agreement over unquoted text, with evidence) whether one replaced the other"
     },
     {
       "name": "gog_gmail_import",

@@ -714,6 +714,504 @@ describe('gog_gmail_drafts_list', () => {
   });
 });
 
+// ===========================================================================
+// REQUIREMENT 2 — the listing must say where each draft came from and whether
+// sending it would start a NEW conversation, and TIER 0 MUST COST NOTHING.
+//
+// Hazard B (N+1) is enforced here by assertion, not by intention: the argv has
+// to stay byte-identical to today's and `run` must never be touched. A 20-draft
+// listing that quietly became 20 gog spawns on the one shared Fly machine is the
+// regression these tests exist to make impossible.
+// ===========================================================================
+describe('gog_gmail_drafts_list — tier 0 origin and threading', () => {
+  const LIST = JSON.stringify({
+    drafts: [
+      // API-created reply: sits inside the co-parent's thread.
+      { id: 'r4303011157206680397', messageId: '19f856becba0661d', threadId: '19f856b0000thread' },
+      // The Apple Mail replacement: non-API id, roots its own thread.
+      { id: 's:14092347734530621658', messageId: '19fe8a673d1e5f21', threadId: '19fe8a673d1e5f21' },
+      // Draft ids can be NEGATIVE and still be plain API drafts.
+      { id: 'r-457330811034304502', messageId: 'aaa', threadId: 'bbb' },
+    ],
+    nextPageToken: 'next-tok',
+  });
+
+  it('adds origin and rootsOwnThread without spending a single extra gog call', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    const result = await harness.callTool('gog_gmail_drafts_list', {});
+
+    // Hazard B: exactly one invocation, and the argv is what it always was.
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls).toHaveLength(1);
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls[0]![0]).toEqual(['gmail', 'drafts', 'list']);
+    expect(lib.run).not.toHaveBeenCalled();
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.drafts.map((d: { id: string; origin: string; rootsOwnThread: boolean }) => [d.id, d.origin, d.rootsOwnThread])).toEqual([
+      ['r4303011157206680397', 'api', false],
+      ['s:14092347734530621658', 'non-api', true],
+      ['r-457330811034304502', 'api', false],
+    ]);
+    // Additive only: gog's own fields survive untouched.
+    expect(parsed.drafts[0].messageId).toBe('19f856becba0661d');
+    expect(parsed.nextPageToken).toBe('next-tok');
+  });
+
+  it('never labels a draft apple-mail from the listing alone', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    const result = await harness.callTool('gog_gmail_drafts_list', {});
+    // Hazard A: an `s:` prefix means IMAP/sync — Thunderbird and Outlook produce
+    // it too. Claiming "apple-mail" here would be a free false positive.
+    expect(JSON.parse(result.content[0].text).drafts[1].origin).toBe('non-api');
+    expect(result.content[0].text).not.toContain('apple-mail');
+  });
+
+  it('explains rootsOwnThread as the consequence the caller cares about', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_list', {})).content[0].text);
+    // Emitted ONCE for the whole result and selected by the per-row boolean —
+    // it is one of exactly two constants, so a copy per row was ~300 chars of
+    // duplicated text carrying no extra information.
+    expect(parsed.threadingNotes.rootsOwnThread).toContain('NEW conversation');
+    expect(parsed.threadingNotes.inThread).toContain('existing thread');
+    expect(parsed.drafts[1].rootsOwnThread).toBe(true);
+    expect(parsed.drafts[0].rootsOwnThread).toBe(false);
+    // The `non-api` != Apple caveat and the measured coin-flip figure ride along once.
+    expect(parsed.originNote).toContain('non-api');
+    expect(parsed.originNote).toContain('0.50');
+  });
+
+  it('passes non-JSON output through untouched', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('No drafts'));
+    const result = await harness.callTool('gog_gmail_drafts_list', {});
+    expect(result.content[0].text).toBe('No drafts');
+  });
+
+  it('passes JSON without a drafts array through untouched', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('{"error":"nope"}'));
+    const result = await harness.callTool('gog_gmail_drafts_list', {});
+    expect(result.content[0].text).toBe('{"error":"nope"}');
+  });
+
+  it('passes a non-text result through untouched', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce({ content: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }] });
+    const result = await harness.callTool('gog_gmail_drafts_list', {});
+    expect(result.content[0].type).toBe('image');
+  });
+});
+
+describe('gog_gmail_drafts_list — tier 1 enrich', () => {
+  const LIST = JSON.stringify({
+    drafts: [
+      { id: 'r1', messageId: 'm1', threadId: 't1' },
+      { id: 's:2', messageId: 'm2', threadId: 'm2' },
+    ],
+    nextPageToken: '',
+  });
+  const SEARCH = JSON.stringify({
+    messages: [
+      { id: 'm1', threadId: 't1', from: 'Chris <chris@x.com>', subject: 'Re: August schedule', internalDateIso: '2026-08-09T10:00:00-04:00' },
+    ],
+    nextPageToken: '',
+  });
+
+  it('is off by default — no enrichment fields and no second call', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_list', {})).content[0].text);
+    expect(lib.run).not.toHaveBeenCalled();
+    expect(parsed.enrichment).toBeUndefined();
+    expect(parsed.drafts[0].subject).toBeUndefined();
+  });
+
+  it('spends exactly one extra gog call and joins on messageId', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    vi.mocked(lib.run).mockResolvedValueOnce(SEARCH);
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_list', { enrich: true })).content[0].text);
+
+    expect(vi.mocked(lib.run).mock.calls).toHaveLength(1);
+    expect(vi.mocked(lib.run).mock.calls[0]![0]).toEqual([
+      'gmail', 'messages', 'search', 'in:drafts', '--max=20',
+      '--include-attachments=false', '--use-indexed-attachment-ids=false',
+    ]);
+    expect(parsed.drafts[0]).toMatchObject({
+      id: 'r1', origin: 'api', subject: 'Re: August schedule', from: 'Chris <chris@x.com>', internalDateIso: '2026-08-09T10:00:00-04:00',
+    });
+    // The unjoined draft keeps its tier-0 fields and gains nothing else.
+    expect(parsed.drafts[1].subject).toBeUndefined();
+    expect(parsed.drafts[1].origin).toBe('non-api');
+    expect(parsed.enrichment).toMatchObject({ requested: true, applied: true, extraGogCalls: 1, matched: 1, unmatched: 1 });
+  });
+
+  it('mirrors max and --all onto the enrichment search', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    vi.mocked(lib.run).mockResolvedValueOnce(SEARCH);
+    await harness.callTool('gog_gmail_drafts_list', { enrich: true, max: 50, all: true, account: 'a@b.com' });
+    expect(vi.mocked(lib.run).mock.calls[0]![0]).toEqual([
+      'gmail', 'messages', 'search', 'in:drafts', '--max=50', '--all',
+      '--include-attachments=false', '--use-indexed-attachment-ids=false',
+    ]);
+    expect(vi.mocked(lib.run).mock.calls[0]![1]).toEqual({ account: 'a@b.com' });
+  });
+
+  it('degrades to tier 0 instead of erroring when the search fails', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    vi.mocked(lib.run).mockRejectedValueOnce(new Error('gog exploded'));
+    const result = await harness.callTool('gog_gmail_drafts_list', { enrich: true });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(result.isError).toBeFalsy();
+    expect(parsed.drafts[0].origin).toBe('api'); // tier 0 survives
+    expect(parsed.enrichment).toMatchObject({ requested: true, applied: false, extraGogCalls: 1 });
+    expect(parsed.enrichment.reason).toContain('gog exploded');
+  });
+
+  it('degrades to tier 0 when the search output is not JSON at all', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    vi.mocked(lib.run).mockResolvedValueOnce('not json at all');
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_list', { enrich: true })).content[0].text);
+    expect(parsed.enrichment.applied).toBe(false);
+    expect(parsed.drafts[0].rootsOwnThread).toBe(false);
+  });
+
+  it('degrades to tier 0 when the search output is JSON without a messages array', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    vi.mocked(lib.run).mockResolvedValueOnce('{"error":"quota"}');
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_list', { enrich: true })).content[0].text);
+    expect(parsed.enrichment.applied).toBe(false);
+    expect(parsed.enrichment.reason).toContain('no messages array');
+    expect(parsed.drafts[1].origin).toBe('non-api');
+  });
+
+  it('skips messages with no id when joining', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(LIST));
+    vi.mocked(lib.run).mockResolvedValueOnce(JSON.stringify({ messages: [{ subject: 'orphan' }] }));
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_list', { enrich: true })).content[0].text);
+    expect(parsed.enrichment).toMatchObject({ applied: true, matched: 0, unmatched: 2 });
+  });
+
+  it('does not spend the enrichment call when the listing is unparseable', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('No drafts'));
+    const result = await harness.callTool('gog_gmail_drafts_list', { enrich: true });
+    expect(lib.run).not.toHaveBeenCalled();
+    expect(result.content[0].text).toBe('No drafts');
+  });
+
+  it('tolerates a draft entry with no id', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(JSON.stringify({ drafts: [{ messageId: 'm9', threadId: 'm9' }] })));
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_list', {})).content[0].text);
+    expect(parsed.drafts[0].origin).toBe('api');
+    expect(parsed.drafts[0].rootsOwnThread).toBe(true);
+  });
+});
+
+// ===========================================================================
+// REQUIREMENT 3 — gog_gmail_drafts_diff.
+//
+// Two named drafts, two gog spawns, never a scan. It answers the question the
+// owner actually has in front of a fork: WHAT diverged, WHAT threading was
+// lost, and — separately and conservatively — whether one plausibly replaced
+// the other.
+// ===========================================================================
+describe('gog_gmail_drafts_diff', () => {
+  const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
+
+  function draftGetJson(o: {
+    draftId: string; messageId: string; threadId: string; internalDate: string;
+    headers: Array<{ name: string; value: string }>; body: string;
+  }): string {
+    return JSON.stringify({
+      draft: {
+        id: o.draftId,
+        message: {
+          id: o.messageId,
+          threadId: o.threadId,
+          internalDate: o.internalDate,
+          payload: { mimeType: 'text/plain', headers: o.headers, body: { data: b64(o.body) } },
+        },
+      },
+    });
+  }
+
+  // The observed case: an API-created reply threaded onto the co-parent's
+  // message, and the Apple Mail replacement that dropped a paragraph, added a
+  // sentence, and landed on its own thread.
+  const ORIGINAL = draftGetJson({
+    draftId: 'r4303011157206680397',
+    messageId: '19f856becba0661d',
+    threadId: '19f856b0000thread',
+    internalDate: '1000',
+    headers: [
+      { name: 'From', value: 'Chris Hall <chris@x.com>' },
+      { name: 'To', value: 'coparent@y.com' },
+      { name: 'Cc', value: 'coordinator@pc.com' },
+      { name: 'Subject', value: 'Re: August schedule' },
+      { name: 'Message-Id', value: '<orig@mail.gmail.com>' },
+      { name: 'In-Reply-To', value: '<coparent@mail.gmail.com>' },
+      { name: 'References', value: '<coparent@mail.gmail.com>' },
+      { name: 'MIME-Version', value: '1.0' },
+    ],
+    body: 'Thanks for the note.\nI can do the 14th.\nPickup at six.\nTHE PARAGRAPH ONLY GMAIL HAS.\nBest, Chris',
+  });
+  const APPLE_FORK = draftGetJson({
+    draftId: 's:14092347734530621658',
+    messageId: '19fe8a673d1e5f21',
+    threadId: '19fe8a673d1e5f21',
+    internalDate: '2000',
+    headers: [
+      { name: 'From', value: 'chris@x.com' },
+      { name: 'To', value: 'coparent@y.com' },
+      { name: 'Subject', value: 'Re: August schedule' },
+      { name: 'Message-Id', value: '<8F3C1B0A-1111-2222-3333-AABBCCDDEEFF@gmail.com>' },
+      { name: 'Mime-Version', value: '1.0 (1.0)' },
+      { name: 'X-Universally-Unique-Identifier', value: '8F3C1B0A-1111-2222-3333-AABBCCDDEEFF' },
+      { name: 'X-Apple-Notify-Thread', value: 'yes' },
+    ],
+    body: 'Thanks for the note.\nI can do the 14th.\nPickup at six.\nBest, Chris\nTHE SENTENCE ONLY APPLE HAS.',
+  });
+
+  function stub(map: Record<string, string>): void {
+    vi.mocked(lib.run).mockImplementation(async (args) => {
+      const id = (args as string[])[3]!;
+      const payload = map[id];
+      if (payload === undefined) throw new Error(`Google API error (404 notFound): ${id}`);
+      return payload;
+    });
+  }
+
+  const call = (extra: Record<string, unknown> = {}) => harness.callTool('gog_gmail_drafts_diff', {
+    draftIdA: 'r4303011157206680397', draftIdB: 's:14092347734530621658', ...extra,
+  });
+
+  it('costs exactly two gog calls, one per named draft', async () => {
+    stub({ 'r4303011157206680397': ORIGINAL, 's:14092347734530621658': APPLE_FORK });
+    await call();
+    expect(vi.mocked(lib.run).mock.calls).toHaveLength(2);
+    expect(vi.mocked(lib.run).mock.calls[0]![0]).toEqual(['gmail', 'drafts', 'get', 'r4303011157206680397', '--use-indexed-attachment-ids=false']);
+    expect(vi.mocked(lib.run).mock.calls[1]![0]).toEqual(['gmail', 'drafts', 'get', 's:14092347734530621658', '--use-indexed-attachment-ids=false']);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('shows what each copy alone would lose', async () => {
+    stub({ 'r4303011157206680397': ORIGINAL, 's:14092347734530621658': APPLE_FORK });
+    const parsed = JSON.parse((await call()).content[0].text);
+    expect(parsed.bodyDiff.onlyInA).toEqual(['THE PARAGRAPH ONLY GMAIL HAS.']);
+    expect(parsed.bodyDiff.onlyInB).toEqual(['THE SENTENCE ONLY APPLE HAS.']);
+    expect(parsed.bodyDiff.sharedLineCount).toBe(4);
+    expect(parsed.bodyDiff.neitherIsSuperset).toBe(true);
+    expect(parsed.bodyDiff.note).toContain('NEITHER');
+  });
+
+  it('names the threading that would be lost by sending the fork', async () => {
+    stub({ 'r4303011157206680397': ORIGINAL, 's:14092347734530621658': APPLE_FORK });
+    const parsed = JSON.parse((await call()).content[0].text);
+    expect(parsed.drafts.a).toMatchObject({ origin: 'api', rootsOwnThread: false, inReplyTo: '<coparent@mail.gmail.com>' });
+    expect(parsed.drafts.b).toMatchObject({ origin: 'non-api', rootsOwnThread: true });
+    expect(parsed.drafts.b.inReplyTo).toBeUndefined();
+    expect(parsed.drafts.b.appleIdentitySignals).toEqual([
+      'X-Universally-Unique-Identifier: 8F3C1B0A-1111-2222-3333-AABBCCDDEEFF',
+      'X-Apple-Notify-Thread: yes',
+    ]);
+    expect(parsed.threadingDifferences.join(' ')).toContain('different threadIds');
+    expect(parsed.threadingDifferences.join(' ')).toContain('reply headers');
+  });
+
+  it('confirms the pairing only with an Apple identity header plus real lineage', async () => {
+    stub({ 'r4303011157206680397': ORIGINAL, 's:14092347734530621658': APPLE_FORK });
+    const parsed = JSON.parse((await call()).content[0].text);
+    expect(parsed.forkPairing.verdict).toBe('confirmed');
+    expect(parsed.forkPairing.tier).toBe(2);
+    expect(parsed.forkPairing.originalDraftId).toBe('r4303011157206680397');
+    expect(parsed.forkPairing.candidateDraftId).toBe('s:14092347734530621658');
+    expect(parsed.forkPairing.evidence.join(' ')).toContain('body line similarity');
+  });
+
+  // ---- HAZARD A: the test that matters most. ----
+  it('returns "none" for two unrelated drafts that share every cheap signal', async () => {
+    // Both non-API, both rooting their own thread, both Apple-authored, same
+    // From, same subject, minutes apart — the live mailbox really does hold
+    // deliberate [VERSION A]/[VERSION B] pairs like this. Only LINEAGE is
+    // missing, and without it the answer must be "unrelated".
+    const common = {
+      threadId: 'self', internalDate: '1000',
+      headers: [
+        { name: 'From', value: 'chris@x.com' },
+        { name: 'Subject', value: 'Re: August schedule' },
+        { name: 'X-Universally-Unique-Identifier', value: 'AAAA-1111' },
+      ],
+    };
+    const A = draftGetJson({ ...common, draftId: 's:aaa', messageId: 'self', body: '[VERSION A] I would prefer the 14th and a six oclock pickup.' });
+    const B = draftGetJson({
+      ...common, draftId: 's:bbb', messageId: 'self2', internalDate: '1180',
+      headers: [...common.headers, { name: 'X-Apple-Notify-Thread', value: 'yes' }],
+      body: '[VERSION B] Let us keep the current arrangement through September.',
+    });
+    stub({ 's:aaa': A, 's:bbb': B });
+    const result = await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 's:aaa', draftIdB: 's:bbb' });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.forkPairing.verdict).toBe('none');
+    expect(parsed.forkPairing.missing.join(' ')).toContain('no lineage signal');
+    // Nothing in the payload may read as an assertion that one replaced the other.
+    expect(result.content[0].text).not.toContain('replaced draft');
+  });
+
+  // The default shape of a co-parenting mailbox: two drafts replying into the
+  // SAME co-parent message, about different things. Shared root, Apple
+  // headers, newer, same From — everything but a link from one to the other.
+  it('returns "none" for two independent replies to the same co-parent message', async () => {
+    const handoff = draftGetJson({
+      draftId: 'r4303011157206680397', messageId: 'm1', threadId: 't1', internalDate: '1000',
+      headers: [
+        { name: 'From', value: 'Chris Hall <chris@x.com>' },
+        { name: 'Message-Id', value: '<orig@mail.gmail.com>' },
+        { name: 'In-Reply-To', value: '<coparent-2026-05-01@mail.gmail.com>' },
+        { name: 'References', value: '<coparent-2026-05-01@mail.gmail.com>' },
+      ],
+      body: 'Confirming the July handoff at six on the 14th.\nI will bring the booster seat.',
+    });
+    const orthodontist = draftGetJson({
+      draftId: 's:14092347734530621658', messageId: 'm2', threadId: 't1', internalDate: '2000',
+      headers: [
+        { name: 'From', value: 'chris@x.com' },
+        { name: 'Message-Id', value: '<9F3A@gmail.com>' },
+        { name: 'In-Reply-To', value: '<coparent-2026-05-01@mail.gmail.com>' },
+        { name: 'References', value: '<coparent-2026-05-01@mail.gmail.com>' },
+        { name: 'X-Universally-Unique-Identifier', value: '9F3A' },
+      ],
+      body: 'The orthodontist invoice came to 240 dollars.\nI am splitting it per the parenting plan.',
+    });
+    stub({ 'r4303011157206680397': handoff, 's:14092347734530621658': orthodontist });
+    const result = await call();
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.forkPairing.verdict).not.toBe('confirmed');
+    expect(result.content[0].text).not.toContain('replaced draft');
+    expect(parsed.forkPairing.evidence.join(' ')).toContain('CORROBORATING ONLY');
+    expect(parsed.forkPairing.missing.join(' ')).toContain('no lineage signal');
+    expect(parsed.forkPairing.bodyAgreement.similarity).toBe(0);
+  });
+
+  // Apple quotes the original on reply, so two unrelated replies into one
+  // thread share a big identical block. It must not read as agreement.
+  it('ignores the quoted block shared by two unrelated replies', async () => {
+    const quote = Array.from({ length: 20 }, (_, i) => `> quoted line ${i}`).join('\n');
+    const attribution = 'On 1 May 2026, at 09:14, Co Parent <co@x.com> wrote:';
+    const mk = (id: string, msgId: string, date: string, body: string, extra: Array<{ name: string; value: string }>) => draftGetJson({
+      draftId: id, messageId: msgId, threadId: msgId, internalDate: date,
+      headers: [{ name: 'From', value: 'chris@x.com' }, ...extra],
+      body: `${body}\n${attribution}\n${quote}`,
+    });
+    stub({
+      r1: mk('r1', 'm1', '1000', 'Tuition is due on the 5th.\nI paid the deposit already.', []),
+      's:2': mk('s:2', 'm2', '2000', 'The passport renewal needs both signatures.\nI booked the 3rd.', [{ name: 'X-Apple-Notify-Thread', value: 'yes' }]),
+    });
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'r1', draftIdB: 's:2' })).content[0].text);
+    expect(parsed.forkPairing.verdict).toBe('none');
+    expect(parsed.forkPairing.bodyAgreement.similarity).toBe(0);
+    expect(parsed.forkPairing.bodyAgreement.quotedLinesIgnored).toEqual({ original: 21, candidate: 21 });
+    // The whole-body diff still shows the quoted block as shared — that is a
+    // different question (what would be lost), and it stays honest.
+    expect(parsed.bodyDiff.sharedLineCount).toBe(21);
+  });
+
+  it('downgrades to "candidate" when lineage exists but the candidate is not newer', async () => {
+    const older = draftGetJson({
+      draftId: 's:old', messageId: 'x1', threadId: 'x1', internalDate: '500',
+      headers: [{ name: 'From', value: 'chris@x.com' }, { name: 'X-Apple-Notify-Thread', value: 'yes' }],
+      body: 'Thanks for the note.\nI can do the 14th.\nPickup at six.\nBest, Chris',
+    });
+    stub({ 'r4303011157206680397': ORIGINAL, 's:old': older });
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'r4303011157206680397', draftIdB: 's:old' })).content[0].text);
+    // Draft B is older, so it is treated as the ORIGINAL and A as the candidate.
+    expect(parsed.forkPairing.originalDraftId).toBe('s:old');
+    expect(parsed.forkPairing.candidateDraftId).toBe('r4303011157206680397');
+    expect(parsed.forkPairing.verdict).toBe('candidate');
+    expect(parsed.forkPairing.note).toContain('Unconfirmed');
+  });
+
+  it('reports identical bodies and no threading difference', async () => {
+    const same = (id: string) => draftGetJson({
+      draftId: id, messageId: 'same', threadId: 'thr', internalDate: '1000',
+      headers: [{ name: 'From', value: 'chris@x.com' }, { name: 'In-Reply-To', value: '<z@y>' }],
+      body: 'one\ntwo',
+    });
+    stub({ 'r1': same('r1'), 'r2': same('r2') });
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'r1', draftIdB: 'r2' })).content[0].text);
+    expect(parsed.bodyDiff.note).toContain('identical');
+    expect(parsed.threadingDifferences).toEqual(['No threading difference: the two drafts share a threadId and agree on whether they carry reply headers.']);
+  });
+
+  it('names a one-sided superset in each direction', async () => {
+    const short = draftGetJson({ draftId: 'r1', messageId: 'm', threadId: 'm', internalDate: '1', headers: [], body: 'one\ntwo' });
+    const long = draftGetJson({ draftId: 'r2', messageId: 'm', threadId: 'm', internalDate: '2', headers: [], body: 'one\ntwo\nthree' });
+    stub({ 'r1': short, 'r2': long });
+    expect(JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'r1', draftIdB: 'r2' })).content[0].text).bodyDiff.note)
+      .toContain('Draft B is a superset');
+    stub({ 'r3': long, 'r4': short });
+    expect(JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'r3', draftIdB: 'r4' })).content[0].text).bodyDiff.note)
+      .toContain('Draft A is a superset');
+  });
+
+  it('makes no containment claim when one draft’s body could not be read', async () => {
+    const empty = JSON.stringify({
+      draft: { id: 'r1', message: { id: 'm1', threadId: 'm1', internalDate: '1', payload: { mimeType: 'application/octet-stream', headers: [], body: {} } } },
+    });
+    const full = draftGetJson({ draftId: 'r2', messageId: 'm2', threadId: 'm2', internalDate: '2', headers: [], body: 'one\ntwo' });
+    stub({ r1: empty, r2: full });
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'r1', draftIdB: 'r2' })).content[0].text);
+    expect(parsed.bodyDiff.comparability).toBe('a-unreadable');
+    expect(parsed.bodyDiff.supersetClaim).toBe('not-assessed');
+    expect(parsed.bodyDiff.neitherIsSuperset).toBeNull();
+    expect(parsed.bodyDiff.note).not.toMatch(/superset/i);
+    expect(parsed.drafts.a.bodyLineCount).toBe(0);
+  });
+
+  it('caps the reported diff lines and says so', async () => {
+    const many = (n: number, tag: string) => Array.from({ length: n }, (_, i) => `${tag}-${i}`).join('\n');
+    stub({
+      'r1': draftGetJson({ draftId: 'r1', messageId: 'm', threadId: 'm', internalDate: '1', headers: [], body: many(5, 'a') }),
+      'r2': draftGetJson({ draftId: 'r2', messageId: 'm', threadId: 'm', internalDate: '2', headers: [], body: many(5, 'b') }),
+    });
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'r1', draftIdB: 'r2', maxDiffLines: 2 })).content[0].text);
+    expect(parsed.bodyDiff.onlyInA).toHaveLength(2);
+    expect(parsed.bodyDiff.onlyInB).toHaveLength(2);
+    expect(parsed.bodyDiff.truncated).toBe(true);
+    expect(parsed.bodyDiff.note).toContain('truncated');
+  });
+
+  it('reports threading differences when one side has no threadId, in both directions', async () => {
+    const noThread = JSON.stringify({
+      draft: { id: 'x', message: { id: 'm1', internalDate: '1', payload: { mimeType: 'text/plain', headers: [], body: { data: b64('x') } } } },
+    });
+    const threaded = draftGetJson({
+      draftId: 'r2', messageId: 'm2', threadId: 'thr', internalDate: '2',
+      headers: [{ name: 'References', value: '<z@y>' }], body: 'y',
+    });
+    // A has no threadId and no reply headers; B has both.
+    stub({ r1: noThread, r2: threaded });
+    const first = JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'r1', draftIdB: 'r2' })).content[0].text);
+    expect(first.threadingDifferences[0]).toContain('((none) vs thr)');
+    expect(first.threadingDifferences[1]).toContain('Draft r2 carries reply headers');
+    expect(first.threadingDifferences[1]).toContain('draft r1 does not');
+    // Mirror image: now it is B that has no threadId.
+    stub({ r3: threaded, r4: noThread });
+    const second = JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'r3', draftIdB: 'r4' })).content[0].text);
+    expect(second.threadingDifferences[0]).toContain('(thr vs (none))');
+  });
+
+  it('diagnoses a draft id that no longer resolves, spending only the calls it made', async () => {
+    stub({ 'r4303011157206680397': ORIGINAL });
+    const result = await call();
+    expect(vi.mocked(lib.run).mock.calls).toHaveLength(2);
+    expect(lib.diagnose).toHaveBeenCalled();
+    expect(String(vi.mocked(lib.diagnose).mock.calls[0]![0])).toContain('s:14092347734530621658');
+    expect(result.content[0].text).toBe('diagnosed');
+  });
+
+  it('errors clearly when either draft payload is unreadable', async () => {
+    stub({ 'r4303011157206680397': 'not json', 's:14092347734530621658': APPLE_FORK });
+    expect((await call()).content[0].text).toContain('r4303011157206680397');
+    stub({ 'r4303011157206680397': ORIGINAL, 's:14092347734530621658': '{"draft":{}}' });
+    expect((await call()).content[0].text).toContain('s:14092347734530621658');
+  });
+});
+
 describe('gog_gmail_drafts_get', () => {
   it('calls runOrDiagnose with draftId', async () => {
     await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1' });
@@ -2015,5 +2513,802 @@ describe('gog_gmail_attachment pins --inline-max-bytes', () => {
     vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ bytes: 10, contentBase64: 'AAAA', mimeType: 'image/png', filename: 'a.png' }));
     await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', deliver: 'inline', inlineMaxBytes: 99 });
     expect(args()).toContain('--inline-max-bytes=99');
+  });
+});
+
+// ===========================================================================
+// REQUIREMENT 4 — VERIFY (and repair) THREADING ON AN UPDATE.
+//
+// gog already does the repair: `--thread-id` on `gmail drafts update` sets
+// replyToThreadID, so buildDraftMessage RESOLVES In-Reply-To/References from
+// the thread's latest non-draft message, and Users.Drafts.Update keeps the
+// draft id (internal/cmd/gmail_drafts.go, upstream-v0.35.0). What was missing
+// is the VERIFICATION: gog reports inReplyTo/references/replyContextSource in
+// its own ack, and nothing was reading them back to the caller.
+//
+// The silent failure this catches: the thread branch of fetchReplyInfo has no
+// "target has no Message-ID header" guard (the message branch does), so a
+// thread whose latest message lacks a Message-Id resolves NO lineage — and
+// because an explicit reply target suppresses the carry-forward branch, the
+// draft is MOVED to the new thread and ends up with NO reply headers at all.
+// ===========================================================================
+describe('gog_gmail_drafts_update — threading verification', () => {
+  const ACK = (over: Record<string, unknown> = {}): string => JSON.stringify({
+    draftId: 'r4303011157206680397',
+    threadId: '19f856becba0661d',
+    inReplyTo: '<CAO@mail.gmail.com>',
+    references: '<CAO@mail.gmail.com>',
+    replyContextSource: 'caller',
+    ...over,
+  });
+
+  it('adopts a draft onto a thread in one call, keeps its id, and reports the effective headers', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(ACK()));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397',
+      subject: 'Re: pickup schedule',
+      body: 'merged text',
+      replyToThreadId: '19f856becba0661d',
+    });
+
+    // One gog invocation: gog resolves the thread's reply headers server-side.
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'update', 'r4303011157206680397', '--subject=Re: pickup schedule',
+        '--body=merged text', '--thread-id=19f856becba0661d', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    // The id survives the adoption — that is the whole point of updating in place.
+    expect(parsed.draftId).toBe('r4303011157206680397');
+    expect(parsed.threadingVerification).toMatchObject({
+      requested: 'set',
+      via: 'replyToThreadId',
+      target: '19f856becba0661d',
+      ok: true,
+      effective: {
+        threadId: '19f856becba0661d',
+        inReplyTo: '<CAO@mail.gmail.com>',
+        references: '<CAO@mail.gmail.com>',
+        replyContextSource: 'caller',
+      },
+    });
+    // Every update rewrites the body — gog requires --body. Say so.
+    expect(parsed.threadingVerification.note).toMatch(/body/i);
+  });
+
+  it('WARNS when the re-thread moved the draft but produced no reply headers', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(
+      ACK({ inReplyTo: null, references: null, replyContextSource: null }),
+    ));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'S', body: 'B', replyToThreadId: '19f856becba0661d',
+    });
+    const v = JSON.parse(result.content[0].text).threadingVerification;
+    expect(v.ok).toBe(false);
+    expect(v.note).toMatch(/WARNING/);
+    expect(v.note).toMatch(/not arrive as a reply/i);
+    // The dangerous half: it DID move threads, so it is not a no-op to ignore.
+    expect(v.note).toContain('19f856becba0661d');
+  });
+
+  it('anchors to a message id when both reply targets are given, and says which it used', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(ACK()));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', replyToMessageId: 'mExplicit', replyToThreadId: 't1',
+    });
+    const args = vi.mocked(lib.runOrDiagnose).mock.calls[0]![0] as string[];
+    expect(args).toContain('--reply-to-message-id=mExplicit');
+    expect(args.some((a) => a.startsWith('--thread-id'))).toBe(false);
+    expect(JSON.parse(result.content[0].text).threadingVerification).toMatchObject({
+      requested: 'set', via: 'replyToMessageId', target: 'mExplicit', ok: true,
+    });
+  });
+
+  it('confirms clearReplyContext actually dropped the lineage, and that the threadId stayed', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(
+      ACK({ inReplyTo: null, references: null, replyContextSource: null }),
+    ));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', clearReplyContext: true,
+    });
+    const v = JSON.parse(result.content[0].text).threadingVerification;
+    expect(v).toMatchObject({ requested: 'clear', ok: true });
+    expect(v.note).not.toMatch(/WARNING/);
+    expect(v.effective.threadId).toBe('19f856becba0661d');
+  });
+
+  it('WARNS when clearReplyContext left reply headers in place', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(ACK()));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', clearReplyContext: true,
+    });
+    const v = JSON.parse(result.content[0].text).threadingVerification;
+    expect(v.ok).toBe(false);
+    expect(v.note).toMatch(/WARNING/);
+    expect(v.note).toContain('<CAO@mail.gmail.com>');
+  });
+
+  it('adds nothing at all when no reply-context change was requested', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(ACK()));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B',
+    });
+    // Byte-identical passthrough: an update that changes no threading must not
+    // acquire a new output shape.
+    expect(result.content[0].text).toBe(ACK());
+  });
+
+  it('carries the verification onto the returnFull re-fetch', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(rawTextResult(ACK()))
+      .mockResolvedValueOnce(rawTextResult('{"draft":{"id":"r4303011157206680397"}}'));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'S', body: 'B', replyToThreadId: '19f856becba0661d', returnFull: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(2);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.draft.id).toBe('r4303011157206680397');
+    expect(parsed.threadingVerification.ok).toBe(true);
+  });
+
+  it('degrades to a prose note when the final result is not a JSON object', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(rawTextResult(ACK()))
+      .mockResolvedValueOnce(rawTextResult('draft_id\tr4303011157206680397'));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'S', body: 'B', replyToThreadId: '19f856becba0661d', returnFull: true,
+    });
+    expect(result.content[0].text).toMatch(/threadingVerification/);
+    expect(result.content[1].text).toBe('draft_id\tr4303011157206680397');
+  });
+
+  it('labels an unreported threadId rather than interpolating undefined', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(JSON.stringify({
+      draftId: 'd1', inReplyTo: null, references: null, replyContextSource: null,
+    })));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', replyToThreadId: 't1',
+    });
+    const v = JSON.parse(result.content[0].text).threadingVerification;
+    expect(v.effective.threadId).toBeUndefined();
+    expect(v.note).toContain('(none reported)');
+    expect(v.note).not.toContain('undefined');
+  });
+
+  it('says nothing when the write itself failed (no JSON ack to verify against)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult('Error: usage: --subject required'));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', replyToThreadId: 't1',
+    });
+    expect(result.content[0].text).toContain('usage: --subject required');
+    expect(result.content[0].text).not.toContain('threadingVerification');
+  });
+});
+
+// ===========================================================================
+// REQUIREMENT 1 — a 404 on a draft id is a FORK REPORT, not a bare notFound.
+//
+// A draft created here and then edited in a mail client is not updated in
+// place: the client writes a NEW draft and abandons the original, so the
+// original id stops resolving and `gog gmail drafts update` returns
+// `Google API error (404 notFound)` with nothing to say it was replaced.
+//
+// HAZARD A governs the shape of the answer: with the original unfetchable
+// there is nothing left to establish LINEAGE against, so this report may never
+// name a replacement. It lists what exists and hands the caller the tool that
+// can decide (gog_gmail_drafts_diff, on a named pair).
+// HAZARD B governs its cost: at most 2 extra gog invocations, constant, and
+// only on a call that has ALREADY failed.
+// ===========================================================================
+describe('gog_gmail_drafts_update — DRAFT_FORKED on 404', () => {
+  const NOT_FOUND = 'Error: Google API error (404 notFound): Requested entity was not found.';
+  const LIST = JSON.stringify({
+    drafts: [
+      { id: 's:14092347734530621658', messageId: '19fe8a673d1e5f21', threadId: '19fe8a673d1e5f21' },
+      { id: 'r-457330811034304502', messageId: 'aaa', threadId: 'bbb' },
+      // gog declares every field `omitempty`, so a draft can arrive with none
+      // of them. It must still be listed, not crash the report.
+      {},
+    ],
+  });
+  const SEARCH = JSON.stringify({
+    messages: [
+      { id: '19fe8a673d1e5f21', subject: 'Re: pickup schedule', from: 'me@x.com', internalDateIso: '2026-08-09T10:00:00Z' },
+      { id: 'aaa', subject: 'Unrelated note to the plumber', from: 'me@x.com', internalDateIso: '2026-08-01T09:00:00Z' },
+      { subject: 'a search hit with no id joins to nothing' },
+    ],
+  });
+
+  function stub404(): void {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult(NOT_FOUND));
+    vi.mocked(lib.run).mockImplementation(async (args) => {
+      const argv = args as string[];
+      if (argv[1] === 'drafts' && argv[2] === 'list') return LIST;
+      if (argv[1] === 'messages' && argv[2] === 'search') return SEARCH;
+      throw new Error(`unexpected gog call: ${argv.join(' ')}`);
+    });
+  }
+
+  it('explains the 404 as a possible client-side fork and keeps gog\'s own error', async () => {
+    stub404();
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'S', body: 'B',
+    });
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toContain('DRAFT_FORKED');
+    expect(text).toContain('r4303011157206680397');
+    // gog's own words survive verbatim — the diagnosis is added, never swapped in.
+    expect(text).toContain('Google API error (404 notFound)');
+    const parsed = JSON.parse(text.slice(text.indexOf('{')));
+    expect(parsed.code).toBe('DRAFT_FORKED');
+    expect(parsed.currentDrafts.map((d: { id?: string; origin: string; subject?: string }) => [d.id, d.origin, d.subject])).toEqual([
+      ['s:14092347734530621658', 'non-api', 'Re: pickup schedule'],
+      ['r-457330811034304502', 'api', 'Unrelated note to the plumber'],
+      // An id-less draft is reported as `api` — the ONLY thing `non-api` may
+      // ever mean is a literal `s:` prefix, so an absent id must not claim one.
+      [undefined, 'api', undefined],
+    ]);
+    expect(parsed.nextSteps.join(' ')).toContain('gog_gmail_drafts_diff');
+  });
+
+  it('names NO replacement, even when a newer non-api draft is sitting right there', async () => {
+    stub404();
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'S', body: 'B',
+    });
+    const text = result.content[0].text as string;
+    const parsed = JSON.parse(text.slice(text.indexOf('{')));
+    // Hazard A: the 404'd draft cannot be fetched, so no lineage signal can
+    // exist and no pairing verdict is possible. Not "candidate" — none.
+    expect(parsed.forkClaim).toBeNull();
+    expect(text).not.toContain('confirmed');
+    expect(text).not.toContain('apple-mail');
+    for (const d of parsed.currentDrafts) expect(d).not.toHaveProperty('verdict');
+    // The list is ordering, not evidence, and it says so.
+    expect(parsed.forkClaimNote).toMatch(/ordering is presentation, not evidence/i);
+    // And the 404 has innocent explanations too.
+    expect(parsed.otherExplanations.join(' ')).toMatch(/deleted|sent/i);
+  });
+
+  it('spends at most two extra gog invocations, both constant in the number of drafts', async () => {
+    stub404();
+    await harness.callTool('gog_gmail_drafts_update', { draftId: 'r43', subject: 'S', body: 'B' });
+    expect(vi.mocked(lib.run).mock.calls.map((c) => (c[0] as string[]).slice(0, 3))).toEqual([
+      ['gmail', 'drafts', 'list'],
+      ['gmail', 'messages', 'search'],
+    ]);
+    expect(vi.mocked(lib.run)).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves a non-404 failure completely alone, and spends nothing', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult('Error: Google API error (403 forbidden): insufficient scope'));
+    const result = await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B' });
+    expect(result.content[0].text).toBe('Error: Google API error (403 forbidden): insufficient scope');
+    expect(lib.run).not.toHaveBeenCalled();
+  });
+
+  it('does not fire on a SUCCESSFUL result that merely mentions 404', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('{"draftId":"d1","message":{"snippet":"the 404 not found page"}}'));
+    const result = await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B' });
+    expect(result.content[0].text).toContain('the 404 not found page');
+    expect(result.content[0].text).not.toContain('DRAFT_FORKED');
+    expect(lib.run).not.toHaveBeenCalled();
+  });
+
+  it('still reports the fork explanation when the draft listing itself fails', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult(NOT_FOUND));
+    vi.mocked(lib.run).mockRejectedValue(new Error('gog timed out after 30s'));
+    const result = await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B' });
+    const text = result.content[0].text as string;
+    expect(text).toContain('DRAFT_FORKED');
+    const parsed = JSON.parse(text.slice(text.indexOf('{')));
+    expect(parsed.currentDrafts).toBeUndefined();
+    expect(parsed.currentDraftsUnavailable).toContain('gog timed out');
+    expect(vi.mocked(lib.run)).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the free tier-0 fields when only the enrichment search fails', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult(NOT_FOUND));
+    vi.mocked(lib.run).mockImplementation(async (args) => {
+      if ((args as string[])[2] === 'list') return LIST;
+      throw new Error('search exploded');
+    });
+    const result = await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B' });
+    const text = result.content[0].text as string;
+    const parsed = JSON.parse(text.slice(text.indexOf('{')));
+    expect(parsed.currentDrafts).toHaveLength(3);
+    expect(parsed.currentDrafts[0].origin).toBe('non-api');
+    expect(parsed.currentDrafts[0].subject).toBeUndefined();
+    expect(parsed.enrichmentNote).toContain('search exploded');
+  });
+
+  it('treats a listing without a drafts array as unavailable rather than empty', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult(NOT_FOUND));
+    // Parses as JSON, but carries no drafts array — a different failure from
+    // gog's plain-text "No drafts", and it must not read as "you have none".
+    vi.mocked(lib.run).mockResolvedValue('{"nextPageToken":"tok"}');
+    const result = await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B' });
+    const parsed = JSON.parse((result.content[0].text as string).slice((result.content[0].text as string).indexOf('{')));
+    expect(parsed.currentDraftsUnavailable).toContain('no drafts array');
+  });
+
+  it('fires for gog_gmail_drafts_send too — the draft you meant to send is gone', async () => {
+    stub404();
+    const result = await harness.callTool('gog_gmail_drafts_send', { draftId: 'r4303011157206680397' });
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toContain('DRAFT_FORKED');
+    expect(text).toContain('gog_gmail_drafts_send');
+    expect(vi.mocked(lib.run)).toHaveBeenCalledTimes(2);
+  });
+
+  // `gmail drafts update` resolves THREE Google entities and gog renders all
+  // three 404s identically: the draft (Users.Drafts.Get/Update), the thread
+  // behind --thread-id (Users.Threads.Get) and the message behind
+  // --reply-to-message-id (Users.Messages.Get). Claiming DRAFT_FORKED on a
+  // stale THREAD id — while listing that same draft id under currentDrafts —
+  // sends the caller hunting for a replacement draft that does not exist.
+  it('does not call it a fork when the draft is still listed: the 404 came from the reply target', async () => {
+    stub404();
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r-457330811034304502', subject: 'S', body: 'B',
+      replyToThreadId: 'THREAD-THAT-DOES-NOT-EXIST',
+    });
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).not.toContain('DRAFT_FORKED');
+    const parsed = JSON.parse(text.slice(text.indexOf('{')));
+    expect(parsed.code).toBe('GOOGLE_404_NOT_THE_DRAFT');
+    expect(parsed.replyTarget).toEqual({ via: 'replyToThreadId', target: 'THREAD-THAT-DOES-NOT-EXIST' });
+    // The payload may not contradict itself: it lists the draft AND says it is gone.
+    expect(parsed.currentDrafts.map((d: { id?: string }) => d.id)).toContain('r-457330811034304502');
+    expect(parsed.whatHappened).not.toMatch(/no longer has a draft|has no draft under this id/i);
+    expect(parsed.whatHappened).toMatch(/still exists|still listed/i);
+    expect(parsed.nextSteps.join(' ')).toMatch(/thread id/i);
+    // gog's own words survive, and the cost cap is unchanged.
+    expect(text).toContain('Google API error (404 notFound)');
+    expect(vi.mocked(lib.run)).toHaveBeenCalledTimes(2);
+  });
+
+  it('says the same for a send whose 404 cannot be about the draft id either', async () => {
+    stub404();
+    const result = await harness.callTool('gog_gmail_drafts_send', { draftId: 's:14092347734530621658' });
+    const text = result.content[0].text as string;
+    expect(text).not.toContain('DRAFT_FORKED');
+    const parsed = JSON.parse(text.slice(text.indexOf('{')));
+    expect(parsed.code).toBe('GOOGLE_404_NOT_THE_DRAFT');
+    expect(parsed.replyTarget).toBeNull();
+    expect(parsed.raceNote).toMatch(/AFTER the failure/i);
+  });
+
+  it('recognises a 404 that gog reported without a reason word', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult('Error: Google API error (404): Requested entity was not found.'));
+    vi.mocked(lib.run).mockResolvedValue(LIST);
+    const result = await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1' });
+    expect(result.content[0].text).toContain('DRAFT_FORKED');
+  });
+});
+
+// ===========================================================================
+// REQUIREMENT 5 — DO NOT LET AN ADOPTION SILENTLY DROP THE OTHER COPY'S TEXT.
+//
+// `draftComposeInput.validate()` (gmail_drafts.go:321) hard-requires a body on
+// every update: "required: --body, --body-file, --body-html, or
+// --body-html-file". There is no header-only edit, so re-threading a mail
+// client's replacement back onto the original conversation ALWAYS rewrites the
+// whole body — the exact operation that drops the paragraph living only in the
+// sibling copy. In the observed case neither copy was a superset.
+//
+// COST (hazard B): the check is opt-in and costs exactly ONE extra gog
+// invocation, on a NAMED sibling. It never scans, and with the param absent it
+// spends nothing and changes no argv.
+//
+// CLAIMS (hazard A): it compares two bodies. It never says one draft replaced
+// the other — that verdict needs gog_gmail_drafts_diff.
+// ===========================================================================
+describe('gog_gmail_drafts_update — content-loss check', () => {
+  const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
+  const siblingGet = (body: string): string => JSON.stringify({
+    draft: { id: 's:14092347734530621658', message: { id: 'm2', threadId: 'm2', payload: { mimeType: 'text/plain', body: { data: b64(body) } } } },
+  });
+  const ACK = '{"draftId":"r4303011157206680397","threadId":"19f856becba0661d","inReplyTo":"<orig@mail.gmail.com>"}';
+
+  // The observed divergence: the mail-client copy kept a paragraph the merged
+  // body forgot.
+  const SIBLING_BODY = 'Thanks for the note.\nI can do the 14th.\nTHE PARAGRAPH ONLY APPLE HAS.\nBest, Chris';
+
+  it('spends nothing and changes no argv when no sibling is named', async () => {
+    await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B' });
+    expect(lib.run).not.toHaveBeenCalled();
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'update', 'd1', '--subject=S', '--body=B', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
+  it('costs exactly one extra invocation, and reads the sibling BEFORE writing', async () => {
+    vi.mocked(lib.run).mockResolvedValue(siblingGet(SIBLING_BODY));
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(ACK));
+    await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'S', body: SIBLING_BODY,
+      forkSiblingDraftId: 's:14092347734530621658',
+    });
+    expect(lib.run).toHaveBeenCalledTimes(1);
+    expect(lib.run).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'get', 's:14092347734530621658', '--use-indexed-attachment-ids=false'],
+      { account: undefined },
+    );
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+    // Reading after the write would be a report on damage already done.
+    expect(vi.mocked(lib.run).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(lib.runOrDiagnose).mock.invocationCallOrder[0]!);
+  });
+
+  it('writes, and reports the check, when the new body keeps every sibling line', async () => {
+    vi.mocked(lib.run).mockResolvedValue(siblingGet(SIBLING_BODY));
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(ACK));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'S', body: `${SIBLING_BODY}\nplus a line the Gmail copy added`,
+      forkSiblingDraftId: 's:14092347734530621658', replyToThreadId: '19f856becba0661d',
+    });
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(result.content[0].text as string);
+    expect(parsed.draftId).toBe('r4303011157206680397');
+    expect(parsed.contentLossCheck).toMatchObject({
+      siblingDraftId: 's:14092347734530621658', status: 'clean', linesOnlyInSibling: [],
+    });
+    // The adoption still reports what it actually threaded.
+    expect(parsed.threadingVerification.ok).toBe(true);
+  });
+
+  it('REFUSES the write when the body would drop a line the sibling holds — and writes nothing', async () => {
+    vi.mocked(lib.run).mockResolvedValue(siblingGet(SIBLING_BODY));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'S',
+      body: 'Thanks for the note.\nI can do the 14th.\nBest, Chris',
+      forkSiblingDraftId: 's:14092347734530621658', replyToThreadId: '19f856becba0661d',
+    });
+    expect(result.isError).toBe(true);
+    // THE point: the draft is untouched.
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    const text = result.content[0].text as string;
+    expect(text).toContain('DRAFT_CONTENT_LOSS');
+    expect(text).toContain('THE PARAGRAPH ONLY APPLE HAS.');
+    expect(text).toMatch(/nothing was written/i);
+    const parsed = JSON.parse(text.slice(text.indexOf('{')));
+    expect(parsed.contentLossCheck.status).toBe('would-lose');
+    expect(parsed.contentLossCheck.linesOnlyInSiblingCount).toBe(1);
+  });
+
+  it('writes anyway, with the loss spelled out, when acceptContentLoss is set', async () => {
+    vi.mocked(lib.run).mockResolvedValue(siblingGet(SIBLING_BODY));
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(ACK));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'S', body: 'Thanks for the note.\nBest, Chris',
+      forkSiblingDraftId: 's:14092347734530621658', acceptContentLoss: true,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+    const check = JSON.parse(result.content[0].text as string).contentLossCheck;
+    expect(check.status).toBe('would-lose');
+    expect(check.acknowledged).toBe(true);
+    expect(check.linesOnlyInSibling).toContain('THE PARAGRAPH ONLY APPLE HAS.');
+  });
+
+  it('refuses when the sibling cannot be fetched — an unrun check is not a passed check', async () => {
+    vi.mocked(lib.run).mockRejectedValue(new Error('Google API error (404 notFound): Requested entity was not found.'));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', forkSiblingDraftId: 's:gone',
+    });
+    expect(result.isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    const text = result.content[0].text as string;
+    expect(text).toContain('DRAFT_CONTENT_LOSS_UNCHECKED');
+    expect(text).toContain('404 notFound');
+  });
+
+  it('refuses when the sibling fetch returned something with no readable body', async () => {
+    vi.mocked(lib.run).mockResolvedValue('not json at all');
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', forkSiblingDraftId: 's:weird',
+    });
+    expect(result.content[0].text).toContain('DRAFT_CONTENT_LOSS_UNCHECKED');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the sibling parsed but carried no body text', async () => {
+    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ draft: { message: { payload: { mimeType: 'text/plain' } } } }));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', forkSiblingDraftId: 's:empty',
+    });
+    expect(result.content[0].text).toContain('DRAFT_CONTENT_LOSS_UNCHECKED');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('lets acceptContentLoss override an unrunnable check too', async () => {
+    vi.mocked(lib.run).mockRejectedValue(new Error('boom'));
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(ACK));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B', forkSiblingDraftId: 's:gone', acceptContentLoss: true,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(JSON.parse(result.content[0].text as string).contentLossCheck.status).toBe('unchecked');
+  });
+
+  it('degrades to a prose note when the write result is not a JSON object', async () => {
+    vi.mocked(lib.run).mockResolvedValue(siblingGet('kept'));
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('Draft updated.'));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'kept', forkSiblingDraftId: 's:1',
+    });
+    // The note is prepended; gog's own output is kept verbatim beneath it.
+    expect(result.content[0].text).toContain('contentLossCheck:');
+    expect(result.content[1].text).toBe('Draft updated.');
+  });
+
+  // HAZARD A. The caller names the sibling; this server does not decide the
+  // pair. Two unrelated drafts produce a total-divergence report, which is the
+  // same shape a real fork produces — so the answer must never read as a
+  // pairing verdict, and must point at the one tool that can issue one.
+  it('never claims the sibling is a fork, however the bodies compare', async () => {
+    vi.mocked(lib.run).mockResolvedValue(siblingGet('dentist appointment friday\ninsurance card is in the drawer'));
+    const result = await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'r4303011157206680397', subject: 'Re: August schedule', body: 'Entirely unrelated invoice text.',
+      forkSiblingDraftId: 's:unrelated',
+    });
+    const text = result.content[0].text as string;
+    const parsed = JSON.parse(text.slice(text.indexOf('{')));
+    expect(parsed.contentLossCheck.forkClaim).toBeNull();
+    expect(parsed.contentLossCheck.forkClaimNote).toContain('gog_gmail_drafts_diff');
+    expect(text).not.toMatch(/\bconfirmed\b/);
+    expect(text).not.toMatch(/replaced draft|is a fork of/i);
+  });
+
+  it('is not offered on drafts_create — there is no earlier body to lose', async () => {
+    const { tools } = await harness.client.listTools();
+    const create = tools.find((t) => t.name === 'gog_gmail_drafts_create');
+    const update = tools.find((t) => t.name === 'gog_gmail_drafts_update');
+    expect(Object.keys(create!.inputSchema.properties ?? {})).not.toContain('forkSiblingDraftId');
+    expect(Object.keys(update!.inputSchema.properties ?? {})).toContain('forkSiblingDraftId');
+  });
+});
+
+// ===========================================================================
+// CLAIMS CORRECTNESS — three things the reports asserted on evidence they did
+// not have. Each of these is a sentence a caller acts on: "the update WAS
+// written", "draft X no longer resolves", "these two drafts are the same
+// message". Getting any of them wrong costs real text in a legal-adjacent
+// correspondence, so each is pinned to the evidence that actually exists.
+// ===========================================================================
+
+// HAZARD A, through the real RPC path: two genuinely unrelated Apple Mail
+// drafts — different subjects, different threadIds, no shared reply root — that
+// agree on nothing but `Hi Jennifer,` / `Thanks,` / `Chris` /
+// `Sent from my iPhone`. That is 4 lines and 43 characters of pure apparatus,
+// and it used to clear all three lineage minimums and come back `confirmed`.
+describe('gog_gmail_drafts_diff — boilerplate is never lineage', () => {
+  const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
+  const appleDraft = (o: { draftId: string; messageId: string; subject: string; date: string; sentence: string }) =>
+    JSON.stringify({
+      draft: {
+        id: o.draftId,
+        message: {
+          id: o.messageId, threadId: o.messageId, internalDate: o.date,
+          payload: {
+            mimeType: 'text/plain',
+            headers: [
+              { name: 'From', value: 'Chris Hall <chris@x.com>' },
+              { name: 'Subject', value: o.subject },
+              { name: 'Message-Id', value: `<${o.messageId}@apple.com>` },
+              { name: 'X-Universally-Unique-Identifier', value: o.messageId.toUpperCase() },
+            ],
+            body: { data: b64(`Hi Jennifer,\n\n${o.sentence}\n\nThanks,\nChris\n\nSent from my iPhone`) },
+          },
+        },
+      },
+    });
+
+  it('does not pair two unrelated notes that share only the greeting and the signature', async () => {
+    const A = appleDraft({ draftId: 'rOLD', messageId: 'aaa1', subject: 'Tuesday pickup', date: '1000', sentence: 'Tuesday pickup at 5 works for me.' });
+    const B = appleDraft({ draftId: 's:NEW', messageId: 'bbb2', subject: 'Orthodontist invoice', date: '2000', sentence: 'I paid the orthodontist invoice today.' });
+    vi.mocked(lib.run).mockImplementation(async (args) => ({ rOLD: A, 's:NEW': B }[(args as string[])[3]!]!));
+    const result = await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'rOLD', draftIdB: 's:NEW' });
+    const text = result.content[0].text as string;
+    const parsed = JSON.parse(text);
+    expect(parsed.forkPairing.verdict).toBe('none');
+    expect(parsed.forkPairing.bodyAgreement.meetsThreshold).toBe(false);
+    expect(parsed.forkPairing.bodyAgreement.sharedAuthoredLines).toBe(0);
+    expect(parsed.forkPairing.bodyAgreement.sharedAuthoredChars).toBe(0);
+    expect(parsed.forkPairing.bodyAgreement.boilerplateLinesIgnored).toEqual({ original: 4, candidate: 4 });
+    expect(text).not.toContain('replaced draft');
+    expect(text).not.toContain('All four signals are present');
+    // The divergence report is a DIFFERENT question and stays honest: the
+    // apparatus really is text both copies hold.
+    expect(parsed.bodyDiff.sharedLineCount).toBe(4);
+  });
+});
+
+describe('gog_gmail_drafts_diff — truncation reports its magnitude, and the cap is validated', () => {
+  const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
+  const body = (tag: string, n: number) => JSON.stringify({
+    draft: { id: tag, message: { id: tag, threadId: tag, internalDate: '1', payload: { mimeType: 'text/plain', headers: [], body: { data: b64(Array.from({ length: n }, (_, i) => `${tag}-${i}`).join('\n')) } } } },
+  });
+
+  beforeEach(() => {
+    vi.mocked(lib.run).mockImplementation(async (args) => body((args as string[])[3]!, 500));
+  });
+
+  it('says how many lines each side actually held, not just that it truncated', async () => {
+    const parsed = JSON.parse((await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'a', draftIdB: 'b' })).content[0].text);
+    expect(parsed.bodyDiff.onlyInA).toHaveLength(200);
+    expect(parsed.bodyDiff.truncated).toBe(true);
+    // Without these the caller cannot tell 200-of-201 from 200-of-500, and the
+    // whole point of the diff is deciding what to merge before an overwrite.
+    expect(parsed.bodyDiff.onlyInACount).toBe(500);
+    expect(parsed.bodyDiff.onlyInBCount).toBe(500);
+    expect(parsed.bodyDiff.note).toContain('500');
+  });
+
+  it('rejects maxDiffLines 0 and negatives instead of printing an empty divergence report', async () => {
+    const zero = await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'a', draftIdB: 'b', maxDiffLines: 0 });
+    expect(zero.isError).toBe(true);
+    const negative = await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'a', draftIdB: 'b', maxDiffLines: -1 });
+    expect(negative.isError).toBe(true);
+    const fractional = await harness.callTool('gog_gmail_drafts_diff', { draftIdA: 'a', draftIdB: 'b', maxDiffLines: 1.5 });
+    expect(fractional.isError).toBe(true);
+  });
+});
+
+describe('gog_gmail_drafts_list — the threading note is emitted once, not per row', () => {
+  const rows = (n: number) => JSON.stringify({
+    drafts: Array.from({ length: n }, (_, i) => ({ id: `r${i}`, messageId: `m${i}`, threadId: i % 2 === 0 ? `m${i}` : `t${i}` })),
+  });
+
+  it('carries both note variants at the top level and none on the rows', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult(rows(20)));
+    const text = (await harness.callTool('gog_gmail_drafts_list', {})).content[0].text as string;
+    const parsed = JSON.parse(text);
+    for (const d of parsed.drafts) expect(d).not.toHaveProperty('threadingNote');
+    expect(parsed.threadingNotes.rootsOwnThread).toContain('NEW conversation');
+    expect(parsed.threadingNotes.inThread).toContain('existing thread');
+    // The selector stays on the row, so the note still resolves per draft.
+    expect(parsed.drafts[0].rootsOwnThread).toBe(true);
+    expect(parsed.drafts[1].rootsOwnThread).toBe(false);
+    // ~300 chars x 20 rows of a constant is a per-call token cost that carries
+    // no information. Still exactly one gog spawn — hazard B was never the
+    // issue here.
+    expect(text.length).toBeLessThan(3000);
+    expect(lib.run).not.toHaveBeenCalled();
+  });
+});
+
+// A caller who believes "the update WAS written" may delete or overwrite the
+// sibling that now holds the only copy of the lines the check just listed.
+describe('gog_gmail_drafts_update — acceptContentLoss reports the write that ACTUALLY happened', () => {
+  const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
+  const SIBLING = JSON.stringify({
+    draft: { id: 's:sib', message: { id: 'm2', threadId: 'm2', payload: { mimeType: 'text/plain', body: { data: b64('kept line\nTHE PARAGRAPH ONLY THE SIBLING HAS.') } } } },
+  });
+  const call = () => harness.callTool('gog_gmail_drafts_update', {
+    draftId: 'r43', subject: 'S', body: 'kept line', forkSiblingDraftId: 's:sib', acceptContentLoss: true,
+  });
+
+  it('says the write was ATTEMPTED AND FAILED when gog returned a plain error', async () => {
+    vi.mocked(lib.run).mockResolvedValue(SIBLING);
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult('Error: gog: permission denied'));
+    const result = await call();
+    expect(result.isError).toBe(true);
+    const text = result.content.map((c: { text?: string }) => c.text).join('\n');
+    expect(text).not.toContain('WAS written');
+    expect(text).toMatch(/FAILED/);
+    expect(text).toMatch(/nothing was saved/i);
+  });
+
+  it('does not claim a write on the 404 path, where it also says the draft is gone', async () => {
+    vi.mocked(lib.run).mockImplementation(async (args) => {
+      const a = args as string[];
+      if (a[2] === 'get') return SIBLING;
+      if (a[2] === 'list') return JSON.stringify({ drafts: [{ id: 's:sib', messageId: 'm2', threadId: 'm2' }] });
+      return JSON.stringify({ messages: [] });
+    });
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult('Error: Google API error (404 notFound): Requested entity was not found.'));
+    const result = await call();
+    // A result that says the draft no longer exists AND that the update was
+    // written is self-contradictory, and the caller acts on the second half.
+    const text = result.content.map((c: { text?: string }) => c.text).join('\n');
+    expect(text).toContain('DRAFT_FORKED');
+    expect(text).not.toContain('WAS written');
+    expect(text).toMatch(/FAILED/);
+    expect(text).toMatch(/NOTHING WAS SAVED/i);
+  });
+
+  it('still says the update WAS written when the write succeeded', async () => {
+    vi.mocked(lib.run).mockResolvedValue(SIBLING);
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(rawTextResult('{"draftId":"r43"}'));
+    const result = await call();
+    expect(result.isError).toBeFalsy();
+    const parsed = JSON.parse(result.content[0].text as string);
+    expect(parsed.contentLossCheck.written).toBe(true);
+    expect(parsed.contentLossCheck.acknowledged).toBe(true);
+    expect(parsed.contentLossCheck.note).toContain('WAS written');
+  });
+});
+
+// `not listed` is not `does not exist`. The fork report's listing is capped at
+// 20 by construction (it is a failure path and must not grow with the mailbox),
+// so on a mailbox with more drafts than that, absence of evidence was becoming
+// the fork story by default — and sending the caller hunting for a replacement
+// that does not exist is exactly the cost this report was built to avoid.
+describe('gog_gmail_drafts_update — DRAFT_FORKED states what its listing can and cannot show', () => {
+  const NOT_FOUND = 'Error: Google API error (404 notFound): Requested entity was not found.';
+  const fullWindow = JSON.stringify({
+    drafts: Array.from({ length: 20 }, (_, i) => ({ id: `r${i}`, messageId: `m${i}`, threadId: `t${i}` })),
+  });
+  const shortWindow = JSON.stringify({ drafts: [{ id: 'r1', messageId: 'm1', threadId: 't1' }] });
+
+  function stub(list: string): void {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult(NOT_FOUND));
+    vi.mocked(lib.run).mockImplementation(async (args) => {
+      const a = args as string[];
+      if (a[2] === 'list') return list;
+      return JSON.stringify({ messages: [] });
+    });
+  }
+  const parse = (result: { content: Array<{ text?: string }> }) => {
+    const text = result.content[0].text as string;
+    return { text, parsed: JSON.parse(text.slice(text.indexOf('{'))) };
+  };
+
+  it('does not assert the draft is gone when the 20-draft window came back FULL', async () => {
+    stub(fullWindow);
+    const { text, parsed } = parse(await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'rSTILL_EXISTS_BUT_RANK_25', subject: 'S', body: 'B',
+    }));
+    expect(text).not.toMatch(/no longer resolves/);
+    expect(parsed.listingEvidence.basis).toBe('capped-listing');
+    expect(parsed.listingEvidence.windowSize).toBe(20);
+    expect(parsed.listingEvidence.draftsListed).toBe(20);
+    expect(parsed.listingEvidence.note).toMatch(/not evidence|does not establish/i);
+    expect(parsed.listingEvidence.note).toContain('gog_gmail_drafts_list');
+  });
+
+  it('does assert it when the listing came back SHORT of the window, so it covered the folder', async () => {
+    stub(shortWindow);
+    const { text, parsed } = parse(await harness.callTool('gog_gmail_drafts_update', { draftId: 'rGONE', subject: 'S', body: 'B' }));
+    expect(text).toMatch(/no longer resolves/);
+    expect(parsed.listingEvidence.basis).toBe('complete-listing');
+    expect(parsed.listingEvidence.draftsListed).toBe(1);
+  });
+
+  it('claims nothing about the draft when the listing itself failed', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValueOnce(errorResult(NOT_FOUND));
+    vi.mocked(lib.run).mockRejectedValue(new Error('gog timed out after 30s'));
+    const { text, parsed } = parse(await harness.callTool('gog_gmail_drafts_update', { draftId: 'rUNKNOWN', subject: 'S', body: 'B' }));
+    expect(text).not.toMatch(/no longer resolves/);
+    expect(parsed.listingEvidence.basis).toBe('listing-unavailable');
+    expect(parsed.listingEvidence.note).toMatch(/failed/i);
+  });
+
+  // The branch that CANNOT confirm the fork story was also the one whose
+  // explanations omitted the leading alternative the caller literally handed it.
+  it('carries the reply target and names it as an explanation', async () => {
+    stub(fullWindow);
+    const { parsed } = parse(await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'rUNSEEN', subject: 'S', body: 'B', replyToThreadId: 'STALE-THREAD',
+    }));
+    expect(parsed.replyTarget).toEqual({ via: 'replyToThreadId', target: 'STALE-THREAD' });
+    expect(parsed.otherExplanations.join(' ')).toMatch(/replyToThreadId=STALE-THREAD/);
+    expect(parsed.otherExplanations.join(' ')).toMatch(/not the draft|reply target/i);
+  });
+
+  it('omits the reply-target explanation when the call named no target', async () => {
+    stub(shortWindow);
+    const { parsed } = parse(await harness.callTool('gog_gmail_drafts_send', { draftId: 'rGONE' }));
+    expect(parsed.replyTarget).toBeNull();
+    expect(parsed.otherExplanations.join(' ')).not.toMatch(/reply target/i);
   });
 });

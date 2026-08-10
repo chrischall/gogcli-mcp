@@ -3,7 +3,7 @@
 > [!WARNING]
 > **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
 
-Extended Gmail [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/openclaw/gogcli). Includes auth tools plus 23 additional dedicated Gmail tools for threads, labels, drafts, attachments, forwarding, autoreply, and bulk operations.
+Extended Gmail [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/openclaw/gogcli). Includes auth tools plus 46 additional dedicated Gmail tools for threads, labels, drafts, attachments, forwarding, autoreply, and bulk operations.
 
 ## Requirements
 
@@ -44,9 +44,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 claude mcp add gogcli-gmail -- gogcli-mcp-gmail
 ```
 
-## Extra Gmail Tools (45)
+## Extra Gmail Tools (46)
 
-Plus 8 auth tools and 4 base Gmail tools (search, get, send, run) — 57 in all.
+Plus 8 auth tools and 4 base Gmail tools (search, get, send, run) — 58 in all.
 
 ### Read
 
@@ -94,12 +94,97 @@ Plus 8 auth tools and 4 base Gmail tools (search, get, send, run) — 57 in all.
 
 | Tool | Description |
 |------|-------------|
-| `gog_gmail_drafts_list` | List drafts |
+| `gog_gmail_drafts_list` | List drafts (free `origin` + `rootsOwnThread`; `enrich` adds subject/from/date for one extra call) |
 | `gog_gmail_drafts_get` | Get a draft by ID |
 | `gog_gmail_drafts_create` | Create a new draft |
-| `gog_gmail_drafts_update` | Update an existing draft |
+| `gog_gmail_drafts_update` | Update a draft — and re-thread it in place with `replyToThreadId`, keeping the same id, with a `threadingVerification` block reporting what gog actually wrote. `forkSiblingDraftId` refuses the write when the new body would drop text the other copy still holds |
 | `gog_gmail_drafts_delete` | Delete a draft |
-| `gog_gmail_drafts_send` | Send an existing draft |
+| `gog_gmail_drafts_send` | Send an existing draft (a 404 comes back diagnosed — `DRAFT_FORKED`, or `GOOGLE_404_NOT_THE_DRAFT` when the draft is still listed) |
+| `gog_gmail_drafts_diff` | Diff two named drafts — divergent body lines (with untruncated `onlyInACount`/`onlyInBCount`), threading loss, and a conservative fork verdict (2 gog calls) |
+
+#### When a draft you created stops resolving
+
+A draft edited in a real mail client is not updated in place: the client writes a **new** draft and abandons the
+original, so the id you were given starts returning `Google API error (404 notFound)` — indistinguishable, at first
+glance, from "someone deleted it".
+
+`gog_gmail_drafts_update` and `gog_gmail_drafts_send` turn that 404 into a `DRAFT_FORKED` report: what happened, the
+drafts that *do* exist (with the free `origin` / `rootsOwnThread` fields, plus subject/from/date), the other
+explanations that produce the same 404 (deleted, already sent), and what to do next. It **names no replacement** — the
+404'd draft can no longer be fetched, so there is nothing to establish lineage against, and without lineage no pairing
+verdict is possible. Naming a pair and running `gog_gmail_drafts_diff` is the only path here that issues a fork verdict.
+
+**"Not listed" is not "does not exist".** That listing is capped at 20 drafts by construction — it is a failure path and
+must not grow with the mailbox — so the report states, under `listingEvidence`, what its own evidence can carry. Only a
+listing that came back *short* of the window covered the whole Drafts folder and earns the sentence "draft X no longer
+resolves" (`basis: complete-listing`, `establishesTheDraftIsGone: true`). A window that came back *full*
+(`capped-listing`) or a listing that *failed* (`listing-unavailable`) says so in words and claims nothing about the
+draft: on a mailbox with more than 20 drafts, absence of evidence must not become the fork story by default. Widen it
+with `gog_gmail_drafts_list` before concluding anything. When the call named a reply target, that target is echoed on
+the report and its explanation is listed **first** — the branch with the least evidence about the draft is the last one
+that should stay silent about the leading alternative.
+
+**The 404 is attributed, not assumed.** `gmail drafts update` resolves up to three Google entities — the draft, the
+thread behind `replyToThreadId`, and the message behind `replyToMessageId` — and gog renders all three 404s with the
+same string. The listing the report already pays for settles it: if the draft id is still listed, the answer is
+`GOOGLE_404_NOT_THE_DRAFT`, which claims no fork, names the reply target as the remaining explanation, and tells you
+not to go hunting for a replacement draft. `DRAFT_FORKED` is only used when the draft really has stopped resolving.
+
+**What counts as lineage** (`gog_gmail_drafts_diff`): only a link from the candidate *to the original* — the original
+draft's own `Message-Id` inside the candidate's `In-Reply-To`/`References`, or agreement on text **neither draft
+quoted**. A **shared reply root is not lineage**: it links both drafts to a common *ancestor*, which every reply in a
+thread has, so it is reported as corroboration and can raise the answer no higher than an explicitly weak `candidate`.
+Quoted lines are excluded from the agreement metric because Apple Mail quotes on every reply — two unrelated replies
+into one thread carry the same 30-line block, which scores 0.79 on a whole-body line metric while proving nothing.
+
+**Client boilerplate is excluded for the same reason.** The salutation, the closing formula, the name under it and the
+signature block are reproduced identically on every message a client composes, whatever the message says —
+`Sent from my iPhone` is Apple Mail's own default. `Hi Jennifer,` + `Thanks,` + `Chris` + `Sent from my iPhone` is 4
+lines and 43 characters, enough on its own to clear a line-and-character threshold, so counting it paired two genuinely
+unrelated one-sentence notes as `confirmed` — and short confirmation plus a signature is the dominant shape of this
+mailbox. `bodyAgreement` reports `quotedLinesIgnored` and `boilerplateLinesIgnored` separately so the arithmetic can be
+redone. The divergence report still counts those lines: a merge that drops the signature really did drop it. The cost
+of the tighter metric is that a genuine fork of a *one-sentence* note now comes back `candidate` rather than
+`confirmed`, with `missing` naming the shortfall — the deliberate direction, since a missed fork costs a re-check and a
+wrong one sends the wrong text to the wrong thread.
+
+Cost is bounded and constant: **at most 2 extra gog invocations**, only on a call that already failed, never scaling
+with the number of drafts. A non-404 failure spends nothing.
+
+Once you know which draft survived, `gog_gmail_drafts_update` with `replyToThreadId` adopts it back onto the original
+conversation **in one call, keeping its draft id** — gog resolves `In-Reply-To`/`References` from that thread's latest
+message and reports them back under `threadingVerification` (`ok`, the effective headers, and a note). Two things that
+block make that safe to rely on: an explicit reply target *replaces* the draft's stored lineage rather than merging with
+it, and gog requires a body on every update, so the call **overwrites the whole body**. Diff first, merge by hand, then
+write.
+
+#### Guarding the merge: `forkSiblingDraftId`
+
+Because gog requires a body on every update there is **no header-only edit**, so adopting a draft back onto its thread is
+always a full body overwrite — the exact operation that destroys the paragraph living only in the other copy. In the
+observed fork *neither* copy was a superset: the mail-client copy had lost a paragraph and the Gmail copy had gained
+sentences.
+
+The line-based comparison cuts the other way too: a paragraph re-wrapped at a different width no longer matches line
+for line, so `none` means *no evidence was found*, never *proven unrelated*, and the notes say so.
+
+Pass `forkSiblingDraftId` (the id of the other copy) and `gog_gmail_drafts_update` reads that draft **before** writing and
+refuses the write — `DRAFT_CONTENT_LOSS`, nothing changed — if your body omits any line the sibling still holds, naming the
+exact lines. Merge them in and retry, or pass `acceptContentLoss: true` to write anyway (the lines are still reported, and
+the sibling itself is never touched). A check that cannot be *run* — sibling unfetchable, unparseable, or with no readable
+body — refuses too, as `DRAFT_CONTENT_LOSS_UNCHECKED`: an unrun check is not a passed check.
+
+An override reports the write that **actually happened**, never a predicted one: `contentLossCheck.written` is set from
+the result, so a write that failed comes back saying it was attempted and saved nothing, and says the listed lines are
+still in the sibling. Believing the opposite is the destructive case — a caller who thinks the merged body is stored may
+delete or overwrite the copy that now holds the only version of those lines.
+
+It **makes no fork claim**. You name the sibling; nothing searches for it, identical bodies would not prove a pairing and
+divergent ones would not disprove one. `contentLossCheck.forkClaim` is always `null` and points at
+`gog_gmail_drafts_diff`, which is the only tool here that weighs identity, lineage and ordering.
+
+**Cost:** opt-in, exactly **one** extra gog invocation (a `drafts get` on the id you named — never a scan, never scaling
+with the mailbox), and **zero** when the param is absent. A refusal spends that one call and skips the write entirely.
 
 ### Write
 
