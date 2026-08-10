@@ -15,6 +15,10 @@ export {
   registerTasksTools,
 } from './server.js';
 export { run, runBinary, runExecutor, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
+// Sub-package tools that read gog JSON through bare `run()` (rather than the
+// `runOrDiagnose` seam) must still apply this, or their timestamps skip the
+// offset repair and the `<field>Display` sibling every other tool returns.
+export { normalizeTimestamps } from './timestamps.js';
 export { useRemoteGogRunner } from './remote-runner.js';
 export type { RunOptions, Spawner, GogExecutor, GogArg, GogFileArg } from './runner.js';
 export {
