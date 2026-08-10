@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.23.1](https://github.com/chrischall/gogcli-mcp/compare/v2.23.0...v2.23.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* **gmail:** only call a failed read-back a fork when it looks like one ([#265](https://github.com/chrischall/gogcli-mcp/issues/265)) ([26b4870](https://github.com/chrischall/gogcli-mcp/commit/26b48706ad5b195df2adaded5e01e44638761939))
+
 ## [2.23.0](https://github.com/chrischall/gogcli-mcp/compare/v2.22.0...v2.23.0) (2026-08-10)
 
 
