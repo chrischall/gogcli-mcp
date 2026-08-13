@@ -1,23 +1,40 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool, payloadArg } from './utils.js';
+import { finalizeGmailSearch } from '../gmail-results.js';
 import type { GogArg } from '../runner.js';
 
 export function registerGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_search', {
-    description: 'Search Gmail threads using Gmail query syntax (e.g. "from:alice subject:invoice is:unread"). The query is passed verbatim to Gmail; a bare name token (from:alison) matches per Gmail\'s own heuristics, a full address (from:alison@example.com) is exact. To match a contact across several addresses, OR them: from:(a@x.com OR b@y.com).',
+    description: 'Search Gmail threads using Gmail query syntax (e.g. "from:alice subject:invoice is:unread"). The query is passed verbatim to Gmail; a bare name token (from:alison) matches per Gmail\'s own heuristics, a full address (from:alison@example.com) is exact. To match a contact across several addresses, OR them: from:(a@x.com OR b@y.com). '
+      + 'Results are ALWAYS newest-first by Gmail\'s internalDate — the wrapper sorts them, so the first result is the most recent match and a recent message can never be buried below older ones. '
+      + 'IMPORTANT — a response carrying "truncated": true is an INCOMPLETE view of the matches: NEVER report that a message does not exist, or that there is no such mail, on the strength of one. Page through it (pass nextPageToken back as `page`), set all=true, or narrow the query, and only then draw a conclusion. '
+      + 'If you already know the thread, do not search for it at all — read it directly with gog_gmail_thread_get, which returns the whole thread and cannot be truncated or mis-ranked.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       query: z.string().describe('Gmail search query'),
       max: z.number().int().optional().describe('Max results to return (default: 10)'),
+      page: z.string().optional().describe('Page token — pass a truncated response\'s nextPageToken here to fetch the next page.'),
+      all: z.boolean().optional().describe('Fetch every page instead of one. Removes truncation entirely, at the cost of one API round-trip per page — the reliable way to answer "does any message match?" for a query with few expected hits.'),
       fromContact: z.string().optional().describe('Resolve a Google Contact (name or email) to its addresses and AND a from:(addr OR addr) clause onto the query — saves looking the contact up first when you only know who, not which address.'),
       account: accountParam,
     },
-  }, async ({ query, max, fromContact, account }) => {
+  }, async ({ query, max, page, all, fromContact, account }) => {
     const args = ['gmail', 'search', query];
     if (max !== undefined) args.push(`--max=${max}`);
+    if (page) args.push(`--page=${page}`);
+    if (all) args.push('--all');
     if (fromContact) args.push(`--from-contact=${fromContact}`);
-    return runOrDiagnose(args, { account });
+    const result = await runOrDiagnose(args, { account });
+    return finalizeGmailSearch(result, {
+      itemsKey: 'threads',
+      method: 'users.threads.list',
+      query,
+      account,
+      // --from-contact is expanded INSIDE gog, against the People API, so the
+      // query Gmail actually saw is not the one we hold here.
+      queryIsExact: !fromContact,
+    });
   });
 
   server.registerTool('gog_gmail_get', {

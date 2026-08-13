@@ -102,7 +102,7 @@
     },
     {
       "name": "gog_gmail_search",
-      "description": "Search Gmail threads by query"
+      "description": "Search Gmail threads using Gmail query syntax; newest-first, and flags a truncated result set"
     },
     {
       "name": "gog_gmail_get",

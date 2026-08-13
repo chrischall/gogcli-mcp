@@ -40,6 +40,64 @@ describe('gog_gmail_search', () => {
   });
 });
 
+describe('gog_gmail_search — pagination and result finalization', () => {
+  it('appends --page and --all when provided', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_search', { query: 'x', page: 'tok', all: true });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'x', '--page=tok', '--all'], { account: undefined });
+  });
+
+  it('omits --all when false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_search', { query: 'x', all: false });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'x'], { account: undefined });
+  });
+
+  it('sorts results newest-first', async () => {
+    vi.mocked(runner.run).mockResolvedValue(JSON.stringify({
+      threads: [
+        { id: 'old', internalDateIso: '2026-08-01T09:00:00-04:00' },
+        { id: 'new', internalDateIso: '2026-08-12T12:36:00-04:00' },
+      ],
+      nextPageToken: '',
+    }));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_gmail_search', { query: 'x' });
+    const out = JSON.parse(result.content[0].text as string);
+    expect(out.threads.map((t: { id: string }) => t.id)).toEqual(['new', 'old']);
+  });
+
+  it('marks a capped result set truncated and counts the real total', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce(JSON.stringify({ threads: [{ id: 'a' }], nextPageToken: 'tok' }))
+      .mockResolvedValueOnce(JSON.stringify({ threads: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_gmail_search', { query: 'invoice', max: 1 });
+    const out = JSON.parse(result.content[0].text as string);
+    expect(out.truncated).toBe(true);
+    expect(out.returned).toBe(1);
+    expect(out.totalMatches).toBe(3);
+    expect(out.warning).toContain('INCOMPLETE RESULT SET: returned 1 of 3 matches');
+    expect(runner.run).toHaveBeenCalledWith(
+      ['api', 'call', 'gmail', 'v1', 'users.threads.list',
+        '--params={"userId":"me","q":"invoice","maxResults":500,"fields":"threads/id,nextPageToken"}'],
+      { account: undefined },
+    );
+  });
+
+  it('does not spend a count probe when --from-contact rewrote the query', async () => {
+    vi.mocked(runner.run).mockResolvedValue(JSON.stringify({ threads: [{ id: 'a' }], nextPageToken: 'tok' }));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_gmail_search', { query: 'x', fromContact: 'Alice' });
+    const out = JSON.parse(result.content[0].text as string);
+    expect(out.truncated).toBe(true);
+    expect(out).not.toHaveProperty('totalMatches');
+    expect(runner.run).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('gog_gmail_get', () => {
   it('calls run with message ID', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"id":"msg1"}');

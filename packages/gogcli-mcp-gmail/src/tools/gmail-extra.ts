@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // gog rejects an inline flag together with its --*-file twin — `gmail drafts
@@ -2476,7 +2476,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_thread_get', {
-    description: 'Get a Gmail thread with all messages. For long threads that overflow context, use latestN to fetch only the most recent messages and/or snippetsOnly for a lightweight per-message headers+snippet view; sanitizeContent strips raw payloads/HTML and is the biggest size reducer when you do need bodies. Note each message carries two distinct id concepts: the top-level `id` (the Gmail short hex message id — pass THIS as replyToMessageId to reply) and the `Message-Id` header (the RFC822 `<…@host>` value used in In-Reply-To/References) — don\'t confuse either with the `threadId`. To reply to the thread itself, pass the thread\'s id as replyToThreadId on gog_gmail_drafts_create.',
+    description: 'Get a Gmail thread with all messages. THIS IS THE CORRECT TOOL WHEN YOU ALREADY KNOW THE threadId — it returns the thread in full, so unlike a search it can never be truncated, mis-ranked, or come back empty because the query missed. Never re-discover a known thread with gog_gmail_search; read it here. For long threads that overflow context, use latestN to fetch only the most recent messages and/or snippetsOnly for a lightweight per-message headers+snippet view; sanitizeContent strips raw payloads/HTML and is the biggest size reducer when you do need bodies. Note each message carries two distinct id concepts: the top-level `id` (the Gmail short hex message id — pass THIS as replyToMessageId to reply) and the `Message-Id` header (the RFC822 `<…@host>` value used in In-Reply-To/References) — don\'t confuse either with the `threadId`. To reply to the thread itself, pass the thread\'s id as replyToThreadId on gog_gmail_drafts_create.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       threadId: z.string().describe('Gmail thread ID'),
@@ -3278,7 +3278,10 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_messages_search', {
-    description: 'Search individual messages (not threads) using Gmail query syntax. Returns one result per matching message.',
+    description: 'Search individual messages (not threads) using Gmail query syntax. Returns one result per matching message. '
+      + 'Results are ALWAYS newest-first by Gmail\'s internalDate — the wrapper sorts them, so the first result is the most recent match. '
+      + 'IMPORTANT — a response carrying "truncated": true is an INCOMPLETE view of the matches: NEVER report that a message does not exist on the strength of one. Page through it (pass nextPageToken back as `page`), set all=true, or narrow the query first. '
+      + 'If you already know the thread, read it with gog_gmail_thread_get instead of searching for it.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       query: z.string().describe('Gmail search query (e.g. "from:alice is:unread has:attachment")'),
@@ -3305,7 +3308,13 @@ export function registerExtraGmailTools(server: McpServer): void {
     // nothing in the arg array to show for it. See gog_gmail_thread_get.
     args.push(includeAttachments ? '--include-attachments' : '--include-attachments=false');
     args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false');
-    return runOrDiagnose(args, { account });
+    const result = await runOrDiagnose(args, { account });
+    return finalizeGmailSearch(result, {
+      itemsKey: 'messages',
+      method: 'users.messages.list',
+      query,
+      account,
+    });
   });
 
   server.registerTool('gog_gmail_labels_style', {
