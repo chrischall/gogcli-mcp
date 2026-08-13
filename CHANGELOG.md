@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.23.2](https://github.com/chrischall/gogcli-mcp/compare/v2.23.1...v2.23.2) (2026-08-13)
+
+
+### Bug Fixes
+
+* **gmail:** make truncation loud, results newest-first, and pagination usable ([#268](https://github.com/chrischall/gogcli-mcp/issues/268)) ([3726ab9](https://github.com/chrischall/gogcli-mcp/commit/3726ab999a2821da1404fc5aeb185a6e75583c74))
+* **gmail:** point the paging advice at pageToken, not the deprecated alias ([#271](https://github.com/chrischall/gogcli-mcp/issues/271)) ([835d50c](https://github.com/chrischall/gogcli-mcp/commit/835d50c625f385e0a42f9a638102a2420109dc02))
+
 ## [2.23.1](https://github.com/chrischall/gogcli-mcp/compare/v2.23.0...v2.23.1) (2026-08-10)
 
 
