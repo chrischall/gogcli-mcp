@@ -1771,6 +1771,24 @@ describe('gog_gmail_messages_search', () => {
   });
 });
 
+describe('page-cursor contract', () => {
+  it('never steers a caller to the deprecated `page` alias', async () => {
+    const { tools } = await harness.client.listTools();
+    const offenders = (tools as { name: string; description?: string }[])
+      .filter((t) => /`page`|\bas page\b/i.test(t.description ?? ''))
+      .map((t) => t.name);
+    expect(offenders).toEqual([]);
+  });
+
+  it('offers the alias wherever pageToken is accepted', async () => {
+    const { tools } = await harness.client.listTools();
+    const withCursor = (tools as { name: string; inputSchema?: { properties?: Record<string, unknown> } }[])
+      .filter((t) => 'pageToken' in (t.inputSchema?.properties ?? {}));
+    expect(withCursor.length).toBeGreaterThan(0);
+    expect(withCursor.filter((t) => !('page' in (t.inputSchema?.properties ?? {}))).map((t) => t.name)).toEqual([]);
+  });
+});
+
 describe('gog_gmail_messages_search — the page cursor reaches the API', () => {
   it('threads a pageToken through to the gog invocation', async () => {
     await harness.callTool('gog_gmail_messages_search', { query: 'x', pageToken: 'CURSOR' });

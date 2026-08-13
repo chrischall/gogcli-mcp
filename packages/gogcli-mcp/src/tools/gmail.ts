@@ -8,7 +8,7 @@ export function registerGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_search', {
     description: 'Search Gmail threads using Gmail query syntax (e.g. "from:alice subject:invoice is:unread"). The query is passed verbatim to Gmail; a bare name token (from:alison) matches per Gmail\'s own heuristics, a full address (from:alison@example.com) is exact. To match a contact across several addresses, OR them: from:(a@x.com OR b@y.com). '
       + 'Results are ALWAYS newest-first by Gmail\'s internalDate — the wrapper sorts them, so the first result is the most recent match and a recent message can never be buried below older ones. '
-      + 'IMPORTANT — a response carrying "truncated": true is an INCOMPLETE view of the matches: NEVER report that a message does not exist, or that there is no such mail, on the strength of one. Page through it (pass nextPageToken back as `page`), set all=true, or narrow the query, and only then draw a conclusion. '
+      + 'IMPORTANT — a response carrying "truncated": true is an INCOMPLETE view of the matches: NEVER report that a message does not exist, or that there is no such mail, on the strength of one. Page through it (pass nextPageToken back as `pageToken`), set maxPages to walk several pages in one call, or narrow the query, and only then draw a conclusion. '
       + 'If you already know the thread, do not search for it at all — read it directly with gog_gmail_thread_get, which returns the whole thread and cannot be truncated or mis-ranked.',
     annotations: { readOnlyHint: true },
     inputSchema: {
