@@ -227,7 +227,7 @@
     },
     {
       "name": "gog_drive_labels_list",
-      "description": "List Drive label schemas"
+      "description": "List Drive label schemas available to the account; paginated"
     },
     {
       "name": "gog_drive_labels_get",

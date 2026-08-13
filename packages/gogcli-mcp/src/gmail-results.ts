@@ -1,6 +1,8 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult } from '@chrischall/mcp-utils';
 import { run } from './runner.js';
+import { annotateTruncation, hasMorePages } from './pagination.js';
+import type { MatchCount } from './pagination.js';
 
 // Post-processing for Gmail search output, on the seam between gog's JSON and
 // the model client. Two guarantees live here, both of which exist because a
@@ -44,28 +46,6 @@ function sortNewestFirst(items: GmailListItem[]): GmailListItem[] {
     // make the comparator incoherent for every undated pair.
     return ka === kb ? 0 : kb - ka;
   });
-}
-
-// How many matches the query really has, when we were able to find out.
-interface MatchCount {
-  /** Exact total — the probe reached the end of the result set. */
-  total?: number;
-  /** Lower bound — the probe filled its page and more remain. */
-  atLeast?: number;
-}
-
-// The prose matters more than the boolean. A bare `truncated: true` is exactly
-// the kind of structured field a model client skims past — which is how a
-// non-empty nextPageToken produced a confident "no such email exists". This
-// says, in words, the one conclusion the caller must not draw.
-function truncationWarning(returned: number, count: MatchCount): string {
-  const scope = count.total !== undefined
-    ? `returned ${returned} of ${count.total} matches`
-    : count.atLeast !== undefined
-      ? `returned ${returned} of at least ${count.atLeast} matches`
-      : `returned ${returned} matches and MORE EXIST beyond this page`;
-  return `INCOMPLETE RESULT SET: ${scope}. Do not report an absence of results based on ` +
-    'this response. Page with nextPageToken or narrow the query.';
 }
 
 export type GmailListMethod = 'users.threads.list' | 'users.messages.list';
@@ -166,14 +146,83 @@ export async function finalizeGmailSearch(
   // The presence of the block is itself the signal, so it is added ONLY for a
   // genuinely capped set. gog leaves nextPageToken empty when --all exhausted
   // the pages, which is why --all needs no special case here.
-  if (typeof parsed.nextPageToken === 'string' && parsed.nextPageToken !== '') {
+  if (hasMorePages(parsed)) {
     const count = queryIsExact ? await countMatches(method, itemsKey, query, account) : {};
-    out.truncated = true;
-    out.returned = sorted.length;
-    if (count.total !== undefined) out.totalMatches = count.total;
-    if (count.atLeast !== undefined) out.totalMatchesAtLeast = count.atLeast;
-    out.warning = truncationWarning(sorted.length, count);
+    annotateTruncation(out, sorted.length, count);
   }
 
+  return rawTextResult(JSON.stringify(out));
+}
+
+// Walk up to `maxPages` pages and merge them into one payload.
+//
+// The point is the existence question — "is there any mail matching X?" — which
+// a single page cannot answer and which is exactly where a truncated response
+// gets misread as a negative. gog has `--all`, but that is unbounded: on a
+// broad query it walks the entire mailbox. This is the bounded form, so a
+// caller can say "look at up to 5 pages" and get either a real answer or an
+// honestly-still-truncated one.
+//
+// The merged payload keeps a nextPageToken only if pages remain when the cap is
+// hit, so finalizeGmailSearch still marks it truncated — running out of budget
+// is not the same as reaching the end, and must not read like it.
+export async function fetchGmailPages(
+  runPage: (token: string | undefined) => Promise<CallToolResult>,
+  itemsKey: 'threads' | 'messages',
+  maxPages: number,
+  startToken: string | undefined,
+): Promise<CallToolResult> {
+  const merged: unknown[] = [];
+  let base: Record<string, unknown> | undefined;
+  let token = startToken;
+
+  for (let pages = 0; pages < maxPages; pages++) {
+    const result = await runPage(token);
+    const parsed = parsePage(result, itemsKey);
+    // An error, or output this does not understand, part-way through the walk.
+    // Nothing collected yet means the caller should just see that result; once
+    // pages ARE collected, return them WITH the cursor that was about to be
+    // consumed, so the set still reads as truncated rather than complete.
+    if (parsed === undefined) {
+      return base === undefined ? result : finish(base, itemsKey, merged, token);
+    }
+    base = parsed;
+    merged.push(...(parsed[itemsKey] as unknown[]));
+    token = typeof parsed.nextPageToken === 'string' && parsed.nextPageToken !== ''
+      ? parsed.nextPageToken
+      : undefined;
+    if (token === undefined) break;
+  }
+
+  return finish(base as Record<string, unknown>, itemsKey, merged, token);
+}
+
+// A page's payload, or undefined if it is not a usable list response.
+function parsePage(
+  result: CallToolResult,
+  itemsKey: string,
+): Record<string, unknown> | undefined {
+  const first = result.content[0];
+  if (result.isError || first?.type !== 'text') return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(first.text);
+  } catch {
+    return undefined;
+  }
+  if (parsed === null || typeof parsed !== 'object') return undefined;
+  const obj = parsed as Record<string, unknown>;
+  return Array.isArray(obj[itemsKey]) ? obj : undefined;
+}
+
+function finish(
+  base: Record<string, unknown>,
+  itemsKey: string,
+  merged: unknown[],
+  token: string | undefined,
+): CallToolResult {
+  const out: Record<string, unknown> = { ...base, [itemsKey]: merged };
+  if (token === undefined) delete out.nextPageToken;
+  else out.nextPageToken = token;
   return rawTextResult(JSON.stringify(out));
 }

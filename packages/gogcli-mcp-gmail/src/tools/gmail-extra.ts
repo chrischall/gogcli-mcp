@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken} from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // gog rejects an inline flag together with its --*-file twin — `gmail drafts
@@ -2365,15 +2365,17 @@ export function registerExtraGmailTools(server: McpServer): void {
     inputSchema: {
       since: z.string().optional().describe('Start history ID'),
       max: z.number().optional().describe('Max results (default: 100)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ since, max, page, all, account }) => {
+  }, async ({ since, max, pageToken, page, all, account }) => {
     const args = ['gmail', 'history'];
     if (since) args.push(`--since=${since}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -2624,7 +2626,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       max: z.number().optional().describe('Max results (default: 20)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       enrich: z.boolean().optional().describe(
         'Add subject, from and internalDateIso to each draft. Costs ONE extra gog invocation (`gmail messages search in:drafts`) ' +
@@ -2634,10 +2637,11 @@ export function registerExtraGmailTools(server: McpServer): void {
       ),
       account: accountParam,
     },
-  }, async ({ max, page, all, enrich, account }) => {
+  }, async ({ max, pageToken, page, all, enrich, account }) => {
     const args = ['gmail', 'drafts', 'list'];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     const result = await runOrDiagnose(args, { account });
 
@@ -2668,7 +2672,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       // list is on page N: an extra gog spawn that joins ZERO rows and still
       // reported applied:true. The token is a drafts-list cursor, so it is only
       // meaningful to the paged search.
-      if (page) searchArgs.push(`--page=${page}`);
+      if (token) searchArgs.push(`--page=${token}`);
       // Both PINNED for the same reason as gog_gmail_messages_search: the env
       // vars behind them change the result shape (and the per-message cost).
       searchArgs.push('--include-attachments=false', '--use-indexed-attachment-ids=false');
@@ -3286,7 +3290,9 @@ export function registerExtraGmailTools(server: McpServer): void {
     inputSchema: {
       query: z.string().describe('Gmail search query (e.g. "from:alice is:unread has:attachment")'),
       max: z.number().optional().describe('Max results'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
+      maxPages: z.number().int().positive().max(20).optional().describe('Walk up to this many pages in ONE call and merge the results, instead of returning a single page. Use it for existence questions (\"is there any mail matching X?\"), which a single page cannot answer. Stops early at the last page; if pages remain when the cap is hit the response is still marked truncated. Prefer this over all=true, which is unbounded.'),
       all: z.boolean().optional().describe('Fetch all pages'),
       includeBody: z.boolean().optional().describe('Include the decoded message body in each result'),
       full: z.boolean().optional().describe('Show full message bodies without truncation (implies includeBody)'),
@@ -3295,10 +3301,9 @@ export function registerExtraGmailTools(server: McpServer): void {
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` within its message instead of an opaque `attachmentId` (stable across calls, unlike the id). Only has an effect alongside includeAttachments or includeBody.'),
       account: accountParam,
     },
-  }, async ({ query, max, page, all, includeBody, full, bodyFormat, includeAttachments, useIndexedAttachmentIds, account }) => {
+  }, async ({ query, max, pageToken, page, maxPages, all, includeBody, full, bodyFormat, includeAttachments, useIndexedAttachmentIds, account }) => {
     const args = ['gmail', 'messages', 'search', query];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
     if (all) args.push('--all');
     if (includeBody) args.push('--include-body');
     if (full) args.push('--full');
@@ -3308,7 +3313,13 @@ export function registerExtraGmailTools(server: McpServer): void {
     // nothing in the arg array to show for it. See gog_gmail_thread_get.
     args.push(includeAttachments ? '--include-attachments' : '--include-attachments=false');
     args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false');
-    const result = await runOrDiagnose(args, { account });
+    // See gog_gmail_search: the cursor rides per page so the walk can advance it.
+    const runPage = (tok: string | undefined) =>
+      runOrDiagnose(tok ? [...args, `--page=${tok}`] : args, { account });
+    const token = resolvePageToken({ pageToken, page });
+    const result = maxPages !== undefined
+      ? await fetchGmailPages(runPage, 'messages', maxPages, token)
+      : await runPage(token);
     return finalizeGmailSearch(result, {
       itemsKey: 'messages',
       method: 'users.messages.list',

@@ -1749,7 +1749,7 @@ describe('gog_gmail_messages_search', () => {
     await harness.callTool('gog_gmail_messages_search', {
       query: 'is:unread',
       max: 10,
-      page: 'tok',
+      pageToken: 'tok',
       all: true,
       includeBody: true,
       full: true,
@@ -1757,7 +1757,7 @@ describe('gog_gmail_messages_search', () => {
       account: 'me@x.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'messages', 'search', 'is:unread', '--max=10', '--page=tok', '--all', '--include-body', '--full', '--body-format=html', '--include-attachments=false', '--use-indexed-attachment-ids=false'],
+      ['gmail', 'messages', 'search', 'is:unread', '--max=10', '--all', '--include-body', '--full', '--body-format=html', '--include-attachments=false', '--use-indexed-attachment-ids=false', '--page=tok'],
       { account: 'me@x.com' },
     );
   });
@@ -1768,6 +1768,33 @@ describe('gog_gmail_messages_search', () => {
       ['gmail', 'messages', 'search', 'x', '--include-attachments=false', '--use-indexed-attachment-ids=false'],
       { account: undefined },
     );
+  });
+});
+
+describe('gog_gmail_messages_search — the page cursor reaches the API', () => {
+  it('threads a pageToken through to the gog invocation', async () => {
+    await harness.callTool('gog_gmail_messages_search', { query: 'x', pageToken: 'CURSOR' });
+    const args = vi.mocked(lib.runOrDiagnose).mock.calls[0][0] as string[];
+    expect(args).toContain('--page=CURSOR');
+  });
+
+  it('still accepts the deprecated page alias, and pageToken wins over it', async () => {
+    await harness.callTool('gog_gmail_messages_search', { query: 'x', page: 'OLD' });
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls[0][0]).toContain('--page=OLD');
+    vi.mocked(lib.runOrDiagnose).mockClear();
+    await harness.callTool('gog_gmail_messages_search', { query: 'x', pageToken: 'NEW', page: 'OLD' });
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls[0][0]).toContain('--page=NEW');
+  });
+
+  it('walks and merges pages under maxPages', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(rawTextResult(JSON.stringify({ messages: [{ id: 'a' }], nextPageToken: 'T1' })))
+      .mockResolvedValueOnce(rawTextResult(JSON.stringify({ messages: [{ id: 'b' }] })));
+    const result = await harness.callTool('gog_gmail_messages_search', { query: 'x', maxPages: 4 });
+    const out = JSON.parse(result.content[0].text as string);
+    expect(out.messages.map((m: { id: string }) => m.id)).toEqual(['a', 'b']);
+    expect(out).not.toHaveProperty('nextPageToken');
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls[1][0]).toContain('--page=T1');
   });
 });
 

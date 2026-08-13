@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, pageTokenParam, pageAliasParam, resolvePageToken} from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_download', {
@@ -111,13 +111,15 @@ export function registerExtraDriveTools(server: McpServer): void {
     inputSchema: {
       fileId: z.string().describe('File ID'),
       max: z.number().optional().describe('Max results (default: 100)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       account: accountParam,
     },
-  }, async ({ fileId, max, page, account }) => {
+  }, async ({ fileId, max, pageToken, page, account }) => {
     const args = ['drive', 'permissions', fileId];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -138,15 +140,17 @@ export function registerExtraDriveTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       max: z.number().optional().describe('Max results (default: 100, max allowed: 100)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       query: z.string().optional().describe('Search query for filtering shared drives'),
       account: accountParam,
     },
-  }, async ({ max, page, all, query, account }) => {
+  }, async ({ max, pageToken, page, all, query, account }) => {
     const args = ['drive', 'drives'];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     if (query) args.push(`--query=${query}`);
     return runOrDiagnose(args, { account });
@@ -320,16 +324,20 @@ export function registerExtraDriveTools(server: McpServer): void {
     inputSchema: {
       token: z.string().describe('Start page token or next page token'),
       max: z.number().optional().describe('Max results (default: 100)'),
-      page: z.string().optional().describe('Alias for token when continuing a page'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       includeRemoved: z.boolean().optional().describe('Include removed changes'),
       drive: z.string().optional().describe('Shared drive ID for a shared-drive change log'),
       account: accountParam,
     },
-  }, async ({ token, max, page, all, includeRemoved, drive, account }) => {
+  }, async ({ token, max, pageToken, page, all, includeRemoved, drive, account }) => {
     const args = ['drive', 'changes', 'list', `--token=${token}`];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    // NOT `token` — this tool already binds that name to the start-page token
+    // it takes as a required arg, which is a different value entirely.
+    const cursor = resolvePageToken({ pageToken, page });
+    if (cursor) args.push(`--page=${cursor}`);
     if (all) args.push('--all');
     if (includeRemoved) args.push('--include-removed');
     if (drive) args.push(`--drive=${drive}`);
@@ -385,10 +393,16 @@ export function registerExtraDriveTools(server: McpServer): void {
       minimumRole: z.string().optional().describe('Minimum role filter (e.g. READER, APPLIER, ORGANIZER)'),
       publishedOnly: z.boolean().optional().describe('Only list published labels'),
       adminAccess: z.boolean().optional().describe('Use admin access for Workspace admin accounts'),
+      max: z.number().int().optional().describe('Max results'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       account: accountParam,
     },
-  }, async ({ language, view, minimumRole, publishedOnly, adminAccess, account }) => {
+  }, async ({ language, view, minimumRole, publishedOnly, adminAccess, max, pageToken, page, account }) => {
     const args = ['drive', 'labels', 'list'];
+    if (max !== undefined) args.push(`--max=${max}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (language) args.push(`--language=${language}`);
     if (view) args.push(`--view=${view}`);
     if (minimumRole) args.push(`--minimum-role=${minimumRole}`);
@@ -421,13 +435,15 @@ export function registerExtraDriveTools(server: McpServer): void {
     inputSchema: {
       fileId: z.string().describe('File ID'),
       max: z.number().optional().describe('Max results (default: 100)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       account: accountParam,
     },
-  }, async ({ fileId, max, page, account }) => {
+  }, async ({ fileId, max, pageToken, page, account }) => {
     const args = ['drive', 'labels', 'file', 'list', fileId];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -480,12 +496,13 @@ export function registerExtraDriveTools(server: McpServer): void {
       to: z.string().optional().describe('Upper activity time bound (RFC3339)'),
       filter: z.string().optional().describe('Raw Drive Activity filter expression appended with AND'),
       max: z.number().optional().describe('Page size (default: 10)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       consolidate: z.boolean().optional().describe('Use Drive Activity legacy consolidation strategy'),
       account: accountParam,
     },
-  }, async ({ file, folder, actions, from, to, filter, max, page, all, consolidate, account }) => {
+  }, async ({ file, folder, actions, from, to, filter, max, pageToken, page, all, consolidate, account }) => {
     const args = ['drive', 'activity', 'query'];
     if (file) args.push(`--file=${file}`);
     if (folder) args.push(`--folder=${folder}`);
@@ -494,7 +511,8 @@ export function registerExtraDriveTools(server: McpServer): void {
     if (to) args.push(`--to=${to}`);
     if (filter) args.push(`--filter=${filter}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     if (consolidate) args.push('--consolidate');
     return runOrDiagnose(args, { account });

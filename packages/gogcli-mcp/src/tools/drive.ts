@@ -3,7 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { rawTextResult } from '@chrischall/mcp-utils';
 import { run, runBinary } from '../runner.js';
-import { accountParam, diagnose, runOrDiagnose, registerRunTool } from './utils.js';
+import { accountParam, diagnose, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 
 // A native Google Doc exports to text directly; anything else (PDF, image,
 // docx, …) is first copied WITH conversion to this type, which makes Drive run
@@ -25,16 +25,18 @@ export function registerDriveTools(server: McpServer): void {
     inputSchema: {
       folderId: z.string().optional().describe('Folder ID to list (default: root)'),
       max: z.number().optional().describe('Max results (default: 20)'),
-      page: z.string().optional().describe('Page token for pagination'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       query: z.string().optional().describe('Drive query filter (e.g. "name contains \'budget\'")'),
       allDrives: z.boolean().optional().describe('Include shared drives (default: true). Set false for My Drive only.'),
       account: accountParam,
     },
-  }, async ({ folderId, max, page, query, allDrives, account }) => {
+  }, async ({ folderId, max, pageToken, page, query, allDrives, account }) => {
     const args = ['drive', 'ls'];
     if (folderId) args.push(`--parent=${folderId}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (query) args.push(`--query=${query}`);
     if (allDrives === false) args.push('--no-all-drives');
     return runOrDiagnose(args, { account });

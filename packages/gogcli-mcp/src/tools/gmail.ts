@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, registerRunTool, payloadArg } from './utils.js';
-import { finalizeGmailSearch } from '../gmail-results.js';
+import { accountParam, runOrDiagnose, registerRunTool, payloadArg, pageTokenParam, pageAliasParam, resolvePageToken } from './utils.js';
+import { finalizeGmailSearch, fetchGmailPages } from '../gmail-results.js';
 import type { GogArg } from '../runner.js';
 
 export function registerGmailTools(server: McpServer): void {
@@ -14,18 +14,26 @@ export function registerGmailTools(server: McpServer): void {
     inputSchema: {
       query: z.string().describe('Gmail search query'),
       max: z.number().int().optional().describe('Max results to return (default: 10)'),
-      page: z.string().optional().describe('Page token — pass a truncated response\'s nextPageToken here to fetch the next page.'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
+      maxPages: z.number().int().positive().max(20).optional().describe('Walk up to this many pages in ONE call and merge the results, instead of returning a single page. Use it for existence questions (\"is there any mail matching X?\"), which a single page cannot answer. Stops early at the last page; if pages remain when the cap is hit the response is still marked truncated. Prefer this over all=true, which is unbounded.'),
       all: z.boolean().optional().describe('Fetch every page instead of one. Removes truncation entirely, at the cost of one API round-trip per page — the reliable way to answer "does any message match?" for a query with few expected hits.'),
       fromContact: z.string().optional().describe('Resolve a Google Contact (name or email) to its addresses and AND a from:(addr OR addr) clause onto the query — saves looking the contact up first when you only know who, not which address.'),
       account: accountParam,
     },
-  }, async ({ query, max, page, all, fromContact, account }) => {
+  }, async ({ query, max, pageToken, page, maxPages, all, fromContact, account }) => {
     const args = ['gmail', 'search', query];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
     if (all) args.push('--all');
     if (fromContact) args.push(`--from-contact=${fromContact}`);
-    const result = await runOrDiagnose(args, { account });
+    // The cursor is applied per page rather than baked into args, so the
+    // multi-page walk can advance it.
+    const runPage = (tok: string | undefined) =>
+      runOrDiagnose(tok ? [...args, `--page=${tok}`] : args, { account });
+    const token = resolvePageToken({ pageToken, page });
+    const result = maxPages !== undefined
+      ? await fetchGmailPages(runPage, 'threads', maxPages, token)
+      : await runPage(token);
     return finalizeGmailSearch(result, {
       itemsKey: 'threads',
       method: 'users.threads.list',

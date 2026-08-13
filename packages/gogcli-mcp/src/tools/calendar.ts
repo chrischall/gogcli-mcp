@@ -1,10 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken } from './utils.js';
+import { annotateTruncatedList } from '../pagination.js';
 
 export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_events', {
-    description: 'List calendar events. Filters can be combined (e.g. --from + --to for a range, or --today for just today).',
+    description: 'List calendar events. Filters can be combined (e.g. --from + --to for a range, or --today for just today). '
+      + 'gog returns only 10 events by default, so a wide date range is USUALLY INCOMPLETE: raise max, or page with pageToken until the response carries no nextPageToken. '
+      + 'A response carrying "truncated": true is an incomplete view — never conclude an event does not exist from one.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       calendarId: z.string().optional().describe('Calendar ID (default: primary calendar)'),
@@ -12,22 +15,32 @@ export function registerCalendarTools(server: McpServer): void {
       to: z.string().optional().describe('End time filter (RFC3339, date, or natural language)'),
       today: z.boolean().optional().describe('Only show today\'s events'),
       query: z.string().optional().describe('Free text search within events'),
-      all: z.boolean().optional().describe('Fetch events from all calendars'),
+      max: z.number().int().optional().describe('Max events to return. gog defaults to 10, which silently hides the rest — raise it, or page with pageToken.'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
+      all: z.boolean().optional().describe('Fetch events from ALL CALENDARS. NOTE: unlike the gmail search tools, this does NOT mean "all pages" — it widens the calendar set, not the page window. Use pageToken to reach later pages.'),
       eventTypes: z.array(z.enum(['default', 'birthday', 'focus-time', 'from-gmail', 'out-of-office', 'working-location'])).optional().describe('Filter to specific event types (repeatable)'),
       timezone: z.string().optional().describe('Display timezone for event times (IANA name, e.g. America/New_York, or "local" for the system timezone). Default: each event\'s timezone, then its calendar\'s timezone.'),
       account: accountParam,
     },
-  }, async ({ calendarId, from, to, today, query, all, eventTypes, timezone, account }) => {
+  }, async ({ calendarId, from, to, today, query, max, pageToken, page, all, eventTypes, timezone, account }) => {
     const args = ['calendar', 'events'];
     if (calendarId) args.push(calendarId);
     if (from) args.push(`--from=${from}`);
     if (to) args.push(`--to=${to}`);
     if (today) args.push('--today');
     if (query) args.push(`--query=${query}`);
+    if (max !== undefined) args.push(`--max=${max}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     if (eventTypes) for (const t of eventTypes) args.push(`--event-types=${t}`);
     if (timezone) args.push(`--timezone=${timezone}`);
-    return runOrDiagnose(args, { account });
+    const result = await runOrDiagnose(args, { account });
+    // No count probe here: unlike Gmail's list endpoints, the Calendar API has
+    // no cheap way to count a range exactly, so the warning carries the fact of
+    // truncation without inventing a total.
+    return annotateTruncatedList(result, 'events');
   });
 
   server.registerTool('gog_calendar_get', {

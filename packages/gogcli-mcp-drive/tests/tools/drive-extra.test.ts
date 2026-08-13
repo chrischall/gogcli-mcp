@@ -459,6 +459,22 @@ describe('gog_drive_labels_list', () => {
     await harness.callTool('gog_drive_labels_list', { publishedOnly: false, adminAccess: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'labels', 'list'], { account: undefined });
   });
+
+  // gog drive labels list is paginated upstream; the tool exposed neither max
+  // nor a cursor, so later pages were unreachable.
+  it('passes --max and --page through', async () => {
+    await harness.callTool('gog_drive_labels_list', { max: 50, pageToken: 'CURSOR' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'labels', 'list', '--max=50', '--page=CURSOR'], { account: undefined },
+    );
+  });
+
+  it('accepts the deprecated page alias', async () => {
+    await harness.callTool('gog_drive_labels_list', { page: 'CURSOR' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['drive', 'labels', 'list', '--page=CURSOR'], { account: undefined },
+    );
+  });
 });
 
 describe('gog_drive_labels_get', () => {

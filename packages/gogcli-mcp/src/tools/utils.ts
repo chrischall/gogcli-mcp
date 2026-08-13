@@ -5,6 +5,7 @@ import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
 import { run, isRunnerTransportError } from '../runner.js';
 import type { GogArg, RunnerFailureKind } from '../runner.js';
 import { normalizeTimestamps } from '../timestamps.js';
+import { stripConsumedPageToken } from '../pagination.js';
 
 // Byte size at or below which a payload stays on the plain inline flag.
 //
@@ -77,10 +78,36 @@ export const ids = {
   person: z.string().describe('Person resource name (people/...) or email'),
 };
 
-// Pagination param triple — appears in 20+ tools across base + extras.
+// THE CURSOR IS NAMED AFTER THE FIELD THAT CARRIES IT. Every paginated response
+// reports its cursor as `nextPageToken`, so the request parameter is
+// `pageToken` — a caller reading a response can guess the input name and be
+// right. It used to be `page` (after gog's own `--page` flag), and that
+// mismatch was not cosmetic: MCP tool inputs are zod objects, which SILENTLY
+// STRIP unknown keys, so a client that inferred `pageToken` had it dropped
+// before the handler ran and got page 1 back forever — same items, same token,
+// no error. Two "that email doesn't exist" incidents came from exactly that.
+export const pageTokenParam = z.string().optional().describe(
+  'Cursor for the NEXT page. Pass back the nextPageToken from a previous response verbatim, ' +
+  'keeping the query and max identical: call once, then call again with pageToken=<that value>. ' +
+  'A response with NO nextPageToken is the last page.',
+);
+
+// Kept so anything already sending `page` keeps working. Prefer pageTokenParam.
+export const pageAliasParam = z.string().optional().describe(
+  'Deprecated alias for pageToken, accepted so existing callers keep working. Use pageToken — ' +
+  'it matches the nextPageToken field in the response.',
+);
+
+// The one place the alias collapses into a single value.
+export function resolvePageToken(p: { pageToken?: string; page?: string }): string | undefined {
+  return p.pageToken ?? p.page;
+}
+
+// Pagination params — appear in 30+ tools across base + extras.
 export const paginationParams = {
   max: z.number().int().optional().describe('Max results'),
-  page: z.string().optional().describe('Page token'),
+  pageToken: pageTokenParam,
+  page: pageAliasParam,
   all: z.boolean().optional().describe('Fetch all pages'),
 };
 
@@ -88,10 +115,11 @@ export const paginationParams = {
 // paginationParams above. Use together to keep call sites concise.
 export function pushPaginationFlags(
   args: string[],
-  p: { max?: number; page?: string; all?: boolean },
+  p: { max?: number; pageToken?: string; page?: string; all?: boolean },
 ): void {
   if (p.max !== undefined) args.push(`--max=${p.max}`);
-  if (p.page) args.push(`--page=${p.page}`);
+  const token = resolvePageToken(p);
+  if (token) args.push(`--page=${token}`);
   if (p.all) args.push('--all');
 }
 
@@ -330,7 +358,10 @@ export async function runOrDiagnose(
     // truth would stop telling it. Losslessness wins over presentation there —
     // the friendlier views of the same data are already normalized.
     const raw = await run(args, options);
-    return rawTextResult(options.lossless ? raw : normalizeTimestamps(raw));
+    // Same seam, same reason as normalizeTimestamps: doing this per call site
+    // would let one paginated tool forget and go on reporting a spent cursor as
+    // if it were a live one. `lossless` opts the raw dumps out of both.
+    return rawTextResult(options.lossless ? raw : stripConsumedPageToken(normalizeTimestamps(raw)));
   } catch (err) {
     return diagnose(err);
   }

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { rawTextResult, errorResult } from '@chrischall/mcp-utils';
 import * as runner from '../src/runner.js';
-import { finalizeGmailSearch } from '../src/gmail-results.js';
+import { finalizeGmailSearch, fetchGmailPages } from '../src/gmail-results.js';
 
 vi.mock('../src/runner.js');
 
@@ -218,5 +218,68 @@ describe('finalizeGmailSearch — pass-through', () => {
     const out = parse(await finalizeGmailSearch(rawTextResult('{"threads":[],"nextPageToken":""}'), THREAD_OPTS));
     expect(out.threads).toEqual([]);
     expect(out).not.toHaveProperty('truncated');
+  });
+});
+
+describe('fetchGmailPages', () => {
+  const page = (ids: string[], token?: string) => rawTextResult(JSON.stringify({
+    threads: ids.map((id) => ({ id })),
+    ...(token === undefined ? {} : { nextPageToken: token }),
+  }));
+
+  it('merges pages and drops the cursor when it reaches the end', async () => {
+    const runPage = vi.fn()
+      .mockResolvedValueOnce(page(['a'], 'T1'))
+      .mockResolvedValueOnce(page(['b'], 'T2'))
+      .mockResolvedValueOnce(page(['c']));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 5, undefined)).content[0].text as string);
+    expect(out.threads.map((t: { id: string }) => t.id)).toEqual(['a', 'b', 'c']);
+    expect(out).not.toHaveProperty('nextPageToken');
+    expect(runPage.mock.calls.map((c) => c[0])).toEqual([undefined, 'T1', 'T2']);
+  });
+
+  it('treats an empty-string cursor as the end', async () => {
+    const runPage = vi.fn().mockResolvedValueOnce(page(['a'], ''));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 5, undefined)).content[0].text as string);
+    expect(out).not.toHaveProperty('nextPageToken');
+    expect(runPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the cursor when the page cap is reached first', async () => {
+    const runPage = vi.fn()
+      .mockResolvedValueOnce(page(['a'], 'T1'))
+      .mockResolvedValueOnce(page(['b'], 'T2'));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 2, undefined)).content[0].text as string);
+    expect(out.threads).toHaveLength(2);
+    expect(out.nextPageToken).toBe('T2');
+    expect(runPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts from a caller-supplied cursor', async () => {
+    const runPage = vi.fn().mockResolvedValue(page(['a']));
+    await fetchGmailPages(runPage, 'threads', 3, 'START');
+    expect(runPage).toHaveBeenCalledWith('START');
+  });
+
+  it('surfaces a failure on the FIRST page as-is', async () => {
+    const err = errorResult('Error: boom');
+    const runPage = vi.fn().mockResolvedValue(err);
+    expect(await fetchGmailPages(runPage, 'threads', 3, undefined)).toBe(err);
+  });
+
+  it('keeps pages already collected when a LATER page fails, still marked truncated', async () => {
+    const runPage = vi.fn()
+      .mockResolvedValueOnce(page(['a'], 'T1'))
+      .mockResolvedValueOnce(errorResult('Error: boom'));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 3, undefined)).content[0].text as string);
+    expect(out.threads.map((t: { id: string }) => t.id)).toEqual(['a']);
+    expect(out.nextPageToken).toBe('T1');
+  });
+
+  it('bails on output it cannot parse or that has no items array', async () => {
+    for (const bad of [rawTextResult('not json'), rawTextResult('"scalar"'), rawTextResult('{"other":1}')]) {
+      const runPage = vi.fn().mockResolvedValue(bad);
+      expect(await fetchGmailPages(runPage, 'threads', 3, undefined)).toBe(bad);
+    }
   });
 });

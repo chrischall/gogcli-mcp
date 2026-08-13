@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken} from '../../../gogcli-mcp/src/lib.js';
 
 const meetAccess = z.enum(['open', 'trusted', 'restricted']);
 
@@ -63,14 +63,16 @@ export function registerExtraCalendarTools(server: McpServer): void {
     inputSchema: {
       meetingCode: z.string().describe('Meeting code'),
       max: z.number().optional().describe('Max results (default: 20)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ meetingCode, max, page, all, account }) => {
+  }, async ({ meetingCode, max, pageToken, page, all, account }) => {
     const args = ['meet', 'history', meetingCode];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -117,14 +119,16 @@ export function registerExtraCalendarTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       max: z.number().optional().describe('Max results (default: 100)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ max, page, all, account }) => {
+  }, async ({ max, pageToken, page, all, account }) => {
     const args = ['calendar', 'calendars'];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -215,14 +219,16 @@ export function registerExtraCalendarTools(server: McpServer): void {
     inputSchema: {
       calendarId: z.string().describe('Calendar ID'),
       max: z.number().optional().describe('Max results (default: 100)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ calendarId, max, page, all, account }) => {
+  }, async ({ calendarId, max, pageToken, page, all, account }) => {
     const args = ['calendar', 'acl', calendarId];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -295,15 +301,17 @@ export function registerExtraCalendarTools(server: McpServer): void {
       meetingCode: z.string().describe('Meeting code'),
       conference: z.string().optional().describe('Specific conference ID (default: most recent)'),
       max: z.number().optional().describe('Max results (default: 50)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ meetingCode, conference, max, page, all, account }) => {
+  }, async ({ meetingCode, conference, max, pageToken, page, all, account }) => {
     const args = ['meet', 'participants', meetingCode];
     if (conference) args.push(`--conference=${conference}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });

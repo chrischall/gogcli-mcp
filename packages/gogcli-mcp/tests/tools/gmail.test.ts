@@ -41,11 +41,14 @@ describe('gog_gmail_search', () => {
 });
 
 describe('gog_gmail_search — pagination and result finalization', () => {
+  // The cursor is appended LAST because it rides per page rather than being
+  // baked into the shared args, so the multi-page walk can advance it. gog
+  // parses flags position-independently, so the order carries no meaning.
   it('appends --page and --all when provided', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_search', { query: 'x', page: 'tok', all: true });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'x', '--page=tok', '--all'], { account: undefined });
+    await harness.callTool('gog_gmail_search', { query: 'x', pageToken: 'tok', all: true });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'x', '--all', '--page=tok'], { account: undefined });
   });
 
   it('omits --all when false', async () => {
@@ -95,6 +98,91 @@ describe('gog_gmail_search — pagination and result finalization', () => {
     expect(out.truncated).toBe(true);
     expect(out).not.toHaveProperty('totalMatches');
     expect(runner.run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('gog_gmail_search — the page cursor reaches the API', () => {
+  // THE REGRESSION. `page` was the declared name while the response field was
+  // `nextPageToken`; a caller passing pageToken had it silently stripped by zod
+  // and got page 1 forever — same threads, same token, no error. These fail if
+  // a caller-supplied cursor is dropped before the gog call.
+  it('threads a pageToken through to the gog invocation', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_search', { query: 'x', pageToken: 'CURSOR' });
+    const args = vi.mocked(runner.run).mock.calls[0][0] as string[];
+    expect(args).toContain('--page=CURSOR');
+  });
+
+  it('still accepts the deprecated page alias', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_search', { query: 'x', page: 'CURSOR' });
+    expect(vi.mocked(runner.run).mock.calls[0][0]).toContain('--page=CURSOR');
+  });
+
+  it('prefers pageToken when both are supplied', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_search', { query: 'x', pageToken: 'NEW', page: 'OLD' });
+    expect(vi.mocked(runner.run).mock.calls[0][0]).toContain('--page=NEW');
+  });
+
+  it('returns a genuinely different page for page 2, and no token on the last', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce(JSON.stringify({ threads: [{ id: 'a' }, { id: 'b' }], nextPageToken: 'TOK1' }))
+      .mockResolvedValueOnce('{"threads":[{"id":"x"}]}')   // count probe for page 1
+      .mockResolvedValueOnce(JSON.stringify({ threads: [{ id: 'c' }, { id: 'd' }], nextPageToken: '' }));
+    const harness = await setupHandlers();
+
+    const p1 = JSON.parse((await harness.callTool('gog_gmail_search', { query: 'q', max: 2 })).content[0].text as string);
+    expect(p1.threads.map((t: { id: string }) => t.id)).toEqual(['a', 'b']);
+    expect(p1.nextPageToken).toBe('TOK1');
+    expect(p1.truncated).toBe(true);
+
+    const p2 = JSON.parse((await harness.callTool('gog_gmail_search',
+      { query: 'q', max: 2, pageToken: p1.nextPageToken })).content[0].text as string);
+    expect(p2.threads.map((t: { id: string }) => t.id)).toEqual(['c', 'd']);
+    // Exhausted cursor stripped, so its absence means "last page" unambiguously.
+    expect(p2).not.toHaveProperty('nextPageToken');
+    expect(p2).not.toHaveProperty('truncated');
+  });
+});
+
+describe('gog_gmail_search — maxPages', () => {
+  it('walks pages and merges them, stopping at the last page', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce(JSON.stringify({ threads: [{ id: 'a' }], nextPageToken: 'T1' }))
+      .mockResolvedValueOnce(JSON.stringify({ threads: [{ id: 'b' }], nextPageToken: 'T2' }))
+      .mockResolvedValueOnce(JSON.stringify({ threads: [{ id: 'c' }], nextPageToken: '' }));
+    const harness = await setupHandlers();
+    const out = JSON.parse((await harness.callTool('gog_gmail_search',
+      { query: 'q', maxPages: 5 })).content[0].text as string);
+    expect(out.threads.map((t: { id: string }) => t.id)).toEqual(['a', 'b', 'c']);
+    expect(out).not.toHaveProperty('truncated');
+    expect(vi.mocked(runner.run).mock.calls[1][0]).toContain('--page=T1');
+    expect(vi.mocked(runner.run).mock.calls[2][0]).toContain('--page=T2');
+  });
+
+  it('stays truncated when the page cap is hit before the end', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce(JSON.stringify({ threads: [{ id: 'a' }], nextPageToken: 'T1' }))
+      .mockResolvedValueOnce(JSON.stringify({ threads: [{ id: 'b' }], nextPageToken: 'T2' }))
+      .mockResolvedValueOnce('{"threads":[{"id":"1"},{"id":"2"},{"id":"3"}]}');  // count probe
+    const harness = await setupHandlers();
+    const out = JSON.parse((await harness.callTool('gog_gmail_search',
+      { query: 'q', maxPages: 2 })).content[0].text as string);
+    expect(out.threads.map((t: { id: string }) => t.id)).toEqual(['a', 'b']);
+    expect(out.truncated).toBe(true);
+    expect(out.nextPageToken).toBe('T2');
+    expect(out.totalMatches).toBe(3);
+  });
+
+  it('starts the walk from a caller-supplied cursor', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_search', { query: 'q', maxPages: 3, pageToken: 'START' });
+    expect(vi.mocked(runner.run).mock.calls[0][0]).toContain('--page=START');
   });
 });
 
