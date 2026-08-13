@@ -3284,7 +3284,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_messages_search', {
     description: 'Search individual messages (not threads) using Gmail query syntax. Returns one result per matching message. '
       + 'Results are ALWAYS newest-first by Gmail\'s internalDate — the wrapper sorts them, so the first result is the most recent match. '
-      + 'IMPORTANT — a response carrying "truncated": true is an INCOMPLETE view of the matches: NEVER report that a message does not exist on the strength of one. Page through it (pass nextPageToken back as `page`), set all=true, or narrow the query first. '
+      + 'IMPORTANT — a response carrying "truncated": true is an INCOMPLETE view of the matches: NEVER report that a message does not exist on the strength of one. Page through it (pass nextPageToken back as `pageToken`), set maxPages to walk several pages in one call, or narrow the query first. '
       + 'If you already know the thread, read it with gog_gmail_thread_get instead of searching for it.',
     annotations: { readOnlyHint: true },
     inputSchema: {
