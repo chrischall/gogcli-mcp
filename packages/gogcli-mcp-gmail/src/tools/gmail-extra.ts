@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken} from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // gog rejects an inline flag together with its --*-file twin — `gmail drafts
@@ -2365,15 +2365,17 @@ export function registerExtraGmailTools(server: McpServer): void {
     inputSchema: {
       since: z.string().optional().describe('Start history ID'),
       max: z.number().optional().describe('Max results (default: 100)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ since, max, page, all, account }) => {
+  }, async ({ since, max, pageToken, page, all, account }) => {
     const args = ['gmail', 'history'];
     if (since) args.push(`--since=${since}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -2476,7 +2478,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_thread_get', {
-    description: 'Get a Gmail thread with all messages. For long threads that overflow context, use latestN to fetch only the most recent messages and/or snippetsOnly for a lightweight per-message headers+snippet view; sanitizeContent strips raw payloads/HTML and is the biggest size reducer when you do need bodies. Note each message carries two distinct id concepts: the top-level `id` (the Gmail short hex message id — pass THIS as replyToMessageId to reply) and the `Message-Id` header (the RFC822 `<…@host>` value used in In-Reply-To/References) — don\'t confuse either with the `threadId`. To reply to the thread itself, pass the thread\'s id as replyToThreadId on gog_gmail_drafts_create.',
+    description: 'Get a Gmail thread with all messages. THIS IS THE CORRECT TOOL WHEN YOU ALREADY KNOW THE threadId — it returns the thread in full, so unlike a search it can never be truncated, mis-ranked, or come back empty because the query missed. Never re-discover a known thread with gog_gmail_search; read it here. For long threads that overflow context, use latestN to fetch only the most recent messages and/or snippetsOnly for a lightweight per-message headers+snippet view; sanitizeContent strips raw payloads/HTML and is the biggest size reducer when you do need bodies. Note each message carries two distinct id concepts: the top-level `id` (the Gmail short hex message id — pass THIS as replyToMessageId to reply) and the `Message-Id` header (the RFC822 `<…@host>` value used in In-Reply-To/References) — don\'t confuse either with the `threadId`. To reply to the thread itself, pass the thread\'s id as replyToThreadId on gog_gmail_drafts_create.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       threadId: z.string().describe('Gmail thread ID'),
@@ -2624,7 +2626,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       max: z.number().optional().describe('Max results (default: 20)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       enrich: z.boolean().optional().describe(
         'Add subject, from and internalDateIso to each draft. Costs ONE extra gog invocation (`gmail messages search in:drafts`) ' +
@@ -2634,10 +2637,11 @@ export function registerExtraGmailTools(server: McpServer): void {
       ),
       account: accountParam,
     },
-  }, async ({ max, page, all, enrich, account }) => {
+  }, async ({ max, pageToken, page, all, enrich, account }) => {
     const args = ['gmail', 'drafts', 'list'];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     const result = await runOrDiagnose(args, { account });
 
@@ -2668,7 +2672,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       // list is on page N: an extra gog spawn that joins ZERO rows and still
       // reported applied:true. The token is a drafts-list cursor, so it is only
       // meaningful to the paged search.
-      if (page) searchArgs.push(`--page=${page}`);
+      if (token) searchArgs.push(`--page=${token}`);
       // Both PINNED for the same reason as gog_gmail_messages_search: the env
       // vars behind them change the result shape (and the per-message cost).
       searchArgs.push('--include-attachments=false', '--use-indexed-attachment-ids=false');
@@ -3278,12 +3282,17 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_messages_search', {
-    description: 'Search individual messages (not threads) using Gmail query syntax. Returns one result per matching message.',
+    description: 'Search individual messages (not threads) using Gmail query syntax. Returns one result per matching message. '
+      + 'Results are ALWAYS newest-first by Gmail\'s internalDate — the wrapper sorts them, so the first result is the most recent match. '
+      + 'IMPORTANT — a response carrying "truncated": true is an INCOMPLETE view of the matches: NEVER report that a message does not exist on the strength of one. Page through it (pass nextPageToken back as `page`), set all=true, or narrow the query first. '
+      + 'If you already know the thread, read it with gog_gmail_thread_get instead of searching for it.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       query: z.string().describe('Gmail search query (e.g. "from:alice is:unread has:attachment")'),
       max: z.number().optional().describe('Max results'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
+      maxPages: z.number().int().positive().max(20).optional().describe('Walk up to this many pages in ONE call and merge the results, instead of returning a single page. Use it for existence questions (\"is there any mail matching X?\"), which a single page cannot answer. Stops early at the last page; if pages remain when the cap is hit the response is still marked truncated. Prefer this over all=true, which is unbounded.'),
       all: z.boolean().optional().describe('Fetch all pages'),
       includeBody: z.boolean().optional().describe('Include the decoded message body in each result'),
       full: z.boolean().optional().describe('Show full message bodies without truncation (implies includeBody)'),
@@ -3292,10 +3301,9 @@ export function registerExtraGmailTools(server: McpServer): void {
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` within its message instead of an opaque `attachmentId` (stable across calls, unlike the id). Only has an effect alongside includeAttachments or includeBody.'),
       account: accountParam,
     },
-  }, async ({ query, max, page, all, includeBody, full, bodyFormat, includeAttachments, useIndexedAttachmentIds, account }) => {
+  }, async ({ query, max, pageToken, page, maxPages, all, includeBody, full, bodyFormat, includeAttachments, useIndexedAttachmentIds, account }) => {
     const args = ['gmail', 'messages', 'search', query];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
     if (all) args.push('--all');
     if (includeBody) args.push('--include-body');
     if (full) args.push('--full');
@@ -3305,7 +3313,19 @@ export function registerExtraGmailTools(server: McpServer): void {
     // nothing in the arg array to show for it. See gog_gmail_thread_get.
     args.push(includeAttachments ? '--include-attachments' : '--include-attachments=false');
     args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false');
-    return runOrDiagnose(args, { account });
+    // See gog_gmail_search: the cursor rides per page so the walk can advance it.
+    const runPage = (tok: string | undefined) =>
+      runOrDiagnose(tok ? [...args, `--page=${tok}`] : args, { account });
+    const token = resolvePageToken({ pageToken, page });
+    const result = maxPages !== undefined
+      ? await fetchGmailPages(runPage, 'messages', maxPages, token)
+      : await runPage(token);
+    return finalizeGmailSearch(result, {
+      itemsKey: 'messages',
+      method: 'users.messages.list',
+      query,
+      account,
+    });
   });
 
   server.registerTool('gog_gmail_labels_style', {

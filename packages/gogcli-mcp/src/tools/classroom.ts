@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 
 export function registerClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_list', {
@@ -11,17 +11,19 @@ export function registerClassroomTools(server: McpServer): void {
       teacher: z.string().optional().describe('Filter by teacher user ID'),
       student: z.string().optional().describe('Filter by student user ID'),
       max: z.number().optional().describe('Max results per page'),
-      page: z.string().optional().describe('Page token for pagination'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ state, teacher, student, max, page, all, account }) => {
+  }, async ({ state, teacher, student, max, pageToken, page, all, account }) => {
     const args = ['classroom', 'courses', 'list'];
     if (state) args.push(`--state=${state}`);
     if (teacher) args.push(`--teacher=${teacher}`);
     if (student) args.push(`--student=${student}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -43,14 +45,16 @@ export function registerClassroomTools(server: McpServer): void {
     inputSchema: {
       courseId: z.string().describe('Course ID'),
       max: z.number().optional().describe('Max results per page'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ courseId, max, page, all, account }) => {
+  }, async ({ courseId, max, pageToken, page, all, account }) => {
     const args = ['classroom', 'students', 'list', courseId];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -73,14 +77,16 @@ export function registerClassroomTools(server: McpServer): void {
     inputSchema: {
       courseId: z.string().describe('Course ID'),
       max: z.number().optional().describe('Max results per page'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ courseId, max, page, all, account }) => {
+  }, async ({ courseId, max, pageToken, page, all, account }) => {
     const args = ['classroom', 'teachers', 'list', courseId];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -105,16 +111,18 @@ export function registerClassroomTools(server: McpServer): void {
       students: z.boolean().optional().describe('Include students only'),
       teachers: z.boolean().optional().describe('Include teachers only'),
       max: z.number().optional().describe('Max results per page'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ courseId, students, teachers, max, page, all, account }) => {
+  }, async ({ courseId, students, teachers, max, pageToken, page, all, account }) => {
     const args = ['classroom', 'roster', courseId];
     if (students) args.push('--students');
     if (teachers) args.push('--teachers');
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -128,18 +136,20 @@ export function registerClassroomTools(server: McpServer): void {
       topic: z.string().optional().describe('Filter by topic ID'),
       orderBy: z.string().optional().describe('Sort order (e.g. "updateTime desc")'),
       max: z.number().optional().describe('Max results per page'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       scanPages: z.number().optional().describe('Max pages to scan when filtering'),
       account: accountParam,
     },
-  }, async ({ courseId, state, topic, orderBy, max, page, all, scanPages, account }) => {
+  }, async ({ courseId, state, topic, orderBy, max, pageToken, page, all, scanPages, account }) => {
     const args = ['classroom', 'coursework', 'list', courseId];
     if (state) args.push(`--state=${state}`);
     if (topic) args.push(`--topic=${topic}`);
     if (orderBy) args.push(`--order-by=${orderBy}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     if (scanPages !== undefined) args.push(`--scan-pages=${scanPages}`);
     return runOrDiagnose(args, { account });
@@ -167,17 +177,19 @@ export function registerClassroomTools(server: McpServer): void {
       late: z.enum(['late', 'not-late']).optional().describe('Filter by late status'),
       user: z.string().optional().describe('Filter by student user ID'),
       max: z.number().optional().describe('Max results per page'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ courseId, courseworkId, state, late, user, max, page, all, account }) => {
+  }, async ({ courseId, courseworkId, state, late, user, max, pageToken, page, all, account }) => {
     const args = ['classroom', 'submissions', 'list', courseId, courseworkId];
     if (state) args.push(`--state=${state}`);
     if (late) args.push(`--late=${late}`);
     if (user) args.push(`--user=${user}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -260,16 +272,18 @@ export function registerClassroomTools(server: McpServer): void {
       state: z.string().optional().describe('Filter by announcement state'),
       orderBy: z.string().optional().describe('Sort order'),
       max: z.number().optional().describe('Max results per page'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ courseId, state, orderBy, max, page, all, account }) => {
+  }, async ({ courseId, state, orderBy, max, pageToken, page, all, account }) => {
     const args = ['classroom', 'announcements', 'list', courseId];
     if (state) args.push(`--state=${state}`);
     if (orderBy) args.push(`--order-by=${orderBy}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -308,14 +322,16 @@ export function registerClassroomTools(server: McpServer): void {
     inputSchema: {
       courseId: z.string().describe('Course ID'),
       max: z.number().optional().describe('Max results per page'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ courseId, max, page, all, account }) => {
+  }, async ({ courseId, max, pageToken, page, all, account }) => {
     const args = ['classroom', 'topics', 'list', courseId];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -339,16 +355,18 @@ export function registerClassroomTools(server: McpServer): void {
       course: z.string().optional().describe('Filter by course ID'),
       user: z.string().optional().describe('Filter by user ID'),
       max: z.number().optional().describe('Max results per page'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ course, user, max, page, all, account }) => {
+  }, async ({ course, user, max, pageToken, page, all, account }) => {
     const args = ['classroom', 'invitations', 'list'];
     if (course) args.push(`--course=${course}`);
     if (user) args.push(`--user=${user}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });

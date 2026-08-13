@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken} from '../../../gogcli-mcp/src/lib.js';
 
 // People is the richer API behind Google Contacts: Workspace directory
 // search, profile fields, and relations.
@@ -32,14 +32,16 @@ export function registerExtraContactsTools(server: McpServer): void {
     inputSchema: {
       query: z.string().describe('Search query (name, email, etc.)'),
       max: z.number().optional().describe('Max results (default: 50)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ query, max, page, all, account }) => {
+  }, async ({ query, max, pageToken, page, all, account }) => {
     const args = ['people', 'search', query];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -112,17 +114,19 @@ export function registerExtraContactsTools(server: McpServer): void {
       all: z.boolean().optional().describe('Export all personal contacts'),
       out: z.string().optional().describe('Output path (.vcf), or - for stdout (default: stdout)'),
       max: z.number().optional().describe('Max results for query (1-30)'),
-      page: z.string().optional().describe('Start page token for all'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       account: accountParam,
     },
-  }, async ({ selector, query, all, out, max, page, account }) => {
+  }, async ({ selector, query, all, out, max, pageToken, page, account }) => {
     const args = ['contacts', 'export'];
     if (selector) args.push(selector);
     if (query) args.push(`--query=${query}`);
     if (all) args.push('--all');
     if (out) args.push(`--out=${out}`);
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     return runOrDiagnose(args, { account });
   });
 
@@ -153,14 +157,16 @@ export function registerExtraContactsTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       max: z.number().optional().describe('Max results (default: 50)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ max, page, all, account }) => {
+  }, async ({ max, pageToken, page, all, account }) => {
     const args = ['contacts', 'directory', 'list'];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -170,14 +176,16 @@ export function registerExtraContactsTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       max: z.number().optional().describe('Max results (default: 100)'),
-      page: z.string().optional().describe('Page token'),
+      pageToken: pageTokenParam,
+      page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
     },
-  }, async ({ max, page, all, account }) => {
+  }, async ({ max, pageToken, page, all, account }) => {
     const args = ['contacts', 'other', 'list'];
     if (max !== undefined) args.push(`--max=${max}`);
-    if (page) args.push(`--page=${page}`);
+    const token = resolvePageToken({ pageToken, page });
+    if (token) args.push(`--page=${token}`);
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });

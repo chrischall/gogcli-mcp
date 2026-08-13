@@ -91,7 +91,7 @@
     },
     {
       "name": "gog_gmail_search",
-      "description": "Search Gmail threads using Gmail query syntax"
+      "description": "Search Gmail threads using Gmail query syntax; newest-first, and flags a truncated result set"
     },
     {
       "name": "gog_gmail_get",
@@ -151,7 +151,7 @@
     },
     {
       "name": "gog_gmail_thread_get",
-      "description": "Get a thread with all messages"
+      "description": "Get a Gmail thread with all messages — the right tool when the threadId is already known"
     },
     {
       "name": "gog_gmail_thread_modify",
@@ -235,7 +235,7 @@
     },
     {
       "name": "gog_gmail_messages_search",
-      "description": "Search individual messages (not threads) using Gmail query syntax"
+      "description": "Search individual messages; newest-first, and flags a truncated result set"
     },
     {
       "name": "gog_gmail_labels_style",

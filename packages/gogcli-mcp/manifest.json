@@ -102,7 +102,7 @@
     },
     {
       "name": "gog_gmail_search",
-      "description": "Search Gmail threads by query"
+      "description": "Search Gmail threads using Gmail query syntax; newest-first, and flags a truncated result set"
     },
     {
       "name": "gog_gmail_get",
@@ -118,7 +118,7 @@
     },
     {
       "name": "gog_calendar_events",
-      "description": "List calendar events with optional filters"
+      "description": "List calendar events; paginated (gog returns only 10 by default) and flags a truncated range"
     },
     {
       "name": "gog_calendar_get",

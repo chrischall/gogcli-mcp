@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerExtraGmailTools } from '../../src/tools/gmail-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
+import * as runner from '../../../gogcli-mcp/src/runner.js';
 import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
 import { rawTextResult, errorResult } from '@chrischall/mcp-utils';
 
@@ -14,6 +15,16 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   };
 });
 
+// finalizeGmailSearch reaches for runner.run DIRECTLY (not the lib re-export
+// the mock above replaces) to count matches behind a truncated result set.
+// Without this the probe would spawn the real `gog` and hit the live Gmail API
+// from a unit test. Only `run` is replaced — runExecutor is a real
+// AsyncLocalStorage the connector-shape tests depend on.
+vi.mock('../../../gogcli-mcp/src/runner.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof runner>();
+  return { ...actual, run: vi.fn() };
+});
+
 let harness: TestHarness;
 
 beforeEach(async () => {
@@ -21,6 +32,9 @@ beforeEach(async () => {
   vi.mocked(lib.run).mockResolvedValue('{}');
   vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
   vi.mocked(lib.diagnose).mockResolvedValue(errorResult('diagnosed'));
+  // Default: the match-count probe finds nothing to report, so no test depends
+  // on a live call. Tests that care stub it explicitly.
+  vi.mocked(runner.run).mockRejectedValue(new Error('no count probe stubbed'));
   harness = await createTestHarness(registerExtraGmailTools);
 });
 
@@ -1735,7 +1749,7 @@ describe('gog_gmail_messages_search', () => {
     await harness.callTool('gog_gmail_messages_search', {
       query: 'is:unread',
       max: 10,
-      page: 'tok',
+      pageToken: 'tok',
       all: true,
       includeBody: true,
       full: true,
@@ -1743,7 +1757,7 @@ describe('gog_gmail_messages_search', () => {
       account: 'me@x.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'messages', 'search', 'is:unread', '--max=10', '--page=tok', '--all', '--include-body', '--full', '--body-format=html', '--include-attachments=false', '--use-indexed-attachment-ids=false'],
+      ['gmail', 'messages', 'search', 'is:unread', '--max=10', '--all', '--include-body', '--full', '--body-format=html', '--include-attachments=false', '--use-indexed-attachment-ids=false', '--page=tok'],
       { account: 'me@x.com' },
     );
   });
@@ -1754,6 +1768,80 @@ describe('gog_gmail_messages_search', () => {
       ['gmail', 'messages', 'search', 'x', '--include-attachments=false', '--use-indexed-attachment-ids=false'],
       { account: undefined },
     );
+  });
+});
+
+describe('gog_gmail_messages_search — the page cursor reaches the API', () => {
+  it('threads a pageToken through to the gog invocation', async () => {
+    await harness.callTool('gog_gmail_messages_search', { query: 'x', pageToken: 'CURSOR' });
+    const args = vi.mocked(lib.runOrDiagnose).mock.calls[0][0] as string[];
+    expect(args).toContain('--page=CURSOR');
+  });
+
+  it('still accepts the deprecated page alias, and pageToken wins over it', async () => {
+    await harness.callTool('gog_gmail_messages_search', { query: 'x', page: 'OLD' });
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls[0][0]).toContain('--page=OLD');
+    vi.mocked(lib.runOrDiagnose).mockClear();
+    await harness.callTool('gog_gmail_messages_search', { query: 'x', pageToken: 'NEW', page: 'OLD' });
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls[0][0]).toContain('--page=NEW');
+  });
+
+  it('walks and merges pages under maxPages', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(rawTextResult(JSON.stringify({ messages: [{ id: 'a' }], nextPageToken: 'T1' })))
+      .mockResolvedValueOnce(rawTextResult(JSON.stringify({ messages: [{ id: 'b' }] })));
+    const result = await harness.callTool('gog_gmail_messages_search', { query: 'x', maxPages: 4 });
+    const out = JSON.parse(result.content[0].text as string);
+    expect(out.messages.map((m: { id: string }) => m.id)).toEqual(['a', 'b']);
+    expect(out).not.toHaveProperty('nextPageToken');
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls[1][0]).toContain('--page=T1');
+  });
+});
+
+describe('gog_gmail_messages_search — result finalization', () => {
+  it('sorts results newest-first', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(JSON.stringify({
+      messages: [
+        { id: 'old', internalDateIso: '2026-08-01T09:00:00-04:00' },
+        { id: 'new', internalDateIso: '2026-08-12T12:36:00-04:00' },
+        { id: 'mid', internalDateIso: '2026-08-05T09:00:00-04:00' },
+      ],
+      nextPageToken: '',
+    })));
+    const result = await harness.callTool('gog_gmail_messages_search', { query: 'x' });
+    const out = JSON.parse(result.content[0].text as string);
+    expect(out.messages.map((m: { id: string }) => m.id)).toEqual(['new', 'mid', 'old']);
+    expect(out).not.toHaveProperty('truncated');
+  });
+
+  it('marks a capped result set truncated and counts the real total', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(JSON.stringify({
+      messages: [{ id: 'a' }, { id: 'b' }],
+      nextPageToken: 'tok',
+    })));
+    vi.mocked(runner.run).mockResolvedValue(JSON.stringify({
+      messages: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }],
+    }));
+    const result = await harness.callTool('gog_gmail_messages_search', { query: 'x', max: 2 });
+    const out = JSON.parse(result.content[0].text as string);
+    expect(out.truncated).toBe(true);
+    expect(out.returned).toBe(2);
+    expect(out.totalMatches).toBe(5);
+    expect(out.warning).toBe(
+      'INCOMPLETE RESULT SET: returned 2 of 5 matches. Do not report an absence of results ' +
+      'based on this response. Page with nextPageToken or narrow the query.',
+    );
+    expect(runner.run).toHaveBeenCalledWith(
+      ['api', 'call', 'gmail', 'v1', 'users.messages.list',
+        '--params={"userId":"me","q":"x","maxResults":500,"fields":"messages/id,nextPageToken"}'],
+      { account: undefined },
+    );
+  });
+
+  it('leaves output it does not recognise untouched', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('No results'));
+    const result = await harness.callTool('gog_gmail_messages_search', { query: 'x' });
+    expect(result.content[0].text).toBe('No results');
   });
 });
 

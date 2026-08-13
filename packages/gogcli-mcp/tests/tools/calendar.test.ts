@@ -379,3 +379,54 @@ describe('gog_calendar_run', () => {
   });
 });
 
+
+describe('gog_calendar_events — pagination (previously absent entirely)', () => {
+  // gog defaults this command to --max=10 and the tool exposed NEITHER max nor
+  // a cursor, so a wide date range silently returned 10 events with a live
+  // token the caller could not use. Measured live: 2025-01-01..2026-08-01 gave
+  // 10 of 12.
+  it('passes --max and --page through to gog', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"events":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_events', { max: 100, pageToken: 'CURSOR' });
+    const args = vi.mocked(runner.run).mock.calls[0][0] as string[];
+    expect(args).toContain('--max=100');
+    expect(args).toContain('--page=CURSOR');
+  });
+
+  it('accepts the deprecated page alias', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"events":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_events', { page: 'CURSOR' });
+    expect(vi.mocked(runner.run).mock.calls[0][0]).toContain('--page=CURSOR');
+  });
+
+  it('keeps --all meaning ALL CALENDARS, not all pages', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"events":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_events', { all: true });
+    expect(vi.mocked(runner.run).mock.calls[0][0]).toContain('--all');
+  });
+
+  it('marks a capped range truncated, with no fabricated total', async () => {
+    vi.mocked(runner.run).mockResolvedValue(JSON.stringify({
+      events: [{ id: 'e1' }, { id: 'e2' }],
+      nextPageToken: 'MORE',
+    }));
+    const harness = await setupHandlers();
+    const out = JSON.parse((await harness.callTool('gog_calendar_events',
+      { from: '2025-01-01', to: '2026-08-01' })).content[0].text as string);
+    expect(out.truncated).toBe(true);
+    expect(out.returned).toBe(2);
+    expect(out).not.toHaveProperty('totalMatches');
+    expect(out.warning).toContain('INCOMPLETE RESULT SET: returned 2 matches and MORE EXIST');
+  });
+
+  it('leaves a complete range unannotated', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"events":[{"id":"e1"}],"nextPageToken":""}');
+    const harness = await setupHandlers();
+    const out = JSON.parse((await harness.callTool('gog_calendar_events', {})).content[0].text as string);
+    expect(out).not.toHaveProperty('truncated');
+    expect(out).not.toHaveProperty('nextPageToken');
+  });
+});
