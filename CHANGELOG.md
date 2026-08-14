@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.24.0](https://github.com/chrischall/gogcli-mcp/compare/v2.23.2...v2.24.0) (2026-08-14)
+
+
+### Features
+
+* adopt gogcli 0.37.0 — Connected Sheets, draft reply/forward, sanitized get ([#272](https://github.com/chrischall/gogcli-mcp/issues/272)) ([55fe05d](https://github.com/chrischall/gogcli-mcp/commit/55fe05d1b9e25a0723400e1a13db212985af46e0))
+
+
+### Documentation
+
+* correct the tool counts and the window-flag test the 0.37.0 review flagged ([#275](https://github.com/chrischall/gogcli-mcp/issues/275)) ([6a1cb68](https://github.com/chrischall/gogcli-mcp/commit/6a1cb68092651fa9f5a4cdb0dfed4e7c14134c93))
+
 ## [2.23.2](https://github.com/chrischall/gogcli-mcp/compare/v2.23.1...v2.23.2) (2026-08-13)
 
 
