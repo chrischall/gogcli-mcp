@@ -124,6 +124,35 @@ describe('gog_auth_add', () => {
     );
   });
 
+  // gog 0.37.0's Connected Sheets reads need bigquery.readonly, which no
+  // `services` selection covers. --force-consent is not optional alongside it:
+  // Google re-prompts for a NEW scope only when consent is forced, so without
+  // it the grant can come back missing the scope AND reporting success.
+  it('passes --extra-scopes with --force-consent', async () => {
+    vi.mocked(runner.run).mockResolvedValue('Authorization successful');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_auth_add', {
+      email: 'user@gmail.com',
+      services: 'sheets',
+      extraScopes: 'https://www.googleapis.com/auth/bigquery.readonly',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--services', 'sheets',
+        '--extra-scopes=https://www.googleapis.com/auth/bigquery.readonly', '--force-consent'],
+      { interactive: true, timeout: 300_000 },
+    );
+  });
+
+  it('does not force consent when no extra scopes are asked for', async () => {
+    vi.mocked(runner.run).mockResolvedValue('Authorization successful');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_auth_add', { email: 'user@gmail.com' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--services', 'all'],
+      { interactive: true, timeout: 300_000 },
+    );
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Auth cancelled by user'));
     const harness = await setupHandlers();
@@ -215,6 +244,21 @@ describe('gog_auth_add_url', () => {
     );
   });
 
+  it('appends --extra-scopes after the service scopes', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"auth_url":"https://x"}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_auth_add_url', {
+      email: 'user@gmail.com',
+      services: 'sheets',
+      extraScopes: 'https://www.googleapis.com/auth/bigquery.readonly',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '1', '--services', 'sheets', '--force-consent',
+        '--extra-scopes=https://www.googleapis.com/auth/bigquery.readonly'],
+      { redactMode: 'tokens' },
+    );
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('client not configured'));
     const harness = await setupHandlers();
@@ -249,6 +293,22 @@ describe('gog_auth_add_complete', () => {
     expect(runner.run).toHaveBeenCalledWith(
       ['auth', 'add', 'user@gmail.com', '--remote', '--step', '2', '--auth-url',
         'http://127.0.0.1/cb?code=c&state=s', '--services', 'gmail,drive', '--force-consent'],
+    );
+  });
+
+  it('carries the same --extra-scopes as step 1', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"stored":true}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_auth_add_complete', {
+      email: 'user@gmail.com',
+      redirectUrl: 'http://127.0.0.1/cb?code=c&state=s',
+      services: 'sheets',
+      extraScopes: 'https://www.googleapis.com/auth/bigquery.readonly',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '2', '--auth-url',
+        'http://127.0.0.1/cb?code=c&state=s', '--services', 'sheets', '--force-consent',
+        '--extra-scopes=https://www.googleapis.com/auth/bigquery.readonly'],
     );
   });
 

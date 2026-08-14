@@ -46,16 +46,22 @@ export function registerGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_get', {
-    description: 'Get a Gmail message by ID.',
+    description: 'Get a Gmail message by ID. For a long message, sanitizeContent is the cheapest way to keep it in context: it drops the raw MIME payload and the HTML part, which are usually the bulk of the response.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       messageId: z.string().describe('Message ID'),
       format: z.enum(['full', 'metadata', 'raw']).optional().describe('Message format (default: full)'),
+      // Requires gog >= 0.37.0. Before that (openclaw/gogcli#992) the JSON
+      // carried the headers and body TWICE — once inside `message`, once
+      // copied to the top level — so the flag meant to shrink the payload
+      // enlarged it. MIN_GOG_VERSION is the guard; there is no runtime check.
+      sanitizeContent: z.boolean().optional().describe('Return agent-oriented sanitized content: HTML stripped, HTTP(S) URLs removed, raw Gmail payloads omitted from the JSON. The largest payload-size reduction available here. Note the URL removal is lossy — omit this when you need to follow a link out of the message.'),
       account: accountParam,
     },
-  }, async ({ messageId, format, account }) => {
+  }, async ({ messageId, format, sanitizeContent, account }) => {
     const args = ['gmail', 'get', messageId];
     if (format) args.push(`--format=${format}`);
+    if (sanitizeContent) args.push('--sanitize-content');
     return runOrDiagnose(args, { account });
   });
 

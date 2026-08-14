@@ -3,7 +3,7 @@
 > [!WARNING]
 > **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
 
-Extended Gmail [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/openclaw/gogcli). Includes auth tools plus 46 additional dedicated Gmail tools for threads, labels, drafts, attachments, forwarding, autoreply, and bulk operations.
+Extended Gmail [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/openclaw/gogcli). Includes auth tools plus 45 additional dedicated Gmail tools for threads, labels, drafts, attachments, forwarding, autoreply, and bulk operations.
 
 ## Requirements
 
@@ -101,6 +101,9 @@ Plus 8 auth tools and 4 base Gmail tools (search, get, send, run) — 58 in all.
 | `gog_gmail_drafts_delete` | Delete a draft |
 | `gog_gmail_drafts_send` | Send an existing draft (a 404 comes back diagnosed — `DRAFT_FORKED`, or `GOOGLE_404_NOT_THE_DRAFT` when the draft is still listed) |
 | `gog_gmail_drafts_diff` | Diff two named drafts — divergent body lines (with untruncated `onlyInACount`/`onlyInBCount`), threading loss, and a conservative fork verdict (2 gog calls) |
+| `gog_gmail_drafts_reply` | Save a reply as a draft — inherited recipients, subject and quote; never sends |
+| `gog_gmail_drafts_reply_all` | Save a reply-all as a draft; never sends |
+| `gog_gmail_drafts_forward` | Save a forward as a draft; recipients optional, so it can be staged without any |
 
 #### When a draft you created stops resolving
 

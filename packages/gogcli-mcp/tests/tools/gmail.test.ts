@@ -201,6 +201,23 @@ describe('gog_gmail_get', () => {
     expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'msg1', '--format=metadata'], { account: undefined });
   });
 
+  // gog >= 0.37.0 (openclaw/gogcli#992): before that release the sanitized
+  // JSON repeated the headers and body at the top level, so this flag grew the
+  // payload it exists to shrink. Pinned here as the flag spelling gog expects.
+  it('appends --sanitize-content when asked', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_get', { messageId: 'msg1', sanitizeContent: true });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'msg1', '--sanitize-content'], { account: undefined });
+  });
+
+  it('omits --sanitize-content when false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_get', { messageId: 'msg1', sanitizeContent: false });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'msg1'], { account: undefined });
+  });
+
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Not found'));
     const harness = await setupHandlers();

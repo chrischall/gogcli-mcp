@@ -5,15 +5,22 @@ import { annotateTruncatedList } from '../pagination.js';
 
 export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_events', {
-    description: 'List calendar events. Filters can be combined (e.g. --from + --to for a range, or --today for just today). '
+    description: 'List calendar events. Describe the window ONE way and one way only (gog >= 0.36.0 rejects the rest as ambiguous rather than silently discarding a flag): '
+      + 'today on its own; or from + to; or from + days; or days on its own (a window of that many days starting today). today cannot be combined with from, to or days, and days cannot be combined with to. '
       + 'gog returns only 10 events by default, so a wide date range is USUALLY INCOMPLETE: raise max, or page with pageToken until the response carries no nextPageToken. '
       + 'A response carrying "truncated": true is an incomplete view — never conclude an event does not exist from one.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       calendarId: z.string().optional().describe('Calendar ID (default: primary calendar)'),
       from: z.string().optional().describe('Start time filter (RFC3339, date, or natural language)'),
-      to: z.string().optional().describe('End time filter (RFC3339, date, or natural language)'),
-      today: z.boolean().optional().describe('Only show today\'s events'),
+      to: z.string().optional().describe('End time filter (RFC3339, date, or natural language). Mutually exclusive with today and with days.'),
+      // gog >= 0.36.0 (openclaw/gogcli#981). Before that release --days sat in
+      // a switch arm evaluated ahead of --from, so `--from 2026-09-25 --days 5`
+      // silently threw --from away and answered for today instead — at exit 0,
+      // in a well-formed table. It is only exposed here now that it means what
+      // it says.
+      days: z.number().int().positive().optional().describe('Window LENGTH in days (calendar days, DST-aware), measured from `from` when one is given and from today otherwise. Use from + days for "the week of the 25th"; days alone for "the next N days". Mutually exclusive with to and with today.'),
+      today: z.boolean().optional().describe('Only show today\'s events. A complete window on its own — mutually exclusive with from, to and days.'),
       query: z.string().optional().describe('Free text search within events'),
       max: z.number().int().optional().describe('Max events to return. gog defaults to 10, which silently hides the rest — raise it, or page with pageToken.'),
       pageToken: pageTokenParam,
@@ -23,11 +30,12 @@ export function registerCalendarTools(server: McpServer): void {
       timezone: z.string().optional().describe('Display timezone for event times (IANA name, e.g. America/New_York, or "local" for the system timezone). Default: each event\'s timezone, then its calendar\'s timezone.'),
       account: accountParam,
     },
-  }, async ({ calendarId, from, to, today, query, max, pageToken, page, all, eventTypes, timezone, account }) => {
+  }, async ({ calendarId, from, to, days, today, query, max, pageToken, page, all, eventTypes, timezone, account }) => {
     const args = ['calendar', 'events'];
     if (calendarId) args.push(calendarId);
     if (from) args.push(`--from=${from}`);
     if (to) args.push(`--to=${to}`);
+    if (days !== undefined) args.push(`--days=${days}`);
     if (today) args.push('--today');
     if (query) args.push(`--query=${query}`);
     if (max !== undefined) args.push(`--max=${max}`);

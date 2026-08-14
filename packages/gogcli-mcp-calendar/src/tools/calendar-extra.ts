@@ -134,16 +134,21 @@ export function registerExtraCalendarTools(server: McpServer): void {
   });
 
   server.registerTool('gog_calendar_search', {
-    description: 'Full-text search for events matching a query string, with optional time filters.',
+    description: 'Full-text search for events matching a query string, with optional time filters. '
+      + 'Describe the window ONE way only (gog >= 0.36.0 rejects the rest as ambiguous instead of discarding a flag): one of today / tomorrow / week on its own, '
+      + 'or from + to, or from + days, or days on its own. The fixed presets cannot be combined with from, to or days, and days cannot be combined with to.',
     annotations: { readOnlyHint: true },
     inputSchema: {
       query: z.string().describe('Search query'),
       from: z.string().optional().describe('Start time (RFC3339, date, or relative: now, today, tomorrow, monday)'),
-      to: z.string().optional().describe('End time (RFC3339, date, or relative: now, today, tomorrow, monday)'),
-      today: z.boolean().optional().describe('Today only'),
-      tomorrow: z.boolean().optional().describe('Tomorrow only'),
-      week: z.boolean().optional().describe('This week (uses weekStart, default Mon)'),
-      days: z.number().optional().describe('Next N days'),
+      to: z.string().optional().describe('End time (RFC3339, date, or relative: now, today, tomorrow, monday). Mutually exclusive with days.'),
+      today: z.boolean().optional().describe('Today only. A complete window on its own — not combinable with from/to/days.'),
+      tomorrow: z.boolean().optional().describe('Tomorrow only. A complete window on its own — not combinable with from/to/days.'),
+      week: z.boolean().optional().describe('This week (uses weekStart, default Mon). A complete window on its own — not combinable with from/to/days.'),
+      // gog >= 0.36.0 (openclaw/gogcli#981) anchors --days at --from. It used
+      // to mean "next N days from today" no matter what --from said, which is
+      // why the old description here read that way.
+      days: z.number().optional().describe('Window LENGTH in days, measured from `from` when one is given and from today otherwise — NOT always "the next N days".'),
       weekStart: z.string().optional().describe('Week start day for week (sun, mon, ...)'),
       calendar: z.string().optional().describe('Calendar ID (default: primary)'),
       max: z.number().optional().describe('Max results (default: 25)'),

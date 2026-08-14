@@ -17,21 +17,48 @@ describe('gog_calendar_events', () => {
     expect(runner.run).toHaveBeenCalledWith(['calendar', 'events'], { account: undefined });
   });
 
-  it('appends calendarId and filters when provided', async () => {
+  // The window flags are pinned as SEPARATE cases on purpose: gog >= 0.36.0
+  // (openclaw/gogcli#981) rejects a fixed preset combined with from/to/days,
+  // and days combined with to, so one test passing them all at once would
+  // assert an arg array gog refuses to run.
+  it('appends calendarId and an explicit from/to range', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_events', {
       calendarId: 'primary',
       from: '2026-01-01',
       to: '2026-01-31',
-      today: true,
       query: 'standup',
       all: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'events', 'primary', '--from=2026-01-01', '--to=2026-01-31', '--today', '--query=standup', '--all'],
+      ['calendar', 'events', 'primary', '--from=2026-01-01', '--to=2026-01-31', '--query=standup', '--all'],
       { account: undefined },
     );
+  });
+
+  it('appends --today on its own', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_events', { today: true });
+    expect(runner.run).toHaveBeenCalledWith(['calendar', 'events', '--today'], { account: undefined });
+  });
+
+  it('anchors --days at --from when both are given', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_events', { from: '2026-09-25', days: 5 });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'events', '--from=2026-09-25', '--days=5'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --days alone as a today-anchored window', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_events', { days: 7 });
+    expect(runner.run).toHaveBeenCalledWith(['calendar', 'events', '--days=7'], { account: undefined });
   });
 
   it('repeats --event-types for each requested type', async () => {

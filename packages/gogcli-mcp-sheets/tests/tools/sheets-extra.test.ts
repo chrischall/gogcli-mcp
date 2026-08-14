@@ -1512,3 +1512,102 @@ describe('non-text result passthrough', () => {
     expect(result.content[0].text).toMatch(/warning/i);
   });
 });
+
+// Connected Sheets (gog >= 0.37.0, openclaw/gogcli#938). Read-only discovery
+// and bounded extract reads. An extract has no id of its own in the Sheets API,
+// so the anchor is a POSITIONAL argument, not a flag — getting that wrong makes
+// gog reject the call, which is why the arg order is pinned here.
+describe('gog_sheets_datasource_list', () => {
+  it('calls runOrDiagnose with the spreadsheet id', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_list', { spreadsheetId: 'sid' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'datasource', 'list', 'sid'], { account: undefined });
+  });
+
+  it('forwards account', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_list', { spreadsheetId: 'sid', account: 'me@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'datasource', 'list', 'sid'], { account: 'me@x.com' });
+  });
+});
+
+describe('gog_sheets_datasource_describe', () => {
+  it('passes the data source id positionally after the spreadsheet id', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_describe', { spreadsheetId: 'sid', dataSourceId: 'ds1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'describe', 'sid', 'ds1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_sheets_datasource_table_list', () => {
+  it('omits --data-source-id when no filter is given', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_table_list', { spreadsheetId: 'sid' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'table', 'list', 'sid'],
+      { account: undefined },
+    );
+  });
+
+  it('filters by data source id when given', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_table_list', { spreadsheetId: 'sid', dataSourceId: 'ds1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'table', 'list', 'sid', '--data-source-id=ds1'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_sheets_datasource_table_describe', () => {
+  it('passes the A1 anchor positionally', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_table_describe', { spreadsheetId: 'sid', anchor: 'Extracts!B3' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'table', 'describe', 'sid', 'Extracts!B3'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_sheets_datasource_table_read', () => {
+  it('reads with gog defaults when no bounds are given', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_table_read', { spreadsheetId: 'sid', anchor: 'Extracts!B3' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'table', 'read', 'sid', 'Extracts!B3'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --max-rows and --render', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_table_read', {
+      spreadsheetId: 'sid', anchor: 'Extracts!B3', maxRows: 250, render: 'UNFORMATTED_VALUE',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'table', 'read', 'sid', 'Extracts!B3', '--max-rows=250', '--render=UNFORMATTED_VALUE'],
+      { account: undefined },
+    );
+  });
+
+  it('rejects a render mode gog does not accept', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_datasource_table_read', {
+      spreadsheetId: 'sid', anchor: 'Extracts!B3', render: 'RAW',
+    });
+    expect(result.isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+});
