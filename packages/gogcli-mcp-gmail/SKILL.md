@@ -5,7 +5,7 @@ description: Use when the user asks to read, organize, draft, forward, autoreply
 
 # gogcli-mcp-gmail
 
-Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 58 tools: 8 auth + 4 base Gmail + 46 extra dedicated Gmail tools.
+Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 61 tools: 8 auth + 4 base Gmail + 49 extra dedicated Gmail tools.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 

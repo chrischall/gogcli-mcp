@@ -172,16 +172,16 @@ describe('gog_calendar_search', () => {
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'search', 'standup'], { account: undefined });
   });
 
-  it('passes all filter flags when provided', async () => {
+  // One case per LEGAL window, not one case passing every flag at once. gog
+  // >= 0.36.0 (openclaw/gogcli#981) rejects a fixed preset alongside
+  // from/to/days, and days alongside to, with exit 2 — so the all-flags array
+  // this used to assert is one gog will not run, and a mocked test asserting
+  // it would keep passing forever while the tool was broken in the field.
+  it('passes an explicit from/to range with the non-window filters', async () => {
     await harness.callTool('gog_calendar_search', {
       query: 'standup',
       from: 'today',
       to: 'tomorrow',
-      today: true,
-      tomorrow: true,
-      week: true,
-      days: 7,
-      weekStart: 'sun',
       calendar: 'primary',
       max: 10,
     });
@@ -189,10 +189,35 @@ describe('gog_calendar_search', () => {
       [
         'calendar', 'search', 'standup',
         '--from=today', '--to=tomorrow',
-        '--today', '--tomorrow', '--week',
-        '--days=7', '--week-start=sun',
         '--calendar=primary', '--max=10',
       ],
+      { account: undefined },
+    );
+  });
+
+  it('anchors --days at --from when both are given', async () => {
+    await harness.callTool('gog_calendar_search', { query: 'standup', from: '2026-09-25', days: 7 });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['calendar', 'search', 'standup', '--from=2026-09-25', '--days=7'],
+      { account: undefined },
+    );
+  });
+
+  it('passes each fixed preset on its own', async () => {
+    for (const [param, flag] of [['today', '--today'], ['tomorrow', '--tomorrow'], ['week', '--week']] as const) {
+      vi.mocked(lib.runOrDiagnose).mockClear();
+      await harness.callTool('gog_calendar_search', { query: 'standup', [param]: true });
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['calendar', 'search', 'standup', flag],
+        { account: undefined },
+      );
+    }
+  });
+
+  it('passes --week-start alongside --week', async () => {
+    await harness.callTool('gog_calendar_search', { query: 'standup', week: true, weekStart: 'sun' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['calendar', 'search', 'standup', '--week', '--week-start=sun'],
       { account: undefined },
     );
   });

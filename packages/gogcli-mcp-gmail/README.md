@@ -3,7 +3,7 @@
 > [!WARNING]
 > **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
 
-Extended Gmail [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/openclaw/gogcli). Includes auth tools plus 45 additional dedicated Gmail tools for threads, labels, drafts, attachments, forwarding, autoreply, and bulk operations.
+Extended Gmail [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/openclaw/gogcli). Includes auth tools plus 49 additional dedicated Gmail tools for threads, labels, drafts, attachments, forwarding, autoreply, and bulk operations.
 
 ## Requirements
 
@@ -44,9 +44,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 claude mcp add gogcli-gmail -- gogcli-mcp-gmail
 ```
 
-## Extra Gmail Tools (46)
+## Extra Gmail Tools (49)
 
-Plus 8 auth tools and 4 base Gmail tools (search, get, send, run) — 58 in all.
+Plus 8 auth tools and 4 base Gmail tools (search, get, send, run) — 61 in all.
 
 ### Read
 
