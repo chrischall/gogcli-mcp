@@ -3225,7 +3225,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   }
 
   server.registerTool('gog_gmail_reply', {
-    description: 'Reply to a Gmail message (sends to the original sender only). Threads off the message and inherits a "Re:" subject and the quoted original by default. For replying to every participant use gog_gmail_reply_all; to reply across many messages matching a query use gog_gmail_autoreply; to stage a reply without sending use gog_gmail_drafts_create.',
+    description: 'Reply to a Gmail message (sends to the original sender only). Threads off the message and inherits a "Re:" subject and the quoted original by default. For replying to every participant use gog_gmail_reply_all; to reply across many messages matching a query use gog_gmail_autoreply; to stage this same reply without sending it use gog_gmail_drafts_reply, which composes exactly what this tool would send.',
     annotations: { destructiveHint: true },
     inputSchema: replySchema,
   }, async ({ messageId, account, ...flags }) => {
@@ -3235,7 +3235,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_reply_all', {
-    description: 'Reply to all participants of a Gmail message (sender plus every To/Cc recipient). Same inherited "Re:" subject and quoting as gog_gmail_reply. Use the remove flag to drop specific recipients from the reply-all.',
+    description: 'Reply to all participants of a Gmail message (sender plus every To/Cc recipient). Same inherited "Re:" subject and quoting as gog_gmail_reply. Use the remove flag to drop specific recipients from the reply-all. To stage it without sending use gog_gmail_drafts_reply_all.',
     annotations: { destructiveHint: true },
     inputSchema: replySchema,
   }, async ({ messageId, account, ...flags }) => {
