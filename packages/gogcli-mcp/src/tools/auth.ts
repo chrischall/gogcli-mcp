@@ -13,6 +13,20 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
     `Default: "${defaultServices}". Prefer the narrowest set you need — requesting a service whose ` +
     `Google API is not enabled on the OAuth client's project makes Google reject the WHOLE request ` +
     `with invalid_scope.`;
+  // Additional raw OAuth scope URIs, appended after the service scopes gog
+  // derives from `services`. This exists for scopes no service selection can
+  // ask for: notably bigquery.readonly, which Google demands whenever a Sheets
+  // response CONTAINS BigQuery Connected Sheets data (gog_sheets_datasource_*)
+  // and which ordinary `sheets` authorization deliberately does not request.
+  // Same invalid_scope caveat as `services`: Google rejects the WHOLE request
+  // if the scope's API is not enabled on the OAuth client's project, and that
+  // happens in the user's browser, so this wrapper cannot catch it.
+  const extraScopesDescribe =
+    'Additional raw OAuth scope URIs to request, comma-separated, on top of the ones `services` implies. ' +
+    'Use for scopes no service covers — e.g. https://www.googleapis.com/auth/bigquery.readonly, required ' +
+    'before gog_sheets_datasource_* can read BigQuery-backed Connected Sheets. Leave unset otherwise: an ' +
+    'extra scope whose API is not enabled on the OAuth client project makes Google reject the WHOLE ' +
+    'authorization with invalid_scope.';
   server.registerTool('gog_auth_list', {
     description:
       'List the Google accounts stored in gogcli, with their scopes. This reads local ' +
@@ -91,10 +105,19 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
     inputSchema: {
       email: z.string().describe('Google account email to authorize'),
       services: z.string().optional().default(defaultServices).describe(servicesDescribe),
+      extraScopes: z.string().optional().describe(extraScopesDescribe),
     },
-  }, async ({ email, services = defaultServices }) => {
+  }, async ({ email, services = defaultServices, extraScopes }) => {
     try {
-      return rawTextResult(await run(['auth', 'add', email, '--services', services], {
+      const args = ['auth', 'add', email, '--services', services];
+      // --force-consent rides along with extraScopes and only with them. Google
+      // re-prompts for a NEW scope only when consent is forced; without it the
+      // account can come back still missing the scope, with a success message —
+      // the exact shape of failure the caller cannot see. The other two tools
+      // force consent unconditionally; this one does not, so it must be added
+      // here rather than assumed.
+      if (extraScopes) args.push(`--extra-scopes=${extraScopes}`, '--force-consent');
+      return rawTextResult(await run(args, {
         interactive: true,
         timeout: 300_000,
       }));
@@ -115,17 +138,17 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
     inputSchema: {
       email: z.string().describe('Google account email to authorize'),
       services: z.string().optional().default(defaultServices).describe(servicesDescribe),
+      extraScopes: z.string().optional().describe(`${extraScopesDescribe} Pass the SAME value to gog_auth_add_complete.`),
     },
-  }, async ({ email, services = defaultServices }) => {
+  }, async ({ email, services = defaultServices, extraScopes }) => {
     try {
       // --force-consent guarantees a refresh token even if a prior grant exists
       // (the whole point when recovering from a dead one). redactMode 'tokens'
       // keeps the consent URL's scope names intact (the shared redactor mangles
       // them) while still stripping any real token — a step-1 URL carries none.
-      return rawTextResult(await run(
-        ['auth', 'add', email, '--remote', '--step', '1', '--services', services, '--force-consent'],
-        { redactMode: 'tokens' },
-      ));
+      const args = ['auth', 'add', email, '--remote', '--step', '1', '--services', services, '--force-consent'];
+      if (extraScopes) args.push(`--extra-scopes=${extraScopes}`);
+      return rawTextResult(await run(args, { redactMode: 'tokens' }));
     } catch (err) {
       return errorResult(errorText(err));
     }
@@ -147,13 +170,17 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       services: z.string().optional().default(defaultServices).describe(
         `Services authorized — MUST match the value passed to gog_auth_add_url. Default: "${defaultServices}".`,
       ),
+      extraScopes: z.string().optional().describe(
+        'Extra OAuth scope URIs — MUST match the value passed to gog_auth_add_url, for the same reason `services` must: ' +
+        'the two steps have to describe the same grant.',
+      ),
     },
-  }, async ({ email, redirectUrl, services = defaultServices }) => {
+  }, async ({ email, redirectUrl, services = defaultServices, extraScopes }) => {
     try {
-      return rawTextResult(await run(
-        ['auth', 'add', email, '--remote', '--step', '2', '--auth-url', redirectUrl,
-          '--services', services, '--force-consent'],
-      ));
+      const args = ['auth', 'add', email, '--remote', '--step', '2', '--auth-url', redirectUrl,
+        '--services', services, '--force-consent'];
+      if (extraScopes) args.push(`--extra-scopes=${extraScopes}`);
+      return rawTextResult(await run(args));
     } catch (err) {
       return errorResult(errorText(err));
     }

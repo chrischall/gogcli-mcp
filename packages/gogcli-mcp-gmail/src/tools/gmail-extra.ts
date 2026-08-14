@@ -3244,6 +3244,76 @@ export function registerExtraGmailTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  // gog >= 0.36.0: the draft-side twins of reply / reply-all / forward. They
+  // take the SAME flag set as the send-side commands and share the composition
+  // path with them, so the schemas above are reused verbatim rather than
+  // re-declared — the only difference is the subcommand and that NOTHING IS
+  // SENT.
+  //
+  // These exist because staging a reply used to mean gog_gmail_drafts_create
+  // with replyToMessageId/replyToThreadId, which threads the draft but does NOT
+  // inherit the original's recipients or quote its body — the caller had to
+  // rebuild both by hand, and a missed Cc is invisible until the draft goes
+  // out. Here the inheritance is gog's, identical to what the send path would
+  // have produced.
+  const draftReplyNote =
+    ' Composes exactly what gog_gmail_reply%s would send — inherited recipients, "Re:" subject and quoted ' +
+    'original — but SAVES IT AS A DRAFT instead of sending. Nothing leaves the mailbox; send it later with ' +
+    'gog_gmail_drafts_send, or edit it first with gog_gmail_drafts_update (which overwrites the whole body, ' +
+    'quote included — read the draft back before editing).';
+
+  server.registerTool('gog_gmail_drafts_reply', {
+    description:
+      'Save a reply to a Gmail message as a draft (to the original sender only).' + draftReplyNote.replace('%s', '') +
+      ' Prefer this over gog_gmail_drafts_create + replyToMessageId when the draft is a real reply: that route threads ' +
+      'the draft but leaves recipients and quoting for you to reconstruct.',
+    inputSchema: { ...replySchema, returnFull: draftWriteSchema.returnFull },
+  }, async ({ messageId, account, returnFull, ...flags }) => {
+    const args: GogArg[] = ['gmail', 'drafts', 'reply', messageId];
+    appendReplyFlags(args, flags);
+    return writeDraft(args, account, returnFull);
+  });
+
+  server.registerTool('gog_gmail_drafts_reply_all', {
+    description:
+      'Save a reply-all to a Gmail message as a draft (sender plus every To/Cc recipient).' +
+      draftReplyNote.replace('%s', '_all') +
+      ' Use the remove flag to drop recipients BEFORE the draft exists, rather than editing them out afterwards.',
+    inputSchema: { ...replySchema, returnFull: draftWriteSchema.returnFull },
+  }, async ({ messageId, account, returnFull, ...flags }) => {
+    const args: GogArg[] = ['gmail', 'drafts', 'reply-all', messageId];
+    appendReplyFlags(args, flags);
+    return writeDraft(args, account, returnFull);
+  });
+
+  server.registerTool('gog_gmail_drafts_forward', {
+    description:
+      'Save a forward of a Gmail message as a draft. Same composition as gog_gmail_forward — the original ' +
+      'message quoted below an optional note, with its attachments carried over — but nothing is sent. ' +
+      'Unlike gog_gmail_forward, `to` is OPTIONAL here: omit it to stage a recipient-less forward as an ' +
+      'accidental-send guard, then add recipients with gog_gmail_drafts_update before gog_gmail_drafts_send.',
+    inputSchema: {
+      messageId: z.string().describe('Gmail message ID to forward'),
+      to: z.string().optional().describe('Recipients (comma-separated). Optional for a draft — omit to stage the forward without recipients.'),
+      cc: z.string().optional().describe('CC recipients (comma-separated)'),
+      bcc: z.string().optional().describe('BCC recipients (comma-separated)'),
+      note: z.string().optional().describe('Introductory text above the forwarded message'),
+      from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
+      skipAttachments: z.boolean().optional().describe('Do not include original attachments'),
+      returnFull: draftWriteSchema.returnFull,
+      account: accountParam,
+    },
+  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, returnFull, account }) => {
+    const args: GogArg[] = ['gmail', 'drafts', 'forward', messageId];
+    if (to) args.push(`--to=${to}`);
+    if (cc) args.push(`--cc=${cc}`);
+    if (bcc) args.push(`--bcc=${bcc}`);
+    if (note) args.push(payloadArg('note', 'note-file', note));
+    if (from) args.push(`--from=${from}`);
+    if (skipAttachments) args.push('--skip-attachments');
+    return writeDraft(args, account, returnFull);
+  });
+
   server.registerTool('gog_gmail_autoreply', {
     description: 'Reply once to all messages matching a Gmail search query. Use the label flag to dedupe across runs.',
     annotations: { destructiveHint: true },

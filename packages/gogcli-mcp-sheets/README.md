@@ -3,7 +3,7 @@
 > [!WARNING]
 > **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
 
-Extended Google Sheets [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/openclaw/gogcli). Includes auth tools plus 22 additional dedicated Sheets tools for tab management, formatting, named ranges, and more.
+Extended Google Sheets [MCP](https://modelcontextprotocol.io) server via [gogcli](https://github.com/openclaw/gogcli). Includes auth tools plus 55 additional dedicated Sheets tools for tab management, formatting, named ranges, Connected Sheets, and more.
 
 ## Requirements
 
@@ -74,6 +74,11 @@ Plus 5 auth tools and 8 base Sheets tools (get, update, append, clear, metadata,
 | `gog_sheets_links` | List hyperlinks in a range |
 | `gog_sheets_set_links` | Set =HYPERLINK() cells in one call (batch) |
 | `gog_sheets_snapshot` | Back up a whole spreadsheet before a risky edit |
+| `gog_sheets_datasource_list` | List Connected Sheets data sources (BigQuery / Looker) with sheet + execution status |
+| `gog_sheets_datasource_describe` | Full data-source spec, including its query, status and refresh schedules |
+| `gog_sheets_datasource_table_list` | List anchored data-source tables (extracts) and their A1 anchors |
+| `gog_sheets_datasource_table_describe` | Describe the extract anchored at an A1 cell |
+| `gog_sheets_datasource_table_read` | Read a bounded number of rows out of an extract |
 
 ## License
 

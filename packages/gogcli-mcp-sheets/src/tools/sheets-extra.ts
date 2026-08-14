@@ -1006,4 +1006,109 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
+  // Connected Sheets (gog >= 0.37.0, openclaw/gogcli#938). Read-only by
+  // construction — gog exposes no create/update/refresh/delete here, so none of
+  // these can change a data source or trigger a query.
+  //
+  // The scope is the thing to know before calling any of them: Google requires
+  // https://www.googleapis.com/auth/bigquery.readonly whenever a Sheets
+  // response CONTAINS BigQuery Connected Sheets data, and ordinary `sheets`
+  // authorization deliberately does not ask for it. So an account that reads
+  // every other part of this spreadsheet still gets a permission error here,
+  // and re-authorizing is the only fix. gog's error names the scope and the
+  // exact command; the note below is so the model does not first conclude the
+  // spreadsheet has no data sources.
+  const bigQueryScopeNote =
+    ' BIGQUERY-BACKED SOURCES NEED AN EXTRA SCOPE: ordinary sheets authorization does not request ' +
+    'https://www.googleapis.com/auth/bigquery.readonly, and Google refuses the whole response without it. A permission ' +
+    'error here means the token is missing that scope, NOT that the spreadsheet has no data sources — re-authorize with ' +
+    'gog_auth_add_url/gog_auth_add_complete (or gog_auth_add), keeping the account\'s EXISTING services selection and ' +
+    'passing extraScopes=https://www.googleapis.com/auth/bigquery.readonly with forceConsent. Looker sources reuse the ' +
+    'account\'s existing Looker link and need nothing extra.';
+
+  server.registerTool('gog_sheets_datasource_list', {
+    description:
+      'List the Connected Sheets data sources in a spreadsheet (BigQuery or Looker), each joined with its DATA_SOURCE sheet ' +
+      'and current execution status. This is the discovery call — start here to get the dataSourceId the describe tool wants. ' +
+      'Deliberately does not print custom SQL; use gog_sheets_datasource_describe for that.' + bigQueryScopeNote,
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, account }) => {
+    return runOrDiagnose(['sheets', 'datasource', 'list', spreadsheetId], { account });
+  });
+
+  server.registerTool('gog_sheets_datasource_describe', {
+    description:
+      'Describe one Connected Sheets data source in full: the complete API DataSource spec (including the BigQuery raw query, ' +
+      'which gog_sheets_datasource_list withholds), its sheet properties, its DataExecutionStatus and any refresh schedules. ' +
+      'Refreshes are asynchronous and this tool cannot start one — poll it until state is SUCCEEDED or FAILED, and read the ' +
+      'status error text when it is FAILED.' + bigQueryScopeNote,
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, dataSourceId, account }) => {
+    return runOrDiagnose(['sheets', 'datasource', 'describe', spreadsheetId, dataSourceId], { account });
+  });
+
+  server.registerTool('gog_sheets_datasource_table_list', {
+    description:
+      'List the data-source tables — "extracts" in the Sheets editor — anchored in a spreadsheet. A data-source table has NO ' +
+      'id of its own in the Sheets API: its definition lives on its top-left cell, so every extract is identified by a ' +
+      'sheet-qualified A1 anchor (e.g. "Extracts!B3"). That anchor is what the describe and read tools take. Filter with ' +
+      'dataSourceId to see only one source\'s extracts.' + bigQueryScopeNote,
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      dataSourceId: z.string().optional().describe('Only list tables belonging to this data source ID'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, dataSourceId, account }) => {
+    const args = ['sheets', 'datasource', 'table', 'list', spreadsheetId];
+    if (dataSourceId) args.push(`--data-source-id=${dataSourceId}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_datasource_table_describe', {
+    description:
+      'Describe the data-source table (extract) anchored at an A1 cell: its source, configured columns, sort/filter spec and ' +
+      'row limit. Read this before gog_sheets_datasource_table_read when you need to know what the columns MEAN — the read ' +
+      'returns values, not the extract\'s definition.' + bigQueryScopeNote,
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      anchor: z.string().describe('Sheet-qualified A1 anchor of the extract\'s top-left cell, e.g. "Extracts!B3". Get it from gog_sheets_datasource_table_list — an extract has no other identifier.'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, anchor, account }) => {
+    return runOrDiagnose(['sheets', 'datasource', 'table', 'describe', spreadsheetId, anchor], { account });
+  });
+
+  server.registerTool('gog_sheets_datasource_table_read', {
+    description:
+      'Read the values out of the data-source table (extract) anchored at an A1 cell. Bounded on purpose: at most maxRows data ' +
+      'rows (gog default 1000) plus the header row, which is returned separately. The JSON reports "truncated": true when the ' +
+      'configured extract can hold more rows than were returned — treat that exactly like a truncated search, i.e. do not ' +
+      'conclude a value is absent from it; raise maxRows or narrow the extract instead. Use render=UNFORMATTED_VALUE for ' +
+      'arithmetic (FORMATTED_VALUE returns display strings) or render=FORMULA to see the cell formulas.' + bigQueryScopeNote,
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      anchor: z.string().describe('Sheet-qualified A1 anchor of the extract\'s top-left cell, e.g. "Extracts!B3" (from gog_sheets_datasource_table_list)'),
+      maxRows: z.number().int().positive().optional().describe('Maximum data rows to read (gog default: 1000). The header row is returned separately and does not count against this.'),
+      render: z.enum(['FORMATTED_VALUE', 'UNFORMATTED_VALUE', 'FORMULA']).optional().describe('How cell values are rendered (gog default: FORMATTED_VALUE)'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, anchor, maxRows, render, account }) => {
+    const args = ['sheets', 'datasource', 'table', 'read', spreadsheetId, anchor];
+    if (maxRows !== undefined) args.push(`--max-rows=${maxRows}`);
+    if (render) args.push(`--render=${render}`);
+    return runOrDiagnose(args, { account });
+  });
+
 }

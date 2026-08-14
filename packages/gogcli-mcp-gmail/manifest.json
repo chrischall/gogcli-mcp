@@ -214,6 +214,18 @@
       "description": "Diff two named drafts: what each body has that the other lost, how their threading differs, and (only on a link back to the original or on agreement over unquoted text, with evidence) whether one replaced the other"
     },
     {
+      "name": "gog_gmail_drafts_reply",
+      "description": "Save a reply to a Gmail message as a draft (inherited recipients, subject and quote; never sends)"
+    },
+    {
+      "name": "gog_gmail_drafts_reply_all",
+      "description": "Save a reply-all to a Gmail message as a draft (never sends)"
+    },
+    {
+      "name": "gog_gmail_drafts_forward",
+      "description": "Save a forward of a Gmail message as a draft; recipients are optional (never sends)"
+    },
+    {
       "name": "gog_gmail_import",
       "description": "Import an RFC822/EML message into the mailbox (keeps its original headers and date; does not send)"
     },

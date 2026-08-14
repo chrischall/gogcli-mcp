@@ -80,6 +80,9 @@ Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 5
 | `gog_gmail_drafts_delete` | Delete a draft |
 | `gog_gmail_drafts_send` | Send a draft (404 → `DRAFT_FORKED`, or `GOOGLE_404_NOT_THE_DRAFT` if the draft is still listed) |
 | `gog_gmail_drafts_diff` | Diff two drafts (body divergence, threading loss, fork verdict) |
+| `gog_gmail_drafts_reply` | Save a reply as a draft — inherited recipients, subject and quote; never sends |
+| `gog_gmail_drafts_reply_all` | Save a reply-all as a draft; never sends |
+| `gog_gmail_drafts_forward` | Save a forward as a draft; recipients optional, so it can be staged without any |
 
 A draft edited in a mail client is replaced, not updated: the old id 404s. `drafts_update` / `drafts_send` answer that
 404 with a `DRAFT_FORKED` report (what happened, the drafts that exist, what to do) instead of a bare `notFound`, at a

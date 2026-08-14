@@ -319,6 +319,26 @@
     {
       "name": "gog_sheets_conditional_format_clear",
       "description": "Remove conditional formatting rules from a sheet."
+    },
+    {
+      "name": "gog_sheets_datasource_list",
+      "description": "List Connected Sheets data sources (BigQuery/Looker) with their sheet and execution status"
+    },
+    {
+      "name": "gog_sheets_datasource_describe",
+      "description": "Describe one Connected Sheets data source in full, including its query, status and refresh schedules"
+    },
+    {
+      "name": "gog_sheets_datasource_table_list",
+      "description": "List anchored data-source tables (extracts) and the A1 anchors that identify them"
+    },
+    {
+      "name": "gog_sheets_datasource_table_describe",
+      "description": "Describe the data-source table (extract) anchored at an A1 cell"
+    },
+    {
+      "name": "gog_sheets_datasource_table_read",
+      "description": "Read a bounded number of rows out of a data-source table (extract)"
     }
   ],
   "compatibility": {

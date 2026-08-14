@@ -71,10 +71,21 @@ const COUNT_PROBE_PAGE_SIZE = 500;
 // a caller is most likely to draw a false negative from. A full page with more
 // behind it yields an honest lower bound instead.
 //
-// gog cannot supply this itself: `gmail search` and `gmail messages search`
-// build their JSON by hand from the items plus nextPageToken, so a direct
-// Discovery call is the only route. It is only ever spent on a result set
-// already known to be truncated.
+// gog CAN now supply this itself — `--count` on `gmail search` / `gmail
+// messages search` (gog >= 0.36.0, openclaw/gogcli#985) is this same probe,
+// upstreamed, down to the page size and the exact/lower-bound split. The probe
+// stays here anyway, for two differences that both matter at this seam:
+//
+//   * It is spent ONLY on a result set already known to be truncated. --count
+//     is decided before the search runs, so adopting it would cost every
+//     search an extra Gmail request to answer a question most of them never
+//     raise.
+//   * It is best-effort. gog returns the count probe's error from the whole
+//     command, so a failed count would turn a search that DID succeed into an
+//     error — trading a missing warning for a missing answer.
+//
+// Keep the two in step: a change to what "exact" means on either side should
+// be made on both.
 //
 // Best-effort by construction: any failure must degrade the warning, never the
 // search.

@@ -82,3 +82,36 @@ The flow sets `include_granted_scopes=true`, so a narrow re-auth is incremental:
 requested scopes to any the account previously granted rather than replacing them. Narrowing the
 default therefore doesn't strip access the user already consented to — it only controls what the
 *new* consent screen asks for.
+
+## Scopes no `services` value can request: `extraScopes`
+
+Some scopes belong to no gog service at all, so no `services` string reaches them. The one that
+matters here is **`https://www.googleapis.com/auth/bigquery.readonly`**, which Google requires
+whenever a Sheets API response *contains* BigQuery Connected Sheets data — i.e. for every
+`gog_sheets_datasource_*` tool (gog ≥ 0.37.0). Ordinary `sheets` authorization deliberately does not
+ask for it, so an account that reads every other part of the spreadsheet still gets a permission
+error there.
+
+`gog_auth_add`, `gog_auth_add_url` and `gog_auth_add_complete` take an `extraScopes` string
+(comma-separated scope URIs) appended after the service scopes:
+
+```
+gog_auth_add_url(email, services="sheets",
+                 extraScopes="https://www.googleapis.com/auth/bigquery.readonly")
+```
+
+Two things to keep right:
+
+- **Keep the account's existing `services` selection.** Narrowing it to `sheets` while adding the
+  scope re-consents only Sheets. (`include_granted_scopes=true` means previously granted scopes
+  survive, but the consent screen the user sees is built from what you ask for.)
+- **Pass the same `extraScopes` to both remote steps.** Step 2 has to describe the same grant as
+  step 1, exactly as `services` does.
+
+`gog_auth_add` adds `--force-consent` automatically when `extraScopes` is set: Google re-prompts for
+a *new* scope only when consent is forced, so without it the flow can report success and still leave
+the scope ungranted. The two remote steps already force consent unconditionally.
+
+The `invalid_scope` caveat above applies unchanged — an extra scope whose API is not enabled on the
+OAuth client's project makes Google reject the whole authorization, in the user's browser, where the
+wrapper cannot see it. Enable the **BigQuery API** in the GCP project before asking for its scope.

@@ -1669,6 +1669,139 @@ describe('gog_gmail_reply_all', () => {
   });
 });
 
+// gog 0.36.0 (openclaw/gogcli#977) added the draft-side twins of reply /
+// reply-all / forward. The point of these tests is the SUBCOMMAND: the flag
+// handling is the send path's, shared verbatim, and a copy of it here would
+// only re-assert what the reply tests above already pin. What is new — and what
+// a regression would silently break — is that these route to `drafts <verb>`
+// and therefore never send.
+describe('gog_gmail_drafts_reply', () => {
+  it('routes to gmail drafts reply, not the sending reply', async () => {
+    await harness.callTool('gog_gmail_drafts_reply', { messageId: 'm1', body: 'Thanks' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'reply', 'm1', '--body=Thanks', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
+  it('passes the shared reply flag set through unchanged', async () => {
+    await harness.callTool('gog_gmail_drafts_reply', {
+      messageId: 'm1',
+      body: 'Hi',
+      to: ['a@b.com'],
+      cc: ['cc@x.com'],
+      remove: ['old@x.com'],
+      subject: 'New subject',
+      noQuote: true,
+      attach: ['/tmp/a.pdf'],
+      from: 'me@x.com',
+      signature: true,
+      account: 'me@gmail.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'gmail', 'drafts', 'reply', 'm1',
+        '--body=Hi',
+        '--to=a@b.com',
+        '--cc=cc@x.com',
+        '--remove=old@x.com',
+        '--subject=New subject',
+        '--no-quote',
+        '--attach=/tmp/a.pdf',
+        '--from=me@x.com',
+        '--signature',
+        '--auto-from-addressed-alias=false',
+      ],
+      { account: 'me@gmail.com' },
+    );
+  });
+
+  it('returnFull re-fetches the saved draft and never reaches the CLI as a flag', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(rawTextResult('{"draftId":"d9"}'))
+      .mockResolvedValueOnce(rawTextResult('{"id":"d9","message":{"subject":"Re: Hi"}}'));
+    const result = await harness.callTool('gog_gmail_drafts_reply', {
+      messageId: 'm1', body: 'Hi', returnFull: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(1,
+      ['gmail', 'drafts', 'reply', 'm1', '--body=Hi', '--auto-from-addressed-alias=false'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(2,
+      ['gmail', 'drafts', 'get', 'd9', '--use-indexed-attachment-ids=false'], { account: undefined });
+    expect(result.content[0].text).toContain('"subject":"Re: Hi"');
+  });
+});
+
+describe('gog_gmail_drafts_reply_all', () => {
+  it('routes to gmail drafts reply-all', async () => {
+    await harness.callTool('gog_gmail_drafts_reply_all', { messageId: 'm1', body: 'Thanks all' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'reply-all', 'm1', '--body=Thanks all', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
+  it('carries repeatable recipient removals onto the draft', async () => {
+    await harness.callTool('gog_gmail_drafts_reply_all', {
+      messageId: 'm1', body: 'Hi', remove: ['drop@y.com', 'also@y.com'],
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'gmail', 'drafts', 'reply-all', 'm1',
+        '--body=Hi',
+        '--remove=drop@y.com',
+        '--remove=also@y.com',
+        '--auto-from-addressed-alias=false',
+      ],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_drafts_forward', () => {
+  it('omits --to entirely when no recipients are given', async () => {
+    await harness.callTool('gog_gmail_drafts_forward', { messageId: 'm1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'forward', 'm1'],
+      { account: undefined },
+    );
+  });
+
+  it('passes every forward flag', async () => {
+    await harness.callTool('gog_gmail_drafts_forward', {
+      messageId: 'm1',
+      to: 'a@b.com,c@d.com',
+      cc: 'cc@x.com',
+      bcc: 'bcc@x.com',
+      note: 'FYI',
+      from: 'me@x.com',
+      skipAttachments: true,
+      account: 'me@gmail.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'gmail', 'drafts', 'forward', 'm1',
+        '--to=a@b.com,c@d.com',
+        '--cc=cc@x.com',
+        '--bcc=bcc@x.com',
+        '--note=FYI',
+        '--from=me@x.com',
+        '--skip-attachments',
+      ],
+      { account: 'me@gmail.com' },
+    );
+  });
+
+  it('returnFull re-fetches the saved forward draft', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(rawTextResult('{"draftId":"d7"}'))
+      .mockResolvedValueOnce(rawTextResult('{"id":"d7","message":{"subject":"Fwd: Hi"}}'));
+    const result = await harness.callTool('gog_gmail_drafts_forward', { messageId: 'm1', returnFull: true });
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(2,
+      ['gmail', 'drafts', 'get', 'd7', '--use-indexed-attachment-ids=false'], { account: undefined });
+    expect(result.content[0].text).toContain('"subject":"Fwd: Hi"');
+  });
+});
+
 describe('gog_gmail_autoreply', () => {
   it('calls runOrDiagnose with query and --body', async () => {
     await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks' });
