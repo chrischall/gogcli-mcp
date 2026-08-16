@@ -545,6 +545,125 @@ test('a file arg defaults to a .txt extension when ext is omitted', async () => 
   assert.match(seenArgs.at(-1), /^--body-file=.*body\.txt$/);
 });
 
+// ---------------------------------------------------------------------------
+// BINARY FILE ARGS — a caller-supplied attachment. The bytes arrive base64 on
+// the wire because JSON cannot carry them raw; the file on disk must be the
+// decoded bytes, under the caller's own basename, or gog mails out the wrong
+// name and a corrupt payload.
+// ---------------------------------------------------------------------------
+test('a base64 file arg is decoded to real bytes under the caller filename', async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0x7f]);
+  let seenArgs;
+  let onDisk;
+  await withServer(async (args) => {
+    seenArgs = args;
+    onDisk = await readFile(args.at(-1).split('=').slice(1).join('='));
+    return { stdout: '' };
+  }, async (base) => {
+    const res = await postRun(base, [
+      'gmail', 'send',
+      { kind: 'file', flag: 'attach', contents: png.toString('base64'), encoding: 'base64', filename: 'Screenshot 2026-06-13 152500.png' },
+    ]);
+    assert.equal(res.status, 200);
+  });
+  assert.ok(onDisk.equals(png), 'the file holds the decoded bytes, not the base64 text');
+  assert.match(seenArgs.at(-1), /Screenshot 2026-06-13 152500\.png$/, 'the caller basename survives, spaces included');
+});
+
+test('several attachments sharing one basename each get their own directory', async () => {
+  let seenArgs;
+  const contents = [];
+  await withServer(async (args) => {
+    seenArgs = args;
+    for (const a of args.filter((x) => x.startsWith('--attach='))) {
+      contents.push(await readFile(a.slice('--attach='.length), 'utf8'));
+    }
+    return { stdout: '' };
+  }, async (base) => {
+    const res = await postRun(base, [
+      'gmail', 'send',
+      { kind: 'file', flag: 'attach', contents: Buffer.from('first').toString('base64'), encoding: 'base64', filename: 'chart.png' },
+      { kind: 'file', flag: 'attach', contents: Buffer.from('second').toString('base64'), encoding: 'base64', filename: 'chart.png' },
+    ]);
+    assert.equal(res.status, 200);
+  });
+  assert.deepEqual(contents, ['first', 'second'], 'neither payload clobbered the other');
+  const paths = seenArgs.filter((a) => a.startsWith('--attach='));
+  assert.notEqual(paths[0], paths[1], 'distinct directories');
+});
+
+test('a positional file arg is emitted as a bare path, not --flag=path', async () => {
+  let seenArgs;
+  await withServer(async (args) => { seenArgs = args; return { stdout: '' }; }, async (base) => {
+    const res = await postRun(base, [
+      'drive', 'upload',
+      { kind: 'file', flag: 'localPath', contents: Buffer.from('hi').toString('base64'), encoding: 'base64', filename: 'notes.md', positional: true },
+    ]);
+    assert.equal(res.status, 200);
+  });
+  assert.match(seenArgs.at(-1), /\/notes\.md$/);
+  assert.ok(!seenArgs.some((a) => a.startsWith('--localPath=')), 'no flag form leaked');
+});
+
+test('a base64 file arg is capped on DECODED bytes, not on the wire string', async () => {
+  // Base64 inflates by 4/3, so capping the wire string would silently make the
+  // real ceiling ~6 MB for binary and 8 MB for text — two limits, one number.
+  let called = false;
+  await withServer(async () => { called = true; return { stdout: '' }; }, async (base) => {
+    const justOver = Buffer.alloc(MAX_FILE_ARG_BYTES + 1).toString('base64');
+    const over = await postRun(base, ['gmail', 'send', { kind: 'file', flag: 'attach', contents: justOver, encoding: 'base64', filename: 'a.bin' }]);
+    assert.equal(over.status, 400);
+    assert.match(over.json.error, /payload is \d+ bytes/);
+
+    // 7 MB decoded is ~9.3 MB of base64 — over the cap as a STRING, under it as
+    // bytes. It must be accepted.
+    const underDecodedOverEncoded = Buffer.alloc(7 * 1024 * 1024).toString('base64');
+    assert.ok(underDecodedOverEncoded.length > MAX_FILE_ARG_BYTES, 'precondition: wire string exceeds the cap');
+    const ok = await postRun(base, ['gmail', 'send', { kind: 'file', flag: 'attach', contents: underDecodedOverEncoded, encoding: 'base64', filename: 'a.bin' }]);
+    assert.equal(ok.status, 200);
+  });
+  assert.equal(called, true);
+});
+
+test('malformed binary file args are rejected before gog runs', async () => {
+  const cases = [
+    { name: 'unknown encoding', arg: { kind: 'file', flag: 'attach', contents: 'eA==', encoding: 'hex', filename: 'a.bin' } },
+    { name: 'invalid base64', arg: { kind: 'file', flag: 'attach', contents: 'not!base64!', encoding: 'base64', filename: 'a.bin' } },
+    { name: 'filename with separator', arg: { kind: 'file', flag: 'attach', contents: 'eA==', encoding: 'base64', filename: '../../etc/passwd' } },
+    { name: 'filename with backslash', arg: { kind: 'file', flag: 'attach', contents: 'eA==', encoding: 'base64', filename: 'dir\\a.bin' } },
+    { name: 'traversal filename', arg: { kind: 'file', flag: 'attach', contents: 'eA==', encoding: 'base64', filename: '..' } },
+    { name: 'NUL in filename', arg: { kind: 'file', flag: 'attach', contents: 'eA==', encoding: 'base64', filename: `a${String.fromCharCode(0)}.bin` } },
+    { name: 'empty filename', arg: { kind: 'file', flag: 'attach', contents: 'eA==', encoding: 'base64', filename: '' } },
+    { name: 'over-long filename', arg: { kind: 'file', flag: 'attach', contents: 'eA==', encoding: 'base64', filename: `${'n'.repeat(201)}.bin` } },
+    { name: 'non-boolean positional', arg: { kind: 'file', flag: 'attach', contents: 'eA==', encoding: 'base64', positional: 'yes' } },
+  ];
+  let called = false;
+  await withServer(async () => { called = true; return { stdout: '' }; }, async (base) => {
+    for (const c of cases) {
+      const res = await postRun(base, ['gmail', 'send', c.arg]);
+      assert.equal(res.status, 400, `${c.name} should be 400`);
+      assert.ok(res.json.error, `${c.name} should carry an error`);
+    }
+  });
+  assert.equal(called, false, 'execFn must never run on a malformed file arg');
+});
+
+test('a text file arg is unchanged by the binary support', async () => {
+  // The pre-existing contract: no encoding, no filename → utf8 into body.<ext>.
+  let onDisk;
+  let seenArgs;
+  await withServer(async (args) => {
+    seenArgs = args;
+    onDisk = await readFile(args.at(-1).split('=')[1], 'utf8');
+    return { stdout: '' };
+  }, async (base) => {
+    const res = await postRun(base, ['gmail', 'send', { kind: 'file', flag: 'body-file', contents: 'héllo → 世界' }]);
+    assert.equal(res.status, 200);
+  });
+  assert.equal(onDisk, 'héllo → 世界');
+  assert.match(seenArgs.at(-1), /^--body-file=.*body\.txt$/);
+});
+
 test('a file arg round-trips UTF-8 byte-for-byte', async () => {
   // Multi-byte characters are exactly why every cap is measured in bytes rather
   // than in JS string length.

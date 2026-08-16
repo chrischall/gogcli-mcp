@@ -2,8 +2,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken} from '../../../gogcli-mcp/src/lib.js';
-import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs} from '../../../gogcli-mcp/src/lib.js';
+import type { GogArg, InlineAttachmentInput } from '../../../gogcli-mcp/src/lib.js';
 
 // gog rejects an inline flag together with its --*-file twin — `gmail drafts
 // create` errors with "use only one of --body-html or --body-html-file", and
@@ -191,9 +191,29 @@ const MAGIC_SIGNATURES: ReadonlyArray<readonly [string, string]> = [
   ['GIF8', 'image/gif'],
 ];
 
+// Does this string survive a base64 decode/re-encode round trip unchanged?
+//
+// The MCP SDK validates an image block's `data` and a resource block's `blob`
+// against its own base64 schema, and a failure there is a PROTOCOL error
+// (-32602 "Invalid Base64 string") — thrown past this tool's try/catch, so the
+// caller gets a wire-level fault with no clue which attachment caused it and no
+// suggestion of what to do instead. Checking here converts that into an ordinary
+// tool result that can name the file and offer a working alternative.
+//
+// No try/catch: `Buffer.from(…, 'base64')` is total — it SKIPS characters it
+// does not recognise rather than throwing, which is precisely why a bare decode
+// cannot be used as the check and the re-encode comparison is required.
+function isValidBase64(value: string): boolean {
+  return Buffer.from(value, 'base64').toString('base64') === value;
+}
+
 // Sniff a MIME type from the leading bytes of standard base64; returns undefined
-// for anything unrecognised. gog emits standard base64, and any 4-aligned prefix
-// of a valid base64 string is itself valid, so atob never throws here.
+// for anything unrecognised.
+//
+// `atob` cannot throw here, and that is now ENFORCED rather than assumed: the
+// caller drops `contentBase64` outright when isValidBase64 rejects it, so this
+// only ever runs on a payload that round-trips — and any 4-aligned prefix of
+// valid base64 is itself valid.
 function sniffMime(base64: string): string | undefined {
   const head = atob(base64.slice(0, 16)); // 4-aligned slice; decodes to ~12 bytes
   for (const [signature, mimeType] of MAGIC_SIGNATURES) {
@@ -2288,8 +2308,28 @@ export function registerExtraGmailTools(server: McpServer): void {
       // default keeps the arg array the single authority on both transports.
       args.push(`--inline-max-bytes=${inlineMaxBytes ?? GOG_DEFAULT_INLINE_MAX_BYTES}`);
       args.push(`--out=${outPath}`, `--name=${filename ?? 'attachment'}`);
-      const info = JSON.parse(await run(args, { account })) as InlineAttachment;
+      // `contentBase64` is exempt from redaction: it is the attachment's own
+      // bytes, and a base64 blob large enough will eventually spell a token
+      // shape by chance — which used to delete a slab out of the middle of it
+      // and hand the client an "Invalid Base64 string" protocol error. See
+      // RunOptions.opaqueFields.
+      const info = JSON.parse(await run(args, { account, opaqueFields: ['contentBase64'] })) as InlineAttachment;
       const path = info.path ?? outPath;
+
+      // BACKSTOP, not the fix — the redaction exemption above is. Bytes that
+      // cannot round-trip as base64 must never be handed to the SDK, which
+      // rejects them as a -32602 protocol error the caller cannot act on. The
+      // file itself was still written server-side, so dropping the inline copy
+      // degrades to the path/Drive channel rather than losing the attachment.
+      const inlineUnusable = info.contentBase64 !== undefined && !isValidBase64(info.contentBase64);
+      if (inlineUnusable) {
+        delete info.contentBase64;
+        notes.push(
+          'The inline copy of this attachment was dropped: the bytes returned by the server were not ' +
+          'valid base64, so returning them would have failed as a protocol error. The file itself was ' +
+          'downloaded successfully and is delivered below.',
+        );
+      }
 
       // 4. Resolve the real filename/MIME when it is still unknown. gog's own
       //    --inline response carries the part metadata whenever its lookup hit, so
@@ -2326,6 +2366,13 @@ export function registerExtraGmailTools(server: McpServer): void {
           return withNote(isImage
             ? inlineImageResult(summary, info.contentBase64, mimeType)
             : inlineResourceResult(messageId, filename, summary, info.contentBase64, mimeType), notes);
+        }
+        if (inlineUnusable) {
+          return errorResult(
+            `The bytes returned for ${filename} were not valid base64, so they cannot be delivered inline ` +
+            '(the MCP transport would reject them as a protocol error). The file WAS downloaded and is ' +
+            `readable server-side at ${path}. Use deliver="auto" or deliver="drive" to receive it.`,
+          );
         }
         return errorResult(
           `Attachment is too large to return inline (${info.reason ?? "exceeds gog's inline size limit, 3 MiB by default — raise inlineMaxBytes"}). ` +
@@ -2844,7 +2891,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyTo: z.string().optional().describe('Reply-To header address'),
     quote: z.boolean().optional().describe('Include quoted original message in reply (requires replyToMessageId or replyToThreadId)'),
     replyAll: z.boolean().optional().describe('Auto-populate recipients from the original message (reply-all), inferring To/Cc from it. Requires replyToMessageId or replyToThreadId. Explicit to/cc/bcc still apply on top; omitRecipients still suppresses them.'),
-    attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Read on the gog server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all).'),
+    attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all).'),
+    attachInline: attachInlineParam,
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
     omitRecipients: z.boolean().optional().describe('Create the draft with no recipients even if to/cc/bcc are supplied — an accidental-send guard. Populate recipients in a later update before sending.'),
@@ -2866,6 +2914,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     quote?: boolean;
     replyAll?: boolean;
     attach?: string[];
+    attachInline?: InlineAttachmentInput[];
     from?: string;
     autoFromAddressedAlias?: boolean;
     omitRecipients?: boolean;
@@ -2894,6 +2943,11 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (f.replyTo) args.push(`--reply-to=${f.replyTo}`);
     if (f.quote) args.push('--quote');
     if (f.attach) for (const path of f.attach) args.push(`--attach=${path}`);
+    // Same repeatable --attach flag, but the bytes travel with the call: the
+    // executor writes each one to a temp file beside gog and passes that path.
+    // This is the only attachment route that works when the caller and gog do
+    // not share a filesystem (hosted connector, GOG_RUNNER_URL backend).
+    args.push(...inlineAttachmentArgs('attach', f.attachInline));
     if (f.from) args.push(`--from=${f.from}`);
     // PINNED, not conditional: GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS in the host env
     // silently changes which address the mail goes out FROM, with nothing in the arg
@@ -3178,7 +3232,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     remove: z.array(z.string()).optional().describe('Remove these recipients from all fields (repeatable) — e.g. to drop someone from a reply-all.'),
     subject: z.string().optional().describe('Override reply subject (default: "Re: <original>"). A changed subject starts a NEW Gmail thread.'),
     noQuote: z.boolean().optional().describe('Do not include the original message quoted below the reply (default: the original is quoted)'),
-    attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Read on the gog server, base64-encoded with a MIME type inferred from the extension.'),
+    attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension.'),
+    attachInline: attachInlineParam,
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
     signature: z.boolean().optional().describe('Append the Gmail signature from the active send-as address'),
@@ -3198,6 +3253,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     subject?: string;
     noQuote?: boolean;
     attach?: string[];
+    attachInline?: InlineAttachmentInput[];
     from?: string;
     autoFromAddressedAlias?: boolean;
     signature?: boolean;
@@ -3217,6 +3273,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (f.subject) args.push(`--subject=${f.subject}`);
     if (f.noQuote) args.push('--no-quote');
     if (f.attach) for (const p of f.attach) args.push(`--attach=${p}`);
+    args.push(...inlineAttachmentArgs('attach', f.attachInline)); // see appendDraftFlags
     if (f.from) args.push(`--from=${f.from}`);
     if (f.signature) args.push('--signature');
     if (f.signatureFrom) args.push(`--signature-from=${f.signatureFrom}`);

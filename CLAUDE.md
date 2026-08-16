@@ -87,6 +87,48 @@ spawned.
 
 `runner.ts` treats unresolved `.mcpb` placeholders (`${user_config.xxx}`) and empty strings as unset — useful for desktop clients that pass blank user-config fields through literally.
 
+### Redaction vs. binary payloads
+
+Redaction is for **prose**. A base64 blob is uniformly-distributed bytes over a
+64-character alphabet, so given enough of it, it *will* spell a short secret
+shape by chance — `1//` (a Google refresh token) has an expected ~0.37
+occurrences in a 72 KiB attachment, i.e. it corrupted roughly **30%** of inline
+attachments and surfaced as an MCP `-32602 "Invalid Base64 string"` at the
+client. Two defences, both needed:
+
+1. **`TOKEN_LEFT_BOUNDARY`** — every Google token pattern is anchored on a
+   non-base64 character (or start of string) to its left. A real token is always
+   delimited; a mid-blob false positive never is.
+2. **`RunOptions.opaqueFields`** — names JSON fields whose values are opaque
+   payloads (`contentBase64`), lifted out before redaction and restored after.
+   Only values that are *entirely* base64 alphabet qualify, it is opt-in per
+   call, and it never applies on the error path. This covers the class, so a new
+   pattern added to mcp-utils cannot silently re-break attachments.
+
+When adding a tool that returns caller-requested bytes through `run()`, pass
+`opaqueFields`. Bytes that would still be invalid must never reach an `image`/
+`resource` block — validate and degrade to a path/Drive delivery instead, since
+an SDK base64 rejection is a protocol fault the caller cannot act on.
+
+### Outbound attachments (`src/attachments.ts`)
+
+Every gog attachment input is a **path resolved where gog runs**, which is
+unreachable whenever the caller and gog share no filesystem (hosted connector,
+any `GOG_RUNNER_URL` backend). `attachInline` / `content` carry the bytes
+instead, riding the existing `GogFileArg` temp-file seam — now with
+`encoding: 'base64'`, an exact `filename` (gog reads an attachment's MIME
+filename off the path), and `positional` for `gog drive upload <localPath>`.
+Ceilings are enforced in the tool layer so the error names the file rather than
+arriving from a transport the caller cannot see, and **both are derived from the
+Fly runner's own constants** rather than picked: 8 MiB per file mirrors
+`MAX_FILE_ARG_BYTES`, and the per-message total is computed backwards from
+`MAX_BODY_BYTES` (32 MiB) because payloads travel base64-encoded inside one JSON
+body — a limit stated in decoded bytes has to absorb the 4/3 inflation or it
+documents a size the runner rejects. Restate a runner constant here and keep the
+two in sync; the alternative is importing a package the Worker bundle must not
+pull in. Each payload is materialized into its **own** numbered subdirectory, so
+repeated `--attach` with colliding basenames is safe.
+
 Every gog response passes through `normalizeTimestamps` (`src/timestamps.ts`) on the `runOrDiagnose` seam, which rewrites allowlisted timestamp fields to ISO-8601 with an explicit offset and adds a `<field>Display` sibling. Both the key and the value shape must match before anything is rewritten — a name-only match would corrupt spreadsheet cell data. See [`docs/timestamps.md`](docs/timestamps.md).
 
 `GOG_READONLY` is a global kill-switch: when set to any value other than `0`/`false`/`no`/`off`, `runner.ts` adds gog's `--readonly` flag to every call so mutating API requests are refused at runtime. gog has no native env binding for `--readonly`, so the wrapper translates the env var into the flag; callers can also opt in per-call via the `readonly` option on `RunOptions`.

@@ -104,6 +104,85 @@ describe('gog_drive_upload', () => {
     expect(lib.runOrDiagnose).not.toHaveBeenCalled();
   });
 
+  // ==========================================================================
+  // INLINE CONTENT — uploading a file the caller holds but the gog server does
+  // not, which is every remote deployment. `content` replaces the positional
+  // localPath with a temp file the executor materializes beside gog.
+  // ==========================================================================
+  describe('content (inline bytes)', () => {
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64');
+
+    it('materializes content as the POSITIONAL path argument', async () => {
+      await harness.callTool('gog_drive_upload', { content: PNG, name: 'pendant-layouts.png' });
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        [
+          'drive', 'upload',
+          { kind: 'file', flag: 'localPath', contents: PNG, encoding: 'base64', filename: 'pendant-layouts.png', positional: true },
+          '--name=pendant-layouts.png',
+        ],
+        { account: undefined },
+      );
+    });
+
+    it('carries the caller mimeType through, which gog CAN honour here', async () => {
+      await harness.callTool('gog_drive_upload', { content: PNG, name: 'a.png', mimeType: 'image/png' });
+      const args = vi.mocked(lib.runOrDiagnose).mock.calls[0][0];
+      expect(args).toContain('--mime-type=image/png');
+    });
+
+    it('rejects supplying BOTH localPath and content — never a precedence rule', async () => {
+      const result = await harness.callTool('gog_drive_upload', { localPath: '/tmp/x.png', content: PNG, name: 'x.png' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/Pass exactly one of localPath or content/);
+      expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    });
+
+    it('rejects supplying NEITHER localPath nor content', async () => {
+      const result = await harness.callTool('gog_drive_upload', { name: 'x.png' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/Pass exactly one of localPath or content/);
+      expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    });
+
+    it('requires name with content, since there is no path to derive it from', async () => {
+      const result = await harness.callTool('gog_drive_upload', { content: PNG });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/content requires name/);
+      expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid base64 rather than uploading a corrupt file', async () => {
+      const result = await harness.callTool('gog_drive_upload', { content: 'not!base64!', name: 'a.png' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/not valid base64/);
+      expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    });
+
+    it('rejects content over the 8 MiB ceiling with a message naming the limit', async () => {
+      const result = await harness.callTool('gog_drive_upload', {
+        content: Buffer.alloc(8 * 1024 * 1024 + 1).toString('base64'),
+        name: 'huge.bin',
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/per-file limit/);
+      expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    });
+
+    it('keeps a spaced, non-ASCII name intact as the Drive filename', async () => {
+      await harness.callTool('gog_drive_upload', { content: PNG, name: 'Reçu — étude 2026.png' });
+      const args = vi.mocked(lib.runOrDiagnose).mock.calls[0][0];
+      expect(args[2]).toMatchObject({ filename: 'Reçu — étude 2026.png' });
+      expect(args).toContain('--name=Reçu — étude 2026.png');
+    });
+
+    // The existing path-based contract must be untouched: a plain string
+    // positional, no file arg, for every local stdio caller that has one.
+    it('leaves the localPath path unchanged', async () => {
+      await harness.callTool('gog_drive_upload', { localPath: '/tmp/x.txt' });
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'upload', '/tmp/x.txt'], { account: undefined });
+    });
+  });
+
   // No gog read command surfaces the Drive `version` int: driveFileGetFields
   // and info_via_drive.go both omit it, and `drive upload` itself is the only
   // caller that requests it. `drive raw` (fields=*) is the sole way to read it,

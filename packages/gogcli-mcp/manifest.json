@@ -110,7 +110,7 @@
     },
     {
       "name": "gog_gmail_send",
-      "description": "Send an email"
+      "description": "Send an email, with attachments from server-side paths (attach) or from base64 bytes sent with the call (attachInline, for remote deployments with no shared filesystem)"
     },
     {
       "name": "gog_gmail_run",

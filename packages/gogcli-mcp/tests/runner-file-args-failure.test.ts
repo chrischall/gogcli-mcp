@@ -8,11 +8,13 @@ import type { Spawner } from '../src/runner.js';
 // its own file because the mock would defeat the byte-level round-trip
 // assertions in runner-file-args.test.ts.
 const mkdtemp = vi.fn(async () => '/tmp/gogcli-mcp-fake');
+const mkdir = vi.fn(async () => undefined);
 const writeFile = vi.fn(async () => {});
 const rm = vi.fn(async () => {});
 
 vi.mock('node:fs/promises', () => ({
   mkdtemp: (...args: unknown[]) => mkdtemp(...(args as [])),
+  mkdir: (...args: unknown[]) => mkdir(...(args as [])),
   writeFile: (...args: unknown[]) => writeFile(...(args as [])),
   rm: (...args: unknown[]) => rm(...(args as [])),
 }));
@@ -36,9 +38,11 @@ const fileArg = { kind: 'file', flag: 'body-file', contents: 'payload' } as cons
 describe('temp-file materialization failures', () => {
   beforeEach(() => {
     mkdtemp.mockClear();
+    mkdir.mockClear();
     writeFile.mockClear();
     rm.mockClear();
     rm.mockImplementation(async () => {});
+    mkdir.mockImplementation(async () => undefined);
     writeFile.mockImplementation(async () => {});
   });
 
@@ -83,12 +87,53 @@ describe('temp-file materialization failures', () => {
     await expect(run(['gmail', 'send', fileArg], { spawner })).rejects.toThrow('gog: invalid draft');
   });
 
-  it('writes the payload with mode 0600 and utf8 encoding', async () => {
+  it('writes the payload as owner-only utf8 bytes', async () => {
     await run(['gmail', 'send', fileArg], { spawner: okSpawner() });
     expect(writeFile).toHaveBeenCalledWith(
       expect.stringContaining('body-file.txt'),
-      'payload',
-      { encoding: 'utf8', mode: 0o600 },
+      Buffer.from('payload', 'utf8'),
+      { mode: 0o600 },
     );
+    // Each payload lands in its own numbered subdirectory of the temp dir, so a
+    // caller-chosen basename can never clobber another payload's.
+    expect(mkdir).toHaveBeenCalledWith('/tmp/gogcli-mcp-fake/0', { recursive: true, mode: 0o700 });
+  });
+
+  it('decodes a base64 payload to real bytes and honours a caller filename', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    await run([
+      'gmail', 'send',
+      { kind: 'file', flag: 'attach', contents: png.toString('base64'), encoding: 'base64', filename: 'Screenshot 2026-06-13 152500.png' },
+    ], { spawner: okSpawner() });
+    expect(writeFile).toHaveBeenCalledWith(
+      '/tmp/gogcli-mcp-fake/0/Screenshot 2026-06-13 152500.png',
+      png,
+      { mode: 0o600 },
+    );
+  });
+
+  it('gives each file arg its own subdirectory so identical basenames survive', async () => {
+    const spawner = okSpawner();
+    await run([
+      'gmail', 'send',
+      { kind: 'file', flag: 'attach', contents: 'YQ==', encoding: 'base64', filename: 'chart.png' },
+      { kind: 'file', flag: 'attach', contents: 'Yg==', encoding: 'base64', filename: 'chart.png' },
+    ], { spawner });
+    const written = writeFile.mock.calls.map((c) => c[0]);
+    expect(written).toEqual(['/tmp/gogcli-mcp-fake/0/chart.png', '/tmp/gogcli-mcp-fake/1/chart.png']);
+    // Both survive as distinct --attach values rather than one clobbering the other.
+    const argv = (spawner as unknown as { mock: { calls: [string, string[]][] } }).mock.calls[0][1];
+    expect(argv.filter((a) => a.startsWith('--attach='))).toHaveLength(2);
+  });
+
+  it('emits a positional file arg as a bare path, not --flag=path', async () => {
+    const spawner = okSpawner();
+    await run([
+      'drive', 'upload',
+      { kind: 'file', flag: 'localPath', contents: 'YQ==', encoding: 'base64', filename: 'notes.md', positional: true },
+    ], { spawner });
+    const argv = (spawner as unknown as { mock: { calls: [string, string[]][] } }).mock.calls[0][1];
+    expect(argv).toContain('/tmp/gogcli-mcp-fake/0/notes.md');
+    expect(argv.some((a) => a.startsWith('--localPath='))).toBe(false);
   });
 });
