@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, pageTokenParam, pageAliasParam, resolvePageToken} from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, pageTokenParam, pageAliasParam, resolvePageToken, inlineFileArg} from '../../../gogcli-mcp/src/lib.js';
+import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_download', {
@@ -23,7 +24,10 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_upload', {
     description:
-      'Upload a local file to Drive. Use replace to replace the content of an existing file (preserves link/permissions), ' +
+      'Upload a file to Drive. Supply it EITHER as localPath (a path on the gog server\'s own filesystem — local ' +
+      'stdio deployments only) OR as content (the bytes, base64-encoded, carried with the request), which is what ' +
+      'works when this server runs remotely from you and no path you can name exists on it. ' +
+      'Use replace to replace the content of an existing file (preserves link/permissions), ' +
       'or convert to auto-convert to a Google format. ' +
       'Pair replace with ifVersion to make the overwrite conditional: gog sends an atomic If-Match precondition and reports ' +
       'a conflict — applying nothing — if the file changed since you read it, instead of silently clobbering a concurrent edit. ' +
@@ -32,7 +36,8 @@ export function registerExtraDriveTools(server: McpServer): void {
       'Conditional replacement refuses Google Workspace files (Docs/Sheets/Slides), which have no replaceable binary content.',
     annotations: { destructiveHint: true },
     inputSchema: {
-      localPath: z.string().describe('Path to the local file to upload'),
+      localPath: z.string().optional().describe('Path to the file to upload, resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend this path does not exist and the call fails with "no such file or directory" — use content there. Exactly one of localPath / content is required.'),
+      content: z.string().optional().describe('The file\'s bytes, base64-encoded (standard alphabet, with padding) — upload a file you hold without it existing anywhere on the gog server. This is the only route that works when the caller and gog share no filesystem. Requires name (there is no path to take a filename from). Max 8 MiB; for anything larger use localPath from a local deployment. Exactly one of localPath / content is required — supplying both is an error, not a precedence rule.'),
       name: z.string().optional().describe('Override filename (create) or rename target (replace)'),
       parent: z.string().optional().describe('Destination folder ID (create only)'),
       replace: z.string().optional().describe('Replace content of an existing Drive file ID (preserves link/permissions). Unconditional unless ifVersion is set.'),
@@ -47,11 +52,37 @@ export function registerExtraDriveTools(server: McpServer): void {
       convertTo: z.string().optional().describe('Convert to a specific Google format: doc | sheet | slides (create only)'),
       account: accountParam,
     },
-  }, async ({ localPath, name, parent, replace, ifVersion, mimeType, keepRevisionForever, convert, convertTo, account }) => {
+  }, async ({ localPath, content, name, parent, replace, ifVersion, mimeType, keepRevisionForever, convert, convertTo, account }) => {
     if (ifVersion !== undefined && !replace) {
       throw new Error('ifVersion requires replace: a version precondition only applies when replacing an existing Drive file.');
     }
-    const args = ['drive', 'upload', localPath];
+    // Explicit either/or, never a precedence rule: a caller who sends both has
+    // two different files in mind and silently picking one would upload the
+    // wrong bytes under the right name.
+    if ((localPath === undefined) === (content === undefined)) {
+      throw new Error(
+        'Pass exactly one of localPath or content. localPath reads a file on the GOG SERVER\'s filesystem '
+        + '(local stdio deployments only); content carries the bytes with the request, base64-encoded, and '
+        + 'is what works when this server runs remotely from you.',
+      );
+    }
+    // The positional <localPath> argument: either the caller's real server-side
+    // path, or a temp file the executor materializes next to gog from the bytes
+    // they sent. gog cannot tell the two apart, which is the point.
+    let pathArg: GogArg;
+    if (localPath !== undefined) {
+      pathArg = localPath;
+    } else {
+      if (!name) {
+        throw new Error('content requires name: there is no path to derive the Drive filename from.');
+      }
+      pathArg = inlineFileArg(
+        'localPath',
+        { filename: name, contentBase64: content as string },
+        { positional: true, where: 'content' },
+      ).arg;
+    }
+    const args: GogArg[] = ['drive', 'upload', pathArg];
     if (name) args.push(`--name=${name}`);
     if (parent) args.push(`--parent=${parent}`);
     if (replace) args.push(`--replace=${replace}`);

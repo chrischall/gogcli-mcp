@@ -27,6 +27,19 @@ export { finalizeGmailSearch, fetchGmailPages } from './gmail-results.js';
 export type { FinalizeOptions, GmailListMethod } from './gmail-results.js';
 export { useRemoteGogRunner } from './remote-runner.js';
 export type { RunOptions, Spawner, GogExecutor, GogArg, GogFileArg } from './runner.js';
+// Caller-supplied attachment bytes — the only outbound attachment path that
+// works when the caller and gog share no filesystem (hosted connector, or any
+// GOG_RUNNER_URL backend). See src/attachments.ts.
+export {
+  attachInlineParam,
+  inlineAttachmentSchema,
+  inlineAttachmentArgs,
+  inlineFileArg,
+  INLINE_ATTACHMENT_LIMITS_TEXT,
+  MAX_INLINE_ATTACHMENT_BYTES,
+  MAX_INLINE_ATTACHMENT_TOTAL_BYTES,
+} from './attachments.js';
+export type { InlineAttachmentInput } from './attachments.js';
 export {
   PAYLOAD_INLINE_MAX,
   payloadArg,

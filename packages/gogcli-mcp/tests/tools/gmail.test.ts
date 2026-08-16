@@ -279,6 +279,95 @@ describe('gog_gmail_send', () => {
     );
   });
 
+  // ==========================================================================
+  // INLINE ATTACHMENT BYTES — for callers with no filesystem in common with gog
+  // (the hosted connector, any GOG_RUNNER_URL backend). The bytes ride with the
+  // call and the executor materializes them beside gog.
+  // ==========================================================================
+  it('turns attachInline bytes into repeatable --attach file args', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64');
+    await harness.callTool('gog_gmail_send', {
+      to: 'bob@example.com',
+      subject: 'Layouts',
+      body: 'See attached',
+      attachInline: [{ filename: 'pendant-layouts.png', contentBase64: png }],
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', 'send',
+        '--to=bob@example.com', '--subject=Layouts', '--body=See attached',
+        { kind: 'file', flag: 'attach', contents: png, encoding: 'base64', filename: 'pendant-layouts.png' },
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('combines server-side paths and inline bytes on one message', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const bytes = Buffer.from('hello').toString('base64');
+    await harness.callTool('gog_gmail_send', {
+      to: 'bob@example.com',
+      subject: 'Both',
+      body: 'x',
+      attach: ['/tmp/on-server.pdf'],
+      attachInline: [{ filename: 'from-client.txt', contentBase64: bytes }],
+    });
+    const args = vi.mocked(runner.run).mock.calls[0][0];
+    expect(args).toContain('--attach=/tmp/on-server.pdf');
+    expect(args).toContainEqual(
+      { kind: 'file', flag: 'attach', contents: bytes, encoding: 'base64', filename: 'from-client.txt' },
+    );
+  });
+
+  it('keeps a filename with spaces and non-ASCII intact end to end', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const filename = 'Reçu — étude 2026.png';
+    await harness.callTool('gog_gmail_send', {
+      to: 'bob@example.com', subject: 's', body: 'b',
+      attachInline: [{ filename, contentBase64: Buffer.from('x').toString('base64') }],
+    });
+    const args = vi.mocked(runner.run).mock.calls[0][0];
+    expect(args.at(-1)).toMatchObject({ filename });
+  });
+
+  it('surfaces an invalid-base64 attachment as a readable error, not a corrupt send', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_gmail_send', {
+      to: 'bob@example.com', subject: 's', body: 'b',
+      attachInline: [{ filename: 'a.png', contentBase64: 'not!valid!base64!' }],
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/not valid base64/);
+    expect(runner.run).not.toHaveBeenCalled(); // nothing was sent
+  });
+
+  it('rejects an oversize attachment before the call rather than deep in the stack', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_gmail_send', {
+      to: 'bob@example.com', subject: 's', body: 'b',
+      attachInline: [{ filename: 'huge.bin', contentBase64: Buffer.alloc(8 * 1024 * 1024 + 1).toString('base64') }],
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/per-file limit/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('leaves the arg list untouched when attachInline is absent', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_send', { to: 'b@e.com', subject: 'Hi', body: 'Hello' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['gmail', 'send', '--to=b@e.com', '--subject=Hi', '--body=Hello'],
+      { account: undefined },
+    );
+  });
+
   // A body over the shared threshold cannot ride in argv (the hosted runner
   // caps a single arg; Linux caps MAX_ARG_STRLEN at 128 KiB), so payloadArg
   // swaps it for a file arg the executor materializes as a temp file.

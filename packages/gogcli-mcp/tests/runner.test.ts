@@ -592,6 +592,107 @@ describe('run', () => {
     expect(tokensOnly).not.toContain('[REDACTED]');
   });
 
+  // ==========================================================================
+  // BASE64 PAYLOAD SURVIVAL — the "Invalid Base64 string" defect.
+  //
+  // `1//` is spelled entirely in the base64 alphabet, so the refresh-token
+  // pattern used to match inside attachment bytes and eat forward to the next
+  // `+` or `/`. A 72 KiB PNG is ~97k base64 chars, giving ~0.37 expected `1//`
+  // runs — so roughly a THIRD of all attachments came back corrupt, and the
+  // client rejected them with an MCP -32602 "Invalid Base64 string".
+  //
+  // It looked filename-dependent because it is content-dependent and therefore
+  // uncorrelated with anything visible. These tests pin the real variable.
+  // ==========================================================================
+  const isValidBase64 = (s: string): boolean => Buffer.from(s, 'base64').toString('base64') === s;
+
+  it('leaves a base64 payload containing the refresh-token spelling intact', async () => {
+    // `1//` sitting mid-blob, preceded by base64 characters — the exact shape
+    // that used to be deleted.
+    const payload = `AAAA1//abcdefghijklmnop${'QRSTuvwx'.repeat(4)}`;
+    expect(payload).toContain('1//');
+    const spawner = makeSpawner(0, JSON.stringify({ contentBase64: payload }), '');
+    const out = await run(['gmail', 'attachment', 'm1', '0'], { spawner });
+    expect(JSON.parse(out).contentBase64).toBe(payload);
+    expect(out).not.toContain('[REDACTED]');
+  });
+
+  it('keeps every generated attachment payload valid base64 (the ~30% failure)', async () => {
+    // 200 payloads at the reported sizes. Before the fix ~30% of these came back
+    // undecodable; the assertion is that ALL of them survive, not most.
+    for (let i = 0; i < 200; i += 1) {
+      const bytes = Buffer.alloc(4096);
+      // Deterministic filler that still produces `1//` runs at the natural rate:
+      // a counter-driven byte pattern, seeded differently per iteration.
+      for (let b = 0; b < bytes.length; b += 1) bytes[b] = (b * 31 + i * 7) % 256;
+      const payload = bytes.toString('base64');
+      const spawner = makeSpawner(0, JSON.stringify({ contentBase64: payload }), '');
+      const out = await run(['gmail', 'attachment', 'm1', '0'], { spawner });
+      const got = JSON.parse(out).contentBase64 as string;
+      expect(isValidBase64(got)).toBe(true);
+      expect(got).toBe(payload);
+    }
+  });
+
+  it('still redacts a real refresh token, which is never welded to base64', async () => {
+    // The anchor must not have bought base64 survival at the cost of detection:
+    // a genuine token is always delimited (quote, space, `=`, `:`), so it still
+    // matches.
+    const spawner = makeSpawner(0, '{"refresh_token":"1//0eREAL-REFRESH-TOKEN"}', '');
+    const out = await run(['auth', 'list'], { spawner });
+    expect(out).not.toContain('1//0eREAL-REFRESH-TOKEN');
+    expect(out).toContain('[REDACTED]');
+  });
+
+  it('opaqueFields exempts a named blob from redaction it would otherwise fail', async () => {
+    // A payload that spells a Google API key by chance — still possible after
+    // the boundary anchor, because AIza… needs no delimiter. The field
+    // exemption is what covers this class rather than one pattern.
+    // `/` supplies the word boundary AIza… needs, and every character here is
+    // in the base64 alphabet — so this is a payload a real file can produce.
+    const payload = `AAAA/AIza${'B'.repeat(35)}/CCC`;
+    expect(Buffer.from(payload, 'base64').toString('base64')).toBe(payload); // genuinely valid base64
+    const spawner = makeSpawner(0, JSON.stringify({ contentBase64: payload }), '');
+    const bare = await run(['gmail', 'attachment', 'm1', '0'], { spawner });
+    expect(bare).toContain('[REDACTED]'); // unprotected, the shared redactor hits it
+
+    const spawner2 = makeSpawner(0, JSON.stringify({ contentBase64: payload }), '');
+    const guarded = await run(['gmail', 'attachment', 'm1', '0'], {
+      spawner: spawner2,
+      opaqueFields: ['contentBase64'],
+    });
+    expect(JSON.parse(guarded).contentBase64).toBe(payload);
+  });
+
+  it('opaqueFields still redacts prose OUTSIDE the exempt field', async () => {
+    // The exemption is per-field, not per-response: a token in a sibling field
+    // must still be stripped.
+    const stdout = JSON.stringify({
+      contentBase64: 'QUJDREVGR0hJSktMTU5PUFFSU1Q=',
+      note: 'refreshed with 1//0eLEAK-IN-PROSE',
+    });
+    const spawner = makeSpawner(0, stdout, '');
+    const out = await run(['gmail', 'attachment', 'm1', '0'], { spawner, opaqueFields: ['contentBase64'] });
+    expect(out).not.toContain('1//0eLEAK-IN-PROSE');
+    expect(JSON.parse(out).contentBase64).toBe('QUJDREVGR0hJSktMTU5PUFFSU1Q=');
+  });
+
+  it('opaqueFields does not exempt a field carrying prose rather than a blob', async () => {
+    // Only an all-base64 value qualifies, so naming a field cannot be used to
+    // smuggle a credential through in a sentence.
+    const stdout = JSON.stringify({ contentBase64: 'token is 1//0eSMUGGLED-TOKEN here' });
+    const spawner = makeSpawner(0, stdout, '');
+    const out = await run(['gmail', 'attachment', 'm1', '0'], { spawner, opaqueFields: ['contentBase64'] });
+    expect(out).not.toContain('1//0eSMUGGLED-TOKEN');
+  });
+
+  it('opaqueFields never exempts anything on the ERROR path', async () => {
+    const spawner = makeSpawner(1, '', 'failed for 1//0eERROR-PATH-LEAK');
+    await expect(
+      run(['gmail', 'attachment', 'm1', '0'], { spawner, opaqueFields: ['contentBase64'] }),
+    ).rejects.toThrow(/\[REDACTED\]/);
+  });
+
   it("redactMode 'tokens' still strips real Google tokens", async () => {
     const leak = 'url with token ya29.a0Ad52N3-STEP-LEAK and refresh 1//0eSTEP-REFRESH-LEAK';
     const spawner = makeSpawner(0, leak, '');

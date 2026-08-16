@@ -322,6 +322,106 @@ describe('gog_gmail_attachment', () => {
     await call({});
     expect((vi.mocked(lib.diagnose).mock.calls[0][0] as Error).message).toBe('the download failed on the server');
   });
+
+  // ==========================================================================
+  // FILENAME INDEPENDENCE — the defect reported as "inline delivery fails on
+  // filenames containing spaces".
+  //
+  // It was never the filename. The runner spawns an argv ARRAY (never a shell),
+  // so a space has nothing to split; the real variable was the base64 content
+  // colliding with a redaction pattern. These lock in that names with spaces,
+  // non-ASCII and punctuation all deliver inline, and that the download args
+  // carry each name as ONE element.
+  // ==========================================================================
+  describe('filename independence', () => {
+    const NAMES = [
+      'image.png',
+      'Screenshot 2026-06-13 152500.png',
+      'Reçu — étude, final (v2).png',
+      "quote'and\"double.png",
+      'ファイル 名前.png',
+    ];
+
+    for (const filename of NAMES) {
+      it(`delivers ${JSON.stringify(filename)} inline as an image`, async () => {
+        // Indexed mode resolves the real name BEFORE the download, so the name
+        // is what gets handed to gog — the strongest form of this assertion.
+        stubGog({
+          meta: { attachments: [{ filename, mimeType: 'image/png', size: 24, attachmentIndex: 0 }] },
+          download: { path: `/tmp/gog-attachments/m1/${filename}`, bytes: 24, contentBase64: PNG_B64, filename, mimeType: 'image/png' },
+        });
+        const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0 });
+        const image = res.content.find((c) => c.type === 'image') as { data: string; mimeType: string };
+        expect(image).toBeDefined();
+        expect(image.data).toBe(PNG_B64);
+        // The name reaches gog as a SINGLE argv element, spaces and all.
+        expect(dlArgs()).toContain(`--name=${filename}`);
+        expect(dlArgs()).toContain(`--out=/tmp/gog-attachments/m1/${filename}`);
+        expect((res.content[0] as { text: string }).text).toContain(filename);
+      });
+    }
+
+    it('passes a spaced --out path as one argv element, never split on whitespace', async () => {
+      const filename = 'Screenshot 2026-06-13 152500.png';
+      stubGog({ download: { bytes: 24, contentBase64: PNG_B64, filename, mimeType: 'image/png' } });
+      await call({ name: filename });
+      const args = dlArgs();
+      expect(args).toContain(`--out=/tmp/gog-attachments/m1/${filename}`);
+      // If anything had split on spaces these would appear as separate elements.
+      expect(args).not.toContain('2026-06-13');
+      expect(args).not.toContain('152500.png');
+    });
+  });
+
+  // The bytes are exempted from redaction at the runner seam; this asserts the
+  // tool actually asks for that exemption, which is the thing that keeps a
+  // `1//`-containing PNG from arriving corrupt.
+  it('requests the contentBase64 redaction exemption on the download', async () => {
+    stubGog({ download: { bytes: 24, contentBase64: PNG_B64, filename: 'a.png', mimeType: 'image/png' } });
+    await call({});
+    const call0 = vi.mocked(lib.run).mock.calls.find((c) => (c[0] as string[])[1] === 'attachment')!;
+    expect(call0[1]).toMatchObject({ opaqueFields: ['contentBase64'] });
+  });
+
+  // Belt-and-braces: if bytes ever do arrive unusable, the caller must get a
+  // readable tool result, not an MCP -32602 protocol fault they cannot act on.
+  it('degrades to the file path when the returned bytes are not valid base64', async () => {
+    stubGog({
+      meta: PNG_LIST,
+      download: { path: '/tmp/gog-attachments/m1/photo.png', bytes: 24, contentBase64: 'not!valid!base64!', filename: 'photo.png', mimeType: 'image/png' },
+    });
+    const res = await call({});
+    expect(res.content.some((c) => c.type === 'image')).toBe(false);
+    expect(textOf(res)).toContain('not valid base64');
+    expect(JSON.stringify(res)).toContain('/tmp/gog-attachments/m1/photo.png');
+  });
+
+  // The MIME sniff decodes the leading bytes. On an unusable payload that decode
+  // is the FIRST thing to fail, and it must not be what surfaces — the caller's
+  // problem is the payload, not the sniff.
+  it('survives a MIME sniff of unusable bytes instead of throwing out of the sniff', async () => {
+    stubGog({
+      meta: { attachments: [] }, // nothing to resolve a MIME type from
+      download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 4, contentBase64: '!!!!' },
+    });
+    const res = await call({});
+    expect(res.isError).toBeUndefined();
+    // content[0] is the dropped-inline note; the delivery payload follows it.
+    const payload = JSON.parse((res.content.at(-1) as { text: string }).text);
+    expect(payload.mimeType).toBe('application/octet-stream');
+    expect(payload.fileName).toBe('attachment');
+  });
+
+  it('explains itself rather than throwing when deliver=inline gets unusable bytes', async () => {
+    stubGog({
+      meta: PNG_LIST,
+      download: { path: '/tmp/gog-attachments/m1/photo.png', bytes: 24, contentBase64: '!!!!', filename: 'photo.png', mimeType: 'image/png' },
+    });
+    const res = await call({ deliver: 'inline' });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toContain('not valid base64');
+    expect(textOf(res)).toContain('/tmp/gog-attachments/m1/photo.png');
+  });
 });
 
 describe('gog_gmail_url', () => {
@@ -1288,6 +1388,69 @@ describe('gog_gmail_drafts_create', () => {
       ],
       { account: undefined },
     );
+  });
+
+  // ==========================================================================
+  // INLINE ATTACHMENT BYTES on drafts — the outbound half of the "no shared
+  // filesystem" defect. `attach` paths resolve on the gog server and are
+  // unreachable from a remote caller; attachInline carries the bytes instead.
+  // ==========================================================================
+  it('turns attachInline into repeatable --attach file args on drafts_create', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64');
+    await harness.callTool('gog_gmail_drafts_create', {
+      subject: 'Layouts',
+      body: 'See attached',
+      attachInline: [{ filename: 'pendant-layouts.png', contentBase64: png }],
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      [
+        'gmail', 'drafts', 'create', '--subject=Layouts', '--body=See attached',
+        { kind: 'file', flag: 'attach', contents: png, encoding: 'base64', filename: 'pendant-layouts.png' },
+        '--auto-from-addressed-alias=false',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('keeps attach paths and attachInline bytes side by side, in that order', async () => {
+    const bytes = Buffer.from('hello').toString('base64');
+    await harness.callTool('gog_gmail_drafts_create', {
+      subject: 'S', body: 'B',
+      attach: ['/tmp/on-server.pdf'],
+      attachInline: [{ filename: 'from-client.txt', contentBase64: bytes }],
+    });
+    const args = vi.mocked(lib.runOrDiagnose).mock.calls[0][0];
+    expect(args).toContain('--attach=/tmp/on-server.pdf');
+    expect(args).toContainEqual({ kind: 'file', flag: 'attach', contents: bytes, encoding: 'base64', filename: 'from-client.txt' });
+  });
+
+  it('supports attachInline on drafts_update too', async () => {
+    const bytes = Buffer.from('v2').toString('base64');
+    await harness.callTool('gog_gmail_drafts_update', {
+      draftId: 'd1', subject: 'S', body: 'B',
+      attachInline: [{ filename: 'revised.pdf', contentBase64: bytes }],
+    });
+    const args = vi.mocked(lib.runOrDiagnose).mock.calls[0][0];
+    expect(args).toContainEqual({ kind: 'file', flag: 'attach', contents: bytes, encoding: 'base64', filename: 'revised.pdf' });
+  });
+
+  it('preserves a filename with spaces on the way to gog', async () => {
+    await harness.callTool('gog_gmail_drafts_create', {
+      subject: 'S', body: 'B',
+      attachInline: [{ filename: 'Screenshot 2026-06-13 152500.png', contentBase64: Buffer.from('x').toString('base64') }],
+    });
+    const args = vi.mocked(lib.runOrDiagnose).mock.calls[0][0];
+    expect(args.find((a) => typeof a !== 'string')).toMatchObject({ filename: 'Screenshot 2026-06-13 152500.png' });
+  });
+
+  it('rejects an invalid inline attachment without writing a draft', async () => {
+    const res = await harness.callTool('gog_gmail_drafts_create', {
+      subject: 'S', body: 'B',
+      attachInline: [{ filename: '../escape.png', contentBase64: Buffer.from('x').toString('base64') }],
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content[0] as { text: string }).text).toMatch(/must be a bare filename, not a path/);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
   });
 
   it('passes --body-html-file when bodyHtmlFile is supplied', async () => {

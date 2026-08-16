@@ -61,6 +61,19 @@ const EXT_PATTERN = /^[A-Za-z0-9]{1,16}$/;
 
 const DEFAULT_EXT = 'txt';
 
+// A caller-chosen temp-file BASENAME. Stricter than it looks on purpose: this
+// value becomes the last segment of a path this process creates, and for an
+// attachment it also becomes the filename the recipient sees. So it must be a
+// single ordinary segment — no separators, no traversal, no leading dot, no
+// control characters — and the wrapper is expected to have sanitized it already.
+// This is the backstop, not the sanitizer.
+const FILENAME_PATTERN = /^[^/\\\x00-\x1f]{1,200}$/;
+
+// How `contents` is spelled on the wire. 'base64' exists so binary payloads —
+// a PNG a caller wants attached to a draft — can reach gog on a backend that
+// shares no filesystem with whoever holds the bytes.
+const FILE_ARG_ENCODINGS = new Set(['utf8', 'base64']);
+
 // How long to let in-flight requests finish after a shutdown signal before
 // giving up. Fly stops a Machine with SIGINT — on deploys, host migrations, and
 // autostop of any Machine above fly.toml's min_machines_running floor; a `gog`
@@ -362,11 +375,38 @@ function validateFileArg(arg) {
   if (arg.ext !== undefined && (typeof arg.ext !== 'string' || !EXT_PATTERN.test(arg.ext))) {
     return `file arg ext ${JSON.stringify(arg.ext)} must be a short alphanumeric token`;
   }
-  const bytes = Buffer.byteLength(arg.contents, 'utf8');
+  if (arg.encoding !== undefined && !FILE_ARG_ENCODINGS.has(arg.encoding)) {
+    return `file arg encoding ${JSON.stringify(arg.encoding)} must be 'utf8' or 'base64'`;
+  }
+  if (arg.filename !== undefined
+    && (typeof arg.filename !== 'string' || !FILENAME_PATTERN.test(arg.filename) || /^\.+$/.test(arg.filename))) {
+    return `file arg filename ${JSON.stringify(arg.filename)} must be a single path segment ` +
+      '(no separators, no control characters, 1-200 characters)';
+  }
+  if (arg.positional !== undefined && typeof arg.positional !== 'boolean') {
+    return 'file arg positional must be a boolean';
+  }
+  // Measure what actually LANDS ON DISK. For a base64 payload the wire string is
+  // 4/3 the size of the file it becomes, and capping the wire string would
+  // silently move the real limit to ~6 MB for binary and 8 MB for text — two
+  // different ceilings for one documented number.
+  const bytes = arg.encoding === 'base64'
+    ? decodedBase64Length(arg.contents)
+    : Buffer.byteLength(arg.contents, 'utf8');
+  if (bytes === null) return `${arg.flag} contents is not valid base64`;
   if (bytes > MAX_FILE_ARG_BYTES) {
     return `${arg.flag} payload is ${bytes} bytes; the maximum is ${MAX_FILE_ARG_BYTES} bytes`;
   }
   return null;
+}
+
+// Decoded byte length of a base64 string, or null when it is not valid base64.
+// Node's Buffer.from is famously lenient — it skips characters it does not
+// recognise rather than throwing — so the round-trip comparison is what actually
+// rejects a malformed payload before it is written to disk as silent garbage.
+function decodedBase64Length(value) {
+  const buf = Buffer.from(value, 'base64');
+  return buf.toString('base64') === value ? buf.length : null;
 }
 
 // Validate a /run arg-array. An element is EITHER a plain string (passed through
@@ -440,9 +480,17 @@ export async function withMaterializedArgs(args, fn, { log = defaultLog } = {}) 
         // mkdtemp(3) already creates 0700, but an explicit chmod makes the
         // guarantee independent of the platform and of the process umask.
         await chmod(dir, 0o700);
-        const file = path.join(dir, `body.${arg.ext ?? DEFAULT_EXT}`);
-        await writeFile(file, arg.contents, { encoding: 'utf8', mode: 0o600 });
-        resolved.push(`--${arg.flag}=${file}`);
+        // Each file arg already gets its OWN mkdtemp dir, so a caller-chosen
+        // basename can never collide with another payload's — which is what
+        // makes repeatable `--attach` safe even when two attachments share a
+        // name. The basename matters because gog reads an attachment's MIME
+        // filename off the path, so `body.txt` would rename the recipient's copy.
+        const file = path.join(dir, arg.filename ?? `body.${arg.ext ?? DEFAULT_EXT}`);
+        const data = arg.encoding === 'base64'
+          ? Buffer.from(arg.contents, 'base64')
+          : Buffer.from(arg.contents, 'utf8');
+        await writeFile(file, data, { mode: 0o600 });
+        resolved.push(arg.positional ? file : `--${arg.flag}=${file}`);
       }
     } catch (err) {
       // Tag it here, where we still know the failure came from the filesystem

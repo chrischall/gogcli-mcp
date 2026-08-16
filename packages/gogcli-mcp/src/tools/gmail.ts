@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool, payloadArg, pageTokenParam, pageAliasParam, resolvePageToken } from './utils.js';
 import { finalizeGmailSearch, fetchGmailPages } from '../gmail-results.js';
 import type { GogArg } from '../runner.js';
+import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 
 export function registerGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_search', {
@@ -66,7 +67,13 @@ export function registerGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_send', {
-    description: 'Send an email. When attach is used, the JSON result echoes the attached filenames and byte sizes — check it to confirm the files were found and embedded.',
+    description:
+      'Send an email. Two ways to attach a file: `attach` takes paths READ ON THE GOG SERVER, and '
+      + '`attachInline` takes the bytes themselves. Use attachInline unless you know the file exists on '
+      + 'the same machine gog runs on — on the hosted connector and any remote deployment there is no '
+      + 'shared filesystem, so no path you can name resolves there and `attach` will fail with '
+      + '"no such file or directory". When either is used, the JSON result echoes the attached filenames '
+      + 'and byte sizes — check it to confirm the files were embedded.',
     annotations: { destructiveHint: true },
     inputSchema: {
       to: z.string().describe('Recipient(s), comma-separated'),
@@ -76,10 +83,11 @@ export function registerGmailTools(server: McpServer): void {
       bcc: z.string().optional().describe('BCC recipients, comma-separated'),
       replyToMessageId: z.string().optional().describe('Message ID to reply to'),
       threadId: z.string().optional().describe('Thread ID to reply within'),
-      attach: z.array(z.string()).optional().describe('Local file paths to attach (repeatable). Each file is read on the gog server (not this client), base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment. Keep the total under Gmail\'s ~35 MB inline-upload limit.'),
+      attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment.'),
+      attachInline: attachInlineParam,
       account: accountParam,
     },
-  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, attach, account }) => {
+  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, attach, attachInline, account }) => {
     // A long body cannot ride in argv: the hosted runner caps a single arg and
     // Linux caps MAX_ARG_STRLEN at 128 KiB. payloadArg swaps it for --body-file
     // past the shared threshold; the executor materializes the temp file.
@@ -89,6 +97,9 @@ export function registerGmailTools(server: McpServer): void {
     if (replyToMessageId) args.push(`--reply-to-message-id=${replyToMessageId}`);
     if (threadId) args.push(`--thread-id=${threadId}`);
     if (attach) for (const path of attach) args.push(`--attach=${path}`);
+    // Same repeatable --attach flag; the executor materializes each payload to a
+    // temp file beside gog and substitutes its path.
+    args.push(...inlineAttachmentArgs('attach', attachInline));
     return runOrDiagnose(args, { account });
   });
 
