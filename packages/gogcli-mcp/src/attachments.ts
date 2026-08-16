@@ -34,12 +34,41 @@ import type { GogArg, GogFileArg } from './runner.js';
 // Checked in the TOOL so the error names the file and the limit instead.
 export const MAX_INLINE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
-// Ceiling for all inline attachments on one message. Gmail refuses a message
-// over 25 MB total, and refuses it AFTER the upload — so catching it here saves
-// a slow round trip that always ends in failure.
-export const MAX_INLINE_ATTACHMENT_TOTAL_BYTES = 25 * 1024 * 1024;
+// The Fly runner caps an ENTIRE /run request body at 32 MiB
+// (fly-gog-runner/server.mjs MAX_BODY_BYTES). Restated rather than imported:
+// that package is not a dependency of this one, and the Worker bundle must not
+// pull it in. Keep the two in sync.
+const RUNNER_MAX_BODY_BYTES = 32 * 1024 * 1024;
 
-const formatMiB = (bytes: number): string => `${Math.round(bytes / (1024 * 1024))} MiB`;
+// Room inside that body for everything which is not attachment bytes: the
+// `args` strings, the accessToken, and JSON quoting/punctuation. Deliberately
+// generous — the cost of over-reserving is a slightly smaller message, and the
+// cost of under-reserving is the transport rejection this whole calculation
+// exists to avoid.
+const RUNNER_BODY_ENVELOPE_RESERVE_BYTES = 1024 * 1024;
+
+// Ceiling for all inline attachments on one message.
+//
+// The binding constraint is the WIRE size, not the decoded size, and it is
+// tighter than Gmail's own 25 MB message limit. connector-runtime.ts sends every
+// payload base64-encoded inside one JSON body, and base64 inflates by 4/3 — so
+// 25 MiB of files encodes to ~33.3 MiB and the runner refuses the whole request
+// with "request body too large". A caller obeying a documented 25 MiB limit
+// would have met a rejection from a layer they cannot see, which is precisely
+// what pinning MAX_INLINE_ATTACHMENT_BYTES to the runner's own per-file cap
+// exists to prevent; the per-message number has to be derived the same way.
+//
+// Note this is NOT hypothetical at the edges: three attachments at the
+// documented 8 MiB per-file maximum is 24 MiB, which encodes to exactly
+// MAX_BODY_BYTES, leaving nothing at all for the envelope.
+export const MAX_INLINE_ATTACHMENT_TOTAL_BYTES = Math.floor(
+  ((RUNNER_MAX_BODY_BYTES - RUNNER_BODY_ENVELOPE_RESERVE_BYTES) * 3) / 4,
+);
+
+// FLOOR, never round: this number is published to callers as a limit, so it has
+// to be one they can actually send. Rounding 23.25 MiB up to "24 MiB" would
+// document a size that gets rejected.
+const formatMiB = (bytes: number): string => `${Math.floor(bytes / (1024 * 1024))} MiB`;
 
 /** Human-readable ceilings, for tool descriptions — so the docs cannot drift. */
 export const INLINE_ATTACHMENT_LIMITS_TEXT =

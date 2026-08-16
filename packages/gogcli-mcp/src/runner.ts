@@ -272,7 +272,17 @@ function sanitizedEnv(): NodeJS.ProcessEnv {
 // a non-base64 character (or nothing) to its left keeps every genuine detection
 // and drops the mid-blob false positives, which by construction are always
 // preceded by another base64 character.
-const TOKEN_LEFT_BOUNDARY = '(?<![A-Za-z0-9+/=_.-])';
+//
+// The class is EXACTLY the standard base64 alphabet, and no wider. Every
+// character omitted from it is a delimiter a real token is found after, so each
+// one added would silently cost a detection: `=` in particular would stop
+// `refresh_token=1//0e…` and `access_token=ya29.…` — the form-encoded spelling,
+// which the shared redactor's query-param rule does not catch without a
+// preceding `?`/`&` — from being redacted at all. `=` is also unnecessary here,
+// since base64 padding is terminal and can never precede a mid-blob `1//`.
+// Likewise `.`, `_` and `-`: none occurs in standard base64, and `1//` cannot
+// occur in base64url (which has no `/`), so neither alphabet needs them.
+const TOKEN_LEFT_BOUNDARY = '(?<![A-Za-z0-9+/])';
 
 // Redact bearer/refresh-token patterns from error text before surfacing
 // it back to the MCP client. If gog ever emits a token in stderr (e.g.

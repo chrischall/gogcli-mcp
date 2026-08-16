@@ -118,9 +118,15 @@ any `GOG_RUNNER_URL` backend). `attachInline` / `content` carry the bytes
 instead, riding the existing `GogFileArg` temp-file seam — now with
 `encoding: 'base64'`, an exact `filename` (gog reads an attachment's MIME
 filename off the path), and `positional` for `gog drive upload <localPath>`.
-Ceilings are enforced in the tool layer (8 MiB per file, 25 MiB per message) so
-the error names the file rather than arriving from a transport the caller cannot
-see. Each payload is materialized into its **own** numbered subdirectory, so
+Ceilings are enforced in the tool layer so the error names the file rather than
+arriving from a transport the caller cannot see, and **both are derived from the
+Fly runner's own constants** rather than picked: 8 MiB per file mirrors
+`MAX_FILE_ARG_BYTES`, and the per-message total is computed backwards from
+`MAX_BODY_BYTES` (32 MiB) because payloads travel base64-encoded inside one JSON
+body — a limit stated in decoded bytes has to absorb the 4/3 inflation or it
+documents a size the runner rejects. Restate a runner constant here and keep the
+two in sync; the alternative is importing a package the Worker bundle must not
+pull in. Each payload is materialized into its **own** numbered subdirectory, so
 repeated `--attach` with colliding basenames is safe.
 
 Every gog response passes through `normalizeTimestamps` (`src/timestamps.ts`) on the `runOrDiagnose` seam, which rewrites allowlisted timestamp fields to ISO-8601 with an explicit offset and adds a `<field>Display` sibling. Both the key and the value shape must match before anything is rewritten — a name-only match would corrupt spreadsheet cell data. See [`docs/timestamps.md`](docs/timestamps.md).

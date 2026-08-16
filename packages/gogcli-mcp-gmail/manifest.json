@@ -199,7 +199,7 @@
     },
     {
       "name": "gog_gmail_drafts_update",
-      "description": "Update an existing Gmail draft; re-thread it in place with replyToThreadId (same draft id) and verify the result via threadingVerification; forkSiblingDraftId refuses the write when the new body would drop text the named sibling copy still holds; a 404 is attributed to the draft id or to the reply target before it is reported"
+      "description": "Update an existing Gmail draft; re-thread it in place with replyToThreadId (same draft id) and verify the result via threadingVerification; forkSiblingDraftId refuses the write when the new body would drop text the named sibling copy still holds; a 404 is attributed to the draft id or to the reply target before it is reported Attachments come from server-side paths (attach) or from base64 bytes sent with the call (attachInline, for remote deployments with no shared filesystem)."
     },
     {
       "name": "gog_gmail_drafts_delete",
@@ -215,11 +215,11 @@
     },
     {
       "name": "gog_gmail_drafts_reply",
-      "description": "Save a reply to a Gmail message as a draft (inherited recipients, subject and quote; never sends)"
+      "description": "Save a reply to a Gmail message as a draft (inherited recipients, subject and quote; never sends) Attachments come from server-side paths (attach) or from base64 bytes sent with the call (attachInline, for remote deployments with no shared filesystem)."
     },
     {
       "name": "gog_gmail_drafts_reply_all",
-      "description": "Save a reply-all to a Gmail message as a draft (never sends)"
+      "description": "Save a reply-all to a Gmail message as a draft (never sends) Attachments come from server-side paths (attach) or from base64 bytes sent with the call (attachInline, for remote deployments with no shared filesystem)."
     },
     {
       "name": "gog_gmail_drafts_forward",
@@ -235,11 +235,11 @@
     },
     {
       "name": "gog_gmail_reply",
-      "description": "Reply to a Gmail message (sender only)"
+      "description": "Reply to a Gmail message (sender only) Attachments come from server-side paths (attach) or from base64 bytes sent with the call (attachInline, for remote deployments with no shared filesystem)."
     },
     {
       "name": "gog_gmail_reply_all",
-      "description": "Reply to all participants of a Gmail message"
+      "description": "Reply to all participants of a Gmail message Attachments come from server-side paths (attach) or from base64 bytes sent with the call (attachInline, for remote deployments with no shared filesystem)."
     },
     {
       "name": "gog_gmail_autoreply",

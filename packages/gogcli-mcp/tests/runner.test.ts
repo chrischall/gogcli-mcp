@@ -634,6 +634,31 @@ describe('run', () => {
     }
   });
 
+  // The left-boundary anchor must not narrow detection. Every character NOT in
+  // the standard base64 alphabet is a delimiter a real token turns up after, and
+  // `=` is the one that matters most: the form-encoded spelling is not covered by
+  // the shared redactor's query-param rule, which requires a preceding `?`/`&`.
+  it.each([
+    ['refresh_token=1//0eFORM-ENCODED-LEAK', '1//0eFORM-ENCODED-LEAK'],
+    ['access_token=ya29.a0FORM-ENCODED-LEAK', 'ya29.a0FORM-ENCODED-LEAK'],
+    ['grant:1//0eCOLON-LEAK', '1//0eCOLON-LEAK'],
+    ['[1//0eBRACKET-LEAK]', '1//0eBRACKET-LEAK'],
+    ['token is ya29.a0SPACE-LEAK', 'ya29.a0SPACE-LEAK'],
+  ])('redacts a token delimited by %j', async (stdout, secret) => {
+    const spawner = makeSpawner(0, stdout, '');
+    const out = await run(['auth', 'list'], { spawner });
+    expect(out).not.toContain(secret);
+    expect(out).toContain('[REDACTED]');
+  });
+
+  it("redactMode 'tokens' also catches the form-encoded spelling", async () => {
+    // This path runs ONLY redactGoogleTokens, so the anchor is the whole defence.
+    const spawner = makeSpawner(0, 'refresh_token=1//0eTOKENS-MODE-LEAK', '');
+    const out = await run(['auth', 'add'], { spawner, redactMode: 'tokens' });
+    expect(out).not.toContain('1//0eTOKENS-MODE-LEAK');
+    expect(out).toContain('[REDACTED]');
+  });
+
   it('still redacts a real refresh token, which is never welded to base64', async () => {
     // The anchor must not have bought base64 survival at the cost of detection:
     // a genuine token is always delimited (quote, space, `=`, `:`), so it still
