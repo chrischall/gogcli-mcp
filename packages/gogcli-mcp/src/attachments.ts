@@ -40,30 +40,54 @@ export const MAX_INLINE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 // pull it in. Keep the two in sync.
 const RUNNER_MAX_BODY_BYTES = 32 * 1024 * 1024;
 
-// Room inside that body for everything which is not attachment bytes: the
-// `args` strings, the accessToken, and JSON quoting/punctuation. Deliberately
-// generous — the cost of over-reserving is a slightly smaller message, and the
-// cost of under-reserving is the transport rejection this whole calculation
-// exists to avoid.
-const RUNNER_BODY_ENVELOPE_RESERVE_BYTES = 1024 * 1024;
+// Room inside that body for the JSON structure alone — key names, quoting,
+// commas, the accessToken, and the short flag strings (`--to=…`, `--subject=…`).
+// It does NOT have to cover the mail body: a large body is a GogFileArg, and
+// GogFileArgs are measured explicitly below rather than absorbed here.
+const RUNNER_BODY_JSON_RESERVE_BYTES = 256 * 1024;
 
-// Ceiling for all inline attachments on one message.
+/**
+ * How many bytes of PAYLOAD one `/run` request can carry, counted as they are
+ * spelled on the wire.
+ *
+ * The binding constraint on a message is its wire size, not the decoded size of
+ * its files, and it is tighter than Gmail's own 25 MB limit: connector-runtime
+ * sends every payload inside one `JSON.stringify({ args, accessToken })` body,
+ * where binary rides as base64 (4/3 inflation) and text rides verbatim. A limit
+ * expressed in decoded bytes must absorb that inflation or it documents a size
+ * the runner rejects with "request body too large" — a rejection from a layer
+ * the caller cannot see, which is exactly what pinning the per-file ceiling to
+ * MAX_FILE_ARG_BYTES exists to prevent.
+ */
+export const MAX_REQUEST_PAYLOAD_WIRE_BYTES = RUNNER_MAX_BODY_BYTES - RUNNER_BODY_JSON_RESERVE_BYTES;
+
+// Ceiling for all inline attachments on one message, in DECODED bytes — the
+// units a caller thinks in, derived from the wire budget above.
 //
-// The binding constraint is the WIRE size, not the decoded size, and it is
-// tighter than Gmail's own 25 MB message limit. connector-runtime.ts sends every
-// payload base64-encoded inside one JSON body, and base64 inflates by 4/3 — so
-// 25 MiB of files encodes to ~33.3 MiB and the runner refuses the whole request
-// with "request body too large". A caller obeying a documented 25 MiB limit
-// would have met a rejection from a layer they cannot see, which is precisely
-// what pinning MAX_INLINE_ATTACHMENT_BYTES to the runner's own per-file cap
-// exists to prevent; the per-message number has to be derived the same way.
+// This is the ceiling for attachments ALONE. Anything else large in the same
+// request spends the same budget — most of all the mail body, which `payloadArg`
+// turns into a GogFileArg past 4 KiB and which then rides in the same JSON body
+// at roughly 1:1. `inlineAttachmentArgs` therefore measures the actual sibling
+// args rather than trusting this number, so a 23 MiB attachment set plus a
+// multi-MiB HTML body is refused here, with an error naming the body, instead of
+// arriving as a bare transport rejection.
 //
-// Note this is NOT hypothetical at the edges: three attachments at the
-// documented 8 MiB per-file maximum is 24 MiB, which encodes to exactly
-// MAX_BODY_BYTES, leaving nothing at all for the envelope.
-export const MAX_INLINE_ATTACHMENT_TOTAL_BYTES = Math.floor(
-  ((RUNNER_MAX_BODY_BYTES - RUNNER_BODY_ENVELOPE_RESERVE_BYTES) * 3) / 4,
-);
+// Neither bound is hypothetical at the edges: three attachments at the
+// documented 8 MiB per-file maximum is 24 MiB, which alone encodes to exactly
+// MAX_BODY_BYTES, leaving nothing for anything else.
+export const MAX_INLINE_ATTACHMENT_TOTAL_BYTES = Math.floor((MAX_REQUEST_PAYLOAD_WIRE_BYTES * 3) / 4);
+
+/**
+ * Bytes one already-assembled arg occupies in the `/run` JSON body.
+ *
+ * A plain string costs its UTF-8 length; a file arg costs the length of its
+ * `contents` as spelled on the wire — the base64 text for binary, the UTF-8
+ * text itself otherwise. JSON quoting and key names are covered by the reserve.
+ */
+function wireBytesOf(arg: GogArg): number {
+  if (typeof arg === 'string') return Buffer.byteLength(arg, 'utf8');
+  return arg.encoding === 'base64' ? arg.contents.length : Buffer.byteLength(arg.contents, 'utf8');
+}
 
 // FLOOR, never round: this number is published to callers as a limit, so it has
 // to be one they can actually send. Rounding 23.25 MiB up to "24 MiB" would
@@ -200,18 +224,37 @@ export function inlineFileArg(
 export function inlineAttachmentArgs(
   flag: string,
   attachments: readonly InlineAttachmentInput[] | undefined,
+  siblingArgs: readonly GogArg[] = [],
 ): GogArg[] {
   if (!attachments?.length) return [];
   const args: GogArg[] = [];
-  let total = 0;
+  // What the rest of the request already spends. Overwhelmingly this is the mail
+  // body — small when inline, up to 8 MiB once payloadArg has made it a file arg
+  // — and measuring it is what keeps "every input was within its own documented
+  // limit" from still adding up to a rejected request.
+  const siblingWire = siblingArgs.reduce((sum, arg) => sum + wireBytesOf(arg), 0);
+  let attachmentWire = 0;
+  let decodedTotal = 0;
   for (const attachment of attachments) {
     const { arg, bytes } = inlineFileArg(flag, attachment);
-    total += bytes;
-    if (total > MAX_INLINE_ATTACHMENT_TOTAL_BYTES) {
+    attachmentWire += arg.contents.length;
+    decodedTotal += bytes;
+    if (siblingWire + attachmentWire > MAX_REQUEST_PAYLOAD_WIRE_BYTES) {
+      // Report in the units the caller supplied — decoded file bytes — and say
+      // so explicitly when the attachments would have fit on their own, because
+      // then it is the body that tipped the balance and shrinking the files is
+      // the wrong response.
+      const blame = attachmentWire <= MAX_REQUEST_PAYLOAD_WIRE_BYTES
+        ? ` These attachments would fit on their own; the rest of the message (its body, mostly) `
+          + `spends ${siblingWire} bytes of the same budget.`
+        : '';
       throw new Error(
-        `Inline attachments total ${total} bytes, over the ${MAX_INLINE_ATTACHMENT_TOTAL_BYTES}-byte `
-        + `(${formatMiB(MAX_INLINE_ATTACHMENT_TOTAL_BYTES)}) limit for one message. Gmail rejects a `
-        + 'message this large after the upload, so send fewer files per message or link them from Drive.',
+        `This message is too large to send: ${decodedTotal} bytes of attachments `
+        + `(${attachmentWire} bytes once base64-encoded for transit) exceed the `
+        + `${MAX_REQUEST_PAYLOAD_WIRE_BYTES}-byte request limit.${blame} The ceiling for attachments `
+        + `alone is ${MAX_INLINE_ATTACHMENT_TOTAL_BYTES} bytes `
+        + `(${formatMiB(MAX_INLINE_ATTACHMENT_TOTAL_BYTES)}); a long body lowers it. Send fewer or `
+        + 'smaller files per message, shorten the body, or upload the large files to Drive and link them.',
       );
     }
     args.push(arg);
