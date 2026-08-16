@@ -98,8 +98,11 @@ export function registerGmailTools(server: McpServer): void {
     if (threadId) args.push(`--thread-id=${threadId}`);
     if (attach) for (const path of attach) args.push(`--attach=${path}`);
     // Same repeatable --attach flag; the executor materializes each payload to a
-    // temp file beside gog and substitutes its path.
-    args.push(...inlineAttachmentArgs('attach', attachInline));
+    // temp file beside gog and substitutes its path. `args` is passed so the
+    // size check sees the whole request — chiefly the body, which is itself a
+    // file arg once it passes payloadArg's threshold and spends the same budget.
+    const inline = inlineAttachmentArgs('attach', attachInline, args);
+    args.push(...inline);
     return runOrDiagnose(args, { account });
   });
 

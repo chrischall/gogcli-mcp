@@ -126,7 +126,14 @@ Fly runner's own constants** rather than picked: 8 MiB per file mirrors
 body — a limit stated in decoded bytes has to absorb the 4/3 inflation or it
 documents a size the runner rejects. Restate a runner constant here and keep the
 two in sync; the alternative is importing a package the Worker bundle must not
-pull in. Each payload is materialized into its **own** numbered subdirectory, so
+pull in.
+
+The budget belongs to the **request**, not to the attachments: a mail body over
+`PAYLOAD_INLINE_MAX` becomes a `GogFileArg` riding in that same JSON body, so
+`inlineAttachmentArgs` measures the sibling args it is handed rather than
+assuming they are small. Pass the args assembled so far when calling it —
+otherwise "every input was inside its own documented limit" can still add up to
+a rejected request. Each payload is materialized into its **own** numbered subdirectory, so
 repeated `--attach` with colliding basenames is safe.
 
 Every gog response passes through `normalizeTimestamps` (`src/timestamps.ts`) on the `runOrDiagnose` seam, which rewrites allowlisted timestamp fields to ISO-8601 with an explicit offset and adds a `<field>Display` sibling. Both the key and the value shape must match before anything is rewritten — a name-only match would corrupt spreadsheet cell data. See [`docs/timestamps.md`](docs/timestamps.md).

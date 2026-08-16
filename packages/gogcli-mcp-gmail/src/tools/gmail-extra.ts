@@ -2947,7 +2947,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     // executor writes each one to a temp file beside gog and passes that path.
     // This is the only attachment route that works when the caller and gog do
     // not share a filesystem (hosted connector, GOG_RUNNER_URL backend).
-    args.push(...inlineAttachmentArgs('attach', f.attachInline));
+    // `args` is passed so the size check sees the body, which shares the budget.
+    args.push(...inlineAttachmentArgs('attach', f.attachInline, args));
     if (f.from) args.push(`--from=${f.from}`);
     // PINNED, not conditional: GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS in the host env
     // silently changes which address the mail goes out FROM, with nothing in the arg
@@ -3273,7 +3274,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (f.subject) args.push(`--subject=${f.subject}`);
     if (f.noQuote) args.push('--no-quote');
     if (f.attach) for (const p of f.attach) args.push(`--attach=${p}`);
-    args.push(...inlineAttachmentArgs('attach', f.attachInline)); // see appendDraftFlags
+    args.push(...inlineAttachmentArgs('attach', f.attachInline, args)); // see appendDraftFlags
     if (f.from) args.push(`--from=${f.from}`);
     if (f.signature) args.push('--signature');
     if (f.signatureFrom) args.push(`--signature-from=${f.signatureFrom}`);

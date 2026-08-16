@@ -5,6 +5,7 @@ import {
   inlineAttachmentSchema,
   MAX_INLINE_ATTACHMENT_BYTES,
   MAX_INLINE_ATTACHMENT_TOTAL_BYTES,
+  MAX_REQUEST_PAYLOAD_WIRE_BYTES,
   INLINE_ATTACHMENT_LIMITS_TEXT,
 } from '../src/attachments.js';
 import type { GogFileArg } from '../src/runner.js';
@@ -118,7 +119,59 @@ describe('inlineAttachmentArgs', () => {
     const chunk = Buffer.alloc(MAX_INLINE_ATTACHMENT_BYTES).toString('base64');
     const four = Array.from({ length: 4 }, (_, i) => ({ filename: `f${i}.bin`, contentBase64: chunk }));
     expect(() => inlineAttachmentArgs('attach', four))
-      .toThrow(/total \d+ bytes, over the \d+-byte \(23 MiB\) limit for one message/);
+      .toThrow(/This message is too large to send/);
+  });
+
+  // The budget belongs to the REQUEST, not to the attachments. `payloadArg`
+  // turns any body over 4 KiB into a GogFileArg that rides in the same JSON
+  // body at ~1:1, so a near-max attachment set plus a multi-MiB body overruns
+  // the runner even though each input is inside its own documented limit. That
+  // is the same invisible-transport-rejection failure the ceiling exists to
+  // prevent, so the sibling args are measured rather than assumed small.
+  it('counts the message body against the same budget as the attachments', () => {
+    // Three files just under the 8 MiB per-file cap, summing to just under the
+    // per-message total — i.e. every input inside its own documented limit.
+    const each = Buffer.alloc(Math.floor((MAX_INLINE_ATTACHMENT_TOTAL_BYTES - 4096) / 3)).toString('base64');
+    const attachments = Array.from({ length: 3 }, (_, i) => ({ filename: `big${i}.bin`, contentBase64: each }));
+
+    // Alone: fits.
+    expect(() => inlineAttachmentArgs('attach', attachments)).not.toThrow();
+
+    // With a 2 MiB HTML body — itself well under the 8 MiB per-file cap — it
+    // does not, and the error says the body is implicated.
+    const body: GogFileArg = { kind: 'file', flag: 'body-html-file', contents: 'x'.repeat(2 * 1024 * 1024) };
+    expect(() => inlineAttachmentArgs('attach', attachments, ['gmail', 'send', body]))
+      .toThrow(/would fit on their own; the rest of the message \(its body, mostly\) spends \d+ bytes/);
+  });
+
+  it('blames the files, not the body, when the attachments alone overrun', () => {
+    const chunk = Buffer.alloc(MAX_INLINE_ATTACHMENT_BYTES).toString('base64');
+    const four = Array.from({ length: 4 }, (_, i) => ({ filename: `f${i}.bin`, contentBase64: chunk }));
+    expect(() => inlineAttachmentArgs('attach', four, ['gmail', 'send'])).toThrow(/too large to send/);
+    expect(() => inlineAttachmentArgs('attach', four, ['gmail', 'send'])).not.toThrow(/would fit on their own/);
+  });
+
+  it('measures a base64 sibling at its wire length, not its decoded length', () => {
+    // A sibling that is itself binary costs its base64 spelling, which is what
+    // actually travels — counting decoded bytes would under-report by 25%.
+    const sibling: GogFileArg = {
+      kind: 'file',
+      flag: 'attach',
+      contents: Buffer.alloc(MAX_INLINE_ATTACHMENT_BYTES).toString('base64'),
+      encoding: 'base64',
+      filename: 'already-counted.bin',
+    };
+    const each = Buffer.alloc(Math.floor((MAX_INLINE_ATTACHMENT_TOTAL_BYTES - 4096) / 3)).toString('base64');
+    const attachments = Array.from({ length: 3 }, (_, i) => ({ filename: `f${i}.bin`, contentBase64: each }));
+    expect(() => inlineAttachmentArgs('attach', attachments, ['gmail', 'send', sibling]))
+      .toThrow(/too large to send/);
+  });
+
+  it('ignores small sibling args, which the JSON reserve already covers', () => {
+    const chunk = Buffer.alloc(Math.floor(MAX_INLINE_ATTACHMENT_TOTAL_BYTES / 4)).toString('base64');
+    const two = Array.from({ length: 2 }, (_, i) => ({ filename: `f${i}.bin`, contentBase64: chunk }));
+    const flags = ['gmail', 'send', '--to=a@b.com', '--subject=Hi', '--body=short'];
+    expect(() => inlineAttachmentArgs('attach', two, flags)).not.toThrow();
   });
 
   // THE INVARIANT behind the per-message ceiling, asserted rather than trusted.
@@ -134,11 +187,11 @@ describe('inlineAttachmentArgs', () => {
     const RUNNER_MAX_BODY_BYTES = 32 * 1024 * 1024; // fly-gog-runner/server.mjs
     const encodedLength = (decoded: number): number => 4 * Math.ceil(decoded / 3);
 
-    expect(encodedLength(MAX_INLINE_ATTACHMENT_TOTAL_BYTES)).toBeLessThan(RUNNER_MAX_BODY_BYTES);
-    // …and with real room left for the args, the accessToken and JSON quoting,
-    // not merely a byte to spare.
-    expect(RUNNER_MAX_BODY_BYTES - encodedLength(MAX_INLINE_ATTACHMENT_TOTAL_BYTES))
-      .toBeGreaterThan(512 * 1024);
+    // The payload budget must leave the JSON structure room inside the cap…
+    expect(MAX_REQUEST_PAYLOAD_WIRE_BYTES).toBeLessThan(RUNNER_MAX_BODY_BYTES);
+    expect(RUNNER_MAX_BODY_BYTES - MAX_REQUEST_PAYLOAD_WIRE_BYTES).toBeGreaterThanOrEqual(128 * 1024);
+    // …and a full attachment set must fit inside that budget once inflated.
+    expect(encodedLength(MAX_INLINE_ATTACHMENT_TOTAL_BYTES)).toBeLessThanOrEqual(MAX_REQUEST_PAYLOAD_WIRE_BYTES);
     // The advertised number must itself be sendable — floor, not round.
     const advertised = Number(/(\d+) MiB in total/.exec(INLINE_ATTACHMENT_LIMITS_TEXT)![1]) * 1024 * 1024;
     expect(advertised).toBeLessThanOrEqual(MAX_INLINE_ATTACHMENT_TOTAL_BYTES);
@@ -146,7 +199,8 @@ describe('inlineAttachmentArgs', () => {
 
   it('reports the ceilings it actually enforces', () => {
     expect(MAX_INLINE_ATTACHMENT_BYTES).toBe(8 * 1024 * 1024);
-    expect(MAX_INLINE_ATTACHMENT_TOTAL_BYTES).toBe(24_379_392); // (32 MiB − 1 MiB envelope) × 3/4
+    expect(MAX_REQUEST_PAYLOAD_WIRE_BYTES).toBe(32 * 1024 * 1024 - 256 * 1024);
+    expect(MAX_INLINE_ATTACHMENT_TOTAL_BYTES).toBe(24_969_216); // wire budget × 3/4
     // The documented text is derived from the constants, so it cannot drift.
     expect(INLINE_ATTACHMENT_LIMITS_TEXT).toBe('up to 8 MiB per file and 23 MiB in total');
   });

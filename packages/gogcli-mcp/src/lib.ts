@@ -38,6 +38,7 @@ export {
   INLINE_ATTACHMENT_LIMITS_TEXT,
   MAX_INLINE_ATTACHMENT_BYTES,
   MAX_INLINE_ATTACHMENT_TOTAL_BYTES,
+  MAX_REQUEST_PAYLOAD_WIRE_BYTES,
 } from './attachments.js';
 export type { InlineAttachmentInput } from './attachments.js';
 export {

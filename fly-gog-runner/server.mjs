@@ -61,12 +61,20 @@ const EXT_PATTERN = /^[A-Za-z0-9]{1,16}$/;
 
 const DEFAULT_EXT = 'txt';
 
-// A caller-chosen temp-file BASENAME. Stricter than it looks on purpose: this
-// value becomes the last segment of a path this process creates, and for an
-// attachment it also becomes the filename the recipient sees. So it must be a
-// single ordinary segment — no separators, no traversal, no leading dot, no
-// control characters — and the wrapper is expected to have sanitized it already.
-// This is the backstop, not the sanitizer.
+// A caller-chosen temp-file BASENAME. This value becomes the last segment of a
+// path this process creates, and for an attachment it also becomes the filename
+// the recipient sees. So it must be a single segment that cannot escape its
+// directory: no separators, no control characters, bounded length. The call site
+// additionally rejects `.` and `..`.
+//
+// What it deliberately does NOT reject is a LEADING DOT. `.gitignore` and
+// `.env.example` are legitimate things to attach to an email, and refusing them
+// would cost real functionality to buy nothing: every file arg is materialized
+// into its own fresh mkdtemp directory (withMaterializedArgs), so a dotfile
+// basename cannot shadow or collide with anything.
+//
+// This is the backstop, not the sanitizer — the wrapper is expected to have
+// validated already (packages/gogcli-mcp/src/attachments.ts validateFilename).
 const FILENAME_PATTERN = /^[^/\\\x00-\x1f]{1,200}$/;
 
 // How `contents` is spelled on the wire. 'base64' exists so binary payloads —
