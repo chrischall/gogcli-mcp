@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.25.0](https://github.com/chrischall/gogcli-mcp/compare/v2.24.0...v2.25.0) (2026-08-16)
+
+
+### Features
+
+* **gmail,drive:** attach caller-side bytes; fix base64 attachment corruption ([#276](https://github.com/chrischall/gogcli-mcp/issues/276)) ([35aa589](https://github.com/chrischall/gogcli-mcp/commit/35aa58975ad6b045d11f287618439d5d56b3e0f2))
+
+
+### Bug Fixes
+
+* **gmail:** count the message body against the attachment size budget ([#279](https://github.com/chrischall/gogcli-mcp/issues/279)) ([dd504a2](https://github.com/chrischall/gogcli-mcp/commit/dd504a28cbc368bb2585b056684c32ad8929502b))
+
 ## [2.24.0](https://github.com/chrischall/gogcli-mcp/compare/v2.23.2...v2.24.0) (2026-08-14)
 
 
