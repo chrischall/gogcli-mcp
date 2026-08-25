@@ -1,0 +1,94 @@
+version: 1
+name: Google Gmail (gogcli)
+slug: gogcli-mcp-gmail
+summary: >-
+  Extended Gmail MCP server via gogcli — auth + full Gmail support (threads,
+  labels, drafts, attachments, forward, autoreply, bulk operations)
+command:
+  # This package publishes a single bin; naming it keeps the install
+  # unambiguous alongside its eight sibling packages.
+  bin: gogcli-mcp-gmail
+env:
+  - name: GOG_CLIENT_ID
+    required: false
+    help: >-
+      Google OAuth client id. Needed with GOG_CLIENT_SECRET and
+      GOG_REFRESH_TOKEN for headless auth, which is the right mode when hosted
+      (there is no browser to complete a consent flow).
+  - name: GOG_CLIENT_SECRET
+    secret: true
+    required: false
+    help: >-
+      Google OAuth client secret. Pairs with GOG_CLIENT_ID and
+      GOG_REFRESH_TOKEN.
+  - name: GOG_REFRESH_TOKEN
+    secret: true
+    required: false
+    help: >-
+      Google OAuth refresh token, obtained once locally. This is the durable
+      credential a hosted deployment should carry.
+  - name: GOG_ACCESS_TOKEN
+    secret: true
+    required: false
+    help: >-
+      A short-lived Google access token. Usually left unset — it is minted from
+      the refresh token — but can be supplied directly for a one-off.
+  - name: GOG_ACCOUNT
+    required: false
+    help: >-
+      Which configured Google account to act as, when more than one is
+      authorised. Defaults to the single/most recent account.
+  - name: GOG_READONLY
+    required: false
+    help: >-
+      Set to 1 to refuse every mutating operation. Recommended when the
+      connector is shared or you only need reads.
+  - name: GOG_PATH
+    required: false
+    help: >-
+      Path to the `gog` binary. Leave unset when the dependency below supplies
+      it; set it only to point at a binary you manage yourself.
+  - name: GOG_RUNNER_URL
+    required: false
+    help: >-
+      URL of a remote gog runner to execute against instead of spawning the
+      local binary. If you set this, add its host to egress.allow.
+  - name: GOG_RUNNER_KEY
+    secret: true
+    required: false
+    help: >-
+      Shared key authenticating calls to GOG_RUNNER_URL. Required whenever that
+      is set.
+  - name: GOG_TIMEZONE
+    required: false
+    help: >-
+      IANA time zone (e.g. America/New_York) used when interpreting and
+      rendering times. Falls back to DISPLAY_TZ, then the account default.
+  - name: DISPLAY_TZ
+    required: false
+    help: >-
+      IANA time zone used for rendered timestamps when GOG_TIMEZONE is unset.
+dependencies:
+  # Every tool shells out to the `gog` CLI; without it the server starts and
+  # then fails on the first call. Pinned to the version this repo builds
+  # against (src/runner.ts GOG_VERSION and fly-gog-runner/Dockerfile).
+  - kind: github-release
+    repo: openclaw/gogcli
+    tag: v0.37.0
+    asset: "gogcli_*_linux_amd64.tar.gz"
+    bin: [gog]
+state:
+  dataDir: true
+  reason: >-
+    `gog` keeps its authorised-account state and token cache under $HOME.
+    Without a persistent data dir every cold start has no account configured and
+    every tool call fails until the credentials are re-supplied.
+egress:
+  allow:
+    # Google OAuth token exchange and the Google REST APIs the CLI calls.
+    - oauth2.googleapis.com
+    - www.googleapis.com
+    - googleapis.com
+    #
+    # NOTE: if you set GOG_RUNNER_URL to run against a remote gog runner, add
+    # that host here too — it is supplied at runtime and cannot be declared.
