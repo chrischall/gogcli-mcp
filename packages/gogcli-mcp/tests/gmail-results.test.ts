@@ -255,6 +255,53 @@ describe('fetchGmailPages', () => {
     expect(runPage).toHaveBeenCalledTimes(2);
   });
 
+  // A REPEATED CURSOR IS A STALL, and gog 0.38.0 fixed the same class on its own
+  // side (openclaw/gogcli#1004) — but that fix covers gog's `--all`, and this
+  // walk is our own: it makes N separate single-page gog calls, so a cursor
+  // Google repeats comes straight back to this loop. Without a guard the walk
+  // re-fetches the same page and merges its items again on every remaining
+  // iteration, so the caller gets DUPLICATES presented as more results, which is
+  // worse than a short answer because nothing about the payload looks wrong.
+  it('stops when Google repeats a cursor, instead of re-fetching the same page', async () => {
+    const runPage = vi.fn()
+      .mockResolvedValueOnce(page(['a'], 'T1'))
+      .mockResolvedValueOnce(page(['b'], 'T1'));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 10, undefined)).content[0].text as string);
+    expect(out.threads.map((t: { id: string }) => t.id)).toEqual(['a', 'b']);
+    // Stopped after the repeat was seen — NOT after burning all 10 pages.
+    expect(runPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('still reads as truncated after a repeated cursor', async () => {
+    const runPage = vi.fn()
+      .mockResolvedValueOnce(page(['a'], 'T1'))
+      .mockResolvedValueOnce(page(['b'], 'T1'));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 10, undefined)).content[0].text as string);
+    // The walk could not reach the end, so the cursor STAYS. Dropping it would
+    // claim completeness we never established, and a set that reads complete is
+    // exactly how "that email doesn't exist" gets reported about mail that does.
+    expect(out.nextPageToken).toBe('T1');
+  });
+
+  it('detects a cursor that repeats the caller-supplied one', async () => {
+    const runPage = vi.fn().mockResolvedValueOnce(page(['a'], 'START'));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 10, 'START')).content[0].text as string);
+    expect(out.threads.map((t: { id: string }) => t.id)).toEqual(['a']);
+    expect(out.nextPageToken).toBe('START');
+    expect(runPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('detects a cursor that repeats a token from earlier in the walk, not just the previous one', async () => {
+    const runPage = vi.fn()
+      .mockResolvedValueOnce(page(['a'], 'T1'))
+      .mockResolvedValueOnce(page(['b'], 'T2'))
+      .mockResolvedValueOnce(page(['c'], 'T1'));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 10, undefined)).content[0].text as string);
+    expect(out.threads.map((t: { id: string }) => t.id)).toEqual(['a', 'b', 'c']);
+    expect(out.nextPageToken).toBe('T1');
+    expect(runPage).toHaveBeenCalledTimes(3);
+  });
+
   it('starts from a caller-supplied cursor', async () => {
     const runPage = vi.fn().mockResolvedValue(page(['a']));
     await fetchGmailPages(runPage, 'threads', 3, 'START');
