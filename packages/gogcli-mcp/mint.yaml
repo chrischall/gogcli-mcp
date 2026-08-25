@@ -78,7 +78,7 @@ dependencies:
   # against (src/runner.ts GOG_VERSION and fly-gog-runner/Dockerfile).
   - kind: github-release
     repo: openclaw/gogcli
-    tag: v0.37.0
+    tag: v0.38.0
     asset: "gogcli_*_linux_amd64.tar.gz"
     bin: [gog]
 state:
