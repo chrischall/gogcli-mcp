@@ -44,9 +44,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 claude mcp add gogcli-slides -- gogcli-mcp-slides
 ```
 
-## Slides Tools (12)
+## Slides Tools
 
-Plus 5 auth tools and 1 `gog_slides_run` escape hatch for a total of 18 tools.
+The package registers **55** tools: 40 Slides authoring tools, 7 base Slides tools, and 8 auth tools. The table below covers the most-used; `manifest.json` lists every one.
 
 | Tool | Description |
 |------|-------------|

@@ -121,7 +121,8 @@ export function registerChatTools(server: McpServer): void {
       space: spaceParam,
       thread: threadParam,
       unread: z.boolean().optional().describe('Only messages posted after the account last read this space'),
-      order: z.string().optional().describe('Sort order, e.g. "createTime desc" for newest-first'),
+      order: z.enum(['createTime asc', 'createTime desc', 'lastUpdateTime asc', 'lastUpdateTime desc'])
+        .optional().describe('Sort order (Chat default: "createTime asc", i.e. OLDEST first — ask for "createTime desc" when you want the latest messages)'),
       ...paginationParams,
       account: accountParam,
     },
