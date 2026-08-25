@@ -3,7 +3,7 @@
 > [!WARNING]
 > **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
 
-Base [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude access to Google Workspace via [gogcli](https://github.com/openclaw/gogcli). Includes 52 tools across 8 services: Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, and Auth.
+Base [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude access to Google Workspace via [gogcli](https://github.com/openclaw/gogcli). Includes 112 tools across 13 services: Sheets, Docs, Gmail, Calendar, Drive, Slides, Classroom, Chat, Apps Script, Tasks, Contacts, the generic Discovery API escape hatch, and Auth.
 
 For extended Sheets or Docs support, see [gogcli-mcp-sheets](https://www.npmjs.com/package/gogcli-mcp-sheets) and [gogcli-mcp-docs](https://www.npmjs.com/package/gogcli-mcp-docs).
 
@@ -54,10 +54,15 @@ claude mcp add gogcli-mcp -- gogcli-mcp
 | **Docs** | 7 | info, cat, create, write, find-replace, structure, run |
 | **Gmail** | 4 | search, get, send, run |
 | **Calendar** | 7 | events, get, create, update, delete, respond, run |
-| **Drive** | 9 | ls, search, get, mkdir, rename, move, delete, share, run |
+| **Drive** | 11 | ls, search, get, mkdir, rename, move, delete, share, extract-text, read-bytes, run |
+| **Slides** | 7 | export, info, create, copy, list-slides, read-slide, run |
+| **Classroom** | 25 | courses, students, teachers, roster, coursework, submissions (grade/return/turn-in/reclaim), announcements, topics, invitations, profile, run |
+| **Chat** | 12 | spaces list/find/create, threads list, messages list/send, dm send/space, reactions list/create/delete, run |
+| **Apps Script** | 8 | get, content, pull, create, deployments, versions, run-function, run |
 | **Tasks** | 7 | lists, list, get, add, done, delete, run |
 | **Contacts** | 5 | search, list, get, create, run |
-| **Auth** | 5 | list, status, services, add, run |
+| **API** | 3 | list, describe, call |
+| **Auth** | 8 | list, status, health, services, add, add-url, add-complete, run |
 
 All tools accept an optional `account` parameter to target a specific Google account.
 

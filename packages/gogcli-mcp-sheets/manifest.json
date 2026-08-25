@@ -339,6 +339,22 @@
     {
       "name": "gog_sheets_datasource_table_read",
       "description": "Read a bounded number of rows out of a data-source table (extract)"
+    },
+    {
+      "name": "gog_sheets_datasource_add",
+      "description": "Add a BigQuery Connected Sheets data source (custom SQL or a native table)"
+    },
+    {
+      "name": "gog_sheets_datasource_update",
+      "description": "Repoint a Connected Sheets data source's SQL, table or billing project"
+    },
+    {
+      "name": "gog_sheets_datasource_refresh",
+      "description": "Re-run a Connected Sheets data source against current BigQuery data"
+    },
+    {
+      "name": "gog_sheets_datasource_delete",
+      "description": "Delete a Connected Sheets data source and its linked sheet"
     }
   ],
   "compatibility": {

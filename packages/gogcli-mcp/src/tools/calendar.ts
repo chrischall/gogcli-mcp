@@ -3,6 +3,56 @@ import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken } from './utils.js';
 import { annotateTruncatedList } from '../pagination.js';
 
+// Reminder params, shared by create and update (gog >= 0.38.0 for
+// --no-reminders). An event's reminders are one of THREE states, and the two
+// params below have to spell all three because gog does:
+//
+//   reminders: ['popup:30m']  →  --reminder=popup:30m   custom overrides
+//   noReminders: true         →  --no-reminders         no reminder at all
+//   reminders: []             →  --reminder=            back to the calendar's defaults
+//
+// That last one is the subtle one and it only means anything on update: gog
+// reads an EMPTY --reminder as "clear the overrides and use the calendar
+// default" (openclaw/gogcli#1016), which is a different outcome from omitting
+// the flag (leave whatever the event already has) and from --no-reminders
+// (override the calendar with silence). An empty array is how a JSON caller
+// says it, since there is no way to send a bare flag with no value.
+const reminderParams = {
+  reminders: z.array(z.string()).max(5).optional().describe(
+    'Reminders as method:duration, e.g. ["popup:30m", "email:1d"]. Method is popup or email; duration accepts m/h/d '
+    + '(max 40320 minutes = 4 weeks). Google allows at most 5. These REPLACE the event\'s reminders — on update, pass an '
+    + 'EMPTY array to drop custom reminders and go back to the calendar\'s defaults. Cannot be combined with noReminders.',
+  ),
+  noReminders: z.boolean().optional().describe(
+    'Give the event no reminders at all, overriding the calendar\'s defaults. Different from an empty reminders array, '
+    + 'which RESTORES those defaults. Cannot be combined with reminders.',
+  ),
+};
+
+// The one place the three states become argv. Kept together so create and
+// update cannot drift apart on the empty-array case.
+function pushReminderFlags(
+  args: string[],
+  p: { reminders?: string[]; noReminders?: boolean },
+): void {
+  if (p.noReminders) {
+    // gog's own flags are `xor:"reminders"`, so it would reject this too — but
+    // only after a spawn, and with kong's wording rather than the tool's.
+    if (p.reminders !== undefined) {
+      throw new Error('reminders and noReminders are mutually exclusive: pass reminders to set custom ones, noReminders for none, or an empty reminders array to restore the calendar defaults.');
+    }
+    args.push('--no-reminders');
+    return;
+  }
+  if (p.reminders === undefined) return;
+  // Empty array → one empty --reminder, which is gog's "restore defaults".
+  if (p.reminders.length === 0) {
+    args.push('--reminder=');
+    return;
+  }
+  for (const reminder of p.reminders) args.push(`--reminder=${reminder}`);
+}
+
 export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_events', {
     description: 'List calendar events. Describe the window ONE way and one way only (gog >= 0.36.0 rejects the rest as ambiguous rather than silently discarding a flag): '
@@ -80,9 +130,10 @@ export function registerCalendarTools(server: McpServer): void {
       allDay: z.boolean().optional().describe('All-day event (use date-only in from/to)'),
       timezone: z.string().optional().describe('IANA timezone metadata applied to from/to (e.g. America/New_York). Sets both start and end timezone unless start/end timezone are overridden.'),
       withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event (requires Zoom S2S OAuth setup)'),
+      ...reminderParams,
       account: accountParam,
     },
-  }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, timezone, withZoom, account }) => {
+  }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, timezone, withZoom, reminders, noReminders, account }) => {
     const args = ['calendar', 'create', calendarId, `--summary=${summary}`, `--from=${from}`, `--to=${to}`];
     if (description) args.push(`--description=${description}`);
     if (location) args.push(`--location=${location}`);
@@ -90,6 +141,7 @@ export function registerCalendarTools(server: McpServer): void {
     if (allDay) args.push('--all-day');
     if (timezone) args.push(`--timezone=${timezone}`);
     if (withZoom) args.push('--with-zoom');
+    pushReminderFlags(args, { reminders, noReminders });
     return runOrDiagnose(args, { account });
   });
 
@@ -111,9 +163,10 @@ export function registerCalendarTools(server: McpServer): void {
       regenerateZoom: z.boolean().optional().describe('Replace the event\'s existing Zoom video conference'),
       removeZoom: z.boolean().optional().describe('Remove the event\'s Zoom video conference'),
       removeMeet: z.boolean().optional().describe('Remove the event\'s Google Meet video conference (clears conference data only)'),
+      ...reminderParams,
       account: accountParam,
     },
-  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, removeMeet, account }) => {
+  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, removeMeet, reminders, noReminders, account }) => {
     const args = ['calendar', 'update', calendarId, eventId];
     if (summary !== undefined) args.push(`--summary=${summary}`);
     if (from !== undefined) args.push(`--from=${from}`);
@@ -127,6 +180,7 @@ export function registerCalendarTools(server: McpServer): void {
     if (regenerateZoom) args.push('--regenerate-zoom');
     if (removeZoom) args.push('--remove-zoom');
     if (removeMeet) args.push('--remove-meet');
+    pushReminderFlags(args, { reminders, noReminders });
     return runOrDiagnose(args, { account });
   });
 

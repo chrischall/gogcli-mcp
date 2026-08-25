@@ -423,6 +423,86 @@
     {
       "name": "gog_slides_run",
       "description": "Run any gog slides subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_chat_spaces_list",
+      "description": "List the Google Chat spaces the account belongs to, with their resource names"
+    },
+    {
+      "name": "gog_chat_spaces_find",
+      "description": "Find Chat spaces by display name (substring by default, or exact)"
+    },
+    {
+      "name": "gog_chat_spaces_create",
+      "description": "Create a named Chat space, optionally seeding its membership"
+    },
+    {
+      "name": "gog_chat_threads_list",
+      "description": "List the threads in a Chat space"
+    },
+    {
+      "name": "gog_chat_messages_list",
+      "description": "Read messages in a space, with mentions and reaction summaries"
+    },
+    {
+      "name": "gog_chat_messages_send",
+      "description": "Post a message to a Chat space (immediately visible; supports attachments)"
+    },
+    {
+      "name": "gog_chat_dm_send",
+      "description": "Send a direct message to one person by email address"
+    },
+    {
+      "name": "gog_chat_dm_space",
+      "description": "Resolve the DM space resource name for an email address"
+    },
+    {
+      "name": "gog_chat_reactions_list",
+      "description": "List the emoji reactions on a message, with who reacted"
+    },
+    {
+      "name": "gog_chat_reactions_create",
+      "description": "React to a Chat message with an emoji"
+    },
+    {
+      "name": "gog_chat_reactions_delete",
+      "description": "Remove one emoji reaction by its resource name"
+    },
+    {
+      "name": "gog_chat_run",
+      "description": "Run any gog chat subcommand not covered by the other tools"
+    },
+    {
+      "name": "gog_appscript_get",
+      "description": "Get an Apps Script project's metadata"
+    },
+    {
+      "name": "gog_appscript_content",
+      "description": "Read a project's source files and manifest inline"
+    },
+    {
+      "name": "gog_appscript_pull",
+      "description": "Write a project's files into a directory on the machine where gog runs"
+    },
+    {
+      "name": "gog_appscript_create",
+      "description": "Create a new, empty Apps Script project (optionally bound to a Drive file)"
+    },
+    {
+      "name": "gog_appscript_deployments",
+      "description": "List a project's deployments"
+    },
+    {
+      "name": "gog_appscript_versions",
+      "description": "List a project's saved versions"
+    },
+    {
+      "name": "gog_appscript_run_function",
+      "description": "Execute a function in a deployed Apps Script project"
+    },
+    {
+      "name": "gog_appscript_run",
+      "description": "Run any gog appscript subcommand not covered by the other tools"
     }
   ],
   "compatibility": {

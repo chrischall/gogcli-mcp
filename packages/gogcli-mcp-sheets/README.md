@@ -79,6 +79,10 @@ Plus 8 auth tools and 8 base Sheets tools (get, update, append, clear, metadata,
 | `gog_sheets_datasource_table_list` | List anchored data-source tables (extracts) and their A1 anchors |
 | `gog_sheets_datasource_table_describe` | Describe the extract anchored at an A1 cell |
 | `gog_sheets_datasource_table_read` | Read a bounded number of rows out of an extract |
+| `gog_sheets_datasource_add` | Add a BigQuery Connected Sheets data source (custom SQL or a native table) |
+| `gog_sheets_datasource_update` | Repoint a data source's SQL, table or billing project |
+| `gog_sheets_datasource_refresh` | Re-run a data source so its sheet and extracts pick up current data |
+| `gog_sheets_datasource_delete` | Delete a data source, its linked sheet, and unlink dependent objects |
 | `gog_sheets_list_tabs` | List tabs in a spreadsheet (sheetId, title, index, gridProperties) |
 | `gog_sheets_copy_paste` | Copy a range's values/formulas/format to another range (tiles to fill down/across). |
 | `gog_sheets_validation_get` | Read data-validation rules (dropdowns, checkboxes, conditions) on a range. |

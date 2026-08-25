@@ -59,6 +59,8 @@ Plus 5 auth tools and 1 `gog_slides_run` escape hatch for a total of 18 tools.
 | `gog_slides_add_slide` | Add a new slide from a local image |
 | `gog_slides_list_slides` | List slides in a presentation |
 | `gog_slides_delete_slide` | Delete a slide |
+| `gog_slides_skip_slide` | Skip a slide when presenting (keeps it in the deck) |
+| `gog_slides_unskip_slide` | Include a previously skipped slide again |
 | `gog_slides_read_slide` | Read the content of a slide |
 | `gog_slides_update_notes` | Update speaker notes on a slide |
 | `gog_slides_replace_slide` | Replace the image content of an existing slide |

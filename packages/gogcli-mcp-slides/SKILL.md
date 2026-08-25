@@ -43,6 +43,8 @@ Extended Google Slides MCP server via [gogcli](https://github.com/openclaw/gogcl
 | `gog_slides_add_slide` | Add a slide from a local image |
 | `gog_slides_list_slides` | List slides in a presentation |
 | `gog_slides_delete_slide` | Delete a slide |
+| `gog_slides_skip_slide` | Skip a slide when presenting (keeps it in the deck) |
+| `gog_slides_unskip_slide` | Include a previously skipped slide again |
 | `gog_slides_read_slide` | Read the content of a slide |
 | `gog_slides_update_notes` | Update speaker notes |
 | `gog_slides_replace_slide` | Replace the image on an existing slide |

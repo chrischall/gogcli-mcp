@@ -58,6 +58,10 @@ Extended Google Sheets MCP server via [gogcli](https://github.com/openclaw/gogcl
 | `gog_sheets_datasource_table_list` | List anchored data-source tables (extracts) and their A1 anchors |
 | `gog_sheets_datasource_table_describe` | Describe the extract anchored at an A1 cell |
 | `gog_sheets_datasource_table_read` | Read a bounded number of rows out of an extract |
+| `gog_sheets_datasource_add` | Add a BigQuery Connected Sheets data source (custom SQL or a native table) |
+| `gog_sheets_datasource_update` | Repoint a data source's SQL, table or billing project |
+| `gog_sheets_datasource_refresh` | Re-run a data source so its sheet and extracts pick up current data |
+| `gog_sheets_datasource_delete` | Delete a data source, its linked sheet, and unlink dependent objects |
 | `gog_sheets_named_ranges_list` | List named ranges |
 | `gog_sheets_named_ranges_get` | Get a named range |
 | `gog_sheets_named_ranges_add` | Create a named range |
