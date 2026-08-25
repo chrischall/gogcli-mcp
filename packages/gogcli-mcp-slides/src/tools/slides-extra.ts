@@ -125,6 +125,40 @@ export function registerExtraSlidesTools(server: McpServer): void {
     return runOrDiagnose(['slides', 'delete-slide', presentationId, slideId, '--force'], { account });
   });
 
+  // Slide visibility (gog >= 0.38.0, openclaw/gogcli#1009). Skipping is NOT
+  // deleting and not hiding: the slide keeps its position, content and ID, and
+  // still appears in the editor and in gog_slides_list_slides (which reports
+  // isSkipped in JSON) — it is only left out when the deck is presented or
+  // exported to PDF. Fully reversible, so neither tool is annotated
+  // destructive: skip is the safe alternative to gog_slides_delete_slide when
+  // the ask is "leave this out of the talk". Neither is confirmation-gated in
+  // gog, so neither takes --force (verified live against gog 0.38.0).
+  server.registerTool('gog_slides_skip_slide', {
+    description:
+      'Skip a slide during presentation — it stays in the deck at its current position but is not shown when presenting '
+      + '(and is left out of a PDF export). Use this instead of gog_slides_delete_slide when a slide should be omitted from '
+      + 'a talk without losing it. Reverse with gog_slides_unskip_slide; gog_slides_list_slides reports which slides are skipped.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      slideId: z.string().describe('Slide ID to skip (from gog_slides_list_slides)'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, slideId, account }) => {
+    return runOrDiagnose(['slides', 'skip-slide', presentationId, slideId], { account });
+  });
+
+  server.registerTool('gog_slides_unskip_slide', {
+    description:
+      'Include a previously skipped slide again when the deck is presented. Safe to call on a slide that was never skipped.',
+    inputSchema: {
+      presentationId: z.string().describe('Presentation ID'),
+      slideId: z.string().describe('Slide ID to unskip (from gog_slides_list_slides)'),
+      account: accountParam,
+    },
+  }, async ({ presentationId, slideId, account }) => {
+    return runOrDiagnose(['slides', 'unskip-slide', presentationId, slideId], { account });
+  });
+
   server.registerTool('gog_slides_update_notes', {
     description: 'Update the speaker notes on a slide (inline text or from a file).',
     annotations: { destructiveHint: true },

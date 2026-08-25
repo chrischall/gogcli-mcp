@@ -130,6 +130,14 @@
       "description": "Delete a slide"
     },
     {
+      "name": "gog_slides_skip_slide",
+      "description": "Skip a slide during presentation without removing it from the deck"
+    },
+    {
+      "name": "gog_slides_unskip_slide",
+      "description": "Include a previously skipped slide again when presenting"
+    },
+    {
       "name": "gog_slides_read_slide",
       "description": "Read the content of a slide"
     },

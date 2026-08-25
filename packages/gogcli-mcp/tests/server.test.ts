@@ -14,8 +14,10 @@ describe('BASE_TOOL_REGISTRARS', () => {
     // One representative tool per service registrar, in registrar order.
     for (const expected of [
       'gog_api_list',
+      'gog_appscript_get',
       'gog_auth_list',
       'gog_calendar_events',
+      'gog_chat_spaces_list',
       'gog_classroom_courses_list',
       'gog_contacts_list',
       'gog_docs_cat',

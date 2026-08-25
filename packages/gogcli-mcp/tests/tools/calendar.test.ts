@@ -457,3 +457,124 @@ describe('gog_calendar_events — pagination (previously absent entirely)', () =
     expect(out).not.toHaveProperty('nextPageToken');
   });
 });
+
+// Reminders (gog >= 0.38.0 for --no-reminders, openclaw/gogcli#1002/#1016).
+// Three distinct states share these two params and gog spells each one
+// differently, so each is pinned separately: custom overrides, "no reminders at
+// all", and — on update only — "go back to whatever the calendar says", which
+// is an EMPTY --reminder rather than a flag of its own. All three were verified
+// against a real gog 0.38.0 with --dry-run.
+describe('gog_calendar_create reminders', () => {
+  it('passes each reminder as its own repeated flag', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_create', {
+      calendarId: 'primary',
+      summary: 'Standup',
+      from: '2026-04-14T09:00:00Z',
+      to: '2026-04-14T09:30:00Z',
+      reminders: ['popup:30m', 'email:1d'],
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'create', 'primary', '--summary=Standup', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z',
+        '--reminder=popup:30m', '--reminder=email:1d'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --no-reminders', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_create', {
+      calendarId: 'primary',
+      summary: 'Quiet',
+      from: '2026-04-14T09:00:00Z',
+      to: '2026-04-14T09:30:00Z',
+      noReminders: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'create', 'primary', '--summary=Quiet', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z',
+        '--no-reminders'],
+      { account: undefined },
+    );
+  });
+
+  it('rejects reminders and noReminders together, as gog does', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_calendar_create', {
+      calendarId: 'primary',
+      summary: 'Both',
+      from: '2026-04-14T09:00:00Z',
+      to: '2026-04-14T09:30:00Z',
+      reminders: ['popup:10m'],
+      noReminders: true,
+    });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('rejects more than the five reminders Google allows', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_calendar_create', {
+      calendarId: 'primary',
+      summary: 'Too many',
+      from: '2026-04-14T09:00:00Z',
+      to: '2026-04-14T09:30:00Z',
+      reminders: ['popup:1m', 'popup:2m', 'popup:3m', 'popup:4m', 'popup:5m', 'popup:6m'],
+    });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+});
+
+describe('gog_calendar_update reminders', () => {
+  it('replaces the overrides', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_update', {
+      calendarId: 'primary', eventId: 'evt1', reminders: ['popup:15m'],
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--reminder=popup:15m'],
+      { account: undefined },
+    );
+  });
+
+  // Verified live: `calendar update … --reminder= --dry-run` patches
+  // reminders.useDefault=true with overrides cleared.
+  it('restores the calendar defaults with an empty reminder list', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_update', {
+      calendarId: 'primary', eventId: 'evt1', reminders: [],
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--reminder='],
+      { account: undefined },
+    );
+  });
+
+  it('turns every reminder off', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_update', {
+      calendarId: 'primary', eventId: 'evt1', noReminders: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--no-reminders'],
+      { account: undefined },
+    );
+  });
+
+  it('leaves reminders alone when neither param is given', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_update', {
+      calendarId: 'primary', eventId: 'evt1', summary: 'Renamed',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'update', 'primary', 'evt1', '--summary=Renamed'],
+      { account: undefined },
+    );
+  });
+});

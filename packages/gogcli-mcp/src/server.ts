@@ -1,7 +1,9 @@
 import type { ToolRegistrar } from '@chrischall/mcp-utils';
 import { registerApiTools } from './tools/api.js';
+import { registerAppScriptTools } from './tools/appscript.js';
 import { registerAuthTools, authToolsFor } from './tools/auth.js';
 import { registerCalendarTools } from './tools/calendar.js';
+import { registerChatTools } from './tools/chat.js';
 import { registerClassroomTools } from './tools/classroom.js';
 import { registerContactsTools } from './tools/contacts.js';
 import { registerDocsTools } from './tools/docs.js';
@@ -23,8 +25,10 @@ export const VERSION = typeof GOGCLI_VERSION !== 'undefined' ? GOGCLI_VERSION : 
 // re-exported below.
 export const BASE_TOOL_REGISTRARS: ToolRegistrar[] = [
   registerApiTools,
+  registerAppScriptTools,
   registerAuthTools,
   registerCalendarTools,
+  registerChatTools,
   registerClassroomTools,
   registerContactsTools,
   registerDocsTools,
@@ -37,9 +41,11 @@ export const BASE_TOOL_REGISTRARS: ToolRegistrar[] = [
 
 export {
   registerApiTools,
+  registerAppScriptTools,
   registerAuthTools,
   authToolsFor,
   registerCalendarTools,
+  registerChatTools,
   registerClassroomTools,
   registerContactsTools,
   registerDocsTools,

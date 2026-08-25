@@ -1006,9 +1006,9 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // Connected Sheets (gog >= 0.37.0, openclaw/gogcli#938). Read-only by
-  // construction — gog exposes no create/update/refresh/delete here, so none of
-  // these can change a data source or trigger a query.
+  // Connected Sheets (gog >= 0.37.0 for the reads, openclaw/gogcli#938; >= 0.38.0
+  // for the writes further down, #1025-#1028). The five tools in this first
+  // group are read-only: none of them changes a data source or starts a query.
   //
   // The scope is the thing to know before calling any of them: Google requires
   // https://www.googleapis.com/auth/bigquery.readonly whenever a Sheets
@@ -1109,6 +1109,130 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (maxRows !== undefined) args.push(`--max-rows=${maxRows}`);
     if (render) args.push(`--render=${render}`);
     return runOrDiagnose(args, { account });
+  });
+
+
+  // Connected Sheets WRITES (gog >= 0.38.0, openclaw/gogcli#1025-#1028). The
+  // 0.37.0 half of this surface could only look; these four change a source or
+  // start a query, and they carry two costs the read tools do not:
+  //
+  //   1. Money. Every one of them (delete excepted) starts a BigQuery execution
+  //      billed to --billing-project, so a careless refresh of a wide query is a
+  //      real charge on someone's account.
+  //   2. Asynchrony. add/update/refresh return a DataExecutionStatus, not data;
+  //      the query keeps running after the call returns. gog_sheets_datasource_describe
+  //      is how you find out whether it SUCCEEDED or FAILED.
+  //
+  // The BigQuery scope note applies here exactly as it does to the reads: the
+  // mutation is a Sheets write, but the response still carries Connected Sheets
+  // data, so Google demands bigquery.readonly for it too.
+  const bigQueryChargeNote =
+    ' COSTS MONEY AND RUNS ASYNCHRONOUSLY: this starts a BigQuery execution billed to the billing project, and returns ' +
+    'once the execution has been REQUESTED — not once it has finished. Poll gog_sheets_datasource_describe until its ' +
+    'dataExecutionStatus state is SUCCEEDED or FAILED before treating the data as current.';
+
+  server.registerTool('gog_sheets_datasource_add', {
+    description:
+      'Add a BigQuery Connected Sheets data source to a spreadsheet, creating its linked DATA_SOURCE sheet. Point it at ' +
+      'EITHER a custom SQL query (query) OR an existing native table (dataset + table) — never both. billingProject is the ' +
+      'BigQuery project charged for the query; tableProject only names which project OWNS the table, and defaults to the ' +
+      'billing project. Returns the new dataSourceId, which every other datasource tool takes.' +
+      bigQueryChargeNote + bigQueryScopeNote,
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      billingProject: z.string().describe('Billing-enabled BigQuery project charged for this source\'s queries'),
+      query: z.string().optional().describe('BigQuery SQL to run. Mutually exclusive with dataset/table/tableProject.'),
+      dataset: z.string().optional().describe('BigQuery dataset ID of an existing table. Requires table; mutually exclusive with query.'),
+      table: z.string().optional().describe('BigQuery table ID. Requires dataset; mutually exclusive with query.'),
+      tableProject: z.string().optional().describe('BigQuery project that owns the table (default: the billing project). Only valid with dataset/table.'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, billingProject, query, dataset, table, tableProject, account }) => {
+    const tableFlags = tableProject !== undefined || dataset !== undefined || table !== undefined;
+    if (query !== undefined && tableFlags) {
+      throw new Error('query and the table fields (dataset, table, tableProject) are mutually exclusive — a data source is backed by one or the other.');
+    }
+    if (query === undefined && !(dataset && table)) {
+      throw new Error('Pass query, or both --dataset and --table (tableProject alone is not a table).');
+    }
+    const args = ['sheets', 'datasource', 'add', spreadsheetId, `--billing-project=${billingProject}`];
+    if (query !== undefined) args.push(`--query=${query}`);
+    if (tableProject) args.push(`--table-project=${tableProject}`);
+    if (dataset) args.push(`--dataset=${dataset}`);
+    if (table) args.push(`--table=${table}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_datasource_update', {
+    description:
+      'Repoint an existing BigQuery Connected Sheets data source: new SQL for a query-backed source, a new dataset/table for ' +
+      'a table-backed one, or a new billing project for either. Only the fields you pass are changed. You cannot convert a ' +
+      'source between the two kinds — gog refuses SQL on a table source and table fields on a query source — so read ' +
+      'gog_sheets_datasource_describe first if you are unsure which kind it is. Replacing the SQL DISCARDS the source\'s ' +
+      'current results.' + bigQueryChargeNote + bigQueryScopeNote,
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
+      billingProject: z.string().optional().describe('New billing-enabled BigQuery project to charge executions to'),
+      query: z.string().optional().describe('Replacement SQL. Only valid on a query-backed source; mutually exclusive with the table fields.'),
+      dataset: z.string().optional().describe('Replacement dataset ID. Only valid on a table-backed source.'),
+      table: z.string().optional().describe('Replacement table ID. Only valid on a table-backed source.'),
+      tableProject: z.string().optional().describe('Replacement project owning the table. Only valid on a table-backed source.'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, dataSourceId, billingProject, query, dataset, table, tableProject, account }) => {
+    const tableFlags = tableProject !== undefined || dataset !== undefined || table !== undefined;
+    if (query !== undefined && tableFlags) {
+      throw new Error('query and the table fields (dataset, table, tableProject) are mutually exclusive — a data source is backed by one or the other.');
+    }
+    if (billingProject === undefined && query === undefined && !tableFlags) {
+      throw new Error('nothing to update: pass billingProject, query, dataset, table or tableProject.');
+    }
+    const args = ['sheets', 'datasource', 'update', spreadsheetId, dataSourceId];
+    if (billingProject !== undefined) args.push(`--billing-project=${billingProject}`);
+    if (query !== undefined) args.push(`--query=${query}`);
+    if (tableProject !== undefined) args.push(`--table-project=${tableProject}`);
+    if (dataset !== undefined) args.push(`--dataset=${dataset}`);
+    if (table !== undefined) args.push(`--table=${table}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_datasource_refresh', {
+    description:
+      'Re-run a Connected Sheets data source so its sheet and extracts pick up current BigQuery data. Google refuses to ' +
+      'refresh a source whose previous execution FAILED; forceRefresh overrides that, which is what you want after fixing ' +
+      'the underlying query or permissions.' + bigQueryChargeNote + bigQueryScopeNote,
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
+      forceRefresh: z.boolean().optional().describe('Refresh even when the previous execution failed'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, dataSourceId, forceRefresh, account }) => {
+    const args = ['sheets', 'datasource', 'refresh', spreadsheetId, dataSourceId];
+    if (forceRefresh) args.push('--force-refresh');
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_datasource_delete', {
+    description:
+      'Delete a Connected Sheets data source. This is WIDER than it sounds: it also deletes the source\'s linked ' +
+      'DATA_SOURCE sheet, and unlinks every extract, chart and pivot table built on it elsewhere in the spreadsheet — ' +
+      'objects on other tabs that the caller never named. Take gog_sheets_snapshot first if any of that matters. The ' +
+      'BigQuery data itself is untouched; only the spreadsheet\'s connection to it goes away.' + bigQueryScopeNote,
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
+      account: accountParam,
+    },
+  }, async ({ spreadsheetId, dataSourceId, account }) => {
+    // gog gates this delete behind a confirmation; the runner injects
+    // --no-input, so without --force it refuses at runtime. Verified live
+    // against gog 0.38.0: without --force it answers "refusing to delete
+    // Connected Sheets data source … without --force (non-interactive)".
+    return runOrDiagnose(['sheets', 'datasource', 'delete', spreadsheetId, dataSourceId, '--force'], { account });
   });
 
 }

@@ -759,3 +759,31 @@ describe('gog_slides_table_unmerge', () => {
       ['slides', 'table', 'unmerge', 'p1', 't1', '--row=1', '--col=1'], { account: undefined });
   });
 });
+
+describe('gog_slides_skip_slide', () => {
+  it('calls runOrDiagnose with presentationId and slideId', async () => {
+    await harness.callTool('gog_slides_skip_slide', { presentationId: 'p1', slideId: 's1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'skip-slide', 'p1', 's1'],
+      { account: undefined },
+    );
+  });
+
+  it('passes the account through', async () => {
+    await harness.callTool('gog_slides_skip_slide', { presentationId: 'p1', slideId: 's1', account: 'me@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'skip-slide', 'p1', 's1'],
+      { account: 'me@x.com' },
+    );
+  });
+});
+
+describe('gog_slides_unskip_slide', () => {
+  it('calls runOrDiagnose with presentationId and slideId', async () => {
+    await harness.callTool('gog_slides_unskip_slide', { presentationId: 'p1', slideId: 's1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['slides', 'unskip-slide', 'p1', 's1'],
+      { account: undefined },
+    );
+  });
+});

@@ -55,9 +55,9 @@ unregistered scope for a service it doesn't touch.
 
 ## Scopes dropped from a per-service request (enable the API to use them via `all`)
 
-These are in `all` but have no tools here; they're the likely `invalid_scope` offenders. To use
-`services="all"` you must **enable each API** in the GCP project *and* register its scope on the
-OAuth consent screen:
+These are in `all` but are not requested by any package's least-privilege default; they're the
+likely `invalid_scope` offenders. To use `services="all"` you must **enable each API** in the GCP
+project *and* register its scope on the OAuth consent screen:
 
 | Scope(s) | Enable this API |
 |---|---|
@@ -70,6 +70,15 @@ OAuth consent screen:
 | `script.deployments`, `script.processes`, `script.projects` | Apps Script API |
 | `webmasters` | Search Console API |
 | `youtube.readonly` | YouTube Data API v3 |
+
+Two of these now DO have tools, in the base all-services package only (gog ≥ 0.38.0):
+
+- **Chat** (`gog_chat_*`) — needs the Google Chat API enabled, and is **Workspace-only** on top of
+  that: on a consumer `@gmail.com` account gog refuses every `chat` call with *"chat requires a
+  Google Workspace account (non-gmail.com)"* no matter which scopes the token carries. Enabling the
+  API does not change that; the account is the constraint.
+- **Apps Script** (`gog_appscript_*`) — needs the Apps Script API enabled. gog's error names the
+  exact console URL for the OAuth client's project, so read it rather than guessing at scopes.
 
 > The authoritative `invalid=[...]` list for a specific project can only be read from Google's
 > browser error page (or by inspecting enabled APIs in the console) — the connector never receives
@@ -88,7 +97,8 @@ default therefore doesn't strip access the user already consented to — it only
 Some scopes belong to no gog service at all, so no `services` string reaches them. The one that
 matters here is **`https://www.googleapis.com/auth/bigquery.readonly`**, which Google requires
 whenever a Sheets API response *contains* BigQuery Connected Sheets data — i.e. for every
-`gog_sheets_datasource_*` tool (gog ≥ 0.37.0). Ordinary `sheets` authorization deliberately does not
+`gog_sheets_datasource_*` tool — the reads (gog ≥ 0.37.0) and the add/update/refresh/delete writes
+(gog ≥ 0.38.0) alike. Ordinary `sheets` authorization deliberately does not
 ask for it, so an account that reads every other part of the spreadsheet still gets a permission
 error there.
 

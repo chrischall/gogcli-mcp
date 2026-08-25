@@ -1611,3 +1611,182 @@ describe('gog_sheets_datasource_table_read', () => {
     expect(lib.runOrDiagnose).not.toHaveBeenCalled();
   });
 });
+
+describe('gog_sheets_datasource_add', () => {
+  it('adds a query-backed source', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_add', {
+      spreadsheetId: 'sid', billingProject: 'my-proj', query: 'SELECT 1',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'add', 'sid', '--billing-project=my-proj', '--query=SELECT 1'],
+      { account: undefined },
+    );
+  });
+
+  it('adds a table-backed source, including the optional table project', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_add', {
+      spreadsheetId: 'sid', billingProject: 'billing', dataset: 'ds', table: 'tbl', tableProject: 'owner',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'add', 'sid', '--billing-project=billing', '--table-project=owner', '--dataset=ds', '--table=tbl'],
+      { account: undefined },
+    );
+  });
+
+  it('refuses a call that mixes a query with table flags before spawning gog', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_datasource_add', {
+      spreadsheetId: 'sid', billingProject: 'p', query: 'SELECT 1', dataset: 'ds', table: 'tbl',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('mutually exclusive');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('refuses a call that names neither a query nor a complete table', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_datasource_add', {
+      spreadsheetId: 'sid', billingProject: 'p', dataset: 'ds',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('--dataset and --table');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+});
+
+describe('gog_sheets_datasource_update', () => {
+  it('sends only the fields the caller supplied', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_update', {
+      spreadsheetId: 'sid', dataSourceId: 'ds1', query: 'SELECT 2',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'update', 'sid', 'ds1', '--query=SELECT 2'],
+      { account: undefined },
+    );
+  });
+
+  it('updates the billing project and table fields together', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_update', {
+      spreadsheetId: 'sid', dataSourceId: 'ds1', billingProject: 'new-proj', dataset: 'ds2', table: 't2',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'update', 'sid', 'ds1', '--billing-project=new-proj', '--dataset=ds2', '--table=t2'],
+      { account: undefined },
+    );
+  });
+
+  it('moves a table-backed source to another owning project', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_update', {
+      spreadsheetId: 'sid', dataSourceId: 'ds1', tableProject: 'other-owner',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'update', 'sid', 'ds1', '--table-project=other-owner'],
+      { account: undefined },
+    );
+  });
+
+  it('refuses a call that mixes a query with table flags', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_datasource_update', {
+      spreadsheetId: 'sid', dataSourceId: 'ds1', query: 'SELECT 2', table: 't2',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('mutually exclusive');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('refuses a call with nothing to update', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_datasource_update', { spreadsheetId: 'sid', dataSourceId: 'ds1' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('nothing to update');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+});
+
+describe('gog_sheets_datasource_refresh', () => {
+  it('requests a refresh', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_refresh', { spreadsheetId: 'sid', dataSourceId: 'ds1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'refresh', 'sid', 'ds1'],
+      { account: undefined },
+    );
+  });
+
+  it('passes --force-refresh after a failed execution', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_refresh', {
+      spreadsheetId: 'sid', dataSourceId: 'ds1', forceRefresh: true,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'refresh', 'sid', 'ds1', '--force-refresh'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_sheets_datasource_delete', () => {
+  // Every tool a description NAMES has to exist in this package, and a name
+  // that does not is worse than no advice: the model calls it, gets "unknown
+  // tool", and may skip the step the description was insisting on — here, the
+  // backup before an unlink-everything delete. gog_sheets_backup was such a
+  // name; the snapshot tool is gog_sheets_snapshot. Checked across the WHOLE
+  // package (index.ts composes auth + base sheets + these extras), because a
+  // description may legitimately point at a tool another registrar supplies.
+  it('names only tools this package actually registers', async () => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const configs = new Map<string, { description?: string }>();
+    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
+      configs.set(name, config as { description?: string });
+      return undefined as never;
+    });
+    lib.authToolsFor('sheets')(server);
+    lib.registerSheetsTools(server);
+    registerExtraSheetsTools(server);
+    const names = [...configs.keys()];
+    for (const [tool, config] of configs) {
+      for (const [referenced] of (config.description ?? '').matchAll(/gog_[a-z_0-9]+/g)) {
+        expect(names, `${tool} references ${referenced}`).toContain(referenced);
+      }
+    }
+  });
+
+  // gog gates this behind a confirmation and the runner always injects
+  // --no-input, so a missing --force fails at runtime against a real gog while
+  // every mocked test still passes. Confirmed live on gog 0.38.0.
+  it('appends --force so the confirmation gate does not refuse it', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_delete', { spreadsheetId: 'sid', dataSourceId: 'ds1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'delete', 'sid', 'ds1', '--force'],
+      { account: undefined },
+    );
+  });
+
+  it('passes the account through', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_datasource_delete', {
+      spreadsheetId: 'sid', dataSourceId: 'ds1', account: 'me@x.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'datasource', 'delete', 'sid', 'ds1', '--force'],
+      { account: 'me@x.com' },
+    );
+  });
+});
