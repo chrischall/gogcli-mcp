@@ -12,27 +12,32 @@ env:
   - name: GOG_CLIENT_ID
     required: false
     help: >-
-      Google OAuth client id. Needed with GOG_CLIENT_SECRET and
-      GOG_REFRESH_TOKEN for headless auth, which is the right mode when hosted
-      (there is no browser to complete a consent flow).
+      Google OAuth client id. NOTE: on the local-spawn path the child `gog`
+      receives a sanitized env — runner.ts drops GOG_ACCESS_TOKEN and every
+      *_TOKEN / *_SECRET / *_API_KEY / *_PRIVATE_KEY variable — so the CLI
+      authenticates from its own stored credentials under $HOME (see
+      state.dataDir), not from these variables being passed through.
   - name: GOG_CLIENT_SECRET
     secret: true
     required: false
     help: >-
-      Google OAuth client secret. Pairs with GOG_CLIENT_ID and
-      GOG_REFRESH_TOKEN.
+      Google OAuth client secret. Stripped from the spawned CLI's environment
+      by runner.ts's *_SECRET rule — see GOG_CLIENT_ID.
   - name: GOG_REFRESH_TOKEN
     secret: true
     required: false
     help: >-
-      Google OAuth refresh token, obtained once locally. This is the durable
-      credential a hosted deployment should carry.
+      Google OAuth refresh token. Stripped from the spawned CLI's environment
+      by runner.ts's *_TOKEN rule — see GOG_CLIENT_ID. A hosted deployment must
+      therefore carry gog's authorised-account state in its persisted data dir,
+      or drive a remote runner via GOG_RUNNER_URL.
   - name: GOG_ACCESS_TOKEN
     secret: true
     required: false
     help: >-
-      A short-lived Google access token. Usually left unset — it is minted from
-      the refresh token — but can be supplied directly for a one-off.
+      Deliberately removed from the spawned CLI's environment by runner.ts, so
+      that a stale directly-passed token cannot shadow gog's stored refresh
+      credential. Leave unset.
   - name: GOG_ACCOUNT
     required: false
     help: >-
