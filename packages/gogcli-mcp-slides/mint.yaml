@@ -66,16 +66,24 @@ env:
   - name: GOG_TIMEZONE
     required: false
     help: >-
-      IANA time zone (e.g. America/New_York) used when interpreting and
-      rendering times. Falls back to DISPLAY_TZ, then the account default.
+      The IANA zone gog itself formats its naive timestamps in. The wrapper
+      reads it (naiveSourceTimeZone) to re-attach the correct offset, so it
+      should match gog's own configuration. Falls back to DISPLAY_TZ, then to
+      America/New_York.
   - name: DISPLAY_TZ
     required: false
     help: >-
-      IANA time zone used for rendered timestamps when GOG_TIMEZONE is unset.
+      The IANA zone every rendered *Display field uses (displayTimeZone,
+      default America/New_York). It does not read GOG_TIMEZONE — the fallback
+      runs the other way, so this is also what GOG_TIMEZONE falls back to. An
+      invalid value degrades to the default rather than throwing.
 dependencies:
   # Every tool shells out to the `gog` CLI; without it the server starts and
-  # then fails on the first call. Pinned to the version this repo builds
-  # against (src/runner.ts GOG_VERSION and fly-gog-runner/Dockerfile).
+  # then fails on the first call. This tag must track
+  # packages/gogcli-mcp/src/runner.ts's MIN_GOG_VERSION (the floor the tools
+  # assume) and the fly-gog-runner/Dockerfile GOG_VERSION build arg. See
+  # CLAUDE.md "Required gog version" — bumping the floor means bumping these
+  # nine pins too.
   - kind: github-release
     repo: openclaw/gogcli
     tag: v0.38.0
