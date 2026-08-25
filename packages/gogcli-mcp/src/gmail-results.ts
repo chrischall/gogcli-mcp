@@ -177,6 +177,16 @@ export async function finalizeGmailSearch(
 // The merged payload keeps a nextPageToken only if pages remain when the cap is
 // hit, so finalizeGmailSearch still marks it truncated — running out of budget
 // is not the same as reaching the end, and must not read like it.
+//
+// A REPEATED CURSOR ENDS THE WALK TOO. Google can hand back a nextPageToken it
+// has already issued, and gog 0.38.0 fixed exactly that for its own `--all`
+// (openclaw/gogcli#1004) — but this walk is not gog's: it makes N separate
+// single-page calls, so a repeated cursor arrives here untouched. Following it
+// re-fetches a page already merged, so the caller gets the same threads twice
+// over, presented as more results and looking perfectly well-formed. The token
+// is KEPT when that happens, for the same reason the cap keeps it: the walk
+// never established an end, and a set that reads complete is precisely how mail
+// that exists gets reported as missing.
 export async function fetchGmailPages(
   runPage: (token: string | undefined) => Promise<CallToolResult>,
   itemsKey: 'threads' | 'messages',
@@ -186,6 +196,10 @@ export async function fetchGmailPages(
   const merged: unknown[] = [];
   let base: Record<string, unknown> | undefined;
   let token = startToken;
+  // Every cursor this walk has already fetched with, so one Google repeats is
+  // recognised rather than followed. Seeded with the caller's own cursor: a
+  // response echoing that back would re-fetch the page just merged.
+  const fetched = new Set<string>(startToken === undefined ? [] : [startToken]);
 
   for (let pages = 0; pages < maxPages; pages++) {
     const result = await runPage(token);
@@ -199,10 +213,23 @@ export async function fetchGmailPages(
     }
     base = parsed;
     merged.push(...(parsed[itemsKey] as unknown[]));
-    token = typeof parsed.nextPageToken === 'string' && parsed.nextPageToken !== ''
+    const next = typeof parsed.nextPageToken === 'string' && parsed.nextPageToken !== ''
       ? parsed.nextPageToken
       : undefined;
-    if (token === undefined) break;
+    if (next === undefined) {
+      token = undefined;
+      break;
+    }
+    // Checked BEFORE the next fetch, so the duplicate page is never requested
+    // and never merged. `token` keeps the repeated cursor so the result still
+    // reads as truncated — it is the honest answer, and handing it back lets a
+    // caller retry later rather than concluding there is nothing more.
+    if (fetched.has(next)) {
+      token = next;
+      break;
+    }
+    fetched.add(next);
+    token = next;
   }
 
   return finish(base as Record<string, unknown>, itemsKey, merged, token);
