@@ -23,6 +23,14 @@ updates:
         versions:
           - ">=0.20.0"
     groups:
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+        update-types:
+          - major
+          - minor
+          - patch
       dev-dependencies:
         dependency-type: development
         update-types:
