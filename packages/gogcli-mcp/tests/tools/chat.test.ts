@@ -123,6 +123,13 @@ describe('gog_chat_messages_list', () => {
       { account: undefined },
     );
   });
+
+  it('rejects a sort order Chat does not accept', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_chat_messages_list', { space: 'spaces/AAA', order: 'newest' });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
 });
 
 describe('gog_chat_messages_send', () => {

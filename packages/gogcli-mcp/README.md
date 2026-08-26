@@ -46,7 +46,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 claude mcp add gogcli-mcp -- gogcli-mcp
 ```
 
-## Tools (52)
+## Tools (112)
 
 | Service | Tools | Includes |
 |---------|-------|----------|

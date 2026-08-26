@@ -44,9 +44,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 claude mcp add gogcli-sheets -- gogcli-mcp-sheets
 ```
 
-## Extra Sheets Tools (55)
+## Extra Sheets Tools (59)
 
-Plus 8 auth tools and 8 base Sheets tools (get, update, append, clear, metadata, create, find-replace, run) — 71 in all.
+Plus 8 auth tools and 8 base Sheets tools (get, update, append, clear, metadata, create, find-replace, run) — 75 in all.
 
 | Tool | Description |
 |------|-------------|

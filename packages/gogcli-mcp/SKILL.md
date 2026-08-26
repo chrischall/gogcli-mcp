@@ -32,7 +32,7 @@ MCP server wrapping [gogcli](https://github.com/openclaw/gogcli) — provides Cl
 
 `GOG_ACCOUNT` is optional — omit it to use gogcli's configured default account.
 
-## Tools (52)
+## Tools (112)
 
 | Service | Tools |
 |---------|-------|
