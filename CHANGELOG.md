@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.26.0](https://github.com/chrischall/gogcli-mcp/compare/v2.25.0...v2.26.0) (2026-08-26)
+
+
+### Features
+
+* add Google Chat and Apps Script tools, Connected Sheets writes, and calendar reminders ([#286](https://github.com/chrischall/gogcli-mcp/issues/286)) ([1f1751b](https://github.com/chrischall/gogcli-mcp/commit/1f1751b9e2d22ccdb8525857bb56f17e4a634690))
+
+
+### Bug Fixes
+
+* correct the gog timezone help and tie the version pins together ([#287](https://github.com/chrischall/gogcli-mcp/issues/287)) ([456489b](https://github.com/chrischall/gogcli-mcp/commit/456489b1b93a06f38576ac8fd9dd407d4880873f))
+* **gmail:** stop a multi-page search when Google repeats a page cursor ([#288](https://github.com/chrischall/gogcli-mcp/issues/288)) ([b3546c7](https://github.com/chrischall/gogcli-mcp/commit/b3546c7f9058013d62bd3564733b49b4c0f57d61))
+* pin @types/node at the workspace root so every package resolves it ([#293](https://github.com/chrischall/gogcli-mcp/issues/293)) ([7490065](https://github.com/chrischall/gogcli-mcp/commit/7490065f9bb09260d47942f8fab49671b2d766d2))
+* **release-please:** give the release PR the fleet's title scope ([#295](https://github.com/chrischall/gogcli-mcp/issues/295)) ([337506c](https://github.com/chrischall/gogcli-mcp/commit/337506c0485c585395970891ace9c429695a5317))
+
+
+### Documentation
+
+* correct the stale tool counts, and type the Chat sort order as an enum ([#292](https://github.com/chrischall/gogcli-mcp/issues/292)) ([0ec3470](https://github.com/chrischall/gogcli-mcp/commit/0ec3470a867b8cbf61a32e85a064cf878a807d6d))
+
 ## [2.25.0](https://github.com/chrischall/gogcli-mcp/compare/v2.24.0...v2.25.0) (2026-08-16)
 
 

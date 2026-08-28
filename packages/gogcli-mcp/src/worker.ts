@@ -38,7 +38,7 @@ import { gogAuth, CONNECTOR_INSTRUCTIONS, type GogProps } from './connector-auth
 // connector with all ~360 tools at once. Add whichever paths you want as separate
 // connectors in claude.ai (each authorizes with the same connector key).
 
-const VERSION = '2.25.0'; // x-release-please-version
+const VERSION = '2.26.0'; // x-release-please-version
 
 // Build an McpAgent subclass whose init() registers `registrars` onto its server,
 // each handler wrapped in the ALS scope carrying the per-session Fly executor.
