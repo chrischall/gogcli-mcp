@@ -86,7 +86,7 @@ dependencies:
   # nine pins too.
   - kind: github-release
     repo: openclaw/gogcli
-    tag: v0.38.0
+    tag: v0.38.1
     asset: "gogcli_*_linux_amd64.tar.gz"
     bin: [gog]
 state:
