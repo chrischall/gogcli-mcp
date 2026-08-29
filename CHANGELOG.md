@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.27.0](https://github.com/chrischall/gogcli-mcp/compare/v2.26.0...v2.27.0) (2026-08-29)
+
+
+### Features
+
+* **gmail:** reply from the base package so a reply keeps the original message ([#297](https://github.com/chrischall/gogcli-mcp/issues/297)) ([aa10800](https://github.com/chrischall/gogcli-mcp/commit/aa108004014b8152780af270bcaf61000e5965db))
+
+
+### Documentation
+
+* **gmail:** correct the base tool counts and restore the reply cross-references ([#300](https://github.com/chrischall/gogcli-mcp/issues/300)) ([7ac7da2](https://github.com/chrischall/gogcli-mcp/commit/7ac7da2c7d3e634da75225491b3850eeb5f12701))
+
 ## [2.26.0](https://github.com/chrischall/gogcli-mcp/compare/v2.25.0...v2.26.0) (2026-08-26)
 
 
