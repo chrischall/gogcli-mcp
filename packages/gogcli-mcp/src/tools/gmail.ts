@@ -1,9 +1,86 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, registerRunTool, payloadArg, pageTokenParam, pageAliasParam, resolvePageToken } from './utils.js';
+import { accountParam, runOrDiagnose, registerRunTool, payloadArg, pageTokenParam, pageAliasParam, resolvePageToken, assertNotBoth } from './utils.js';
 import { finalizeGmailSearch, fetchGmailPages } from '../gmail-results.js';
 import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
+import type { InlineAttachmentInput } from '../attachments.js';
+
+// gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
+// only in the subcommand and default recipient set (reply → sender; reply-all
+// → every participant). Recipient flags are repeatable on the CLI, so they are
+// arrays here. --to/--cc/--bcc ADD or MOVE recipients onto the inherited reply
+// set; --remove drops them. Body/HTML follow the same inline-or-file shape as
+// the draft tools.
+export const replySchema = {
+  messageId: z.string().describe('Gmail message ID to reply to — the short hex `id` from gog_gmail_get / _search (NOT the threadId, NOT the RFC822 `<…@host>` Message-Id header).'),
+  body: z.string().optional().describe('Reply body (plain text; required unless bodyHtml or bodyHtmlFile is set). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
+  bodyHtml: z.string().optional().describe('Reply body (HTML; optional). Pass the HTML itself at any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Mutually exclusive with bodyHtmlFile.'),
+  bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server for the reply body. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
+  to: z.array(z.string()).optional().describe('Add or move recipients to To (repeatable). Added on top of the recipients inherited from the original message.'),
+  cc: z.array(z.string()).optional().describe('Add or move recipients to Cc (repeatable)'),
+  bcc: z.array(z.string()).optional().describe('Add or move recipients to Bcc (repeatable)'),
+  remove: z.array(z.string()).optional().describe('Remove these recipients from all fields (repeatable) — e.g. to drop someone from a reply-all.'),
+  subject: z.string().optional().describe('Override reply subject (default: "Re: <original>"). A changed subject starts a NEW Gmail thread.'),
+  noQuote: z.boolean().optional().describe('Do not include the original message quoted below the reply (default: the original is quoted)'),
+  attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension.'),
+  attachInline: attachInlineParam,
+  from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
+  autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
+  signature: z.boolean().optional().describe('Append the Gmail signature from the active send-as address'),
+  signatureFrom: z.string().optional().describe('Append the Gmail signature from this send-as email address'),
+  signatureFile: z.string().optional().describe('Append a local signature file (plain text or HTML), read on the gog server'),
+  account: accountParam,
+};
+
+export type ReplyFlags = {
+  body?: string;
+  bodyHtml?: string;
+  bodyHtmlFile?: string;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  remove?: string[];
+  subject?: string;
+  noQuote?: boolean;
+  attach?: string[];
+  attachInline?: InlineAttachmentInput[];
+  from?: string;
+  autoFromAddressedAlias?: boolean;
+  signature?: boolean;
+  signatureFrom?: string;
+  signatureFile?: string;
+};
+
+export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
+  assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
+  if (f.body) args.push(payloadArg('body', 'body-file', f.body));
+  if (f.bodyHtml) args.push(payloadArg('body-html', 'body-html-file', f.bodyHtml, 'html'));
+  else if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
+  if (f.to) for (const r of f.to) args.push(`--to=${r}`);
+  if (f.cc) for (const r of f.cc) args.push(`--cc=${r}`);
+  if (f.bcc) for (const r of f.bcc) args.push(`--bcc=${r}`);
+  if (f.remove) for (const r of f.remove) args.push(`--remove=${r}`);
+  if (f.subject) args.push(`--subject=${f.subject}`);
+  if (f.noQuote) args.push('--no-quote');
+  if (f.attach) for (const p of f.attach) args.push(`--attach=${p}`);
+  // Same repeatable --attach flag, but the bytes travel with the call: the
+  // executor writes each one to a temp file beside gog and passes that path.
+  // This is the only attachment route that works when the caller and gog do not
+  // share a filesystem (hosted connector, GOG_RUNNER_URL backend). `args` is
+  // passed so the size check sees the body too, which shares the same budget
+  // once payloadArg has turned it into a file arg.
+  args.push(...inlineAttachmentArgs('attach', f.attachInline, args));
+  if (f.from) args.push(`--from=${f.from}`);
+  if (f.signature) args.push('--signature');
+  if (f.signatureFrom) args.push(`--signature-from=${f.signatureFrom}`);
+  if (f.signatureFile) args.push(`--signature-file=${f.signatureFile}`);
+  // PINNED, not conditional: GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS in the host env
+  // silently changes which address the mail goes out FROM, with nothing in the arg
+  // array to show for it — and the remote runner's backend env is not ours to set.
+  // An explicit flag is the only value authoritative on both transports.
+  args.push(f.autoFromAddressedAlias ? '--auto-from-addressed-alias' : '--auto-from-addressed-alias=false');
+}
 
 export function registerGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_search', {
@@ -73,7 +150,10 @@ export function registerGmailTools(server: McpServer): void {
       + 'the same machine gog runs on — on the hosted connector and any remote deployment there is no '
       + 'shared filesystem, so no path you can name resolves there and `attach` will fail with '
       + '"no such file or directory". When either is used, the JSON result echoes the attached filenames '
-      + 'and byte sizes — check it to confirm the files were embedded.',
+      + 'and byte sizes — check it to confirm the files were embedded. '
+      + 'NOT the tool for answering a message: replyToMessageId only files this in the right thread — the '
+      + 'subject, recipients and body are entirely yours, and the original is not quoted unless you set '
+      + 'quote. Use gog_gmail_reply / gog_gmail_reply_all instead, which inherit all three.',
     annotations: { destructiveHint: true },
     inputSchema: {
       to: z.string().describe('Recipient(s), comma-separated'),
@@ -81,13 +161,14 @@ export function registerGmailTools(server: McpServer): void {
       body: z.string().describe('Email body (plain text). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
       cc: z.string().optional().describe('CC recipients, comma-separated'),
       bcc: z.string().optional().describe('BCC recipients, comma-separated'),
-      replyToMessageId: z.string().optional().describe('Message ID to reply to'),
-      threadId: z.string().optional().describe('Thread ID to reply within'),
+      replyToMessageId: z.string().optional().describe('Message ID to thread this message against — sets In-Reply-To/References only. It does NOT quote the original (pass quote for that), inherit its recipients, or prefix the subject with "Re:". For an actual reply use gog_gmail_reply.'),
+      threadId: z.string().optional().describe('Thread ID to thread this message within. Same caveat as replyToMessageId: threading only, no quote and no inherited subject or recipients.'),
+      quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or threadId. gog quotes by DEFAULT on gmail reply but never on gmail send, so without this a threaded send arrives with the original nowhere in it.'),
       attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment.'),
       attachInline: attachInlineParam,
       account: accountParam,
     },
-  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, attach, attachInline, account }) => {
+  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, account }) => {
     // A long body cannot ride in argv: the hosted runner caps a single arg and
     // Linux caps MAX_ARG_STRLEN at 128 KiB. payloadArg swaps it for --body-file
     // past the shared threshold; the executor materializes the temp file.
@@ -96,6 +177,10 @@ export function registerGmailTools(server: McpServer): void {
     if (bcc) args.push(`--bcc=${bcc}`);
     if (replyToMessageId) args.push(`--reply-to-message-id=${replyToMessageId}`);
     if (threadId) args.push(`--thread-id=${threadId}`);
+    // gog's --quote on `gmail send` is opt-in (a plain bool defaulting false),
+    // the mirror image of `gmail reply`, where quoting is the default and
+    // --no-quote opts out. Nothing here can be inferred from the reply target.
+    if (quote) args.push('--quote');
     if (attach) for (const path of attach) args.push(`--attach=${path}`);
     // Same repeatable --attach flag; the executor materializes each payload to a
     // temp file beside gog and substitutes its path. `args` is passed so the
@@ -103,6 +188,49 @@ export function registerGmailTools(server: McpServer): void {
     // file arg once it passes payloadArg's threshold and spends the same budget.
     const inline = inlineAttachmentArgs('attach', attachInline, args);
     args.push(...inline);
+    return runOrDiagnose(args, { account });
+  });
+
+  // ==========================================================================
+  // REPLY / REPLY-ALL
+  //
+  // These live here, in the base package, because gog_gmail_send +
+  // replyToMessageId is NOT a reply. It sets In-Reply-To/References — so Gmail
+  // files it in the right thread — and stops there: no quoted original, no
+  // inherited "Re:" subject, no inherited recipients. To anyone reading the
+  // body it arrives as a brand-new message.
+  //
+  // The asymmetry is gog's: `gmail reply` quotes BY DEFAULT (opt out with
+  // --no-quote), while `gmail send` quotes only on an explicit --quote
+  // (internal/cmd/gmail_send.go, a plain bool defaulting false). The gmail
+  // sub-package reuses replySchema/appendReplyFlags for its draft-side twins
+  // rather than declaring a second copy — registering these tools twice in the
+  // one server would be a duplicate-name error.
+  // ==========================================================================
+  server.registerTool('gog_gmail_reply', {
+    description:
+      'Reply to a Gmail message (goes to the original sender only). USE THIS, not gog_gmail_send, whenever you are '
+      + 'answering a message: it threads off the original AND inherits its "Re:" subject and quotes its body below '
+      + 'yours, which gog_gmail_send does not — a send with replyToMessageId lands in the right thread but reads as a '
+      + 'brand-new message, with the original nowhere in it. To answer every participant use gog_gmail_reply_all.',
+    annotations: { destructiveHint: true },
+    inputSchema: replySchema,
+  }, async ({ messageId, account, ...flags }) => {
+    const args: GogArg[] = ['gmail', 'reply', messageId];
+    appendReplyFlags(args, flags);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_gmail_reply_all', {
+    description:
+      'Reply to all participants of a Gmail message (the sender plus every To/Cc recipient). Same inherited "Re:" '
+      + 'subject and quoted original as gog_gmail_reply. Use the remove flag to drop specific recipients from the '
+      + 'reply-all.',
+    annotations: { destructiveHint: true },
+    inputSchema: replySchema,
+  }, async ({ messageId, account, ...flags }) => {
+    const args: GogArg[] = ['gmail', 'reply-all', messageId];
+    appendReplyFlags(args, flags);
     return runOrDiagnose(args, { account });
   });
 
