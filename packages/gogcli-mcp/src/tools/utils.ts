@@ -441,3 +441,23 @@ export function formatAuthHealth(raw: string, now: number): string {
   }
   return accounts.map((a) => formatOneAccountHealth(a, now)).join('\n\n');
 }
+
+// gog rejects an inline flag together with its --*-file twin — `gmail drafts
+// create` errors with "use only one of --body-html or --body-html-file", and
+// `gmail forward` does the same for --note (misreporting it as --body). Catch
+// the conflict here so the caller gets a message naming the TOOL params it
+// actually passed, instead of a gog error naming flags it never saw.
+export function assertNotBoth(
+  inlineParam: string,
+  fileParam: string,
+  inlineValue: string | undefined,
+  fileValue: string | undefined,
+): void {
+  if (inlineValue !== undefined && fileValue !== undefined) {
+    throw new Error(
+      `${inlineParam} and ${fileParam} are mutually exclusive — gog accepts only one of them. ` +
+      `Pass ${inlineParam} with the content itself (it is written to a temp file automatically when large), ` +
+      `or ${fileParam} with a path that already exists on the gog server.`,
+    );
+  }
+}

@@ -2,28 +2,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs} from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags} from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg, InlineAttachmentInput } from '../../../gogcli-mcp/src/lib.js';
-
-// gog rejects an inline flag together with its --*-file twin — `gmail drafts
-// create` errors with "use only one of --body-html or --body-html-file", and
-// `gmail forward` does the same for --note (misreporting it as --body). Catch
-// the conflict here so the caller gets a message naming the TOOL params it
-// actually passed, instead of a gog error naming flags it never saw.
-function assertNotBoth(
-  inlineParam: string,
-  fileParam: string,
-  inlineValue: string | undefined,
-  fileValue: string | undefined,
-): void {
-  if (inlineValue !== undefined && fileValue !== undefined) {
-    throw new Error(
-      `${inlineParam} and ${fileParam} are mutually exclusive — gog accepts only one of them. ` +
-      `Pass ${inlineParam} with the content itself (it is written to a temp file automatically when large), ` +
-      `or ${fileParam} with a path that already exists on the gog server.`,
-    );
-  }
-}
 
 // Pull the text out of a single-text-block tool result; undefined for any
 // other shape (an error result is still a text block, so it parses below).
@@ -2889,7 +2869,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyToMessageId: z.string().optional().describe('Reply to a specific Gmail MESSAGE id — the short hex `id` field from gog_gmail_get / _search / _thread_get (e.g. 19e7593d77fd9636), NOT a thread id and NOT the RFC822 `<…@host>` Message-Id header. Anchors In-Reply-To/References to that exact message. To reply to a thread when you don\'t know the latest message, use replyToThreadId instead. If both are given, replyToMessageId wins.'),
     replyToThreadId: z.string().optional().describe('Reply to a Gmail THREAD id — passed to gog as --thread-id, which threads the draft using the thread\'s latest-message headers (In-Reply-To/References). This is what "reply to this thread" almost always means. Mutually exclusive with replyToMessageId (which wins if both are set). Thread ids and message ids are both 16-hex strings and easy to confuse — use this param, not replyToMessageId, when the id came from a thread.'),
     replyTo: z.string().optional().describe('Reply-To header address'),
-    quote: z.boolean().optional().describe('Include quoted original message in reply (requires replyToMessageId or replyToThreadId)'),
+    quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or replyToThreadId. DEFAULTS OFF: a draft created with a reply target but without this threads correctly and still reads as a brand-new message, because gog only quotes by default on its reply subcommands. For a real reply draft prefer gog_gmail_drafts_reply / gog_gmail_drafts_reply_all, which also inherit the recipients and the "Re:" subject that this tool leaves to you.'),
     replyAll: z.boolean().optional().describe('Auto-populate recipients from the original message (reply-all), inferring To/Cc from it. Requires replyToMessageId or replyToThreadId. Explicit to/cc/bcc still apply on top; omitRecipients still suppresses them.'),
     attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all).'),
     attachInline: attachInlineParam,
@@ -3216,97 +3196,11 @@ export function registerExtraGmailTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
-  // only in the subcommand and default recipient set (reply → sender; reply-all
-  // → every participant). Recipient flags are repeatable on the CLI, so they are
-  // arrays here. --to/--cc/--bcc ADD or MOVE recipients onto the inherited reply
-  // set; --remove drops them. Body/HTML follow the same inline-or-file shape as
-  // the draft tools.
-  const replySchema = {
-    messageId: z.string().describe('Gmail message ID to reply to — the short hex `id` from gog_gmail_get / _search / _messages_search (NOT the threadId, NOT the RFC822 `<…@host>` Message-Id header).'),
-    body: z.string().optional().describe('Reply body (plain text; required unless bodyHtml or bodyHtmlFile is set). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
-    bodyHtml: z.string().optional().describe('Reply body (HTML; optional). Pass the HTML itself at any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Mutually exclusive with bodyHtmlFile.'),
-    bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server for the reply body. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
-    to: z.array(z.string()).optional().describe('Add or move recipients to To (repeatable). Added on top of the recipients inherited from the original message.'),
-    cc: z.array(z.string()).optional().describe('Add or move recipients to Cc (repeatable)'),
-    bcc: z.array(z.string()).optional().describe('Add or move recipients to Bcc (repeatable)'),
-    remove: z.array(z.string()).optional().describe('Remove these recipients from all fields (repeatable) — e.g. to drop someone from a reply-all.'),
-    subject: z.string().optional().describe('Override reply subject (default: "Re: <original>"). A changed subject starts a NEW Gmail thread.'),
-    noQuote: z.boolean().optional().describe('Do not include the original message quoted below the reply (default: the original is quoted)'),
-    attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension.'),
-    attachInline: attachInlineParam,
-    from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
-    autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
-    signature: z.boolean().optional().describe('Append the Gmail signature from the active send-as address'),
-    signatureFrom: z.string().optional().describe('Append the Gmail signature from this send-as email address'),
-    signatureFile: z.string().optional().describe('Append a local signature file (plain text or HTML), read on the gog server'),
-    account: accountParam,
-  };
-
-  type ReplyFlags = {
-    body?: string;
-    bodyHtml?: string;
-    bodyHtmlFile?: string;
-    to?: string[];
-    cc?: string[];
-    bcc?: string[];
-    remove?: string[];
-    subject?: string;
-    noQuote?: boolean;
-    attach?: string[];
-    attachInline?: InlineAttachmentInput[];
-    from?: string;
-    autoFromAddressedAlias?: boolean;
-    signature?: boolean;
-    signatureFrom?: string;
-    signatureFile?: string;
-  };
-
-  function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
-    assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
-    if (f.body) args.push(payloadArg('body', 'body-file', f.body));
-    if (f.bodyHtml) args.push(payloadArg('body-html', 'body-html-file', f.bodyHtml, 'html'));
-    else if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
-    if (f.to) for (const r of f.to) args.push(`--to=${r}`);
-    if (f.cc) for (const r of f.cc) args.push(`--cc=${r}`);
-    if (f.bcc) for (const r of f.bcc) args.push(`--bcc=${r}`);
-    if (f.remove) for (const r of f.remove) args.push(`--remove=${r}`);
-    if (f.subject) args.push(`--subject=${f.subject}`);
-    if (f.noQuote) args.push('--no-quote');
-    if (f.attach) for (const p of f.attach) args.push(`--attach=${p}`);
-    args.push(...inlineAttachmentArgs('attach', f.attachInline, args)); // see appendDraftFlags
-    if (f.from) args.push(`--from=${f.from}`);
-    if (f.signature) args.push('--signature');
-    if (f.signatureFrom) args.push(`--signature-from=${f.signatureFrom}`);
-    if (f.signatureFile) args.push(`--signature-file=${f.signatureFile}`);
-    args.push(f.autoFromAddressedAlias ? '--auto-from-addressed-alias' : '--auto-from-addressed-alias=false'); // PINNED — see appendDraftFlags
-  }
-
-  server.registerTool('gog_gmail_reply', {
-    description: 'Reply to a Gmail message (sends to the original sender only). Threads off the message and inherits a "Re:" subject and the quoted original by default. For replying to every participant use gog_gmail_reply_all; to reply across many messages matching a query use gog_gmail_autoreply; to stage this same reply without sending it use gog_gmail_drafts_reply, which composes exactly what this tool would send.',
-    annotations: { destructiveHint: true },
-    inputSchema: replySchema,
-  }, async ({ messageId, account, ...flags }) => {
-    const args: GogArg[] = ['gmail', 'reply', messageId];
-    appendReplyFlags(args, flags);
-    return runOrDiagnose(args, { account });
-  });
-
-  server.registerTool('gog_gmail_reply_all', {
-    description: 'Reply to all participants of a Gmail message (sender plus every To/Cc recipient). Same inherited "Re:" subject and quoting as gog_gmail_reply. Use the remove flag to drop specific recipients from the reply-all. To stage it without sending use gog_gmail_drafts_reply_all.',
-    annotations: { destructiveHint: true },
-    inputSchema: replySchema,
-  }, async ({ messageId, account, ...flags }) => {
-    const args: GogArg[] = ['gmail', 'reply-all', messageId];
-    appendReplyFlags(args, flags);
-    return runOrDiagnose(args, { account });
-  });
-
   // gog >= 0.36.0: the draft-side twins of reply / reply-all / forward. They
   // take the SAME flag set as the send-side commands and share the composition
-  // path with them, so the schemas above are reused verbatim rather than
-  // re-declared — the only difference is the subcommand and that NOTHING IS
-  // SENT.
+  // path with them, so replySchema/appendReplyFlags are imported from the base
+  // package (where gog_gmail_reply itself now lives) rather than re-declared —
+  // the only difference is the subcommand and that NOTHING IS SENT.
   //
   // These exist because staging a reply used to mean gog_gmail_drafts_create
   // with replyToMessageId/replyToThreadId, which threads the draft but does NOT

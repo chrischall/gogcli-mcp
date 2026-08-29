@@ -113,6 +113,14 @@
       "description": "Send an email, with attachments from server-side paths (attach) or from base64 bytes sent with the call (attachInline, for remote deployments with no shared filesystem)"
     },
     {
+      "name": "gog_gmail_reply",
+      "description": "Reply to a Gmail message (sender only), inheriting the \"Re:\" subject and quoting the original below your body"
+    },
+    {
+      "name": "gog_gmail_reply_all",
+      "description": "Reply to every participant of a Gmail message (sender plus all To/Cc), with the same inherited subject and quoted original"
+    },
+    {
       "name": "gog_gmail_run",
       "description": "Run any gog gmail subcommand (escape hatch)"
     },

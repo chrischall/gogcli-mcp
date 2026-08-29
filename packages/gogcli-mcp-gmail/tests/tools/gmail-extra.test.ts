@@ -1742,96 +1742,6 @@ describe('gog_gmail_forward', () => {
   });
 });
 
-describe('gog_gmail_reply', () => {
-  it('calls runOrDiagnose with messageId and --body', async () => {
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Thanks' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'reply', 'm1', '--body=Thanks', '--auto-from-addressed-alias=false'],
-      { account: undefined },
-    );
-  });
-
-  it('passes all reply flags including repeatable recipients', async () => {
-    await harness.callTool('gog_gmail_reply', {
-      messageId: 'm1',
-      body: 'Hi',
-      bodyHtml: '<p>Hi</p>',
-      to: ['a@b.com', 'c@d.com'],
-      cc: ['cc@x.com'],
-      bcc: ['bcc@x.com'],
-      remove: ['old@x.com'],
-      subject: 'New subject',
-      noQuote: true,
-      attach: ['/tmp/a.pdf', '/tmp/b.pdf'],
-      from: 'me@x.com',
-      signature: true,
-      signatureFrom: 'alias@x.com',
-      signatureFile: '/tmp/sig.txt',
-      account: 'me@gmail.com',
-    });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      [
-        'gmail', 'reply', 'm1',
-        '--body=Hi',
-        '--body-html=<p>Hi</p>',
-        '--to=a@b.com',
-        '--to=c@d.com',
-        '--cc=cc@x.com',
-        '--bcc=bcc@x.com',
-        '--remove=old@x.com',
-        '--subject=New subject',
-        '--no-quote',
-        '--attach=/tmp/a.pdf',
-        '--attach=/tmp/b.pdf',
-        '--from=me@x.com',
-        '--signature',
-        '--signature-from=alias@x.com',
-        '--signature-file=/tmp/sig.txt', '--auto-from-addressed-alias=false'
-      ],
-      { account: 'me@gmail.com' },
-    );
-  });
-
-  it('omits --no-quote and --signature when false', async () => {
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', noQuote: false, signature: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'reply', 'm1', '--body=Hi', '--auto-from-addressed-alias=false'],
-      { account: undefined },
-    );
-  });
-});
-
-describe('gog_gmail_reply_all', () => {
-  it('uses the reply-all subcommand', async () => {
-    await harness.callTool('gog_gmail_reply_all', { messageId: 'm1', body: 'Thanks all' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'reply-all', 'm1', '--body=Thanks all', '--auto-from-addressed-alias=false'],
-      { account: undefined },
-    );
-  });
-
-  it('passes repeatable recipient and signature flags', async () => {
-    await harness.callTool('gog_gmail_reply_all', {
-      messageId: 'm1',
-      bodyHtml: '<p>Hi</p>',
-      cc: ['x@y.com', 'z@y.com'],
-      remove: ['drop@y.com'],
-      signatureFile: '/tmp/sig.html',
-    });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      [
-        'gmail', 'reply-all', 'm1',
-        '--body-html=<p>Hi</p>',
-        '--cc=x@y.com',
-        '--cc=z@y.com',
-        '--remove=drop@y.com',
-        '--signature-file=/tmp/sig.html', '--auto-from-addressed-alias=false'
-      ],
-      { account: undefined },
-    );
-  });
-});
-
 // gog 0.36.0 (openclaw/gogcli#977) added the draft-side twins of reply /
 // reply-all / forward. The point of these tests is the SUBCOMMAND: the flag
 // handling is the send path's, shared verbatim, and a copy of it here would
@@ -2524,24 +2434,6 @@ describe('large payloads route to file args', () => {
     expect(args()).not.toContain('--thread-id=t1');
   });
 
-  it('gog_gmail_reply routes a large body and bodyHtml to file args', async () => {
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: big, bodyHtml: bigHtml });
-    expect(args()).toEqual([
-      'gmail', 'reply', 'm1',
-      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
-      { kind: 'file', flag: 'body-html-file', contents: bigHtml, ext: 'html' }, '--auto-from-addressed-alias=false'
-    ]);
-  });
-
-  it('gog_gmail_reply_all routes a large body to --body-file, leaving the signature boolean a bare flag', async () => {
-    await harness.callTool('gog_gmail_reply_all', { messageId: 'm1', body: big, signature: true });
-    expect(args()).toEqual([
-      'gmail', 'reply-all', 'm1',
-      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
-      '--signature', '--auto-from-addressed-alias=false'
-    ]);
-  });
-
   it('gog_gmail_forward routes a large note to --note-file', async () => {
     await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', note: big });
     expect(args()).toEqual([
@@ -2586,33 +2478,6 @@ describe('inline/file param conflicts are rejected before gog runs', () => {
     expect(res.isError).toBe(true);
     expect((res.content[0] as { text: string }).text).toContain('mutually exclusive');
     expect(lib.runOrDiagnose).not.toHaveBeenCalled();
-  });
-
-  it('gog_gmail_reply rejects bodyHtml plus bodyHtmlFile', async () => {
-    const res = await harness.callTool('gog_gmail_reply', {
-      messageId: 'm1', bodyHtml: '<p>Hi</p>', bodyHtmlFile: '/tmp/b.html',
-    });
-    expect(res.isError).toBe(true);
-    expect((res.content[0] as { text: string }).text).toContain('bodyHtml and bodyHtmlFile are mutually exclusive');
-    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
-  });
-
-  it('an empty-string bodyHtml still counts as supplied and conflicts', async () => {
-    // Guards the `!== undefined` check against a falsy-but-present value
-    // sliding through to gog, which rejects the pair regardless of content.
-    const res = await harness.callTool('gog_gmail_reply', {
-      messageId: 'm1', body: 'B', bodyHtml: '', bodyHtmlFile: '/tmp/b.html',
-    });
-    expect(res.isError).toBe(true);
-    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
-  });
-
-  it('bodyHtmlFile alone still passes through as --body-html-file', async () => {
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', bodyHtmlFile: '/tmp/b.html' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'reply', 'm1', '--body=Hi', '--body-html-file=/tmp/b.html', '--auto-from-addressed-alias=false'],
-      { account: undefined },
-    );
   });
 });
 
@@ -2808,15 +2673,6 @@ describe('gog 0.35.0 — --auto-from-addressed-alias is pinned on every send-sha
     await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B', autoFromAddressedAlias: true });
     expect(args()).toEqual(['gmail', 'drafts', 'update', 'd1', '--subject=S', '--body=B', '--auto-from-addressed-alias']);
   });
-
-  it('gog_gmail_reply and gog_gmail_reply_all pin it', async () => {
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi' });
-    expect(args()).toEqual(['gmail', 'reply', 'm1', '--body=Hi', '--auto-from-addressed-alias=false']);
-    vi.clearAllMocks();
-    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
-    await harness.callTool('gog_gmail_reply_all', { messageId: 'm1', body: 'Hi', autoFromAddressedAlias: true });
-    expect(args()).toEqual(['gmail', 'reply-all', 'm1', '--body=Hi', '--auto-from-addressed-alias']);
-  });
 });
 
 describe('gog 0.35.0 — gog_gmail_import', () => {
@@ -2871,8 +2727,6 @@ describe('server-side file params never advertise stdin as usable', () => {
     ['gog_gmail_import', 'file'],
     ['gog_gmail_drafts_create', 'bodyHtmlFile'],
     ['gog_gmail_drafts_update', 'bodyHtmlFile'],
-    ['gog_gmail_reply', 'bodyHtmlFile'],
-    ['gog_gmail_reply_all', 'bodyHtmlFile'],
   ];
 
   async function paramDescriptions(): Promise<Map<string, Record<string, { description?: string }>>> {

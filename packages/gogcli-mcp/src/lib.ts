@@ -16,6 +16,11 @@ export {
   registerSlidesTools,
   registerTasksTools,
 } from './server.js';
+// The reply/reply-all schema and flag builder live in the base package so the
+// gmail sub-package's draft-side twins reuse ONE definition — registering the
+// same tool name from both registrar lists would be a duplicate-name error.
+export { replySchema, appendReplyFlags } from './tools/gmail.js';
+export type { ReplyFlags } from './tools/gmail.js';
 export { run, runBinary, runExecutor, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
 // Sub-package tools that read gog JSON through bare `run()` (rather than the
 // `runOrDiagnose` seam) must still apply this, or their timestamps skip the
@@ -57,4 +62,5 @@ export {
   pageAliasParam,
   resolvePageToken,
   registerRunTool,
+  assertNotBoth,
 } from './tools/utils.js';

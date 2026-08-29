@@ -260,6 +260,25 @@ describe('gog_gmail_send', () => {
     );
   });
 
+  // gog's --quote is opt-in on `gmail send` and default-on for `gmail reply`;
+  // a threaded send without it arrives with the original nowhere in the body.
+  it('appends --quote only when quote is set', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_send', {
+      to: 'bob@example.com', subject: 'Re: Hi', body: 'Sure',
+      replyToMessageId: 'msg1', quote: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', 'send',
+        '--to=bob@example.com', '--subject=Re: Hi', '--body=Sure',
+        '--reply-to-message-id=msg1', '--quote',
+      ],
+      { account: undefined },
+    );
+  });
+
   it('appends one --attach flag per file path', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
@@ -421,5 +440,306 @@ describe('gog_gmail_run', () => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_gmail_run', { subcommand: 'archive', args: [] });
     expect(result.content[0].text).toBe('Error: Run failed');
+  });
+});
+
+// ============================================================================
+// REPLY / REPLY-ALL. The base package used to expose gog_gmail_send as its only
+// Gmail write, so replying meant send + replyToMessageId: that threads the
+// message (In-Reply-To/References) but quotes nothing, inherits no recipients
+// and no "Re:" subject — the reply lands looking like a brand-new message.
+// gog's `gmail reply` quotes BY DEFAULT (opt out with --no-quote), which is why
+// these are separate tools rather than flags on send.
+// ============================================================================
+describe.each([
+  ['gog_gmail_reply', 'reply'],
+  ['gog_gmail_reply_all', 'reply-all'],
+])('%s', (tool, subcommand) => {
+  it('calls run with the message id and body, quoting by default', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"id":"msg9"}');
+    const harness = await setupHandlers();
+    await harness.callTool(tool, { messageId: 'msg1', body: 'Sounds good' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['gmail', subcommand, 'msg1', '--body=Sounds good', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
+  it('appends --no-quote only when noQuote is set', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool(tool, { messageId: 'msg1', body: 'Ack', noQuote: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['gmail', subcommand, 'msg1', '--body=Ack', '--no-quote', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
+  it('appends optional flags when provided', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool(tool, {
+      messageId: 'msg1',
+      body: 'Adding Carol',
+      to: ['bob@example.com'],
+      cc: ['carol@example.com'],
+      bcc: ['dave@example.com'],
+      remove: ['eve@example.com'],
+      subject: 'Re: Custom',
+      from: 'me@example.com',
+      account: 'me@example.com',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', subcommand, 'msg1', '--body=Adding Carol',
+        '--to=bob@example.com', '--cc=carol@example.com', '--bcc=dave@example.com',
+        '--remove=eve@example.com', '--subject=Re: Custom', '--from=me@example.com',
+        '--auto-from-addressed-alias=false',
+      ],
+      { account: 'me@example.com' },
+    );
+  });
+
+  it('pins --auto-from-addressed-alias on when requested', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool(tool, { messageId: 'msg1', body: 'Hi', autoFromAddressedAlias: true });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['gmail', subcommand, 'msg1', '--body=Hi', '--auto-from-addressed-alias'],
+      { account: undefined },
+    );
+  });
+
+  it('appends one --attach flag per file path', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool(tool, {
+      messageId: 'msg1',
+      body: 'See attached',
+      attach: ['/tmp/shot.png', '/tmp/notes.pdf'],
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', subcommand, 'msg1', '--body=See attached',
+        '--attach=/tmp/shot.png', '--attach=/tmp/notes.pdf',
+        '--auto-from-addressed-alias=false',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('turns attachInline bytes into a --attach file arg', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const bytes = Buffer.from('hi').toString('base64');
+    await harness.callTool(tool, {
+      messageId: 'msg1',
+      body: 'Bytes',
+      attachInline: [{ filename: 'a.txt', contentBase64: bytes }],
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', subcommand, 'msg1', '--body=Bytes',
+        { kind: 'file', flag: 'attach', contents: bytes, encoding: 'base64', filename: 'a.txt' },
+        '--auto-from-addressed-alias=false',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('routes an oversize body to --body-file', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const big = 'x'.repeat(PAYLOAD_INLINE_MAX + 1);
+    await harness.callTool(tool, { messageId: 'msg1', body: big });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', subcommand, 'msg1',
+        { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+        '--auto-from-addressed-alias=false',
+      ],
+      { account: undefined },
+    );
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Reply failed'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'msg1', body: 'x' });
+    expect(result.content[0].text).toBe('Error: Reply failed');
+  });
+});
+
+// Moved here with the tools themselves: reply/reply-all used to live in the
+// gmail sub-package, which now imports replySchema/appendReplyFlags from this
+// package instead of declaring a second copy.
+describe('gog_gmail_reply — full flag set', () => {
+  it('calls runOrDiagnose with messageId and --body', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Thanks' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['gmail', 'reply', 'm1', '--body=Thanks', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
+  it('passes all reply flags including repeatable recipients', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_reply', {
+      messageId: 'm1',
+      body: 'Hi',
+      bodyHtml: '<p>Hi</p>',
+      to: ['a@b.com', 'c@d.com'],
+      cc: ['cc@x.com'],
+      bcc: ['bcc@x.com'],
+      remove: ['old@x.com'],
+      subject: 'New subject',
+      noQuote: true,
+      attach: ['/tmp/a.pdf', '/tmp/b.pdf'],
+      from: 'me@x.com',
+      signature: true,
+      signatureFrom: 'alias@x.com',
+      signatureFile: '/tmp/sig.txt',
+      account: 'me@gmail.com',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', 'reply', 'm1',
+        '--body=Hi',
+        '--body-html=<p>Hi</p>',
+        '--to=a@b.com',
+        '--to=c@d.com',
+        '--cc=cc@x.com',
+        '--bcc=bcc@x.com',
+        '--remove=old@x.com',
+        '--subject=New subject',
+        '--no-quote',
+        '--attach=/tmp/a.pdf',
+        '--attach=/tmp/b.pdf',
+        '--from=me@x.com',
+        '--signature',
+        '--signature-from=alias@x.com',
+        '--signature-file=/tmp/sig.txt', '--auto-from-addressed-alias=false'
+      ],
+      { account: 'me@gmail.com' },
+    );
+  });
+
+  it('omits --no-quote and --signature when false', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', noQuote: false, signature: false });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['gmail', 'reply', 'm1', '--body=Hi', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+});
+
+describe('gog_gmail_reply_all — full flag set', () => {
+  it('uses the reply-all subcommand', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_reply_all', { messageId: 'm1', body: 'Thanks all' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['gmail', 'reply-all', 'm1', '--body=Thanks all', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
+  it('passes repeatable recipient and signature flags', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_reply_all', {
+      messageId: 'm1',
+      bodyHtml: '<p>Hi</p>',
+      cc: ['x@y.com', 'z@y.com'],
+      remove: ['drop@y.com'],
+      signatureFile: '/tmp/sig.html',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', 'reply-all', 'm1',
+        '--body-html=<p>Hi</p>',
+        '--cc=x@y.com',
+        '--cc=z@y.com',
+        '--remove=drop@y.com',
+        '--signature-file=/tmp/sig.html', '--auto-from-addressed-alias=false'
+      ],
+      { account: undefined },
+    );
+  });
+});
+describe('gog_gmail_reply body-vs-file conflicts', () => {
+  it('rejects bodyHtml plus bodyHtmlFile before gog runs', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_gmail_reply', {
+      messageId: 'm1', bodyHtml: '<p>Hi</p>', bodyHtmlFile: '/tmp/b.html',
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain('bodyHtml and bodyHtmlFile are mutually exclusive');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('treats an empty-string bodyHtml as supplied, so it still conflicts', async () => {
+    // Guards the `!== undefined` check against a falsy-but-present value
+    // sliding through to gog, which rejects the pair regardless of content.
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const res = await harness.callTool('gog_gmail_reply', {
+      messageId: 'm1', body: 'B', bodyHtml: '', bodyHtmlFile: '/tmp/b.html',
+    });
+    expect(res.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('passes bodyHtmlFile alone through as --body-html-file', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', bodyHtmlFile: '/tmp/b.html' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['gmail', 'reply', 'm1', '--body=Hi', '--body-html-file=/tmp/b.html', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
+  it('routes a large body and bodyHtml to file args', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const big = 'x'.repeat(PAYLOAD_INLINE_MAX + 1);
+    const bigHtml = `<p>${'y'.repeat(PAYLOAD_INLINE_MAX)}</p>`;
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: big, bodyHtml: bigHtml });
+    expect(runner.run).toHaveBeenCalledWith(
+      [
+        'gmail', 'reply', 'm1',
+        { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+        { kind: 'file', flag: 'body-html-file', contents: bigHtml, ext: 'html' },
+        '--auto-from-addressed-alias=false',
+      ],
+      { account: undefined },
+    );
+  });
+});
+
+// gog reads "-" from stdin, but runner.ts spawns with default stdio and never
+// writes to or closes the child's stdin, so a "-" here hangs until the 30s
+// timeout. No file param may advertise it as usable.
+describe('reply file params never advertise stdin as usable', () => {
+  it.each(['gog_gmail_reply', 'gog_gmail_reply_all'])('%s.bodyHtmlFile warns that stdin hangs', async (tool) => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const server = new McpServer({ name: 'test', version: '0.0.0' });
+    const configs = new Map<string, Record<string, { description?: string }>>();
+    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
+      configs.set(name, (config as { inputSchema: Record<string, { description?: string }> }).inputSchema);
+      return undefined as never;
+    });
+    registerGmailTools(server);
+    const desc = configs.get(tool)?.bodyHtmlFile?.description ?? '';
+    expect(desc).not.toBe('');
+    expect(desc).not.toMatch(/(?:or|use)\s+"?-"?\s+(?:for|to read)/i);
+    expect(desc).toMatch(/stdin/i);
   });
 });
