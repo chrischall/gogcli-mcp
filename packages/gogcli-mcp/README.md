@@ -3,7 +3,7 @@
 > [!WARNING]
 > **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
 
-Base [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude access to Google Workspace via [gogcli](https://github.com/openclaw/gogcli). Includes 112 tools across 13 services: Sheets, Docs, Gmail, Calendar, Drive, Slides, Classroom, Chat, Apps Script, Tasks, Contacts, the generic Discovery API escape hatch, and Auth.
+Base [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude access to Google Workspace via [gogcli](https://github.com/openclaw/gogcli). Includes 114 tools across 13 services: Sheets, Docs, Gmail, Calendar, Drive, Slides, Classroom, Chat, Apps Script, Tasks, Contacts, the generic Discovery API escape hatch, and Auth.
 
 For extended Sheets or Docs support, see [gogcli-mcp-sheets](https://www.npmjs.com/package/gogcli-mcp-sheets) and [gogcli-mcp-docs](https://www.npmjs.com/package/gogcli-mcp-docs).
 
@@ -46,13 +46,13 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 claude mcp add gogcli-mcp -- gogcli-mcp
 ```
 
-## Tools (112)
+## Tools (114)
 
 | Service | Tools | Includes |
 |---------|-------|----------|
 | **Sheets** | 8 | get, update, append, clear, metadata, create, find-replace, run |
 | **Docs** | 7 | info, cat, create, write, find-replace, structure, run |
-| **Gmail** | 4 | search, get, send, run |
+| **Gmail** | 6 | search, get, send, reply, reply-all, run |
 | **Calendar** | 7 | events, get, create, update, delete, respond, run |
 | **Drive** | 11 | ls, search, get, mkdir, rename, move, delete, share, extract-text, read-bytes, run |
 | **Slides** | 7 | export, info, create, copy, list-slides, read-slide, run |

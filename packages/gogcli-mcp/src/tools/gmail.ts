@@ -13,7 +13,7 @@ import type { InlineAttachmentInput } from '../attachments.js';
 // set; --remove drops them. Body/HTML follow the same inline-or-file shape as
 // the draft tools.
 export const replySchema = {
-  messageId: z.string().describe('Gmail message ID to reply to — the short hex `id` from gog_gmail_get / _search (NOT the threadId, NOT the RFC822 `<…@host>` Message-Id header).'),
+  messageId: z.string().describe('Gmail message ID to reply to — the short hex `id` from gog_gmail_get / _search (or gog_gmail_messages_search, gogcli-mcp-gmail only). NOT the threadId, NOT the RFC822 `<…@host>` Message-Id header.'),
   body: z.string().optional().describe('Reply body (plain text; required unless bodyHtml or bodyHtmlFile is set). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
   bodyHtml: z.string().optional().describe('Reply body (HTML; optional). Pass the HTML itself at any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Mutually exclusive with bodyHtmlFile.'),
   bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server for the reply body. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
@@ -212,7 +212,10 @@ export function registerGmailTools(server: McpServer): void {
       'Reply to a Gmail message (goes to the original sender only). USE THIS, not gog_gmail_send, whenever you are '
       + 'answering a message: it threads off the original AND inherits its "Re:" subject and quotes its body below '
       + 'yours, which gog_gmail_send does not — a send with replyToMessageId lands in the right thread but reads as a '
-      + 'brand-new message, with the original nowhere in it. To answer every participant use gog_gmail_reply_all.',
+      + 'brand-new message, with the original nowhere in it. To answer every participant use gog_gmail_reply_all. '
+      + 'The gogcli-mcp-gmail package adds two more routes with the same composition: gog_gmail_autoreply to reply '
+      + 'across every message matching a query, and gog_gmail_drafts_reply to stage this exact reply as a draft '
+      + 'instead of sending it.',
     annotations: { destructiveHint: true },
     inputSchema: replySchema,
   }, async ({ messageId, account, ...flags }) => {
@@ -225,7 +228,7 @@ export function registerGmailTools(server: McpServer): void {
     description:
       'Reply to all participants of a Gmail message (the sender plus every To/Cc recipient). Same inherited "Re:" '
       + 'subject and quoted original as gog_gmail_reply. Use the remove flag to drop specific recipients from the '
-      + 'reply-all.',
+      + 'reply-all. To stage it as a draft rather than send it, use gog_gmail_drafts_reply_all (gogcli-mcp-gmail only).',
     annotations: { destructiveHint: true },
     inputSchema: replySchema,
   }, async ({ messageId, account, ...flags }) => {

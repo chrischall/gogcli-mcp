@@ -43,3 +43,62 @@ describe('VERSION', () => {
     expect(VERSION).toBe('0.0.0');
   });
 });
+
+// The tool counts in README.md, SKILL.md and manifest.json are hand-maintained
+// and have now drifted twice (0ec3470 "correct the stale tool counts", then
+// again when reply/reply-all landed). They are the first thing a reader sees,
+// so derive the truth from the registrars and fail the build on a mismatch
+// rather than catching it in review a release later.
+describe('published tool counts match the registrars', () => {
+  const readPkgFile = async (name: string) => {
+    const { readFile } = await import('node:fs/promises');
+    const { fileURLToPath } = await import('node:url');
+    return readFile(fileURLToPath(new URL(`../${name}`, import.meta.url)), 'utf8');
+  };
+
+  const liveToolNames = async (): Promise<string[]> => {
+    const harness = await createTestHarness((server) => {
+      for (const register of BASE_TOOL_REGISTRARS) register(server, undefined);
+    });
+    const names = (await harness.listTools()).map((t) => t.name);
+    await harness.close();
+    return names;
+  };
+
+  it('manifest.json lists exactly the registered tools', async () => {
+    const names = await liveToolNames();
+    const manifest = JSON.parse(await readPkgFile('manifest.json')) as { tools: Array<{ name: string }> };
+    expect([...manifest.tools.map((t) => t.name)].sort()).toEqual([...names].sort());
+  });
+
+  it.each(['README.md', 'SKILL.md'])('%s states the real total', async (file) => {
+    const total = (await liveToolNames()).length;
+    const text = await readPkgFile(file);
+    const heading = /^## Tools \((\d+)\)$/m.exec(text);
+    expect(heading, `${file} has no "## Tools (N)" heading`).not.toBeNull();
+    expect(Number(heading![1])).toBe(total);
+    // README also states the count in its opening paragraph.
+    const prose = /Includes (\d+) tools across/.exec(text);
+    if (prose) expect(Number(prose[1])).toBe(total);
+  });
+
+  it.each(['README.md', 'SKILL.md'])('%s states the real per-service counts', async (file) => {
+    const names = await liveToolNames();
+    const text = await readPkgFile(file);
+    // README: `| **Gmail** | 6 | …`   SKILL: `| **Gmail** (6) | …`
+    const rows = [...text.matchAll(/^\| \*\*(.+?)\*\*(?: \((\d+)\)| \| (\d+))? \|/gm)];
+    expect(rows.length).toBeGreaterThan(0);
+    const service = (row: string) => row.toLowerCase().replace(/[^a-z]/g, '');
+    // Map a table label onto the gog_<service>_ prefix its tools carry.
+    const prefixFor: Record<string, string> = {
+      appsscript: 'appscript', discoveryapi: 'api',
+    };
+    for (const row of rows) {
+      const stated = Number(row[2] ?? row[3]);
+      if (!Number.isFinite(stated)) continue;
+      const key = service(row[1]);
+      const prefix = `gog_${prefixFor[key] ?? key}_`;
+      expect(names.filter((n) => n.startsWith(prefix)).length, `${file} row ${row[1]}`).toBe(stated);
+    }
+  });
+});
