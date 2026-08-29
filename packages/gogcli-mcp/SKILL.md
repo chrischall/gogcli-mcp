@@ -32,13 +32,13 @@ MCP server wrapping [gogcli](https://github.com/openclaw/gogcli) — provides Cl
 
 `GOG_ACCOUNT` is optional — omit it to use gogcli's configured default account.
 
-## Tools (112)
+## Tools (114)
 
 | Service | Tools |
 |---------|-------|
 | **Sheets** (8) | get, update, append, clear, metadata, create, find-replace, run |
 | **Docs** (7) | info, cat, create, write, find-replace, structure, run |
-| **Gmail** (4) | search, get, send, run |
+| **Gmail** (6) | search, get, send, reply, reply-all, run |
 | **Calendar** (7) | events, get, create, update, delete, respond, run |
 | **Drive** (11) | ls, search, get, mkdir, rename, move, delete, share, extract-text, read-bytes, run |
 | **Slides** (7) | export, info, create, copy, list-slides, read-slide, run |
