@@ -90,8 +90,14 @@ describe('published tool counts match the registrars', () => {
     expect(rows.length).toBeGreaterThan(0);
     const service = (row: string) => row.toLowerCase().replace(/[^a-z]/g, '');
     // Map a table label onto the gog_<service>_ prefix its tools carry.
+    // Only labels whose normalised form differs from their tool prefix belong
+    // here. "Apps Script" normalises to `appsscript` but the tools are
+    // `gog_appscript_`, so that mapping is load-bearing. A `discoveryapi` entry
+    // was not: both tables label the row "API", which normalises to `api` and
+    // already resolves — so it never matched and only implied a label that
+    // does not exist.
     const prefixFor: Record<string, string> = {
-      appsscript: 'appscript', discoveryapi: 'api',
+      appsscript: 'appscript',
     };
     for (const row of rows) {
       const stated = Number(row[2] ?? row[3]);
