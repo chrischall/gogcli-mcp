@@ -1198,13 +1198,21 @@ export function registerExtraSheetsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  // Refresh is why MIN_GOG_VERSION is 0.38.1 (openclaw/gogcli#1037). On 0.38.0
-  // a batchUpdate that came back with no RefreshDataSource reply produced an
-  // empty status list and exit 0 — this tool would report a clean success for a
-  // billable execution that may or may not have started, and the caller has no
-  // way to tell the two apart. 0.38.1 fails instead, telling the caller to
-  // inspect the source before retrying, which is the behaviour the description
-  // below promises.
+  // Refresh is why MIN_GOG_VERSION is what it is, across two gog releases.
+  // 0.38.1 (openclaw/gogcli#1037) fixed the worse half: on 0.38.0 a batchUpdate
+  // that came back with no RefreshDataSource reply produced an empty status
+  // list and exit 0 — this tool would report a clean success for a billable
+  // execution that may or may not have started, and the caller has no way to
+  // tell the two apart. 0.38.1 fails instead, telling the caller to inspect the
+  // source before retrying.
+  //
+  // 0.38.3 (openclaw/gogcli#1041) fixed the other half: the status references
+  // that name WHAT refreshed dropped zero-valued sheet, row and column indexes,
+  // so a source anchored at the first tab or at A1 came back without an
+  // identifiable anchor — indistinguishable, to a caller reading JSON, from a
+  // reference gog never resolved. Together they are the behaviour the
+  // description below promises: a refresh either names what it touched or says
+  // it failed.
   server.registerTool('gog_sheets_datasource_refresh', {
     description:
       'Re-run a Connected Sheets data source so its sheet and extracts pick up current BigQuery data. Google refuses to ' +
