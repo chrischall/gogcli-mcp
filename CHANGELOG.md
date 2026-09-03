@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.27.1](https://github.com/chrischall/gogcli-mcp/compare/v2.27.0...v2.27.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* require gog 0.38.3 so refresh anchors survive and paged reads stop cleanly ([#316](https://github.com/chrischall/gogcli-mcp/issues/316)) ([cd9c38b](https://github.com/chrischall/gogcli-mcp/commit/cd9c38b3f20aae7b2d1d824d6f7599c24750a7e4))
+
 ## [2.27.0](https://github.com/chrischall/gogcli-mcp/compare/v2.26.0...v2.27.0) (2026-08-29)
 
 
