@@ -138,6 +138,20 @@ repeated `--attach` with colliding basenames is safe.
 
 Every gog response passes through `normalizeTimestamps` (`src/timestamps.ts`) on the `runOrDiagnose` seam, which rewrites allowlisted timestamp fields to ISO-8601 with an explicit offset and adds a `<field>Display` sibling. Both the key and the value shape must match before anything is rewritten — a name-only match would corrupt spreadsheet cell data. See [`docs/timestamps.md`](docs/timestamps.md).
 
+### Response whitespace
+
+The same seam then **minifies**, via `minifiedResult` from `@chrischall/mcp-utils`. gog pretty-prints its `--json` output and that indentation is roughly a fifth of a large response while carrying nothing a caller reads: measured at **18.6%** of a 19 KB `drive ls` (~900 tokens per call) and 38% of a small deeply-nested one. For a passthrough wrapper — a tool's output *is* gog's JSON — this is the largest token saving available, because there is no projection to make instead.
+
+Three properties are load-bearing and tested in `tests/tools/utils.test.ts`:
+
+- **Only FORMATTING whitespace goes.** `JSON.stringify` with no indent leaves whitespace *inside* a value untouched — the blank line between paragraphs of a mail body, the indentation of a quoted block. Never replace this with a regex over the serialised text or a `\s+` collapse; those corrupt exactly the payloads it exists to shrink.
+- **Key order is preserved.** gog emits `nextPageToken` before its data array, and a truncated read still has to see it.
+- **Non-JSON passes through byte-for-byte.** `gog auth list` is plain text and an empty body is legal; a mangled non-answer is worse than a large one. The guard mirrors `normalizeTimestamps`' so the two agree on what counts as JSON.
+
+`lossless: true` is exempt and stays indented. That mirrors the fleet's `raw` rung, which `mcp-utils`' `viewResult` also leaves indented: it is the rung a *person* reaches for when a payload is not what they expected, and indentation is most of what makes an unfamiliar shape legible.
+
+**On the fleet `view` enum (`compact | full | raw`).** This repo deliberately does not register one. Per `docs/fleet-conventions.md` ("Response shape"), a tool registers only rungs it can honour and "a value that silently aliases to another is a lie in the schema" — and with no projection layer, `compact` and `full` would be byte-identical here. Note also that this repo's `lossless` is NOT the fleet's `raw`: `lossless` skips normalization to give the `*_raw` dumps verbatim ground truth, whereas fleet `raw` means "no projection" and explicitly still normalizes. A real `compact` rung is possible — gog's own `--fields` mask cuts `drive ls` by **78%** — but the mask is per-API (`files(id,name,...)` for Drive), a wrong one is a hard Google 400, and it therefore needs live verification per tool.
+
 `GOG_READONLY` is a global kill-switch: when set to any value other than `0`/`false`/`no`/`off`, `runner.ts` adds gog's `--readonly` flag to every call so mutating API requests are refused at runtime. gog has no native env binding for `--readonly`, so the wrapper translates the env var into the flag; callers can also opt in per-call via the `readonly` option on `RunOptions`.
 
 ### Required gog version

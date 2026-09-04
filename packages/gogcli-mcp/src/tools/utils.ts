@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
+import { errorResult, rawTextResult, minifiedResult } from '@chrischall/mcp-utils';
 import { run, isRunnerTransportError } from '../runner.js';
 import type { GogArg, RunnerFailureKind } from '../runner.js';
 import { normalizeTimestamps } from '../timestamps.js';
@@ -342,6 +342,34 @@ export async function diagnose(err: unknown): Promise<CallToolResult> {
   }
 }
 
+// gog pretty-prints its `--json` output, and that indentation is roughly a
+// fifth of a large response while carrying no information a caller reads —
+// 18.6% of a 19 KB `drive ls`, 38% of a small deeply-nested one. Dropping it is
+// the largest token saving available to a passthrough wrapper, which is what
+// this repo is: a tool's output IS gog's JSON, so there is no projection to
+// make instead.
+//
+// Only FORMATTING whitespace goes. mcp-utils' `minifiedResult` is
+// `JSON.stringify` with no indent, which touches neither whitespace INSIDE a
+// value (the blank line between paragraphs of a mail body, the indentation of a
+// quoted block) nor key ORDER — gog emits `nextPageToken` before its data array,
+// and a truncated read still has to see it. A regex over the serialised text
+// would corrupt exactly the payloads this exists to shrink.
+//
+// Anything that is not JSON passes through byte-for-byte: `gog auth list` is
+// plain text, an empty body is legal, and a mangled non-answer is worse than a
+// large one. The guard mirrors normalizeTimestamps' so the two agree on what
+// counts as JSON.
+function minifiedOrRawText(text: string): CallToolResult {
+  const trimmed = text.trim();
+  if (trimmed === '' || !/^[[{]/.test(trimmed)) return rawTextResult(text);
+  try {
+    return minifiedResult(JSON.parse(trimmed));
+  } catch {
+    return rawTextResult(text);
+  }
+}
+
 export async function runOrDiagnose(
   args: GogArg[],
   options: { account?: string; lossless?: boolean },
@@ -361,7 +389,8 @@ export async function runOrDiagnose(
     // Same seam, same reason as normalizeTimestamps: doing this per call site
     // would let one paginated tool forget and go on reporting a spent cursor as
     // if it were a live one. `lossless` opts the raw dumps out of both.
-    return rawTextResult(options.lossless ? raw : stripConsumedPageToken(normalizeTimestamps(raw)));
+    if (options.lossless) return rawTextResult(raw);
+    return minifiedOrRawText(stripConsumedPageToken(normalizeTimestamps(raw)));
   } catch (err) {
     return diagnose(err);
   }

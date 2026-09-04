@@ -123,6 +123,56 @@ describe('runOrDiagnose', () => {
     expect(parsed.internalDateDisplay).toBeDefined();
   });
 
+  // Formatting whitespace is roughly a fifth of a large gog response and
+  // carries no information: gog pretty-prints its --json output, and nothing
+  // downstream reads the indent. Measured at 18.6% of a 19 KB `drive ls`.
+  it('minifies gog\'s pretty-printed JSON on the normal path', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}');
+    const result = await runOrDiagnose(['drive', 'ls'], {});
+    expect(result.content[0].text).toBe('{"a":1,"b":[2,3]}');
+  });
+
+  // Only FORMATTING whitespace goes. Whitespace inside a value is content —
+  // the blank line between paragraphs of a mail body — and JSON.stringify
+  // leaves every byte of it alone. A regex over the serialised text would
+  // corrupt exactly the payloads this is meant to shrink.
+  it('preserves whitespace INSIDE string values', async () => {
+    const body = 'Hi,\n\n  indented quote\n\nthanks';
+    vi.mocked(runner.run).mockResolvedValue(JSON.stringify({ body }, null, 2));
+    const result = await runOrDiagnose(['gmail', 'get'], {});
+    expect(JSON.parse(result.content[0].text as string).body).toBe(body);
+  });
+
+  // ofw-mcp emits paging state before its data array so a truncated read still
+  // sees it; the same reasoning applies to gog's nextPageToken. JSON.stringify
+  // preserves insertion order, so minifying must not reorder anything.
+  it('preserves key order', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{\n  "nextPageToken": "t",\n  "files": []\n}');
+    const result = await runOrDiagnose(['drive', 'ls'], {});
+    expect(result.content[0].text).toBe('{"nextPageToken":"t","files":[]}');
+  });
+
+  // gog does not always answer in JSON — `gog auth list` is plain text, and an
+  // empty body is legal. Minification must pass anything unparseable through
+  // untouched rather than mangling it or throwing.
+  it('passes non-JSON output through untouched', async () => {
+    for (const text of ['user@gmail.com\nother@gmail.com', '', '   ', 'not json {']) {
+      vi.mocked(runner.run).mockResolvedValue(text);
+      const result = await runOrDiagnose(['auth', 'list'], {});
+      expect(result.content[0].text).toBe(text);
+    }
+  });
+
+  // The lossless dumps are the rung a person reaches for when a payload is not
+  // what they expected, and indentation is most of what makes an unfamiliar
+  // shape legible — the same asymmetry mcp-utils' viewResult applies to `raw`.
+  it('does NOT minify a lossless response', async () => {
+    const raw = '{\n  "id": "m1"\n}';
+    vi.mocked(runner.run).mockResolvedValue(raw);
+    const result = await runOrDiagnose(['gmail', 'raw', 'm1'], { lossless: true });
+    expect(result.content[0].text).toBe(raw);
+  });
+
   it('appends auth list on non-auth failure', async () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Doc not found'))
