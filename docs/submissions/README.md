@@ -4,14 +4,22 @@ This repo is a monorepo. Each `packages/*` has its own npm identifier and gets i
 
 ## Packages covered
 
-| Package | Description |
-| --- | --- |
-| `gogcli-mcp` | Umbrella gogcli MCP (Sheets + more) |
-| `gogcli-mcp-docs` | Google Docs |
-| `gogcli-mcp-sheets` | Google Sheets |
-| `gogcli-mcp-slides` | Google Slides |
-| `gogcli-mcp-drive` | Google Drive |
-| `gogcli-mcp-classroom` | Google Classroom |
+| Package | Description | `server.json` | `.claude-plugin/` |
+| --- | --- | --- | --- |
+| `gogcli-mcp` | Base — every service, plus the `gog_<service>_run` escape hatches | ✅ | ✅ |
+| `gogcli-mcp-docs` | Google Docs | ✅ | ✅ |
+| `gogcli-mcp-sheets` | Google Sheets | ✅ | ✅ |
+| `gogcli-mcp-slides` | Google Slides | ✅ | ✅ |
+| `gogcli-mcp-drive` | Google Drive | ✅ | ✅ |
+| `gogcli-mcp-classroom` | Google Classroom | ✅ | ✅ |
+| `gogcli-mcp-gmail` | Gmail | — | — |
+| `gogcli-mcp-contacts` | Google Contacts (People API) | — | — |
+| `gogcli-mcp-calendar` | Google Calendar (+ Meet spaces) | — | — |
+
+All nine publish to npm, ship a `manifest.json` and a `SKILL.md`, and so
+produce a `.mcpb` and a `.skill` per release. The last two columns are what
+makes the matrix below read 6 rather than 9 — they are the per-package assets
+only six packages carry, not a gap in the other three's packaging.
 
 ## Coverage matrix
 
