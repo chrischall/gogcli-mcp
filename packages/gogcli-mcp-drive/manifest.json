@@ -95,7 +95,7 @@
     },
     {
       "name": "gog_drive_search",
-      "description": "Full-text search across Drive"
+      "description": "Full-text search across Drive; compact by default (view=full for thumbnails)"
     },
     {
       "name": "gog_drive_extract_text",
@@ -107,7 +107,7 @@
     },
     {
       "name": "gog_drive_get",
-      "description": "Get file metadata"
+      "description": "Get file metadata; compact by default (view=full for thumbnails)"
     },
     {
       "name": "gog_drive_mkdir",

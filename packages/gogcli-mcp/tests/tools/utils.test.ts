@@ -228,6 +228,42 @@ describe('runOrDiagnose', () => {
     expect(runner.run).not.toHaveBeenNthCalledWith(2, ['drive', 'ls'], expect.anything());
   });
 
+  // The second compact mechanism. `--fields` is a projection Google performs;
+  // this one is performed here, for the tools whose gog subcommand accepts no
+  // mask at all. Both surface through the same `view` vocabulary.
+  it('strips media keys when asked, and minifies the result', async () => {
+    vi.mocked(runner.run).mockResolvedValue(
+      '{\n  "id": "f1",\n  "thumbnailLink": "https://lh3.googleusercontent.com/x=s220",\n  "webViewLink": "https://docs.google.com/d/f1"\n}',
+    );
+    const result = await runOrDiagnose(['drive', 'get', 'f1'], { stripMedia: true });
+    expect(result.content[0].text).toBe('{"id":"f1","webViewLink":"https://docs.google.com/d/f1"}');
+  });
+
+  // webViewLink is the one URL a caller acts on and it sits in the same object
+  // as thumbnailLink. Stripping it would empty the response of the useful half.
+  it('keeps webViewLink and hasThumbnail while stripping the thumbnail', async () => {
+    vi.mocked(runner.run).mockResolvedValue(
+      JSON.stringify({ files: [{ id: 'f1', hasThumbnail: false, thumbnailLink: 'https://x/y=s220', webViewLink: 'https://docs/f1' }] }),
+    );
+    const result = await runOrDiagnose(['drive', 'search', 'q'], { stripMedia: true });
+    const parsed = JSON.parse(result.content[0].text as string);
+    expect(parsed.files[0]).toEqual({ id: 'f1', hasThumbnail: false, webViewLink: 'https://docs/f1' });
+  });
+
+  it('does not strip media unless asked', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"thumbnailLink":"https://x/y=s220"}');
+    const result = await runOrDiagnose(['drive', 'get', 'f1'], {});
+    expect(result.content[0].text).toBe('{"thumbnailLink":"https://x/y=s220"}');
+  });
+
+  // Non-JSON must survive the strip path exactly as it survives minification —
+  // the guard is shared, so a regression here would be silent.
+  it('passes non-JSON through untouched even when stripping is on', async () => {
+    vi.mocked(runner.run).mockResolvedValue('user@gmail.com');
+    const result = await runOrDiagnose(['auth', 'list'], { stripMedia: true });
+    expect(result.content[0].text).toBe('user@gmail.com');
+  });
+
   it('appends auth list on non-auth failure', async () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Doc not found'))
