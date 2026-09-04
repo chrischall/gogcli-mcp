@@ -1,4 +1,4 @@
-# Registry submissions — gogcli-mcp (monorepo, 6 packages)
+# Registry submissions — gogcli-mcp (monorepo, 9 packages)
 
 This repo is a monorepo. Each `packages/*` has its own npm identifier and gets its own MCP Registry entry. Shared parts (ClawHub per sub-package, GitHub Release single) are handled by `release.yml`.
 
@@ -17,13 +17,13 @@ This repo is a monorepo. Each `packages/*` has its own npm identifier and gets i
 
 | Registry                          | Automated?                               | Notes |
 | --- | --- | --- |
-| npm (all 6)                       | ✅ `release.yml` (OIDC trusted publishing) | |
-| GitHub Releases                   | ✅ `release.yml`                          | `*.skill` + `*.mcpb` for all 6 attached |
-| modelcontextprotocol/registry     | ✅ `release.yml` — loop over packages/*/ with server.json | 6 entries, one per sub-package |
+| npm (all 9)                       | ✅ `release.yml` (OIDC trusted publishing) | |
+| GitHub Releases                   | ✅ `release.yml`                          | 9 `*.mcpb` + 9 `*.skill` attached |
+| modelcontextprotocol/registry     | ✅ `release.yml` — loop over packages/*/ with server.json | 6 entries — only 6 packages ship a `server.json` |
 | PulseMCP                          | ✅ transitive                             | auto-ingests from MCP Registry weekly |
-| ClawHub (OpenClaw)                | ✅ conditional on `CLAWHUB_TOKEN`, loop over packages/*/ with SKILL.md | 6 skills |
-| mcpservers.org                    | ❌ manual — 6 entries                     | see below |
-| Anthropic community plugins       | ❌ manual — 6 submissions                 | see below |
+| ClawHub (OpenClaw)                | ✅ conditional on `CLAWHUB_TOKEN`, loop over packages/*/ with SKILL.md | 9 skills |
+| mcpservers.org                    | ❌ manual — 9 entries                     | see below |
+| Anthropic community plugins       | ❌ manual — 6 submissions                 | 6 packages carry `.claude-plugin/`; see below |
 
 ## mcpservers.org — submit each sub-package separately
 
@@ -45,4 +45,4 @@ For each package, use [clau.de/plugin-directory-submission](https://clau.de/plug
 - **Category:** Productivity
 - **Tags:** google, gogcli, workspace, <area-tag>, mcp
 
-The root `.claude-plugin/` directory isn't yet present at the top level — each sub-package carries its own `.claude-plugin/plugin.json` + `marketplace.json`, so the review pipeline reads per-package manifests. If Anthropic's reviewer asks for a single top-level entry, add a root-level `.claude-plugin/marketplace.json` that lists all 6 plugins.
+The root `.claude-plugin/` directory isn't yet present at the top level — each sub-package carries its own `.claude-plugin/plugin.json` + `marketplace.json`, so the review pipeline reads per-package manifests. If Anthropic's reviewer asks for a single top-level entry, add a root-level `.claude-plugin/marketplace.json` that lists all 6 plugins (the 6 packages that carry `.claude-plugin/`).
