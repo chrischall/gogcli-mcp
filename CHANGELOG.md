@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.29.0](https://github.com/chrischall/gogcli-mcp/compare/v2.28.0...v2.29.0) (2026-09-04)
+
+
+### Features
+
+* **drive,calendar:** compact view by default, 48% and 66% smaller ([#326](https://github.com/chrischall/gogcli-mcp/issues/326)) ([db0b144](https://github.com/chrischall/gogcli-mcp/commit/db0b1447f86ecce4a61fb16b9d83b38453bd1e4e))
+* **drive:** compact view for search and get, ~28% smaller ([#328](https://github.com/chrischall/gogcli-mcp/issues/328)) ([0ccd90e](https://github.com/chrischall/gogcli-mcp/commit/0ccd90e292141496c7b9c86b056a630d4239a1d1))
+* minify tool output, cutting a fifth off every gog response ([#324](https://github.com/chrischall/gogcli-mcp/issues/324)) ([bf90366](https://github.com/chrischall/gogcli-mcp/commit/bf90366b662fd55f4011590d34b6374702e208dc))
+
+
+### Bug Fixes
+
+* publish all nine package skills instead of one stale root skill ([#322](https://github.com/chrischall/gogcli-mcp/issues/322)) ([85ab6e1](https://github.com/chrischall/gogcli-mcp/commit/85ab6e1e468c6d44bf4503bdf88a19030d99eea1))
+
+
+### Documentation
+
+* **fly-runner:** stop restating the gog pin in the runner README ([#320](https://github.com/chrischall/gogcli-mcp/issues/320)) ([a11eebe](https://github.com/chrischall/gogcli-mcp/commit/a11eebe8dedc91b01e8fb6e041e8aa7e9c517fe2))
+
 ## [2.28.0](https://github.com/chrischall/gogcli-mcp/compare/v2.27.1...v2.28.0) (2026-09-04)
 
 
