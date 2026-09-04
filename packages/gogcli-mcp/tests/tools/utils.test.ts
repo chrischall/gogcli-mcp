@@ -163,6 +163,24 @@ describe('runOrDiagnose', () => {
     }
   });
 
+  // Brace-prefixed but unparseable — a truncated response from a killed gog, or
+  // a JSON prelude followed by garbage. It passes the `^[[{]` guard and then
+  // fails JSON.parse, and the only safe answer is the original bytes: a caller
+  // debugging a malformed payload needs to see what actually arrived.
+  //
+  // This path IS reachable through other suites today (gog_docs_structure feeds
+  // exactly this shape), but incidental coverage is not the same as a pinned
+  // behaviour — change that unrelated fixture and this branch goes dark, and
+  // the failure surfaces on whatever PR touched the fixture.
+  it('passes brace-prefixed but unparseable output through untouched', async () => {
+    for (const text of ['{"truncated": ', '[{"a":1},', '{not: json}']) {
+      vi.mocked(runner.run).mockResolvedValue(text);
+      const result = await runOrDiagnose(['drive', 'ls'], {});
+      expect(result.content[0].text).toBe(text);
+      expect(result.isError).toBeUndefined();
+    }
+  });
+
   // The lossless dumps are the rung a person reaches for when a payload is not
   // what they expected, and indentation is most of what makes an unfamiliar
   // shape legible — the same asymmetry mcp-utils' viewResult applies to `raw`.
