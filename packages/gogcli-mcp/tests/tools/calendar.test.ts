@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { registerCalendarTools } from '../../src/tools/calendar.js';
+import { registerCalendarTools, CALENDAR_EVENTS_COMPACT_FIELDS } from '../../src/tools/calendar.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
 
 vi.mock('../../src/runner.js');
 
 const setupHandlers = () => createTestHarness(registerCalendarTools);
+
+// gog_calendar_events answers in the compact rung by default, so every call
+// carries the mask. These keep the window-flag tests below about window flags
+// while still asserting the shipped default rather than an opted-out view.
+const evArgs = (...extra: string[]) =>
+  ['calendar', 'events', ...extra, `--fields=${CALENDAR_EVENTS_COMPACT_FIELDS}`];
+const evOpts = { account: undefined, fieldsMask: CALENDAR_EVENTS_COMPACT_FIELDS };
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -14,7 +21,36 @@ describe('gog_calendar_events', () => {
     vi.mocked(runner.run).mockResolvedValue('{"items":[]}');
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_events', {});
-    expect(runner.run).toHaveBeenCalledWith(['calendar', 'events'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(evArgs(), evOpts);
+  });
+
+  // The cheap rung is the default. Measured at 66% smaller on a 25-event
+  // window — the largest saving available in this repo, because a calendar
+  // event's description and attendee list dwarf the fields a caller acts on.
+  it('sends no mask for the full view', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"items":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_calendar_events', { view: 'full' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['calendar', 'events'],
+      { account: undefined, fieldsMask: undefined },
+    );
+  });
+
+  // A Google field mask drops nextPageToken from the envelope, so a compact
+  // read returns page one with an EMPTY cursor. This tool's own description
+  // warns that a wide range is usually incomplete and to page until the cursor
+  // is gone — a mask that silently removes the cursor would turn that guidance
+  // into a guarantee of the wrong answer. Verified live against gog 0.39.0.
+  it('names the paging field in the mask', () => {
+    expect(CALENDAR_EVENTS_COMPACT_FIELDS).toMatch(/^nextPageToken,/);
+  });
+
+  it('rejects a view rung this tool does not honour', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_calendar_events', { view: 'raw' });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
   });
 
   // The window flags are pinned as SEPARATE cases on purpose: gog >= 0.36.0
@@ -31,54 +67,42 @@ describe('gog_calendar_events', () => {
       query: 'standup',
       all: true,
     });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'events', 'primary', '--from=2026-01-01', '--to=2026-01-31', '--query=standup', '--all'],
-      { account: undefined },
-    );
+    expect(runner.run).toHaveBeenCalledWith(evArgs('primary', '--from=2026-01-01', '--to=2026-01-31', '--query=standup', '--all'), evOpts);
   });
 
   it('appends --today on its own', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_events', { today: true });
-    expect(runner.run).toHaveBeenCalledWith(['calendar', 'events', '--today'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(evArgs('--today'), evOpts);
   });
 
   it('anchors --days at --from when both are given', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_events', { from: '2026-09-25', days: 5 });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'events', '--from=2026-09-25', '--days=5'],
-      { account: undefined },
-    );
+    expect(runner.run).toHaveBeenCalledWith(evArgs('--from=2026-09-25', '--days=5'), evOpts);
   });
 
   it('passes --days alone as a today-anchored window', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_events', { days: 7 });
-    expect(runner.run).toHaveBeenCalledWith(['calendar', 'events', '--days=7'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(evArgs('--days=7'), evOpts);
   });
 
   it('repeats --event-types for each requested type', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_events', { eventTypes: ['default', 'out-of-office'] });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'events', '--event-types=default', '--event-types=out-of-office'],
-      { account: undefined },
-    );
+    expect(runner.run).toHaveBeenCalledWith(evArgs('--event-types=default', '--event-types=out-of-office'), evOpts);
   });
 
   it('appends --timezone when provided', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_events', { timezone: 'America/New_York' });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'events', '--timezone=America/New_York'],
-      { account: undefined },
-    );
+    expect(runner.run).toHaveBeenCalledWith(evArgs('--timezone=America/New_York'), evOpts);
   });
 
   it('returns error text on failure', async () => {

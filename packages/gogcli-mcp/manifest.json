@@ -126,7 +126,7 @@
     },
     {
       "name": "gog_calendar_events",
-      "description": "List calendar events; paginated (gog returns only 10 by default) and flags a truncated range"
+      "description": "List calendar events; compact by default (view=full for descriptions and attendees), paginated and flags a truncated range"
     },
     {
       "name": "gog_calendar_get",
@@ -254,7 +254,7 @@
     },
     {
       "name": "gog_drive_ls",
-      "description": "List files in a Google Drive folder"
+      "description": "List files in a Google Drive folder; compact by default (view=full for owners, parents and thumbnails)"
     },
     {
       "name": "gog_drive_search",

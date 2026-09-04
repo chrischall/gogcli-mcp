@@ -91,7 +91,7 @@
     },
     {
       "name": "gog_drive_ls",
-      "description": "List files in a Google Drive folder (with pagination and query filters)"
+      "description": "List files in a Google Drive folder; compact by default (view=full for owners, parents and thumbnails), with pagination and query filters"
     },
     {
       "name": "gog_drive_search",
