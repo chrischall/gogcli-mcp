@@ -186,6 +186,60 @@ This needed mcp-utils **0.23.0**: 0.22.0's `MEDIA_KEY` was anchored to a bare no
 
 `runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.39.0**. A bump must also move the `fly-gog-runner/Dockerfile` `GOG_VERSION` build arg **and the `tag:` in all nine `packages/*/mint.yaml` `dependencies` blocks** — those pin the `gog` release a hosted install provisions, so leaving them behind hands the child a binary older than the floor its tools assume. `scripts/check-runner-gog-version.mjs` enforces all three together and fails `npm test` on any pin below the floor, so a missed one is a red build rather than a broken hosted install.
 
+### Hosted registrations (mcp-host)
+
+Each sub-package is registered on mcp-host as its own connector — `gog-docs`,
+`gog-drive`, `gog-gmail`, `gog-sheets`, `gog-slides` — all `--npm`, `--follow`,
+`dataDir: false` and no `gog` dependency, because they drive the Fly runner
+(`GOG_RUNNER_URL` + the `GOG_RUNNER_KEY` secret) rather than spawning a binary.
+That deliberately contradicts `mint.yaml`, which describes the local-spawn
+install, so every row carries two permanent `unmet` manifest asks (the
+`github-release:openclaw/gogcli` dependency, and `dataDir`). Both are expected.
+Registering a new one mirrors the others:
+
+```sh
+mcp-host register --slug gog-<service> --npm gogcli-mcp-<service> \
+  --name 'gog <service>' --follow \
+  --env "GOG_RUNNER_URL=https://gogcli-gog-runner.fly.dev" \
+  --secret-env GOG_RUNNER_KEY=GOG_RUNNER_KEY \
+  --tools "$(node -e '…manifest minus *_run…')"
+```
+
+**The `enabledTools` allowlist rots, and only we can see it.** Its whole job is
+to withhold the two `*_run` escape hatches — arbitrary `gog` subcommand
+execution is not something a hosted connector should offer — but mcp-host stores
+that as an allowlist of *every other name*. So "hide two tools" is written as
+"show these 53", and shipping a new tool leaves it absent from a list nobody
+edited: fine on stdio, silently unreachable over the connector. mcp-host will
+not catch it. `--follow` moves the version pin and carries `enabledTools` across
+untouched, and the daily mint check lists `tools.enable` among its *deliberate*
+silences — "a narrowing; a registration that ignores it serves more, not less."
+That is the right default for a host reading an unverified file, and it is
+exactly the blind spot we sit in, because we narrow on purpose.
+
+`scripts/sync-mcp-host-tools.mjs` closes it. The list is **derived, never
+authored**: `GET /registrations/{id}/tools` returns what the running child
+serves, unnarrowed, so the correct allowlist is that set minus `*_run`. It reads
+nothing from this checkout, which is what lets it judge whatever version each
+registration has actually followed to.
+
+```sh
+npm run check:mcp-host-tools     # report drift, exit 1 if any
+npm run sync:mcp-host-tools      # PUT the corrected lists
+```
+
+It also rides `npm test` as `--if-configured`, which **skips** (exit 0) when
+`MCP_HOST_URL` / `MCP_HOST_ADMIN_TOKEN` are absent or the host is unreachable —
+this is the one check here that talks to a live deployment, so it must be a
+no-op in CI rather than a red build. Drift found by a check that *completed* is
+never downgraded. There is no schedule: run it yourself after a release has been
+followed.
+
+**Timing matters, and it is counter-intuitive.** Syncing at release time is a
+no-op — mcp-host is still pinned to the previous version and its child still
+serves the old tools. The follow cron moves the pin ~04:17Z daily, so the check
+is only meaningful *after* that has run and the child has restarted.
+
 ## Tool placement
 
 The split between base and sub-package extras matters:
@@ -211,6 +265,9 @@ When adding a tool, ask: does a user opening the all-services base package want 
 6. Annotations: `readOnlyHint: true` for reads; `destructiveHint: true` for deletes/overwrites/grades/run-escape-hatches. Leave creates and restorative ops unannotated.
 7. Gated deletes need `--force`: if the `gog` subcommand prompts for confirmation, append `--force` to the args — the runner always injects `--no-input`, so without it gog refuses (`refusing to delete … without --force (non-interactive)`). Not every delete is gated; confirm against a real `gog` (the mocked tests can't catch a missing `--force`). See [Gotchas](#gotchas).
 8. Add the new tool to the sub-package's `manifest.json`.
+9. After the release ships **and mcp-host has followed to it** (~04:17Z the next day), run
+   `npm run sync:mcp-host-tools` — a new tool is absent from the hosted `enabledTools`
+   allowlist until someone pushes it. See [Hosted registrations](#hosted-registrations-mcp-host).
 
 ## Auth & re-auth
 
