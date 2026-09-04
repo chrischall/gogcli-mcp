@@ -11,7 +11,7 @@ import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 
 // Google Chat (gog >= 0.38.0 for the mention/reaction metadata in
-// `messages list`; the rest of the surface is older).
+// `messages list`, >= 0.39.0 for `messages search`; the rest is older).
 //
 // TWO NAMING SYSTEMS MEET HERE, and mixing them is the mistake this module's
 // descriptions exist to prevent. Chat identifies everything by RESOURCE NAME —
@@ -131,6 +131,41 @@ export function registerChatTools(server: McpServer): void {
     if (thread) args.push(`--thread=${thread}`);
     if (unread) args.push('--unread');
     if (order) args.push(`--order=${order}`);
+    pushPaginationFlags(args, { max, pageToken, page, all });
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_chat_messages_search', {
+    description:
+      'Search Chat messages ACROSS every space and DM the account can see (gog >= 0.39.0) — the tool to reach for when the '
+      + 'user asks "where did we discuss X" without naming a room, since gog_chat_messages_list needs a space up front. '
+      + 'The query is Google Chat filter syntax, so it takes plain keywords or filters like sender, space, date, mention, '
+      + 'unread, link and attachment. It is a search, NOT an export: Chat excludes some conversations (muted spaces among '
+      + 'them), so an empty result does not prove a message never existed. view="full" adds each hit\'s read state and space '
+      + 'mute setting; read state works on an ordinary chat grant, but the mute setting needs chat.users.spacesettings, '
+      + 'which gog\'s chat scope set does NOT request (re-auth with extraScopes to get it). Missing metadata is OMITTED '
+      + 'rather than defaulted, so an absent `read` means unknown while an explicit false means unread.' + workspaceOnlyNote,
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      query: z.string().describe('Google Chat filter-syntax query — keywords, or filters such as "from:alice@example.com budget"'),
+      order: z.enum(['create_time desc', 'relevance desc']).optional().describe(
+        'Sort order. NOTE the snake_case, which differs from gog_chat_messages_list\'s camelCase. "relevance desc" needs '
+        + 'Google Developer Preview access and errors without it',
+      ),
+      view: z.enum(['basic', 'full']).optional().describe(
+        'Result view (default "basic"). "full" also requests read state (covered by an ordinary chat grant) and space '
+        + 'mute setting (needs chat.users.spacesettings, which that grant does not include)',
+      ),
+      markup: z.enum(['chat', 'markdown']).optional().describe('Syntax to render each hit\'s formatted text in'),
+      ...paginationParams,
+      max: z.number().int().min(1).max(100).optional().describe('Max results per page (1-100; Chat search caps a page at 100)'),
+      account: accountParam,
+    },
+  }, async ({ query, order, view, markup, max, pageToken, page, all, account }) => {
+    const args = ['chat', 'messages', 'search', query];
+    if (order) args.push(`--order=${order}`);
+    if (view) args.push(`--view=${view}`);
+    if (markup) args.push(`--markup=${markup}`);
     pushPaginationFlags(args, { max, pageToken, page, all });
     return runOrDiagnose(args, { account });
   });

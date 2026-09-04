@@ -1050,6 +1050,19 @@ describe('gog_docs_page_layout', () => {
       { account: undefined },
     );
   });
+
+  // A3 joined the preset list in gog 0.39.0. The enum is the only gate — a
+  // value it rejects never reaches gog, so a missing preset is a tool that
+  // cannot do something the binary underneath it can.
+  it('accepts the A3 preset (gog >= 0.39.0)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_docs_page_layout', { docId: 'd1', pageSize: 'A3' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['docs', 'page-layout', 'd1', '--page-size=A3'],
+      { account: undefined },
+    );
+  });
 });
 
 describe('gog_docs_cell_update', () => {

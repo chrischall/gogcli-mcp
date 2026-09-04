@@ -77,6 +77,12 @@ Two of these now DO have tools, in the base all-services package only (gog ≥ 0
   that: on a consumer `@gmail.com` account gog refuses every `chat` call with *"chat requires a
   Google Workspace account (non-gmail.com)"* no matter which scopes the token carries. Enabling the
   API does not change that; the account is the constraint.
+  One Chat scope sits outside gog's `chat` service set: `gog_chat_messages_search` with
+  `view="full"` returns each hit's `spaceMuteSetting` only with
+  **`https://www.googleapis.com/auth/chat.users.spacesettings`**, which `services="chat"` never
+  requests — pass it as `extraScopes` (below) if you need it. The sibling `read` field needs
+  `chat.users.readstate.readonly`, which the `chat` set *does* include. Either field is **omitted**
+  when its scope is missing, so an absent `read` means unknown, not unread.
 - **Apps Script** (`gog_appscript_*`) — needs the Apps Script API enabled. gog's error names the
   exact console URL for the OAuth client's project, so read it rather than guessing at scopes.
 

@@ -46,7 +46,7 @@ describe('gog_chat_spaces_list', () => {
       return undefined as never;
     });
     registerChatTools(server);
-    expect(configs.size).toBe(12);
+    expect(configs.size).toBe(13);
     for (const [name, config] of configs) {
       expect(config.description, name).toMatch(/consumer accounts|Workspace/i);
     }
@@ -129,6 +129,66 @@ describe('gog_chat_messages_list', () => {
     const result = await harness.callTool('gog_chat_messages_list', { space: 'spaces/AAA', order: 'newest' });
     expect(result.isError).toBe(true);
     expect(runner.run).not.toHaveBeenCalled();
+  });
+});
+
+describe('gog_chat_messages_search', () => {
+  it('searches across every space the account can see', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"results":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_chat_messages_search', { query: 'project decision' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['chat', 'messages', 'search', 'project decision'],
+      { account: undefined },
+    );
+  });
+
+  it('passes view, markup, order and pagination flags', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"results":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_chat_messages_search', {
+      query: 'from:alice@example.com budget',
+      view: 'full',
+      markup: 'markdown',
+      order: 'create_time desc',
+      max: 100,
+      pageToken: 'tok',
+      all: true,
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['chat', 'messages', 'search', 'from:alice@example.com budget', '--order=create_time desc',
+        '--view=full', '--markup=markdown', '--max=100', '--page=tok', '--all'],
+      { account: undefined },
+    );
+  });
+
+  // Chat's own ordering vocabulary is snake_case here and camelCase in
+  // `messages list`; a model that copies the list tool's "createTime desc"
+  // would get a gog error at runtime, so the enum has to reject it here.
+  it('rejects an order value search does not accept', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_chat_messages_search', {
+      query: 'x', order: 'createTime desc',
+    });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  // Chat caps a search page at 100; `messages list` allows more. Letting the
+  // larger number through would surface as a gog error on a call the tool
+  // already had enough information to refuse.
+  it('rejects a page size above Chat search\'s cap of 100', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_chat_messages_search', { query: 'x', max: 250 });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('returns error text on failure', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('Search failed'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_chat_messages_search', { query: 'x' });
+    expect(result.content[0].text).toBe('Error: Search failed');
   });
 });
 

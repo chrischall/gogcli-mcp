@@ -11,7 +11,7 @@ ARG TARGETARCH
 # failure on the hosted connector — not a build error and not a type error, so
 # nothing catches it before a user does. When MIN_GOG_VERSION moves, this moves
 # with it; scripts/check-runner-gog-version.mjs fails CI if they drift.
-ARG GOG_VERSION=0.38.3
+ARG GOG_VERSION=0.39.0
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl \

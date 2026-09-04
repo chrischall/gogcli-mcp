@@ -897,7 +897,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     inputSchema: {
       docId: z.string().describe('Doc ID (from the URL)'),
       layout: z.enum(['pageless', 'pages']).optional().describe('Page layout (default: pageless)'),
-      pageSize: z.enum(['A4', 'A5', 'Letter', 'Legal', 'Tabloid']).optional().describe('Named page size preset (only applies in paged layout)'),
+      pageSize: z.enum(['A3', 'A4', 'A5', 'Letter', 'Legal', 'Tabloid']).optional().describe('Named page size preset (only applies in paged layout)'),
       pageWidth: z.string().optional().describe('Page width (points by default; supports pt, in, cm, mm — e.g. "8.5in")'),
       pageHeight: z.string().optional().describe('Page height (points by default; supports pt, in, cm, mm)'),
       marginTop: z.string().optional().describe('Top page margin (points by default; supports pt, in, cm, mm)'),
