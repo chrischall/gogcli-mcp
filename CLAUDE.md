@@ -165,7 +165,18 @@ Only **9** gog commands accept `--fields` at all (`gog schema --json`), nearly a
 
 **Not `raw`.** For a passthrough wrapper `raw` and `full` are the same bytes, and advertising both is the aliasing lie `fleet-conventions.md` forbids. Note also that this repo's `lossless` is NOT the fleet's `raw`: `lossless` skips normalization to give the `*_raw` dumps verbatim ground truth, whereas fleet `raw` means "no projection" and explicitly still normalizes.
 
-**`stripMediaUrls` (mcp-utils 0.22.0) does not currently help here** — measured 0.0% on `drive ls` and `drive search`, 1.1% on `calendar events`. Its `MEDIA_KEY` is anchored to a bare noun (`^photos?$`) while every Google API suffixes: `thumbnailLink`, `iconUri`, `photoUrl`. Allowing an optional `Link|Uri|Url` suffix would take Drive listings down **31%** and would reach `drive search`, which supports no field mask at all. Revisit if that lands upstream.
+**Two mechanisms, one vocabulary.** `compact` is served two different ways, and a caller never has to know which:
+
+| mechanism | where | tools |
+|---|---|---|
+| `--fields` mask (Google projects it) | upstream | `gog_drive_ls`, `gog_calendar_events` |
+| `stripMediaUrls` (we project it) | local, via `runOrDiagnose`'s `stripMedia` | `gog_drive_search`, `gog_drive_get` |
+
+The local strip exists because only 9 gog commands accept `--fields`. It drops `thumbnailLink` and friends — URLs a model cannot see, cannot fetch, and would not benefit from if it could — and is verified end-to-end at **27.8%** on `gog_drive_search` and **27.5%** on `gog_drive_get`, with `webViewLink` (the URL a caller acts on, sitting in the same object) intact.
+
+It is **opt-in per tool**, never applied at the seam by default, because a tool whose PRODUCT is the image must never strip — the tool's own name is the test. `gog_drive_ls` deliberately does not use it: its mask already drops `thumbnailLink` upstream, and applying it to `full` would contradict what `full` means.
+
+This needed mcp-utils **0.23.0**: 0.22.0's `MEDIA_KEY` was anchored to a bare noun (`^photos?$`) while every Google API suffixes (`thumbnailLink`, `iconUri`, `photoUrl`), so it matched nothing here and measured 0.0%. Fixed upstream in chrischall/mcp-utils#192.
 
 **Every other read tool takes no `view`, deliberately.** Per `fleet-conventions.md`, a tool registers only rungs it can honour, and without a field mask `compact` and `full` would be byte-identical — the aliasing lie. Adding `view` to a tool whose gog subcommand has no `--fields` would advertise a saving that does not exist.
 

@@ -71,10 +71,17 @@ export function registerDriveTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       query: z.string().describe('Search query'),
+      // gog's `drive search` accepts no --fields mask, so unlike gog_drive_ls
+      // this tool's compact rung is a LOCAL projection. Same vocabulary either
+      // way: a caller does not need to know which lever is being pulled.
+      view: viewParam(['compact', 'full'], { note: 'compact (the default) drops thumbnailLink — a URL a model cannot see, and 30%+ of a Drive file record. Ask for full to get it back.' }),
       account: accountParam,
     },
-  }, async ({ query, account }) => {
-    return runOrDiagnose(['drive', 'search', query], { account });
+  }, async ({ query, view, account }) => {
+    return runOrDiagnose(['drive', 'search', query], {
+      account,
+      stripMedia: resolveView(view, ['compact', 'full']) === 'compact',
+    });
   });
 
   server.registerTool('gog_drive_get', {
@@ -82,10 +89,17 @@ export function registerDriveTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: {
       fileId: z.string().describe('File ID'),
+      // A --fields mask saves only 7% here: the default set is already narrow,
+      // which is why this tool takes no mask. The media strip saves 32.9% on
+      // the same payload, which is why it takes a view after all.
+      view: viewParam(['compact', 'full'], { note: 'compact (the default) drops thumbnailLink — a URL a model cannot see, and 30%+ of a Drive file record. Ask for full to get it back.' }),
       account: accountParam,
     },
-  }, async ({ fileId, account }) => {
-    return runOrDiagnose(['drive', 'get', fileId], { account });
+  }, async ({ fileId, view, account }) => {
+    return runOrDiagnose(['drive', 'get', fileId], {
+      account,
+      stripMedia: resolveView(view, ['compact', 'full']) === 'compact',
+    });
   });
 
   server.registerTool('gog_drive_mkdir', {

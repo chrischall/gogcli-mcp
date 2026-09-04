@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { errorResult, rawTextResult, minifiedResult } from '@chrischall/mcp-utils';
+import { errorResult, rawTextResult, minifiedResult, stripMediaUrls } from '@chrischall/mcp-utils';
 import { run, isRunnerTransportError } from '../runner.js';
 import type { GogArg, RunnerFailureKind } from '../runner.js';
 import { normalizeTimestamps } from '../timestamps.js';
@@ -360,18 +360,31 @@ export async function diagnose(err: unknown): Promise<CallToolResult> {
 // plain text, an empty body is legal, and a mangled non-answer is worse than a
 // large one. The guard mirrors normalizeTimestamps' so the two agree on what
 // counts as JSON.
-function minifiedOrRawText(text: string): CallToolResult {
+function minifiedOrRawText(text: string, stripMedia = false): CallToolResult {
   const trimmed = text.trim();
   if (trimmed === '' || !/^[[{]/.test(trimmed)) return rawTextResult(text);
   try {
-    return minifiedResult(JSON.parse(trimmed));
+    const parsed: unknown = JSON.parse(trimmed);
+    return minifiedResult(stripMedia ? stripMediaUrls(parsed) : parsed);
   } catch {
     return rawTextResult(text);
   }
 }
 
-// A Google field mask (`--fields`) is the `compact` rung's projection, and it
-// is applied UPSTREAM — inside the Google API, not here. Two consequences shape
+// THE SECOND COMPACT MECHANISM. `--fields` below is a projection GOOGLE
+// performs; `stripMedia` is one performed here, for the tools whose gog
+// subcommand accepts no mask at all — `gog schema --json` lists only nine that
+// do. Both surface through the same `view` vocabulary, so a caller never has to
+// know which lever a given tool pulls.
+//
+// It drops `thumbnailLink` and friends: URLs a model cannot see, cannot fetch,
+// and would not benefit from if it could. Worth 30-33% on every Drive
+// file-metadata read, measured live. It is deliberately OPT-IN per tool, per
+// the rule that a tool whose PRODUCT is the image must never strip — the tool's
+// own name is the test.
+//
+// A Google field mask (`--fields`) is the other `compact` rung's projection,
+// and it is applied UPSTREAM — inside the Google API, not here. Two consequences shape
 // this function.
 //
 // First, the mask MUST name the response envelope's paging field. A mask of
@@ -411,7 +424,7 @@ async function runProjected(
 
 export async function runOrDiagnose(
   args: GogArg[],
-  options: { account?: string; lossless?: boolean; fieldsMask?: string },
+  options: { account?: string; lossless?: boolean; fieldsMask?: string; stripMedia?: boolean },
 ): Promise<CallToolResult> {
   try {
     // The single seam every tool's output passes through. Normalizing here —
@@ -429,7 +442,7 @@ export async function runOrDiagnose(
     // would let one paginated tool forget and go on reporting a spent cursor as
     // if it were a live one. `lossless` opts the raw dumps out of both.
     if (options.lossless) return rawTextResult(raw);
-    return minifiedOrRawText(stripConsumedPageToken(normalizeTimestamps(raw)));
+    return minifiedOrRawText(stripConsumedPageToken(normalizeTimestamps(raw)), options.stripMedia);
   } catch (err) {
     return diagnose(err);
   }

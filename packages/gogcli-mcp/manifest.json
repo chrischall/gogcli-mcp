@@ -258,7 +258,7 @@
     },
     {
       "name": "gog_drive_search",
-      "description": "Search Google Drive files"
+      "description": "Search Google Drive files; compact by default (view=full for thumbnails)"
     },
     {
       "name": "gog_drive_extract_text",
@@ -270,7 +270,7 @@
     },
     {
       "name": "gog_drive_get",
-      "description": "Get Google Drive file metadata"
+      "description": "Get Google Drive file metadata; compact by default (view=full for thumbnails)"
     },
     {
       "name": "gog_drive_mkdir",
