@@ -90,8 +90,11 @@ export function registerDriveTools(server: McpServer): void {
     inputSchema: {
       fileId: z.string().describe('File ID'),
       // A --fields mask saves only 7% here: the default set is already narrow,
-      // which is why this tool takes no mask. The media strip saves 32.9% on
-      // the same payload, which is why it takes a view after all.
+      // which is why this tool takes no mask. The media strip saves 27.5% of
+      // the tool's actual output, measured end to end over stdio, which is why
+      // it takes a view after all. (An earlier note said 32.9%; that was a
+      // minified-vs-stripped comparison of the raw gog payload rather than of
+      // what the tool returns. The end-to-end figure is the one a caller sees.)
       view: viewParam(['compact', 'full'], { note: 'compact (the default) drops thumbnailLink — a URL a model cannot see, and 30%+ of a Drive file record. Ask for full to get it back.' }),
       account: accountParam,
     },
