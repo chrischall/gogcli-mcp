@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.28.0](https://github.com/chrischall/gogcli-mcp/compare/v2.27.1...v2.28.0) (2026-09-04)
+
+
+### Features
+
+* **chat:** search Chat messages across every space and require gog 0.39.0 ([#318](https://github.com/chrischall/gogcli-mcp/issues/318)) ([c6f7da6](https://github.com/chrischall/gogcli-mcp/commit/c6f7da635bc700c81d64b0826f72efa93fe8cfd2))
+
 ## [2.27.1](https://github.com/chrischall/gogcli-mcp/compare/v2.27.0...v2.27.1) (2026-09-03)
 
 
