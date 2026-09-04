@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { viewParam, resolveView } from '@chrischall/mcp-utils';
 import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken } from './utils.js';
 import { annotateTruncatedList } from '../pagination.js';
 
@@ -53,6 +54,27 @@ function pushReminderFlags(
   for (const reminder of p.reminders) args.push(`--reminder=${reminder}`);
 }
 
+
+// The `compact` rung for gog_calendar_events, as a Google Calendar field mask.
+//
+// nextPageToken FIRST and always. This tool's own description tells a caller
+// that a wide range is usually incomplete and to page until the cursor is gone;
+// a mask of `items(...)` alone drops that cursor from the envelope, which would
+// turn that instruction into a guarantee of the wrong answer. Verified live
+// against gog 0.39.0.
+//
+// Chosen from the DATA over a 25-event window: description costs 5,951 bytes
+// and attendees 3,145 — the two fat blobs `full` exists to return — while etag,
+// kind, iCalUID, eventType, timezone, guestsCanInviteOthers and privateCopy are
+// internal or single-valued across every row. Net: 21,260 -> 7,292 bytes, 66%
+// smaller. status is kept despite being single-valued in that sample precisely
+// because its whole value is flagging the rare cancelled event.
+//
+// gog's derived fields (startLocal, endDayOfWeek, ...) survive the mask, since
+// gog computes them from start/end, which the mask keeps.
+export const CALENDAR_EVENTS_COMPACT_FIELDS =
+  'nextPageToken,items(id,summary,start,end,location,status,htmlLink)';
+
 export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_events', {
     description: 'List calendar events. Describe the window ONE way and one way only (gog >= 0.36.0 rejects the rest as ambiguous rather than silently discarding a flag): '
@@ -78,9 +100,13 @@ export function registerCalendarTools(server: McpServer): void {
       all: z.boolean().optional().describe('Fetch events from ALL CALENDARS. NOTE: unlike the gmail search tools, this does NOT mean "all pages" — it widens the calendar set, not the page window. Use pageToken to reach later pages.'),
       eventTypes: z.array(z.enum(['default', 'birthday', 'focus-time', 'from-gmail', 'out-of-office', 'working-location'])).optional().describe('Filter to specific event types (repeatable)'),
       timezone: z.string().optional().describe('Display timezone for event times (IANA name, e.g. America/New_York, or "local" for the system timezone). Default: each event\'s timezone, then its calendar\'s timezone.'),
+      view: viewParam(['compact', 'full'], {
+        note: 'compact (the default) drops description and attendees — together two thirds of a '
+          + 'listing\'s bytes — plus etag/iCalUID/kind. Ask for full when you need a body or a guest list.',
+      }),
       account: accountParam,
     },
-  }, async ({ calendarId, from, to, days, today, query, max, pageToken, page, all, eventTypes, timezone, account }) => {
+  }, async ({ calendarId, from, to, days, today, query, max, pageToken, page, all, eventTypes, timezone, view, account }) => {
     const args = ['calendar', 'events'];
     if (calendarId) args.push(calendarId);
     if (from) args.push(`--from=${from}`);
@@ -94,7 +120,11 @@ export function registerCalendarTools(server: McpServer): void {
     if (all) args.push('--all');
     if (eventTypes) for (const t of eventTypes) args.push(`--event-types=${t}`);
     if (timezone) args.push(`--timezone=${timezone}`);
-    const result = await runOrDiagnose(args, { account });
+    const rung = resolveView(view, ['compact', 'full']);
+    const result = await runOrDiagnose(args, {
+      account,
+      fieldsMask: rung === 'compact' ? CALENDAR_EVENTS_COMPACT_FIELDS : undefined,
+    });
     // No count probe here: unlike Gmail's list endpoints, the Calendar API has
     // no cheap way to count a range exactly, so the warning carries the fact of
     // truncation without inventing a total.

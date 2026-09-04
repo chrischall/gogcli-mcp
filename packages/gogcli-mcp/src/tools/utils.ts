@@ -370,9 +370,48 @@ function minifiedOrRawText(text: string): CallToolResult {
   }
 }
 
+// A Google field mask (`--fields`) is the `compact` rung's projection, and it
+// is applied UPSTREAM — inside the Google API, not here. Two consequences shape
+// this function.
+//
+// First, the mask MUST name the response envelope's paging field. A mask of
+// `files(...)` alone drops `nextPageToken` from the payload, so a compact read
+// returns page one with an empty cursor and reads as "there is nothing more" —
+// silent truncation, and the exact false negative this repo's pagination guards
+// exist to prevent. Verified live against gog 0.39.0 on both drive and
+// calendar; the per-tool masks are asserted to start with the paging field.
+//
+// Second, a mask this wrapper gets wrong is a hard 400 from Google rather than
+// a thin record, so `projectOrRaw`'s local try/fallback cannot apply. This is
+// its analogue across the network: a rejected mask retries UNPROJECTED and says
+// why on stderr, because a large correct answer beats a failed tool call. Only
+// a rejected mask is retried — a missing file is not a bad mask, and retrying
+// it would just spend a second call to fail the same way.
+function isRejectedFieldMask(err: unknown): boolean {
+  return /invalidParameter|invalid field selection/i.test(String(err));
+}
+
+async function runProjected(
+  args: GogArg[],
+  options: { account?: string; lossless?: boolean; fieldsMask?: string },
+): Promise<string> {
+  const { fieldsMask } = options;
+  if (!fieldsMask) return run(args, options);
+  try {
+    return await run([...args, `--fields=${fieldsMask}`], options);
+  } catch (err) {
+    if (!isRejectedFieldMask(err)) throw err;
+    // stderr, never stdout: stdout is the JSON-RPC channel.
+    process.stderr.write(
+      `gogcli-mcp: Google rejected the compact field mask (${fieldsMask}); retrying unprojected\n`,
+    );
+    return run(args, options);
+  }
+}
+
 export async function runOrDiagnose(
   args: GogArg[],
-  options: { account?: string; lossless?: boolean },
+  options: { account?: string; lossless?: boolean; fieldsMask?: string },
 ): Promise<CallToolResult> {
   try {
     // The single seam every tool's output passes through. Normalizing here —
@@ -385,7 +424,7 @@ export async function runOrDiagnose(
     // `--pretty` formatting, so the one tool you reach for when you need ground
     // truth would stop telling it. Losslessness wins over presentation there —
     // the friendlier views of the same data are already normalized.
-    const raw = await run(args, options);
+    const raw = await runProjected(args, options);
     // Same seam, same reason as normalizeTimestamps: doing this per call site
     // would let one paginated tool forget and go on reporting a spent cursor as
     // if it were a live one. `lossless` opts the raw dumps out of both.

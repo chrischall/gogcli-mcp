@@ -150,7 +150,24 @@ Three properties are load-bearing and tested in `tests/tools/utils.test.ts`:
 
 `lossless: true` is exempt and stays indented. That mirrors the fleet's `raw` rung, which `mcp-utils`' `viewResult` also leaves indented: it is the rung a *person* reaches for when a payload is not what they expected, and indentation is most of what makes an unfamiliar shape legible.
 
-**On the fleet `view` enum (`compact | full | raw`).** This repo deliberately does not register one. Per `docs/fleet-conventions.md` ("Response shape"), a tool registers only rungs it can honour and "a value that silently aliases to another is a lie in the schema" — and with no projection layer, `compact` and `full` would be byte-identical here. Note also that this repo's `lossless` is NOT the fleet's `raw`: `lossless` skips normalization to give the `*_raw` dumps verbatim ground truth, whereas fleet `raw` means "no projection" and explicitly still normalizes. A real `compact` rung is possible — gog's own `--fields` mask cuts `drive ls` by **78%** — but the mask is per-API (`files(id,name,...)` for Drive), a wrong one is a hard Google 400, and it therefore needs live verification per tool.
+### The `view` enum
+
+`gog_drive_ls` and `gog_calendar_events` register `view: 'compact' | 'full'` (`viewParam`/`resolveView` from mcp-utils), defaulting to **compact**. Compact is a real projection because gog passes `--fields` through to Google as an API field mask — it is not a local reshape.
+
+Two rules govern any new one:
+
+1. **The mask MUST name the response envelope's paging field, first.** A mask of `files(...)` or `items(...)` alone makes Google drop `nextPageToken`, so a compact read returns page one with an empty cursor and reads as "there is nothing more". Silent truncation, verified live on gog 0.39.0 for both Drive and Calendar. Each mask constant is asserted to start with `nextPageToken`.
+2. **Choose the dropped fields from the DATA.** `drive ls` drops `thumbnailLink` (4,998 B at ONE distinct value over 25 rows), `owners`, `parents` and `hasThumbnail` — all near-constant. `calendar events` drops `description` (5,951 B) and `attendees` (3,145 B), the fat blobs `full` exists to return. Savings: **48%** and **66%**.
+
+A rejected mask is not fatal: `runOrDiagnose` retries **unprojected** on a Google `invalidParameter` and says so on stderr, which is `projectOrRaw`'s role for a projection that happens across the network. Only a rejected mask is retried — a missing file is not a bad mask.
+
+Only **9** gog commands accept `--fields` at all (`gog schema --json`), nearly all Drive plus `calendar events`, so this is the whole addressable set. `drive get` is excluded deliberately: its default set is already narrow and a mask saves 7%, which is below the bar for a parameter and a failure mode — "a tool whose output is already narrower than the projection takes no `view` at all".
+
+**Not `raw`.** For a passthrough wrapper `raw` and `full` are the same bytes, and advertising both is the aliasing lie `fleet-conventions.md` forbids. Note also that this repo's `lossless` is NOT the fleet's `raw`: `lossless` skips normalization to give the `*_raw` dumps verbatim ground truth, whereas fleet `raw` means "no projection" and explicitly still normalizes.
+
+**`stripMediaUrls` (mcp-utils 0.22.0) does not currently help here** — measured 0.0% on `drive ls` and `drive search`, 1.1% on `calendar events`. Its `MEDIA_KEY` is anchored to a bare noun (`^photos?$`) while every Google API suffixes: `thumbnailLink`, `iconUri`, `photoUrl`. Allowing an optional `Link|Uri|Url` suffix would take Drive listings down **31%** and would reach `drive search`, which supports no field mask at all. Revisit if that lands upstream.
+
+**Every other read tool takes no `view`, deliberately.** Per `fleet-conventions.md`, a tool registers only rungs it can honour, and without a field mask `compact` and `full` would be byte-identical — the aliasing lie. Adding `view` to a tool whose gog subcommand has no `--fields` would advertise a saving that does not exist.
 
 `GOG_READONLY` is a global kill-switch: when set to any value other than `0`/`false`/`no`/`off`, `runner.ts` adds gog's `--readonly` flag to every call so mutating API requests are refused at runtime. gog has no native env binding for `--readonly`, so the wrapper translates the env var into the flag; callers can also opt in per-call via the `readonly` option on `RunOptions`.
 

@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { rawTextResult } from '@chrischall/mcp-utils';
+import { rawTextResult, viewParam, resolveView } from '@chrischall/mcp-utils';
+
 import { run, runBinary } from '../runner.js';
 import { accountParam, diagnose, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 
@@ -18,6 +19,21 @@ function fileMeta(raw: string): { name?: string; mimeType?: string } {
   return { name: f.name, mimeType: f.mimeType };
 }
 
+
+// The `compact` rung for gog_drive_ls, as a Google Drive field mask.
+//
+// nextPageToken FIRST and always: a mask of `files(...)` alone drops the cursor
+// from the envelope, and a compact listing would then look complete when it was
+// one page of many. Verified live against gog 0.39.0.
+//
+// The dropped fields were chosen from the DATA, not from taste — measured over
+// a 25-row listing: thumbnailLink costs 4,998 bytes at ONE distinct value,
+// owners 1,400 at one, parents 900 at one, hasThumbnail 550 at one. Everything
+// kept below varies across rows. Net: 15,718 -> 8,095 bytes, 48% smaller.
+// A caller who needs an owner or a parent asks for view="full".
+export const DRIVE_LS_COMPACT_FIELDS =
+  'nextPageToken,files(id,name,mimeType,modifiedTime,size,webViewLink)';
+
 export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_ls', {
     description: 'List files in a Google Drive folder (default: root).',
@@ -29,9 +45,13 @@ export function registerDriveTools(server: McpServer): void {
       page: pageAliasParam,
       query: z.string().optional().describe('Drive query filter (e.g. "name contains \'budget\'")'),
       allDrives: z.boolean().optional().describe('Include shared drives (default: true). Set false for My Drive only.'),
+      view: viewParam(['compact', 'full'], {
+        note: 'compact (the default) drops owners, parents, thumbnailLink and hasThumbnail — '
+          + 'near-constant across a listing and 48% of its bytes. Ask for full to get them.',
+      }),
       account: accountParam,
     },
-  }, async ({ folderId, max, pageToken, page, query, allDrives, account }) => {
+  }, async ({ folderId, max, pageToken, page, query, allDrives, view, account }) => {
     const args = ['drive', 'ls'];
     if (folderId) args.push(`--parent=${folderId}`);
     if (max !== undefined) args.push(`--max=${max}`);
@@ -39,7 +59,11 @@ export function registerDriveTools(server: McpServer): void {
     if (token) args.push(`--page=${token}`);
     if (query) args.push(`--query=${query}`);
     if (allDrives === false) args.push('--no-all-drives');
-    return runOrDiagnose(args, { account });
+    const rung = resolveView(view, ['compact', 'full']);
+    return runOrDiagnose(args, {
+      account,
+      fieldsMask: rung === 'compact' ? DRIVE_LS_COMPACT_FIELDS : undefined,
+    });
   });
 
   server.registerTool('gog_drive_search', {

@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { registerDriveTools } from '../../src/tools/drive.js';
+import { registerDriveTools, DRIVE_LS_COMPACT_FIELDS } from '../../src/tools/drive.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
 
 vi.mock('../../src/runner.js');
 
 const setupHandlers = () => createTestHarness(registerDriveTools);
+
+// gog_drive_ls answers in the compact rung by default, so every call carries
+// the mask. These keep the flag-mapping tests below about flag mapping while
+// still asserting the shipped default rather than a view they opted out of.
+const lsArgs = (...extra: string[]) =>
+  ['drive', 'ls', ...extra, `--fields=${DRIVE_LS_COMPACT_FIELDS}`];
+const lsOpts = { account: undefined, fieldsMask: DRIVE_LS_COMPACT_FIELDS };
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -14,14 +21,48 @@ describe('gog_drive_ls', () => {
     vi.mocked(runner.run).mockResolvedValue('{"files":[]}');
     const harness = await setupHandlers();
     await harness.callTool('gog_drive_ls', {});
-    expect(runner.run).toHaveBeenCalledWith(['drive', 'ls'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(lsArgs(), lsOpts);
+  });
+
+  // Efficiency is not something a caller should have to ask for: the cheap rung
+  // is the default. Measured at 48% smaller on a 25-row listing.
+  it('defaults to the compact view, applying the field mask', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"files":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_ls', {});
+    expect(runner.run).toHaveBeenCalledWith(
+      ['drive', 'ls', `--fields=${DRIVE_LS_COMPACT_FIELDS}`],
+      lsOpts,
+    );
+  });
+
+  it('sends no mask for the full view', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"files":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_ls', { view: 'full' });
+    expect(runner.run).toHaveBeenCalledWith(['drive', 'ls'], { account: undefined, fieldsMask: undefined });
+  });
+
+  // THE BUG THIS ALMOST SHIPPED: a Google field mask drops nextPageToken from
+  // the envelope, so a compact read returns page one with an EMPTY cursor and
+  // reads as "no more results" — silent truncation, verified live against gog
+  // 0.39.0. Naming the paging field in the mask is what brings it back.
+  it('names the paging field in the mask', () => {
+    expect(DRIVE_LS_COMPACT_FIELDS).toMatch(/^nextPageToken,/);
+  });
+
+  it('rejects a view rung this tool does not honour', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_ls', { view: 'raw' });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
   });
 
   it('passes folderId as --parent flag', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_drive_ls', { folderId: 'folder1' });
-    expect(runner.run).toHaveBeenCalledWith(['drive', 'ls', '--parent=folder1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(lsArgs('--parent=folder1'), lsOpts);
   });
 
   it('supports max, page, query, and allDrives flags', async () => {
@@ -34,8 +75,8 @@ describe('gog_drive_ls', () => {
       query: "name contains 'x'",
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['drive', 'ls', '--parent=folder1', '--max=50', '--page=tok', "--query=name contains 'x'"],
-      { account: undefined },
+      lsArgs('--parent=folder1', '--max=50', '--page=tok', "--query=name contains 'x'"),
+      lsOpts,
     );
   });
 
@@ -43,14 +84,14 @@ describe('gog_drive_ls', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_drive_ls', { allDrives: false });
-    expect(runner.run).toHaveBeenCalledWith(['drive', 'ls', '--no-all-drives'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(lsArgs('--no-all-drives'), lsOpts);
   });
 
   it('omits all-drives flag when allDrives is true (default)', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_drive_ls', { allDrives: true });
-    expect(runner.run).toHaveBeenCalledWith(['drive', 'ls'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(lsArgs(), lsOpts);
   });
 
   it('returns error text on failure', async () => {

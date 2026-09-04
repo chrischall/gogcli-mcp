@@ -191,6 +191,43 @@ describe('runOrDiagnose', () => {
     expect(result.content[0].text).toBe(raw);
   });
 
+  // A Google field mask is applied UPSTREAM, inside the API, so a mask this
+  // wrapper gets wrong is a hard 400 rather than a thin record. That makes the
+  // fallback the thing that keeps compact-by-default survivable: the same role
+  // mcp-utils' projectOrRaw plays for a projection done locally.
+  it('applies a compact field mask when one is given', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"files":[]}');
+    await runOrDiagnose(['drive', 'ls'], { fieldsMask: 'nextPageToken,files(id)' });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['drive', 'ls', '--fields=nextPageToken,files(id)'],
+      expect.objectContaining({ fieldsMask: 'nextPageToken,files(id)' }),
+    );
+  });
+
+  it('retries UNPROJECTED when Google rejects the mask', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('Google API error (400 invalidParameter): Invalid field selection id'))
+      .mockResolvedValueOnce('{"files":[{"id":"f1"}]}');
+    const result = await runOrDiagnose(['drive', 'ls'], { fieldsMask: 'files(bogus)' });
+    expect(runner.run).toHaveBeenNthCalledWith(1, ['drive', 'ls', '--fields=files(bogus)'], expect.anything());
+    expect(runner.run).toHaveBeenNthCalledWith(2, ['drive', 'ls'], expect.anything());
+    // The caller gets the whole payload, not an error: a projection that trips
+    // returns everything rather than taking the tool call down.
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toBe('{"files":[{"id":"f1"}]}');
+  });
+
+  // The fallback must not swallow real failures — a missing file is not a bad
+  // mask, and retrying it would just spend a second call to fail identically.
+  it('does NOT retry an error that is not a rejected mask', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('File not found'))
+      .mockResolvedValueOnce('user@gmail.com');
+    const result = await runOrDiagnose(['drive', 'ls'], { fieldsMask: 'files(id)' });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenNthCalledWith(2, ['drive', 'ls'], expect.anything());
+  });
+
   it('appends auth list on non-auth failure', async () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Doc not found'))
