@@ -3,7 +3,7 @@
 > [!WARNING]
 > **AI-developed project.** This codebase was built and is actively maintained by [Claude Code](https://www.anthropic.com/claude). Review all code and tool permissions before use.
 
-Base [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude access to Google Workspace via [gogcli](https://github.com/openclaw/gogcli). Includes 114 tools across 13 services: Sheets, Docs, Gmail, Calendar, Drive, Slides, Classroom, Chat, Apps Script, Tasks, Contacts, the generic Discovery API escape hatch, and Auth.
+Base [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude access to Google Workspace via [gogcli](https://github.com/openclaw/gogcli). Includes 115 tools across 13 services: Sheets, Docs, Gmail, Calendar, Drive, Slides, Classroom, Chat, Apps Script, Tasks, Contacts, the generic Discovery API escape hatch, and Auth.
 
 For extended Sheets or Docs support, see [gogcli-mcp-sheets](https://www.npmjs.com/package/gogcli-mcp-sheets) and [gogcli-mcp-docs](https://www.npmjs.com/package/gogcli-mcp-docs).
 
@@ -46,7 +46,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 claude mcp add gogcli-mcp -- gogcli-mcp
 ```
 
-## Tools (114)
+## Tools (115)
 
 | Service | Tools | Includes |
 |---------|-------|----------|
@@ -57,7 +57,7 @@ claude mcp add gogcli-mcp -- gogcli-mcp
 | **Drive** | 11 | ls, search, get, mkdir, rename, move, delete, share, extract-text, read-bytes, run |
 | **Slides** | 7 | export, info, create, copy, list-slides, read-slide, run |
 | **Classroom** | 25 | courses, students, teachers, roster, coursework, submissions (grade/return/turn-in/reclaim), announcements, topics, invitations, profile, run |
-| **Chat** | 12 | spaces list/find/create, threads list, messages list/send, dm send/space, reactions list/create/delete, run |
+| **Chat** | 13 | spaces list/find/create, threads list, messages list/search/send, dm send/space, reactions list/create/delete, run |
 | **Apps Script** | 8 | get, content, pull, create, deployments, versions, run-function, run |
 | **Tasks** | 7 | lists, list, get, add, done, delete, run |
 | **Contacts** | 5 | search, list, get, create, run |

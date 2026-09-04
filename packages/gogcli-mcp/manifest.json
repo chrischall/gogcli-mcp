@@ -453,6 +453,10 @@
       "description": "Read messages in a space, with mentions and reaction summaries"
     },
     {
+      "name": "gog_chat_messages_search",
+      "description": "Search Chat messages across every space and DM the account can see"
+    },
+    {
       "name": "gog_chat_messages_send",
       "description": "Post a message to a Chat space (immediately visible; supports attachments)"
     },

@@ -32,7 +32,7 @@ MCP server wrapping [gogcli](https://github.com/openclaw/gogcli) — provides Cl
 
 `GOG_ACCOUNT` is optional — omit it to use gogcli's configured default account.
 
-## Tools (114)
+## Tools (115)
 
 | Service | Tools |
 |---------|-------|
@@ -43,7 +43,7 @@ MCP server wrapping [gogcli](https://github.com/openclaw/gogcli) — provides Cl
 | **Drive** (11) | ls, search, get, mkdir, rename, move, delete, share, extract-text, read-bytes, run |
 | **Slides** (7) | export, info, create, copy, list-slides, read-slide, run |
 | **Classroom** (25) | courses, students, teachers, roster, coursework, submissions (grade/return/turn-in/reclaim), announcements, topics, invitations, profile, run |
-| **Chat** (12) | spaces list/find/create, threads list, messages list/send, dm send/space, reactions list/create/delete, run |
+| **Chat** (13) | spaces list/find/create, threads list, messages list/search/send, dm send/space, reactions list/create/delete, run |
 | **Apps Script** (8) | get, content, pull, create, deployments, versions, run-function, run |
 | **Tasks** (7) | lists, list, get, add, done, delete, run |
 | **Contacts** (5) | search, list, get, create, run |
