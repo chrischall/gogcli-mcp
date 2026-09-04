@@ -103,20 +103,10 @@ describe('gog_drive_ls', () => {
 });
 
 describe('gog_drive_search', () => {
-  it('calls run with query', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{"files":[]}');
-    const harness = await setupHandlers();
-    await harness.callTool('gog_drive_search', { query: 'budget' });
-    expect(runner.run).toHaveBeenCalledWith(
-      ['drive', 'search', 'budget'],
-      { account: undefined, stripMedia: true },
-    );
-  });
-
   // drive search accepts NO field mask — `gog schema --json` lists only nine
   // commands that do, and this is not one — so the local media strip is the
-  // only projection available to it. Measured 30.4% on a real result set.
-  it('defaults to the compact view, stripping media', async () => {
+  // only projection available to it. Measured 27.8% end to end.
+  it('calls run with query, defaulting to the compact view', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"files":[]}');
     const harness = await setupHandlers();
     await harness.callTool('gog_drive_search', { query: 'budget' });
@@ -146,9 +136,9 @@ describe('gog_drive_search', () => {
 
 describe('gog_drive_get', () => {
   // Excluded from the --fields work because a mask saved only 7% there: its
-  // default field set is already narrow. The media strip saves 32.9% on the
-  // same payload, which clears the bar a parameter has to clear.
-  it('defaults to the compact view, stripping media', async () => {
+  // default field set is already narrow. The media strip saves 27.5% on the
+  // same payload end to end, which clears the bar a parameter has to clear.
+  it('calls run with fileId, defaulting to the compact view', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_drive_get', { fileId: 'f1' });
@@ -162,12 +152,6 @@ describe('gog_drive_get', () => {
     expect(runner.run).toHaveBeenCalledWith(['drive', 'get', 'f1'], { account: undefined, stripMedia: false });
   });
 
-  it('calls run with fileId', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{"id":"file1"}');
-    const harness = await setupHandlers();
-    await harness.callTool('gog_drive_get', { fileId: 'file1' });
-    expect(runner.run).toHaveBeenCalledWith(['drive', 'get', 'file1'], { account: undefined, stripMedia: true });
-  });
 
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Not found'));
