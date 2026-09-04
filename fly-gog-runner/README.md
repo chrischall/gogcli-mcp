@@ -192,9 +192,18 @@ fly deploy
 ```
 
 `fly deploy` builds the `Dockerfile`, which downloads the pinned `gog` release
-(`ARG GOG_VERSION`, currently `0.34.1`) for the target arch and bakes it into the
-image. To move to a newer gog, bump `GOG_VERSION` in the `Dockerfile` and
-redeploy.
+(`ARG GOG_VERSION`) for the target arch and bakes it into the image. The version
+is deliberately NOT restated here — it is one of four places that move together
+(the `ARG`, `MIN_GOG_VERSION` in `packages/gogcli-mcp/src/runner.ts`, and the
+`tag:` in every `packages/*/mint.yaml`), and `scripts/check-runner-gog-version.mjs`
+guards the other three but cannot guard prose. Read the current floor from the
+"Required gog version" section of the root `CLAUDE.md`, or from the `ARG` itself.
+
+To move to a newer gog, bump `GOG_VERSION` in the `Dockerfile` and redeploy. A
+release does this for you: `release-please.yml`'s `deploy-runner` job redeploys
+this app at the release tag whenever a release is cut, so a `GOG_VERSION` bump
+that lands on `main` goes live with the next release rather than needing a manual
+`fly deploy`.
 
 ## Seeding `GOG_HOME` (one-time auth)
 
