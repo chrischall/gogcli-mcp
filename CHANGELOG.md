@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.29.1](https://github.com/chrischall/gogcli-mcp/compare/v2.29.0...v2.29.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* require gog 0.39.1 so repeated page tokens cannot loop a paged read ([#334](https://github.com/chrischall/gogcli-mcp/issues/334)) ([ae74c8e](https://github.com/chrischall/gogcli-mcp/commit/ae74c8e4a58e48aba6c44b6288315c3968f342da))
+
 ## [2.29.0](https://github.com/chrischall/gogcli-mcp/compare/v2.28.0...v2.29.0) (2026-09-04)
 
 
