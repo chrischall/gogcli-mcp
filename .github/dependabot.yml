@@ -25,6 +25,21 @@ updates:
       - dependency-name: agents
         versions:
           - ">=0.20.0"
+      # `@cloudflare/vitest-pool-workers` pins `peer vitest@"^4.1.0"`, so vitest
+      # 5 cannot install here at all — `npm ci` dies with ERESOLVE before a test
+      # runs. This is the ONLY repo in the fleet using pool-workers, which is
+      # why the fleet-wide vitest-5 rollout does not apply to it.
+      #
+      # This is a ceiling, not a permanent hold: lift it when Cloudflare ships
+      # a pool-workers whose peer accepts vitest 5. Until then dependabot would
+      # re-propose the major every week and it would fail every week (#337).
+      # 4.x minors and patches still flow normally.
+      - dependency-name: vitest
+        versions:
+          - ">=5.0.0"
+      - dependency-name: "@vitest/coverage-v8"
+        versions:
+          - ">=5.0.0"
     groups:
       # Dependabot does NOT hand a dependency to the first group that matches
       # it. `PatternSpecificityCalculator` scores every matching group and the
