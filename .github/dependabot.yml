@@ -11,7 +11,7 @@ updates:
     ignore:
       # `agents` is a PEER of @chrischall/mcp-connector, and the connector — not
       # this repo — decides which versions are supported. Its published peer range
-      # is `>=0.17.3 <0.20.0`, so a bump to 0.20.x cannot install here at all:
+      # is `>=0.17.3 <0.23.0`, so a bump to 0.23.x cannot install here at all:
       # npm dies with ERESOLVE before a single test runs.
       #
       # This is not hypothetical. agents 0.19.0 met the connector's then-peer of
@@ -22,9 +22,11 @@ updates:
       #
       # When the connector widens its peer, raise this ceiling in the same pass:
       # every consumer is listed in that repo's CLAUDE.md blast-radius section.
+      # Last raised 2026-09-08 alongside mcp-connector#56, which widened the
+      # peer from <0.20.0 to <0.23.0 to admit agents 0.22.
       - dependency-name: agents
         versions:
-          - ">=0.20.0"
+          - ">=0.23.0"
       # `@cloudflare/vitest-pool-workers` pins `peer vitest@"^4.1.0"`, so vitest
       # 5 cannot install here at all — `npm ci` dies with ERESOLVE before a test
       # runs. This is the ONLY repo in the fleet using pool-workers, which is
