@@ -42,8 +42,14 @@ updates:
           - ">=0.23.0"
       # `@cloudflare/vitest-pool-workers` pins `peer vitest@"^4.1.0"`, so vitest
       # 5 cannot install here at all — `npm ci` dies with ERESOLVE before a test
-      # runs. This is the ONLY repo in the fleet using pool-workers, which is
-      # why the fleet-wide vitest-5 rollout does not apply to it.
+      # runs. That is why the fleet-wide vitest-5 rollout — 65 of the 81 repos
+      # are on ^5.x — does not reach this one.
+      #
+      # NO LONGER THE ONLY SUCH REPO, which this comment claimed until
+      # mcp-host#716 proved otherwise: `packages/gateway` there uses the same
+      # pool and is held at 4 for the same reason
+      # (`dependabot-ignore-vitest-major.yml`). Lift the two together — the
+      # thing to read is the pool's peer range, not vitest's changelog.
       #
       # This is a ceiling, not a permanent hold: lift it when Cloudflare ships
       # a pool-workers whose peer accepts vitest 5. Until then dependabot would
