@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerExtraGmailTools } from '../../src/tools/gmail-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
 import * as runner from '../../../gogcli-mcp/src/runner.js';
@@ -12,6 +12,10 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
     run: vi.fn(),
     runOrDiagnose: vi.fn(),
     diagnose: vi.fn(),
+    // The one network call on the deliver="url" path. `blobStoreFromEnv` and
+    // `createBlobUrlMinter` are deliberately NOT mocked: the signing is the part
+    // the gateway judges, so these tests assert the real minter's URLs.
+    uploadToBlobStore: vi.fn(),
   };
 });
 
@@ -35,6 +39,7 @@ beforeEach(async () => {
   // Default: the match-count probe finds nothing to report, so no test depends
   // on a live call. Tests that care stub it explicitly.
   vi.mocked(runner.run).mockRejectedValue(new Error('no count probe stubbed'));
+  vi.mocked(lib.uploadToBlobStore).mockRejectedValue(new Error('no blob upload stubbed'));
   harness = await createTestHarness(registerExtraGmailTools);
 });
 
@@ -81,7 +86,14 @@ describe('gog_gmail_attachment', () => {
       }
       if (a[0] === 'gmail' && a[1] === 'attachment') {
         if (opts.downloadError) throw opts.downloadError;
-        return JSON.stringify(opts.download ?? {});
+        // A FUNCTION download is handed the arg array, so a stub can answer
+        // with the `--out` it was actually told to write to — which is what gog
+        // does, and the only way a test can see the tool choosing a path other
+        // than the one it later hands somebody else to read.
+        const answer = typeof opts.download === 'function'
+          ? (opts.download as (args: string[]) => unknown)(a)
+          : opts.download;
+        return JSON.stringify(answer ?? {});
       }
       if (a[0] === 'drive' && a[1] === 'upload') return JSON.stringify(opts.drive ?? { file: {} });
       return '{}';
@@ -104,6 +116,10 @@ describe('gog_gmail_attachment', () => {
   const textOf = (res: Awaited<ReturnType<typeof call>>) => (res.content[0] as { text: string }).text;
   const gotGet = () => vi.mocked(lib.run).mock.calls.some((c) => (c[0] as string[])[1] === 'get');
   const dlArgs = () => vi.mocked(lib.run).mock.calls.find((c) => (c[0] as string[])[1] === 'attachment')![0] as string[];
+  // The path gog was told to write to. Read out of the args rather than restated
+  // as a literal, so an assertion about where the file IS cannot quietly become
+  // an assertion about where a test thinks it is.
+  const outOf = (args: string[]) => args.find((a) => a.startsWith('--out='))!.slice('--out='.length);
 
   it('the repro: a no-name PDF on stdio comes back as a readable file path, named correctly', async () => {
     // download writes to a provisional temp path; the real name resolves by size.
@@ -421,6 +437,304 @@ describe('gog_gmail_attachment', () => {
     expect(res.isError).toBe(true);
     expect(textOf(res)).toContain('not valid base64');
     expect(textOf(res)).toContain('/tmp/gog-attachments/m1/photo.png');
+  });
+
+  // ==========================================================================
+  // deliver="url" — the attachment as a link an agent can actually fetch.
+  //
+  // A hosted MCP has no HTTP surface, so `deliver:"drive"` was the only way to
+  // hand back a large or non-renderable attachment — and a `webViewLink` needs
+  // a Google session, so `curl` cannot spend it; it writes a file into the
+  // user's Drive as a side effect of READING mail; and GOG_READONLY blocks it
+  // outright. mcp-host lends the missing surface: a per-registration blob store
+  // where a signed URL is the whole access control.
+  //
+  // The upload happens on the RUNNER, because that is where the bytes are —
+  // under the hosted connector this child is a forwarder and `gog gmail
+  // attachment --out` wrote the file to the runner's disk. `uploadToBlobStore`
+  // is the only thing mocked here; the SIGNING is the real minter, so these
+  // tests see the URLs the gateway would be asked to verify.
+  // ==========================================================================
+  describe('deliver="url"', () => {
+    const BLOB_BASE = 'https://blob.example/b/reg_7';
+    // message, then the attachment REFERENCE, then the name. Two attachments of
+    // one message can share a filename; keyed on the message alone the second
+    // upload overwrites the first.
+    const KEY_PATH = `${BLOB_BASE}/gmail/m1/a1/Guest_Copy.pdf?exp=`;
+
+    // Both variables, exactly as mcp-host hands them to a child at spawn.
+    const withBlobStore = (): void => {
+      vi.stubEnv('MCP_BLOB_BASE_URL', BLOB_BASE);
+      vi.stubEnv('MCP_BLOB_SIGNING_KEY', 'signing-key');
+    };
+    // '' rather than a delete: `readEnvVar` treats a blank as unset and vitest's
+    // stubEnv cannot remove a key. This is a LOCAL stdio install.
+    const withoutBlobStore = (): void => {
+      vi.stubEnv('MCP_BLOB_BASE_URL', '');
+      vi.stubEnv('MCP_BLOB_SIGNING_KEY', '');
+    };
+    const uploaded = () => vi.mocked(lib.uploadToBlobStore).mock.calls[0][0];
+    // gog writes where it was TOLD to write and reports that path back, so the
+    // stub echoes the tool's own `--out`. A fixed literal cannot see the defect
+    // this mode is most exposed to: the path handed to the runner and the key
+    // the link is minted under are built from the same two caller strings, and a
+    // stub answering the same path whatever it was asked hides them drifting.
+    const PDF_DOWNLOAD = (args: string[]) => ({ path: outOf(args), bytes: 99723 });
+    // The last text block. `withNote` PREPENDS its note, so content[0] is the
+    // note whenever there is one and the payload is always the tail.
+    const payloadOf = (res: Awaited<ReturnType<typeof call>>) =>
+      JSON.parse((res.content[res.content.length - 1] as { text: string }).text);
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('uploads the downloaded file and answers with a link, its name, type, size and expiry', async () => {
+      withBlobStore();
+      stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
+      // DELIBERATELY not gog's 99723: the object now sitting at that URL is what
+      // the runner streamed, and that is the number the caller is told.
+      vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ bytes: 99730, status: 200 });
+
+      const res = await asConnector(() => call({ deliver: 'url' }));
+
+      // The runner is asked to send the file gog wrote, to the URL we signed,
+      // under the content type that signature commits to — byte for byte, or
+      // the gateway answers the PUT as an object that does not exist.
+      expect(uploaded().path).toBe(outOf(dlArgs()));
+      expect(uploaded().path).toBe('/tmp/gog-attachments/m1/a1/attachment');
+      expect(uploaded().contentType).toBe('application/pdf');
+      expect(uploaded().url).toContain(KEY_PATH);
+      expect(uploaded().url).toMatch(/&sig=[\w-]+$/);
+
+      const payload = payloadOf(res);
+      expect(payload).toMatchObject({
+        deliveredVia: 'url',
+        fileName: 'Guest_Copy.pdf',
+        mimeType: 'application/pdf',
+        bytes: 99730,
+      });
+      expect(payload.url).toContain(KEY_PATH);
+      // The DELIVERED link still carries its signature. `?exp=` alone is not
+      // fetchable — the gateway verifies the signature before it reads a
+      // registration row at all — so a response path that dropped or mangled
+      // `sig=` would hand the agent a permanently-404ing link. Not hypothetical:
+      // `errorResult` redacts exactly this query value (proven by the leak test
+      // below), so building the payload with one instead of `textResult` would
+      // do it silently.
+      expect(payload.url).toMatch(/\?exp=\d+&sig=[\w-]+$/);
+      // A READ signature, over a different payload shape — never the write URL
+      // handed back, which would let whoever holds it overwrite the object.
+      expect(payload.url).not.toBe(uploaded().url);
+      // ONE HOUR, which is what the tool description, the note, the README and
+      // SKILL.md all promise in prose. Asserted as a window rather than "in the
+      // future", which a ten-second link also satisfies.
+      const ttlMs = Date.parse(payload.expiresAt) - Date.now();
+      expect(ttlMs).toBeGreaterThan(55 * 60_000);
+      expect(ttlMs).toBeLessThanOrEqual(60 * 60_000);
+      // The agent has to know it can just fetch this, and that it stops working.
+      expect(payload.note).toMatch(/curl/);
+      expect(payload.note).toMatch(/expires/i);
+    });
+
+    it('reports the size the runner actually streamed, falling back to gog\'s count', async () => {
+      withBlobStore();
+      // An image, and still a link: deliver is explicit, so it outranks the
+      // "images render everywhere" rule that `auto` applies.
+      stubGog({ meta: PNG_LIST, download: (args: string[]) => ({ path: outOf(args), bytes: 24, contentBase64: PNG_B64 }) });
+      vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ status: 200 }); // an older runner reports no size
+
+      const res = await asConnector(() => call({ deliver: 'url' }));
+
+      expect(res.content.some((c) => c.type === 'image')).toBe(false);
+      expect(payloadOf(res)).toMatchObject({ deliveredVia: 'url', bytes: 24, mimeType: 'image/png' });
+    });
+
+    // THE DEPLOYMENT THIS MODE ACTUALLY RUNS ON. mcp-host's child is a
+    // FORWARDER: `useRemoteGogRunner` installs a process-wide default executor,
+    // so `runExecutor`'s store is EMPTY there and the handler's `remote` is
+    // false — which is why there is no `asConnector` here. A caller `out` is
+    // therefore honoured on exactly that deployment, and the runner's
+    // `POST /upload` refuses any path outside its own download root: honouring
+    // it means a 400 and no link, with the file left on the runner's disk. The
+    // path is not the caller's to choose for this mode.
+    it('ignores a caller `out` and downloads where the runner will read it back', async () => {
+      withBlobStore();
+      stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
+      vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ bytes: 99723, status: 200 });
+
+      const res = await call({ deliver: 'url', out: '/home/claude/mine.pdf' });
+
+      expect(outOf(dlArgs())).toBe('/tmp/gog-attachments/m1/a1/attachment');
+      expect(uploaded().path).toBe(outOf(dlArgs()));
+      expect(textOf(res)).toContain('`out` was ignored');
+      expect(payloadOf(res)).toMatchObject({ deliveredVia: 'url' });
+    });
+
+    // Two attachments of one message can share a filename — two scans named
+    // IMG_0001.jpg, two invoice.pdf parts. Keyed on the message alone the second
+    // upload OVERWRITES the first, and a link already handed to the agent for
+    // the first silently starts serving the other's bytes, under the name and
+    // type the earlier answer reported.
+    it('keys each attachment separately, so a shared filename cannot overwrite', async () => {
+      withBlobStore();
+      stubGog({
+        meta: { attachments: [
+          { filename: 'invoice.pdf', mimeType: 'application/pdf', size: 99723, attachmentIndex: 0 },
+          { filename: 'invoice.pdf', mimeType: 'application/pdf', size: 99723, attachmentIndex: 1 },
+        ] },
+        download: PDF_DOWNLOAD,
+      });
+      vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ bytes: 99723, status: 200 });
+
+      const first = await asConnector(() => harness.callTool('gog_gmail_attachment', {
+        messageId: 'm1', attachmentIndex: 0, deliver: 'url',
+      }));
+      const second = await asConnector(() => harness.callTool('gog_gmail_attachment', {
+        messageId: 'm1', attachmentIndex: 1, deliver: 'url',
+      }));
+
+      expect(new URL(payloadOf(first).url).pathname).toBe('/b/reg_7/gmail/m1/0/invoice.pdf');
+      expect(new URL(payloadOf(second).url).pathname).toBe('/b/reg_7/gmail/m1/1/invoice.pdf');
+    });
+
+    // The blob store's own rule for a child that does not find it: fail, say
+    // why, and name what does work here. Half-working would be worse — a
+    // download paid for and nothing to show for it.
+    it('refuses on a local stdio install, before anything is downloaded', async () => {
+      withoutBlobStore();
+      stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
+
+      const res = await call({ deliver: 'url' });
+
+      expect(res.isError).toBe(true);
+      expect(textOf(res)).toContain('MCP_BLOB_BASE_URL');
+      expect(textOf(res)).toMatch(/deliver="auto"/);
+      expect(lib.run).not.toHaveBeenCalled();
+      expect(lib.uploadToBlobStore).not.toHaveBeenCalled();
+    });
+
+    it('names a misconfigured blob store instead of minting links that 404', async () => {
+      vi.stubEnv('MCP_BLOB_BASE_URL', 'https://blob.example/b'); // the mount, with no registration id
+      vi.stubEnv('MCP_BLOB_SIGNING_KEY', 'signing-key');
+
+      const res = await call({ deliver: 'url' });
+
+      expect(res.isError).toBe(true);
+      expect(textOf(res)).toContain('MCP_BLOB_BASE_URL');
+      expect(lib.run).not.toHaveBeenCalled();
+    });
+
+    // A signed URL is a credential with up to 24 h of anybody-who-holds-it
+    // access, and an error result is read by a model and written to logs.
+    it('explains a failed upload without leaking the signed URL or its signature', async () => {
+      withBlobStore();
+      stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
+      vi.mocked(lib.uploadToBlobStore).mockRejectedValue(
+        new Error('the runner could not store the attachment (HTTP 422, blob store 403): <signed url>'),
+      );
+
+      const res = await asConnector(() => call({ deliver: 'url' }));
+
+      expect(res.isError).toBe(true);
+      expect(textOf(res)).toContain('HTTP 422');
+      expect(textOf(res)).toContain('deliver="drive"'); // a route that still works
+      expect(textOf(res)).not.toContain(uploaded().url);
+      expect(textOf(res)).not.toContain(new URL(uploaded().url).searchParams.get('sig'));
+      // Those two assertions alone cannot fail for the reason this test is
+      // named after: `errorResult` runs mcp-utils' `redactSecrets`, which
+      // rewrites a `sig=` query value to `[REDACTED]` on its own — so a message
+      // that DID interpolate the whole write URL still passes both. mcp-utils
+      // is the second layer, not the property; what this tool owes is that the
+      // URL never enters the text. Assert on the part redaction leaves behind —
+      // the prefix identifying the registration and the object — which is
+      // present iff the URL was written and absent iff it was not.
+      expect(textOf(res)).not.toContain('/b/reg_7/');
+      expect(textOf(res)).not.toContain('Guest_Copy.pdf?exp=');
+    });
+
+    it('reports an upload that rejected with something other than an Error', async () => {
+      withBlobStore();
+      stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
+      vi.mocked(lib.uploadToBlobStore).mockRejectedValue('the socket hung up');
+
+      const res = await asConnector(() => call({ deliver: 'url' }));
+
+      expect(res.isError).toBe(true);
+      expect(textOf(res)).toContain('the socket hung up');
+    });
+
+    // GOG_READONLY is `runner.ts` adding `--readonly` to a gog invocation, to
+    // stop writes to the USER'S Google account. This path never asks gog to
+    // write anything: it reads the attachment, and the bytes are then copied
+    // into the host's own store over HTTP. That is exactly what makes it usable
+    // where deliver="drive" is refused.
+    it('runs no mutating gog command, which is why GOG_READONLY cannot block it', async () => {
+      withBlobStore();
+      stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
+      vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ bytes: 99723, status: 200 });
+
+      await asConnector(() => call({ deliver: 'url' }));
+
+      const commands = vi.mocked(lib.run).mock.calls.map((c) => (c[0] as string[]).slice(0, 2).join(' '));
+      expect(commands).not.toContain('drive upload');
+      expect(commands.every((c) => c === 'gmail get' || c === 'gmail attachment')).toBe(true);
+    });
+
+    // The messageId is the caller's, and it is interpolated into the object
+    // key. The gateway REFUSES an empty, '.' or '..' segment rather than
+    // normalising it — such a link could never be spent — so the id is held to
+    // one segment here, where the message names the call site.
+    it('keeps a hostile messageId and attachmentId inside one key segment each, on disk and in the key', async () => {
+      withBlobStore();
+      stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
+      vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ bytes: 99723, status: 200 });
+
+      // BOTH are the caller's strings, and both are now segments of the key.
+      await asConnector(() => harness.callTool('gog_gmail_attachment', {
+        messageId: '../../x', attachmentId: '../b', deliver: 'url',
+      }));
+
+      expect(new URL(uploaded().url).pathname).toBe('/b/reg_7/gmail/_.._x/_b/Guest_Copy.pdf');
+      // The SAME segments on disk. The string signed and the string read have to
+      // be one string: `/tmp/gog-attachments/../../x/attachment` is outside the
+      // only root the runner will read from, so a raw id here is a 400 rather
+      // than a link even though the key itself was minted correctly.
+      expect(outOf(dlArgs())).toBe('/tmp/gog-attachments/_.._x/_b/attachment');
+      expect(uploaded().path).toBe(outOf(dlArgs()));
+
+      // A LEADING SPACE is the shape that got through: the dot strip ran before
+      // the trim, so ' ..' arrived at the key as a literal '..' and '  . ' as
+      // '.' — the two segments the gateway refuses outright, and the two that
+      // walk gog's `--out` off the only root the runner reads from. A tab works
+      // (it is a control char, stripped first); a space is not one.
+      vi.mocked(lib.run).mockClear();
+      vi.mocked(lib.uploadToBlobStore).mockClear();
+      await asConnector(() => harness.callTool('gog_gmail_attachment', {
+        messageId: ' ..', attachmentId: '  . ', deliver: 'url',
+      }));
+
+      expect(new URL(uploaded().url).pathname).toBe('/b/reg_7/gmail/attachment/attachment/Guest_Copy.pdf');
+      expect(outOf(dlArgs())).toBe('/tmp/gog-attachments/attachment/attachment/attachment');
+    });
+
+    // THE OPERATOR'S DECISION, pinned rather than remembered: `auto` is
+    // unchanged and still goes to Drive on the connector. The blob store being
+    // available does not make it the default — flipping that is a one-line
+    // change somebody decides, never a side effect of this one.
+    it('leaves deliver="auto" on Drive even when the blob store is configured', async () => {
+      withBlobStore();
+      stubGog({
+        meta: PDF_LIST,
+        download: (args: string[]) => ({ path: outOf(args), bytes: 99723, contentBase64: PDF_B64 }),
+        drive: { file: { id: 'F1', webViewLink: 'https://drive.google.com/file/d/F1/view' } },
+      });
+
+      const res = await asConnector(() => call({}));
+
+      expect(JSON.parse(textOf(res))).toMatchObject({ deliveredVia: 'drive', id: 'F1' });
+      expect(lib.uploadToBlobStore).not.toHaveBeenCalled();
+    });
   });
 });
 

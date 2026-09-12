@@ -36,7 +36,7 @@ Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 6
 | Tool | What it does |
 |------|-------------|
 | `gog_gmail_raw` | Raw Gmail API JSON for a message |
-| `gog_gmail_attachment` | Download an attachment by `attachmentIndex` (or legacy `attachmentId`) and deliver its contents — inline when within `inlineMaxBytes` (3 MiB default), else uploaded to Drive with a link (`deliver`: auto/inline/drive/off) |
+| `gog_gmail_attachment` | Download an attachment by `attachmentIndex` (or legacy `attachmentId`) and deliver its contents — inline when within `inlineMaxBytes` (3 MiB default), else uploaded to Drive with a link (`deliver`: auto/inline/drive/url/off). `deliver="url"` gives a signed link `curl` can fetch with no credential, for an hour — hosted connector only |
 | `gog_gmail_url` | Print web URLs for threads |
 | `gog_gmail_history` | List history events since a historyId |
 | `gog_gmail_messages_search` | Search individual messages, not threads — one row per message |

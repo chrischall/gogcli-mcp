@@ -53,7 +53,7 @@ Plus 8 auth tools and 4 base Gmail tools (search, get, send, run) — 61 in all.
 | Tool | Description |
 |------|-------------|
 | `gog_gmail_raw` | Dump the raw Gmail API JSON for a message (lossless, for scripting) |
-| `gog_gmail_attachment` | Download an attachment (by `attachmentIndex`, or the legacy opaque `attachmentId`) and deliver its contents — inline (base64 image/resource) when within the inline limit (3 MiB by default, `inlineMaxBytes`), otherwise uploaded to Google Drive with a shareable link (`deliver`: auto/inline/drive/off) |
+| `gog_gmail_attachment` | Download an attachment (by `attachmentIndex`, or the legacy opaque `attachmentId`) and deliver its contents — inline (base64 image/resource) when within the inline limit (3 MiB by default, `inlineMaxBytes`), otherwise uploaded to Google Drive with a shareable link (`deliver`: auto/inline/drive/url/off). `deliver="url"` returns a **signed download link** — fetchable with `curl`, no credential and no Google session, valid for an hour, nothing written to your Drive and not blocked by `GOG_READONLY`; it needs the blob store the hosted connector lends this server, so a local stdio install is told to use another mode |
 | `gog_gmail_url` | Print Gmail web URLs for one or more threads |
 | `gog_gmail_history` | List Gmail history events since a given historyId |
 | `gog_gmail_messages_search` | Search individual messages rather than threads — one result per matching message |
