@@ -439,6 +439,48 @@ describe('gog_gmail_attachment', () => {
     expect(textOf(res)).toContain('/tmp/gog-attachments/m1/photo.png');
   });
 
+  // The messageId is the CALLER's string and it is interpolated into gog's
+  // `--out`, a path gog MkdirAll's and writes to server-side. deliver="url"
+  // held it to one segment (there the path and the object key have to be the
+  // same string, so the gap showed up as a refused upload); every OTHER mode
+  // interpolated it raw. Asserted per DELIVERY MODE rather than once, because
+  // the shape of the defect was that the careful path was the new one and the
+  // four older ones were never revisited.
+  describe('a hostile messageId never leaves the attachment root', () => {
+    // Each expectation is one path segment: separators collapse to '_', a
+    // leading run of dots is stripped, and a segment that sanitizes to nothing
+    // falls back to 'attachment'.
+    const IDS: ReadonlyArray<readonly [string, string]> = [
+      ['../../etc/passwd', '_.._etc_passwd'],
+      ['..', 'attachment'],
+      ['a/b', 'a_b'],
+      ['.hidden', 'hidden'],
+      [' ..', 'attachment'], // the leading-space shape: the trim must precede the dot strip
+    ];
+
+    for (const deliver of ['auto', 'inline', 'drive', 'off'] as const) {
+      for (const [messageId, segment] of IDS) {
+        it(`deliver="${deliver}" keeps ${JSON.stringify(messageId)} in one segment`, async () => {
+          stubGog({
+            meta: PNG_LIST,
+            // Echo the `--out` gog was told to write to, so the assertion is
+            // about the path the tool CHOSE rather than one the stub invented.
+            download: (args: string[]) => ({ path: outOf(args), bytes: 24, contentBase64: PNG_B64 }),
+            drive: { file: { id: 'F1', webViewLink: 'https://drive.google.com/file/d/F1/view' } },
+          });
+
+          // `name` is passed so the basename is settled BEFORE the download and
+          // the assertion is about the directory segment alone.
+          await harness.callTool('gog_gmail_attachment', {
+            messageId, attachmentId: 'a1', deliver, name: 'photo.png',
+          });
+
+          expect(outOf(dlArgs())).toBe(`/tmp/gog-attachments/${segment}/photo.png`);
+        });
+      }
+    }
+  });
+
   // ==========================================================================
   // deliver="url" — the attachment as a link an agent can actually fetch.
   //

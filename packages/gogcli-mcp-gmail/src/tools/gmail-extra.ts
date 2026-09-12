@@ -292,8 +292,31 @@ async function resolveByIndex(
 // `/tmp/gog-attachments` is ALSO the Fly runner's `DEFAULT_UPLOAD_ROOT`, the only
 // directory its `POST /upload` will read a file back from. That is load-bearing
 // for deliver="url" and for nothing else — see blobOutPath.
+//
+// `relDir` is ALREADY-SANITIZED segments and this function does not re-sanitize:
+// it is handed several of them for deliver="url" (`<messageId>/<attachmentRef>`),
+// so collapsing separators here would weld the key's two segments into one and
+// the path signed would stop matching the path written. Every caller owes it
+// `sanitizeFilename` per segment — see `messageOutPath` and `blobOutPath`, which
+// are the only two.
 function defaultOutPath(relDir: string, filename: string): string {
   return `/tmp/gog-attachments/${relDir}/${filename}`;
+}
+
+// Where every delivery mode OTHER than "url" lands its download: the message id
+// as one sanitized segment.
+//
+// The id is the caller's string and gog MkdirAll's whatever it is told, so a raw
+// `../../x` walked the write out of the attachment root — and on the Fly backend
+// out of the only tree that is cleared when the machine stops, into one that
+// holds the Google refresh token this box is built around. deliver="url" was
+// held to one segment from the start because its path and its object key have to
+// be the same string, so the gap was visible there as a refused upload and
+// invisible in the four modes that only write; the rule is the SAME rule
+// (`sanitizeFilename`, once per segment) rather than a second one, because two
+// spellings of "safe segment" is how the next mode gets missed.
+function messageOutPath(messageId: string, fileName: string): string {
+  return defaultOutPath(sanitizeFilename(messageId), fileName);
 }
 
 // Strip the command echo and any message/attachment ids from a gog failure before
@@ -2455,7 +2478,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       if (!outPath) {
         outPath = deliver === 'url'
           ? blobOutPath(messageId, attachmentRef, filename ?? 'attachment')
-          : defaultOutPath(messageId, filename ?? 'attachment');
+          : messageOutPath(messageId, filename ?? 'attachment');
       }
 
       // 3. Download. --inline returns the bytes for the image/resource cases; skip
