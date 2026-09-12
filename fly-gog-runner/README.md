@@ -200,6 +200,38 @@ Four bounds, each of which is a failure it prevents:
   message — including the gateway's own error text, which is a third party's
   words and may quote the request URL back.
 
+Plus one bound that is **opt-in**: `UPLOAD_ALLOWED_HOSTS`, a comma-separated
+list of hostnames this box will PUT to. Unset — the default — any `http(s)`
+host is accepted, exactly as before.
+
+That default is deliberate, for three reasons:
+
+1. **This box cannot derive the right value.** It never sees
+   `MCP_BLOB_BASE_URL`; the MCP child holds it and mints the signed URL. A
+   built-in default would be a guess, and a wrong guess refuses a perfectly
+   good link with a `400` that reads like a signing bug.
+2. **It closes nothing the bearer does not already open.** `/run` executes
+   arbitrary `gog` argv here, escape hatches included, so a `RUNNER_KEY` holder
+   has strictly more than an outbound PUT plus a 512-byte read of the reply.
+   The allowlist is defence-in-depth against an *aimed* request, not a trust
+   boundary.
+3. **Default-deny would break every live deployment** for that non-gain.
+
+Set it if you know your gateway's host, and a leaked key can no longer aim this
+box at a host of its choosing:
+
+```bash
+fly secrets set UPLOAD_ALLOWED_HOSTS="mcp.example.com"
+```
+
+Matched on the hostname alone (the port is not part of which host is dialled),
+case-insensitively, and **exactly** — no wildcards, because a wildcard is how
+an allowlist stops being one, and `evil.example.com` is not `example.com`. A
+refusal names the host and the variable, never the URL or its signature. A
+blank value is "unset", not "allow nothing": an empty allowlist that refused
+everything would take `/upload` down the first time somebody exported the
+variable empty.
+
 The blob store's verdict is reported faithfully in `status`, but **not** as this
 endpoint's own status code: a `403` there is a refused signature, not a bearer
 failure here. A deterministic refusal (`4xx`) is `422 retryable:false` — re-mint
@@ -247,6 +279,10 @@ fly volumes create gogdata --region "$(awk -F'"' '/primary_region/{print $2}' fl
 #                       to see it; the server reads it from its env.
 fly secrets set RUNNER_KEY="$(openssl rand -hex 32)" \
                 GOG_KEYRING_PASSWORD="$(openssl rand -hex 32)" --stage
+
+# Optional, and NOT a secret: pin which host `/upload` may PUT to. Unset means
+# any host, which is the default and is argued for under `/upload` above.
+# fly secrets set UPLOAD_ALLOWED_HOSTS="mcp.example.com"
 
 # Build + deploy the image (applies the staged secrets).
 fly deploy
