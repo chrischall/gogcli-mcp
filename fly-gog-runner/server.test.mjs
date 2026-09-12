@@ -15,6 +15,8 @@ import {
   MAX_FILE_ARG_BYTES,
   MAX_UPLOAD_BYTES,
   withoutUrlSecrets,
+  uploadHostsFromEnv,
+  validateUploadRequest,
   installGracefulShutdown,
   withMaterializedArgs,
   MaterializationError,
@@ -278,6 +280,38 @@ test('sanitizedEnv strips secrets (incl. our own RUNNER_KEY) but keeps gog confi
     assert.ok('PATH' in env);
   } finally {
     for (const k of ['RUNNER_KEY', 'GOG_ACCESS_TOKEN', 'GITHUB_TOKEN', 'SOME_SECRET', 'GOOGLE_APPLICATION_CREDENTIALS', 'PORT', 'GOG_HOME', 'GOG_TIMEZONE', 'BENIGN_VAR']) {
+      if (!(k in saved)) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+});
+
+// The suffix list was `_TOKEN|_SECRET|_API_KEY|_PRIVATE_KEY` — four spellings of
+// "a key" with the bare one missing, which is why RUNNER_KEY needed a named
+// exclusion of its own. A bare `_KEY` rule covers the class, so the next
+// credential on this box is stripped on the day it is added rather than on the
+// day somebody remembers to name it.
+//
+// GOG_KEYRING_PASSWORD is the CONTROL: this box runs GOG_KEYRING_BACKEND=file
+// and that variable is what decrypts the keyring, so a `_PASSWORD` rule would
+// break every call. The widening stops at what the child does not read.
+test('sanitizedEnv strips a bare *_KEY but keeps the keyring password gog needs', () => {
+  const saved = { ...process.env };
+  const keys = ['MCP_BLOB_SIGNING_KEY', 'STRIPE_KEY', 'AWS_CREDENTIALS', 'GOG_KEYRING_PASSWORD', 'GOG_KEYRING_BACKEND'];
+  try {
+    process.env.MCP_BLOB_SIGNING_KEY = 'blob-signing-secret';
+    process.env.STRIPE_KEY = 'sk-live-secret';
+    process.env.AWS_CREDENTIALS = '/creds';
+    process.env.GOG_KEYRING_PASSWORD = 'keyring-pass';
+    process.env.GOG_KEYRING_BACKEND = 'file';
+    const env = sanitizedEnv();
+    assert.equal(env.MCP_BLOB_SIGNING_KEY, undefined);
+    assert.equal(env.STRIPE_KEY, undefined);
+    assert.equal(env.AWS_CREDENTIALS, undefined);
+    assert.equal(env.GOG_KEYRING_PASSWORD, 'keyring-pass');
+    assert.equal(env.GOG_KEYRING_BACKEND, 'file');
+  } finally {
+    for (const k of keys) {
       if (!(k in saved)) delete process.env[k];
       else process.env[k] = saved[k];
     }
@@ -2353,6 +2387,76 @@ test('malformed /upload bodies are rejected before anything is dialled', async (
         }
       }, { uploadRoot: root });
       assert.equal(received.length, 0, 'no bad request ever reaches the gateway');
+    });
+  });
+});
+
+// --- the optional destination allowlist -------------------------------------
+//
+// `/upload` is an outbound PUT plus a bounded read of the answer, aimed by
+// whoever holds RUNNER_KEY. The bearer already grants arbitrary `gog` argv on
+// this box, so this is not a privilege escalation — which is precisely why the
+// allowlist is OPT-IN and the default stays permissive: a default that refused
+// would break every existing deployment (this box never sees
+// MCP_BLOB_BASE_URL, so it cannot derive the right host to allow) in exchange
+// for closing nothing the bearer does not already open. An operator who knows
+// their gateway's host can narrow it anyway, and then a leaked key cannot
+// point the box at a host of its choosing.
+
+test('uploadHostsFromEnv is permissive when unset and normalizes when set', () => {
+  assert.equal(uploadHostsFromEnv({}), null, 'unset is "no allowlist", not "allow nothing"');
+  assert.equal(uploadHostsFromEnv({ UPLOAD_ALLOWED_HOSTS: '' }), null);
+  assert.equal(uploadHostsFromEnv({ UPLOAD_ALLOWED_HOSTS: '   ' }), null, 'blank is unset, not an empty allowlist');
+  // Commas, stray whitespace and mixed case are all operator typing, not intent.
+  assert.deepEqual(
+    uploadHostsFromEnv({ UPLOAD_ALLOWED_HOSTS: ' Blob.Example , ,127.0.0.1 ' }),
+    ['blob.example', '127.0.0.1'],
+  );
+});
+
+test('validateUploadRequest pins the destination host only when an allowlist is given', () => {
+  const body = (host) => ({
+    path: '/tmp/gog-attachments/m1/a.pdf',
+    url: `https://${host}/b/reg_abc/m1/a.pdf?exp=1789999999999&sig=dGVzdA`,
+    contentType: 'application/pdf',
+  });
+
+  // The default: unchanged from before this existed.
+  assert.equal(validateUploadRequest(body('anything.example')), null);
+  assert.equal(validateUploadRequest(body('anything.example'), null), null);
+
+  assert.equal(validateUploadRequest(body('blob.example'), ['blob.example']), null);
+  // Hostnames are case-insensitive; a signature is not, but the host is not
+  // part of what was signed.
+  assert.equal(validateUploadRequest(body('BLOB.example'), ['blob.example']), null);
+  // A port does not change which host is being dialled.
+  assert.equal(validateUploadRequest(body('blob.example:8443'), ['blob.example']), null);
+
+  const refusal = validateUploadRequest(body('evil.example'), ['blob.example']);
+  assert.match(refusal, /evil\.example/, 'names the host, which is what makes it actionable');
+  assert.match(refusal, /UPLOAD_ALLOWED_HOSTS/, 'and the setting that refused it');
+  // The url is a bearer credential in a query string. The HOST is public; the
+  // signature is the whole access control, and no refusal may carry it.
+  assert.ok(!refusal.includes('sig=dGVzdA'), 'never echoes the signature');
+  assert.ok(!refusal.includes('reg_abc'), 'nor the object path');
+
+  // A SUBDOMAIN of an allowed host is a different host. No wildcards: a
+  // wildcard is how an allowlist stops being one.
+  assert.match(validateUploadRequest(body('evil.blob.example'), ['blob.example']), /evil\.blob\.example/);
+});
+
+test('POST /upload refuses a destination off the allowlist before it dials', async () => {
+  await withUploadRoot(async (root) => {
+    const file = await seedAttachment(root, 'msg123', 'note.txt', 'hello');
+    await withReceiver(ok200, async ({ base: gateway, received }) => {
+      const url = `${gateway}/b/reg_abc/note.txt?exp=1789999999999&sig=dGVzdA`;
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        const res = await postUpload(base, { path: file, url, contentType: 'text/plain' });
+        assert.equal(res.status, 400);
+        assert.match(res.json.error, /UPLOAD_ALLOWED_HOSTS/);
+        assert.equal(res.json.retryable, false, 'a different host is not a retry');
+      }, { uploadRoot: root, uploadHosts: ['blob.example'] });
+      assert.equal(received.length, 0, 'the refused destination is never dialled');
     });
   });
 });

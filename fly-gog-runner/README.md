@@ -169,7 +169,7 @@ cost a ~31 MB base64 string against `/run`'s 32 MB body cap.
 
 ```jsonc
 {
-  "path": "/tmp/gog-attachments/<messageId>/<filename>",  // on THIS box
+  "path": "/tmp/gog-attachments/<messageId>/<attachmentRef>/<filename>",  // on THIS box
   "url": "https://<host>/b/<registrationId>/<rest>?exp=…&sig=…",
   "contentType": "application/pdf"
 }
@@ -177,7 +177,7 @@ cost a ~31 MB base64 string against `/run`'s 32 MB body cap.
 
 | Field         | Meaning                                                                     |
 |---------------|------------------------------------------------------------------------------|
-| `path`        | The file to send. Must resolve **inside `/tmp/gog-attachments`** (`DEFAULT_UPLOAD_ROOT`). |
+| `path`        | The file to send. Must resolve **inside `/tmp/gog-attachments`** (`DEFAULT_UPLOAD_ROOT`). The `<attachmentRef>` segment is not decoration: two parts of one message routinely share a filename, so a key of message + name has the second download overwrite the first — and a link already handed to an agent then serves the other's bytes. `blobOutPath` writes it, and the object key is minted from the same segments. |
 | `url`         | The signed PUT URL, spent verbatim. Never logged, never echoed.               |
 | `contentType` | Sent as the `Content-Type` header **byte for byte** — the PUT signature commits to it. |
 
@@ -200,6 +200,38 @@ Four bounds, each of which is a failure it prevents:
   message — including the gateway's own error text, which is a third party's
   words and may quote the request URL back.
 
+Plus one bound that is **opt-in**: `UPLOAD_ALLOWED_HOSTS`, a comma-separated
+list of hostnames this box will PUT to. Unset — the default — any `http(s)`
+host is accepted, exactly as before.
+
+That default is deliberate, for three reasons:
+
+1. **This box cannot derive the right value.** It never sees
+   `MCP_BLOB_BASE_URL`; the MCP child holds it and mints the signed URL. A
+   built-in default would be a guess, and a wrong guess refuses a perfectly
+   good link with a `400` that reads like a signing bug.
+2. **It closes nothing the bearer does not already open.** `/run` executes
+   arbitrary `gog` argv here, escape hatches included, so a `RUNNER_KEY` holder
+   has strictly more than an outbound PUT plus a 512-byte read of the reply.
+   The allowlist is defence-in-depth against an *aimed* request, not a trust
+   boundary.
+3. **Default-deny would break every live deployment** for that non-gain.
+
+Set it if you know your gateway's host, and a leaked key can no longer aim this
+box at a host of its choosing:
+
+```bash
+fly secrets set UPLOAD_ALLOWED_HOSTS="mcp.example.com"
+```
+
+Matched on the hostname alone (the port is not part of which host is dialled),
+case-insensitively, and **exactly** — no wildcards, because a wildcard is how
+an allowlist stops being one, and `evil.example.com` is not `example.com`. A
+refusal names the host and the variable, never the URL or its signature. A
+blank value is "unset", not "allow nothing": an empty allowlist that refused
+everything would take `/upload` down the first time somebody exported the
+variable empty.
+
 The blob store's verdict is reported faithfully in `status`, but **not** as this
 endpoint's own status code: a `403` there is a refused signature, not a bearer
 failure here. A deterministic refusal (`4xx`) is `422 retryable:false` — re-mint
@@ -221,7 +253,7 @@ safety flags before forwarding. Do not assume this service adds them.
 The service does **not** redact secrets — it returns raw stdout to the trusted
 Worker over HTTPS, and redaction happens at that Worker boundary. As
 defense-in-depth, the child `gog` process runs with ambient `*_TOKEN` /
-`*_SECRET` / `*_API_KEY` / `*_PRIVATE_KEY` env vars (and `GOG_ACCESS_TOKEN`,
+`*_SECRET` / `*_KEY` / `*_CREDENTIALS` env vars (and `GOG_ACCESS_TOKEN`,
 `GOOGLE_APPLICATION_CREDENTIALS`) stripped; `GOG_HOME` and `PATH` are preserved.
 
 ## Deploy
@@ -247,6 +279,10 @@ fly volumes create gogdata --region "$(awk -F'"' '/primary_region/{print $2}' fl
 #                       to see it; the server reads it from its env.
 fly secrets set RUNNER_KEY="$(openssl rand -hex 32)" \
                 GOG_KEYRING_PASSWORD="$(openssl rand -hex 32)" --stage
+
+# Optional, and NOT a secret: pin which host `/upload` may PUT to. Unset means
+# any host, which is the default and is argued for under `/upload` above.
+# fly secrets set UPLOAD_ALLOWED_HOSTS="mcp.example.com"
 
 # Build + deploy the image (applies the staged secrets).
 fly deploy

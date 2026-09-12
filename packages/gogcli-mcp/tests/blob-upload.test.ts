@@ -184,4 +184,21 @@ describe('uploadToBlobStore', () => {
   it('exposes its deadline as a constant rather than a literal at the call site', () => {
     expect(RUNNER_UPLOAD_TIMEOUT_MS).toBeGreaterThan(30_000);
   });
+
+  // The rule this repo already applies at the other hop (`DEADLINE_GRACE_MS` in
+  // connector-runtime.ts: 30 s backend budget + 5 s): the CALLER's deadline sits
+  // ABOVE the backend's own, so the backend loses the race only when it
+  // genuinely cannot answer. The doc block here cited that rule while the
+  // numbers inverted it — 90 s against the runner's 120 s — so a socket that
+  // went quiet was aborted on this side 30 s before the runner's own timer could
+  // name it, turning "the upload timed out after 120000ms" into exactly the
+  // opaque client abort the rule exists to prevent.
+  //
+  // Restated rather than imported: `fly-gog-runner/server.mjs` must not be
+  // pulled into the Worker bundle (the same reason the attachment ceilings are
+  // restated in attachments.ts), so the two move by hand and this is the guard.
+  it('sits above the runner\'s own upload timeout, so the runner answers first', () => {
+    const UPLOAD_TIMEOUT_MS_ON_THE_BOX = 120_000; // server.mjs UPLOAD_TIMEOUT_MS
+    expect(RUNNER_UPLOAD_TIMEOUT_MS).toBeGreaterThan(UPLOAD_TIMEOUT_MS_ON_THE_BOX);
+  });
 });

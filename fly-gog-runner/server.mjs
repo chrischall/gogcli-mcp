@@ -110,10 +110,11 @@ const EXEC_MAX_BUFFER = 32 * 1024 * 1024; // 32 MB
 // already downloaded into the host's own blob store writes nothing there.
 
 // Where `gog gmail attachment --out` puts a downloaded attachment
-// (`defaultOutPath` in packages/gogcli-mcp-gmail/src/tools/gmail-extra.ts). A
-// caller names a file to READ from this box's disk, so the name is confined to
-// this subtree: unbounded, it is a file-read primitive against the runner —
-// /data holds the Google refresh token this whole machine is built around.
+// (`messageOutPath` / `blobOutPath` in
+// packages/gogcli-mcp-gmail/src/tools/gmail-extra.ts). A caller names a file to
+// READ from this box's disk, so the name is confined to this subtree:
+// unbounded, it is a file-read primitive against the runner — /data holds the
+// Google refresh token this whole machine is built around.
 export const DEFAULT_UPLOAD_ROOT = '/tmp/gog-attachments';
 
 // mcp-host's blob store caps one object at 100 MiB and answers 413 past it.
@@ -134,9 +135,11 @@ export const UPLOAD_TIMEOUT_MS = 120_000;
 // `{"error":"…"}`, bounded so a stray HTML page cannot become the response.
 const GATEWAY_BODY_SNIPPET = 512;
 
-// Path length, generously over the real one (`/tmp/gog-attachments/<id>/<name>`)
-// and well under PATH_MAX, so a pathological string is refused as input rather
-// than by the filesystem.
+// Path length, generously over the real one — `deliver="url"` writes
+// `/tmp/gog-attachments/<messageId>/<attachmentRef>/<name>`, three segments
+// because two parts of one message can share a filename — and well under
+// PATH_MAX, so a pathological string is refused as input rather than by the
+// filesystem.
 const MAX_UPLOAD_PATH_LEN = 4096;
 
 // The content type the PUT signature COMMITS TO, so it is passed through byte
@@ -146,21 +149,57 @@ const MAX_UPLOAD_PATH_LEN = 4096;
 // CR/LF (header injection), bounded, and containing the type/subtype slash.
 const CONTENT_TYPE_PATTERN = /^[\x20-\x7e]{3,255}$/;
 
-// Validate the /upload request body. Returns an error message string, or null.
-// Nothing here echoes `url`: it is a bearer credential in a query string.
+// The optional destination allowlist, read from `UPLOAD_ALLOWED_HOSTS` (a
+// comma-separated list of hostnames). Returns null for "no allowlist".
 //
-// The DESTINATION is checked for shape and not for host, deliberately: this box
-// never sees MCP_BLOB_BASE_URL — the child mints the signed URL — so there is
-// nothing here to pin it against. That makes /upload an outbound fetch whoever
-// holds RUNNER_KEY can aim, and up to GATEWAY_BODY_SNIPPET bytes of the answer
-// come back. It is bounded by what it can SEND (a regular file under the
-// attachment root, nothing else on this disk) and by the bearer, which is the
-// same key that already grants arbitrary `gog` argv on this machine. `http:` is
-// allowed because the tests' loopback receiver is one; an off-host destination
-// worth pinning belongs on the caller's side of the hop, which knows the base
-// URL.
+// PERMISSIVE BY DEFAULT, and that default is a decision rather than an
+// oversight. Three things make it the right one:
+//
+//  1. This box cannot derive the correct value. It never sees
+//     MCP_BLOB_BASE_URL — the MCP child holds it and mints the signed URL — so
+//     there is no host here to pin against without an operator naming one.
+//     Defaulting to a guess (say, the gateway of the moment) would refuse a
+//     legitimate upload on every deployment that guessed differently.
+//  2. It closes nothing the bearer does not already open. `/run` executes
+//     arbitrary `gog` argv on this machine, including the `gog <service> run`
+//     escape hatches, so a RUNNER_KEY holder has strictly more than an
+//     outbound PUT and a 512-byte read of the reply. The allowlist is
+//     defence-in-depth against an aimed request, not a trust boundary.
+//  3. A default-deny would be a breaking change to a live deployment for that
+//     non-gain, and the failure would look like a signing bug (`400` on a
+//     perfectly good link) rather than a configuration one.
+//
+// An operator who KNOWS their gateway's host can set it, and then a leaked key
+// can no longer aim this box at a host of its choosing. Blank is unset rather
+// than "allow nothing": an empty allowlist that refused everything would take
+// `/upload` down the first time somebody exported the variable empty.
+export function uploadHostsFromEnv(env = process.env) {
+  const raw = (env.UPLOAD_ALLOWED_HOSTS ?? '').trim();
+  if (!raw) return null;
+  const hosts = raw.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+  return hosts.length > 0 ? hosts : null;
+}
 
-export function validateUploadRequest(body) {
+// Validate the /upload request body. Returns an error message string, or null.
+// Nothing here echoes `url`: it is a bearer credential in a query string. The
+// HOST may be named in a refusal — it is the part an operator has to see to fix
+// the allowlist, and it is not what the signature protects.
+//
+// The DESTINATION is checked for shape always and for host only when
+// `allowedHosts` is given (see `uploadHostsFromEnv` for why that is opt-in).
+// Without one, /upload is an outbound fetch whoever holds RUNNER_KEY can aim,
+// with up to GATEWAY_BODY_SNIPPET bytes of the answer coming back; it is
+// bounded by what it can SEND (a regular file under the attachment root,
+// nothing else on this disk) and by the bearer, which is the same key that
+// already grants arbitrary `gog` argv on this machine. `http:` is allowed
+// because the tests' loopback receiver is one.
+//
+// Matched on `URL.hostname`, so the PORT is not part of the comparison (a port
+// does not change which host is dialled) and the match is exact — no
+// wildcards, because a wildcard is how an allowlist stops being one, and a
+// subdomain of an allowed host is a different host.
+
+export function validateUploadRequest(body, allowedHosts = null) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'body must be a JSON object';
   if (typeof body.path !== 'string' || body.path.length === 0) return 'path must be a non-empty string';
   if (body.path.length > MAX_UPLOAD_PATH_LEN) {
@@ -176,6 +215,9 @@ export function validateUploadRequest(body) {
   }
   if (target.protocol !== 'https:' && target.protocol !== 'http:') {
     return 'url must be an absolute http(s) URL';
+  }
+  if (allowedHosts && !allowedHosts.includes(target.hostname.toLowerCase())) {
+    return `url host ${target.hostname} is not in UPLOAD_ALLOWED_HOSTS`;
   }
   if (typeof body.contentType !== 'string' || !CONTENT_TYPE_PATTERN.test(body.contentType)
     || !body.contentType.includes('/')) {
@@ -510,6 +552,17 @@ export function summarizeAuthProbe(stdout) {
 // below still runs. A variable on this box is shared by every request, so
 // honouring one would rebuild the shared-identity problem from the other
 // direction. Only a value that belongs to one call may act for one call.
+//
+// `_KEY`, not `_API_KEY|_PRIVATE_KEY`: those were four spellings of "a key"
+// with the bare one missing, which is exactly why RUNNER_KEY needed a named
+// exclusion beside them. The bare rule covers the class, so the next
+// credential on this box is stripped the day it is added rather than the day
+// somebody remembers to name it; RUNNER_KEY stays named because it is the one
+// whose leak hands a child the `/run` escape hatch. Kept OFF the list:
+// `_PASSWORD`, because GOG_KEYRING_PASSWORD is what decrypts gog's own file
+// keyring here (GOG_KEYRING_BACKEND=file) — the widening stops at what the
+// child legitimately reads, and both directions are tested. Mirrors runner.ts's
+// own list; the two are one rule, documented once in the README.
 export function sanitizedEnv(accessToken) {
   const result = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -517,7 +570,7 @@ export function sanitizedEnv(accessToken) {
     if (key === 'GOOGLE_APPLICATION_CREDENTIALS') continue;
     if (key === 'RUNNER_KEY') continue;
     if (key === 'PORT') continue;
-    if (/(_TOKEN|_SECRET|_API_KEY|_PRIVATE_KEY)$/.test(key)) continue;
+    if (/(_TOKEN|_SECRET|_KEY|_CREDENTIALS)$/.test(key)) continue;
     result[key] = value;
   }
   if (accessToken) result.GOG_ACCESS_TOKEN = accessToken;
@@ -858,6 +911,10 @@ export function createServer({
   execFn = defaultExecFn,
   log = defaultLog,
   uploadRoot = DEFAULT_UPLOAD_ROOT,
+  // Resolved ONCE at construction, not per request: an allowlist that could
+  // change under a running server is one whose verdict depends on when you
+  // asked. null is "no allowlist" — see uploadHostsFromEnv.
+  uploadHosts = uploadHostsFromEnv(),
 } = {}) {
   if (!runnerKey || typeof runnerKey !== 'string') {
     throw new Error('RUNNER_KEY is required; refusing to start without an auth key');
@@ -1089,7 +1146,7 @@ export function createServer({
         return;
       }
 
-      const invalid = validateUploadRequest(body);
+      const invalid = validateUploadRequest(body, uploadHosts);
       if (invalid) {
         sendJson(res, 400, { error: invalid, retryable: false });
         return;

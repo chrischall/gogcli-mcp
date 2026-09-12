@@ -14,7 +14,7 @@ env:
     help: >-
       Google OAuth client id. NOTE: on the local-spawn path the child `gog`
       receives a sanitized env — runner.ts drops GOG_ACCESS_TOKEN and every
-      *_TOKEN / *_SECRET / *_API_KEY / *_PRIVATE_KEY variable — so the CLI
+      *_TOKEN / *_SECRET / *_KEY / *_CREDENTIALS variable — so the CLI
       authenticates from its own stored credentials under $HOME (see
       state.dataDir), not from these variables being passed through.
   - name: GOG_CLIENT_SECRET
