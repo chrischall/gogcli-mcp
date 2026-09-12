@@ -169,7 +169,7 @@ cost a ~31 MB base64 string against `/run`'s 32 MB body cap.
 
 ```jsonc
 {
-  "path": "/tmp/gog-attachments/<messageId>/<filename>",  // on THIS box
+  "path": "/tmp/gog-attachments/<messageId>/<attachmentRef>/<filename>",  // on THIS box
   "url": "https://<host>/b/<registrationId>/<rest>?exp=…&sig=…",
   "contentType": "application/pdf"
 }
@@ -177,7 +177,7 @@ cost a ~31 MB base64 string against `/run`'s 32 MB body cap.
 
 | Field         | Meaning                                                                     |
 |---------------|------------------------------------------------------------------------------|
-| `path`        | The file to send. Must resolve **inside `/tmp/gog-attachments`** (`DEFAULT_UPLOAD_ROOT`). |
+| `path`        | The file to send. Must resolve **inside `/tmp/gog-attachments`** (`DEFAULT_UPLOAD_ROOT`). The `<attachmentRef>` segment is not decoration: two parts of one message routinely share a filename, so a key of message + name has the second download overwrite the first — and a link already handed to an agent then serves the other's bytes. `blobOutPath` writes it, and the object key is minted from the same segments. |
 | `url`         | The signed PUT URL, spent verbatim. Never logged, never echoed.               |
 | `contentType` | Sent as the `Content-Type` header **byte for byte** — the PUT signature commits to it. |
 

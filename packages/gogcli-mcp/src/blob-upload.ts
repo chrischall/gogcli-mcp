@@ -42,8 +42,22 @@ import { readEnvVar } from '@chrischall/mcp-utils';
  * failure would turn "the blob store refused the signature" into an opaque
  * timeout — the same reason `makeFlyExecutor` sits its deadline above the
  * backend's.
+ *
+ * It is `120 s + 5 s`, and it was 90 s: the doc block above cited that rule
+ * while the number inverted it, so a socket that went quiet was aborted HERE
+ * 30 s before the runner's own timer could say "the upload timed out after
+ * 120000ms". Exactly the opaque client abort the rule exists to prevent, and
+ * the one shape where the runner has something useful to say. The grace is
+ * `DEADLINE_GRACE_MS`'s 5 s for `DEADLINE_GRACE_MS`'s reason: enough for the
+ * answer to travel, and not a second more, because every extra second is a
+ * second of opaque timeout replacing a real error.
+ *
+ * Restated rather than imported — `fly-gog-runner/server.mjs` must not be
+ * pulled into the Worker bundle, the same trade `attachments.ts` makes for the
+ * runner's size ceilings — so the two move by hand, and a test asserts the
+ * ordering rather than leaving it to this comment.
  */
-export const RUNNER_UPLOAD_TIMEOUT_MS = 90_000;
+export const RUNNER_UPLOAD_TIMEOUT_MS = 125_000;
 
 export interface BlobUploadRequest {
   /** The file to send, resolved on the RUNNER's disk. */

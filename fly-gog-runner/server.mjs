@@ -110,10 +110,11 @@ const EXEC_MAX_BUFFER = 32 * 1024 * 1024; // 32 MB
 // already downloaded into the host's own blob store writes nothing there.
 
 // Where `gog gmail attachment --out` puts a downloaded attachment
-// (`defaultOutPath` in packages/gogcli-mcp-gmail/src/tools/gmail-extra.ts). A
-// caller names a file to READ from this box's disk, so the name is confined to
-// this subtree: unbounded, it is a file-read primitive against the runner —
-// /data holds the Google refresh token this whole machine is built around.
+// (`messageOutPath` / `blobOutPath` in
+// packages/gogcli-mcp-gmail/src/tools/gmail-extra.ts). A caller names a file to
+// READ from this box's disk, so the name is confined to this subtree:
+// unbounded, it is a file-read primitive against the runner — /data holds the
+// Google refresh token this whole machine is built around.
 export const DEFAULT_UPLOAD_ROOT = '/tmp/gog-attachments';
 
 // mcp-host's blob store caps one object at 100 MiB and answers 413 past it.
@@ -134,9 +135,11 @@ export const UPLOAD_TIMEOUT_MS = 120_000;
 // `{"error":"…"}`, bounded so a stray HTML page cannot become the response.
 const GATEWAY_BODY_SNIPPET = 512;
 
-// Path length, generously over the real one (`/tmp/gog-attachments/<id>/<name>`)
-// and well under PATH_MAX, so a pathological string is refused as input rather
-// than by the filesystem.
+// Path length, generously over the real one — `deliver="url"` writes
+// `/tmp/gog-attachments/<messageId>/<attachmentRef>/<name>`, three segments
+// because two parts of one message can share a filename — and well under
+// PATH_MAX, so a pathological string is refused as input rather than by the
+// filesystem.
 const MAX_UPLOAD_PATH_LEN = 4096;
 
 // The content type the PUT signature COMMITS TO, so it is passed through byte
