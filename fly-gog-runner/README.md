@@ -36,6 +36,7 @@ authenticated HTTPS; this box executes it and returns the raw stdout.
 | `GET /health`   | bearer required | Key verification for the connector's `login()` — proves the key is good without depending on gog being seeded. → `200 {"ok":true}` / `401` |
 | `GET /health/google` | bearer required | **Layer-2 probe.** Runs `gog auth list --check --json` — a REAL token refresh against Google — and reports whether the credential on `/data` still works. → always `200 {"ok":bool,"measured":bool,"accounts":[…],"error"?}` once authorized; `401` otherwise |
 | `POST /run`     | bearer required | Runs `gog <args>` verbatim. → `200 {"stdout"}` on exit 0; `422 {"error","stderr","retryable":false}` on gog failure; `400 {"error"}` on bad input; `500 {"error","retryable":true}` if this box can't write a file arg to disk; `503 {"error","retryable":true}` while draining for shutdown |
+| `POST /upload`  | bearer required | Streams one downloaded attachment off this box's disk to a **signed blob-store URL** the caller minted. Runs no gog. → `200 {"ok":true,"status","bytes"}`; `422 {"error","status","retryable":false}` when the blob store refuses it; `400`/`404` on bad input; `502 {"error","retryable":true}` when the transfer or the far side failed |
 
 Auth is a bearer token compared in constant time against `RUNNER_KEY`. Missing or
 mismatched → `401`. The server **refuses to start** if `RUNNER_KEY` is unset.
@@ -150,6 +151,66 @@ The whole POST body is capped at **32 MB** — 4x the per-file cap, so JSON
 escaping of a max-size payload still leaves the precise per-flag error as the
 one the caller sees. This ceiling sizes the Machine's `memory` in `fly.toml`;
 the two must move together.
+
+### `/upload` — the attachment → blob-store hop
+
+A hosted MCP has no HTTP surface of its own, so an agent cannot fetch an email
+attachment. mcp-host answers that with a per-registration **blob store** at
+`/b/<registrationId>/<rest>`, outside OAuth, where a **signed URL is the entire
+access control**: the MCP child is handed `MCP_BLOB_BASE_URL` +
+`MCP_BLOB_SIGNING_KEY` at spawn and mints its own links.
+
+The bytes, however, are **here**. `gog gmail attachment --out` wrote them to
+this box's disk and the child never saw them — under the hosted connector the
+child is a forwarder — so this box is the only party that can stream the file to
+that URL. It is the same seam `gog drive upload <path>` already uses, with a
+different destination; routing the bytes back through the child instead would
+cost a ~31 MB base64 string against `/run`'s 32 MB body cap.
+
+```jsonc
+{
+  "path": "/tmp/gog-attachments/<messageId>/<filename>",  // on THIS box
+  "url": "https://<host>/b/<registrationId>/<rest>?exp=…&sig=…",
+  "contentType": "application/pdf"
+}
+```
+
+| Field         | Meaning                                                                     |
+|---------------|------------------------------------------------------------------------------|
+| `path`        | The file to send. Must resolve **inside `/tmp/gog-attachments`** (`DEFAULT_UPLOAD_ROOT`). |
+| `url`         | The signed PUT URL, spent verbatim. Never logged, never echoed.               |
+| `contentType` | Sent as the `Content-Type` header **byte for byte** — the PUT signature commits to it. |
+
+Four bounds, each of which is a failure it prevents:
+
+- **`path` is confined to the attachment directory**, checked lexically (refuses
+  `..` without touching the disk) and again on the **real** path (a symlink
+  inside the root is the other way out). Unbounded, this endpoint is a
+  file-read primitive against the runner — `/data` holds the Google refresh
+  token the whole machine is built around.
+- **100 MiB is refused here, not at the door.** That is the blob store's own
+  ceiling; letting the gateway discover it means paying for the whole transfer
+  first and then reading a size error as a signing error.
+- **`Content-Length` comes from the file's own size** and the body is a pipe.
+  The gateway **requires** a length (a chunked PUT is a `411`), and nothing is
+  ever buffered — `http.request`, not `fetch`, because undici drops a
+  caller-set `content-length` and sends a streamed body chunked.
+- **A signed URL is a credential**, with up to 24 h of anybody-who-holds-it
+  access to that object. It never reaches a log line and never reaches an error
+  message — including the gateway's own error text, which is a third party's
+  words and may quote the request URL back.
+
+The blob store's verdict is reported faithfully in `status`, but **not** as this
+endpoint's own status code: a `403` there is a refused signature, not a bearer
+failure here. A deterministic refusal (`4xx`) is `422 retryable:false` — re-mint
+the URL, do not retry — and the far side being broken (`5xx`, a severed socket,
+a timeout) is `502 retryable:true`, the same split `/run` draws.
+
+**`GOG_READONLY` does not gate this.** That switch is the *wrapper* adding
+`--readonly` to a gog invocation, and it exists to stop writes to the **user's
+Google account**. This route runs no gog and writes nothing there — it copies
+bytes this box already downloaded into the host's own blob store — which is
+exactly what makes it usable where `deliver: "drive"` is blocked.
 
 ### Safety flags are injected upstream
 

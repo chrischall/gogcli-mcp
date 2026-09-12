@@ -7,11 +7,13 @@
 // Zero npm dependencies — node built-ins only.
 
 import http from 'node:http';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { timingSafeEqual } from 'node:crypto';
-import { mkdtemp, chmod, writeFile, rm } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { mkdtemp, chmod, writeFile, rm, realpath, stat } from 'node:fs/promises';
 
 // Cap the request body we'll buffer. This is load-bearing for file args: the
 // WHOLE POST body is buffered against this ceiling, so it must comfortably
@@ -92,6 +94,241 @@ export const SHUTDOWN_TIMEOUT_MS = 35_000;
 // execFn defaults.
 const EXEC_TIMEOUT_MS = 30_000;
 const EXEC_MAX_BUFFER = 32 * 1024 * 1024; // 32 MB
+
+// --- POST /upload: the attachment -> blob-store hop ---------------------------
+//
+// A hosted MCP has no HTTP surface of its own, so mcp-host lends one: a signed
+// PUT URL into its per-registration blob store. The bytes are HERE — `gog gmail
+// attachment --out` wrote them to this box's disk and the MCP child never saw
+// them — so this box is the only party that can stream them there. It is the
+// same seam `gog drive upload <path>` already uses, with a different
+// destination.
+//
+// This route runs no gog at all, which is why it is untouched by GOG_READONLY:
+// that switch is the wrapper adding `--readonly` to a gog invocation, and it
+// exists to stop writes to the USER'S Google account. Copying bytes this box
+// already downloaded into the host's own blob store writes nothing there.
+
+// Where `gog gmail attachment --out` puts a downloaded attachment
+// (`defaultOutPath` in packages/gogcli-mcp-gmail/src/tools/gmail-extra.ts). A
+// caller names a file to READ from this box's disk, so the name is confined to
+// this subtree: unbounded, it is a file-read primitive against the runner —
+// /data holds the Google refresh token this whole machine is built around.
+export const DEFAULT_UPLOAD_ROOT = '/tmp/gog-attachments';
+
+// mcp-host's blob store caps one object at 100 MiB and answers 413 past it.
+// Restated here rather than discovered at the door: the gateway's refusal would
+// arrive only after the whole transfer had run, and the caller would read a
+// size error as a signing error.
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+// An INACTIVITY timeout, not a deadline on the exchange: it is spent through
+// `req.setTimeout`, so what it bounds is a socket that has gone quiet, not one
+// that keeps dribbling. A stalled socket must not outlive SHUTDOWN_TIMEOUT_MS's
+// drain by so much that Fly severs the machine mid-upload instead. What bounds
+// the VOLUME is MAX_UPLOAD_BYTES above; nothing here bounds the duration of a
+// transfer that is still making progress.
+export const UPLOAD_TIMEOUT_MS = 120_000;
+
+// How much of the gateway's own error body to quote back. Enough for its
+// `{"error":"…"}`, bounded so a stray HTML page cannot become the response.
+const GATEWAY_BODY_SNIPPET = 512;
+
+// Path length, generously over the real one (`/tmp/gog-attachments/<id>/<name>`)
+// and well under PATH_MAX, so a pathological string is refused as input rather
+// than by the filesystem.
+const MAX_UPLOAD_PATH_LEN = 4096;
+
+// The content type the PUT signature COMMITS TO, so it is passed through byte
+// for byte — never normalised, re-cased or defaulted, any of which produces a
+// signature the gateway cannot verify and a refusal that reads like a missing
+// object. Validated only for the shape a header can carry: printable ASCII, no
+// CR/LF (header injection), bounded, and containing the type/subtype slash.
+const CONTENT_TYPE_PATTERN = /^[\x20-\x7e]{3,255}$/;
+
+// Validate the /upload request body. Returns an error message string, or null.
+// Nothing here echoes `url`: it is a bearer credential in a query string.
+//
+// The DESTINATION is checked for shape and not for host, deliberately: this box
+// never sees MCP_BLOB_BASE_URL — the child mints the signed URL — so there is
+// nothing here to pin it against. That makes /upload an outbound fetch whoever
+// holds RUNNER_KEY can aim, and up to GATEWAY_BODY_SNIPPET bytes of the answer
+// come back. It is bounded by what it can SEND (a regular file under the
+// attachment root, nothing else on this disk) and by the bearer, which is the
+// same key that already grants arbitrary `gog` argv on this machine. `http:` is
+// allowed because the tests' loopback receiver is one; an off-host destination
+// worth pinning belongs on the caller's side of the hop, which knows the base
+// URL.
+
+export function validateUploadRequest(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return 'body must be a JSON object';
+  if (typeof body.path !== 'string' || body.path.length === 0) return 'path must be a non-empty string';
+  if (body.path.length > MAX_UPLOAD_PATH_LEN) {
+    return `path must be at most ${MAX_UPLOAD_PATH_LEN} characters`;
+  }
+  if (body.path.includes(NUL)) return 'path must not contain NUL bytes';
+  if (typeof body.url !== 'string' || body.url.length === 0) return 'url must be a non-empty string';
+  let target;
+  try {
+    target = new URL(body.url);
+  } catch {
+    return 'url must be an absolute http(s) URL';
+  }
+  if (target.protocol !== 'https:' && target.protocol !== 'http:') {
+    return 'url must be an absolute http(s) URL';
+  }
+  if (typeof body.contentType !== 'string' || !CONTENT_TYPE_PATTERN.test(body.contentType)
+    || !body.contentType.includes('/')) {
+    return 'contentType must be a media type (printable ASCII, no control characters)';
+  }
+  return null;
+}
+
+// Is `candidate` the root itself or something beneath it? Compared on resolved,
+// separator-terminated strings, so `/tmp/gog-attachments-evil` is not "inside"
+// `/tmp/gog-attachments`.
+function isInside(root, candidate) {
+  if (candidate === root) return true;
+  return candidate.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+}
+
+// Resolve the caller's path against the attachment root and refuse anything
+// that leaves it. Returns { file, bytes } or { error, status }.
+//
+// Containment is checked TWICE: lexically on the resolved path, which refuses
+// `..` without touching the disk, and again on the REAL path, because a symlink
+// inside the root is a second way out and the first check cannot see it. The
+// root is realpath'd too — /tmp is itself a symlink on macOS, so comparing a
+// real path against a lexical root would refuse everything.
+export async function resolveUploadPath(uploadRoot, requested) {
+  const root = path.resolve(uploadRoot);
+  const candidate = path.resolve(root, requested);
+  if (!isInside(root, candidate)) {
+    return { status: 400, error: `path must be inside ${root}` };
+  }
+  let realFile;
+  let realRoot;
+  try {
+    realFile = await realpath(candidate);
+    realRoot = await realpath(root);
+  } catch (err) {
+    if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) {
+      return { status: 404, error: 'no such file on this machine' };
+    }
+    return { status: 500, error: `could not resolve the path: ${err.message}`, retryable: true };
+  }
+  if (!isInside(realRoot, realFile)) {
+    return { status: 400, error: `path must be inside ${realRoot}` };
+  }
+  let info;
+  try {
+    info = await stat(realFile);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return { status: 404, error: 'no such file on this machine' };
+    return { status: 500, error: `could not read the file: ${err.message}`, retryable: true };
+  }
+  if (!info.isFile()) return { status: 400, error: 'path must name a regular file' };
+  if (info.size > MAX_UPLOAD_BYTES) {
+    return {
+      status: 400,
+      error: `file is ${info.size} bytes; the blob store's maximum is ${MAX_UPLOAD_BYTES} bytes`,
+    };
+  }
+  return { file: realFile, bytes: info.size };
+}
+
+// A signed URL IS the access control, so it is a credential: never logged,
+// never in an error message. Node's own socket errors quote a host and port
+// rather than a URL, but the gateway's error BODY is a third party's text and
+// this is the one value here expected to reach a log.
+export function withoutUrlSecrets(text, url) {
+  if (!text) return text;
+  // An empty needle would turn this scrubber into a shredder: `split('')` cuts
+  // the message into single characters and the join interleaves the
+  // replacement between every one of them. `validateUploadRequest` guarantees a
+  // non-empty url at today's two call sites, but this function is exported, so
+  // the guard belongs here rather than in what happens to call it.
+  if (!url) return String(text);
+  let out = String(text);
+  out = out.split(url).join('<signed url>');
+  try {
+    const sig = new URL(url).searchParams.get('sig');
+    if (sig) out = out.split(sig).join('<signature>');
+  } catch { /* validated upstream; nothing to redact if it will not parse */ }
+  return out;
+}
+
+// PUT one file to one URL, streaming it off the disk.
+//
+// `http.request` rather than `fetch`: Content-Length is REQUIRED by the gateway
+// (a chunked PUT is a 411) and undici filters a caller-set content-length out
+// of a fetch, so a streamed fetch body arrives chunked. Here the header is ours
+// to set and the body is a pipe — the file is never materialized in memory,
+// which at the 100 MiB ceiling is the difference between this and an OOM.
+//
+// That last property is NOT implied by any shape a receiver can observe: a
+// whole-file `req.end(buf)` sends the same bytes under the same
+// Content-Length. It is pinned instead by measuring residency at the first
+// byte on the wire ("POST /upload never materializes the file in memory").
+export function putFileToUrl({ url, file, bytes, contentType, timeoutMs = UPLOAD_TIMEOUT_MS }) {
+  const target = new URL(url);
+  const transport = target.protocol === 'https:' ? https : http;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let source;
+    // The exchange is over either way, so let go of BOTH ends of the pump.
+    //
+    // The file read stream, because the gateway may answer (and refuse) long
+    // before we have finished sending, and a pump left running on a dead socket
+    // reads for nothing. And the REQUEST, because stopping the read is what
+    // leaves its body unfinished: an unfinished ClientRequest holds its socket
+    // open with nothing to time it out — `req.setTimeout` below is an
+    // INACTIVITY timer and this promise has already settled — so every refusal
+    // the gateway answers on the headers (a stale signature, an expiry skew)
+    // would strand a descriptor, one per refused upload. Destroying a request
+    // whose response has already ended changes nothing about the exchange and
+    // releases the socket rather than parking it.
+    const stopUpload = () => { source?.destroy(); req.destroy(); };
+    const succeed = (value) => { if (!settled) { settled = true; stopUpload(); resolve(value); } };
+    // A refusal often arrives while we are still writing, and the EPIPE that
+    // follows is a CONSEQUENCE of it: prefer whichever lands first, which is
+    // the response, so the caller reads the gateway's 403 rather than a socket
+    // error that says nothing.
+    const fail = (err) => { if (!settled) { settled = true; stopUpload(); reject(err); } };
+
+    const req = transport.request(target, {
+      method: 'PUT',
+      headers: { 'content-type': contentType, 'content-length': String(bytes) },
+    });
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`the upload timed out after ${timeoutMs}ms`));
+    });
+    req.on('error', fail);
+    req.on('response', (res) => {
+      const chunks = [];
+      let held = 0;
+      res.on('data', (chunk) => {
+        if (held >= GATEWAY_BODY_SNIPPET) return;
+        chunks.push(chunk);
+        held += chunk.length;
+      });
+      res.on('end', () => {
+        succeed({
+          status: res.statusCode,
+          body: Buffer.concat(chunks).toString().slice(0, GATEWAY_BODY_SNIPPET),
+        });
+      });
+      res.on('error', fail);
+    });
+
+    source = createReadStream(file);
+    source.on('error', (err) => {
+      req.destroy();
+      fail(err);
+    });
+    source.pipe(req);
+  });
+}
 
 // --- GET /health/google: the layer-2 (Google) probe --------------------------
 //
@@ -616,7 +853,12 @@ function defaultLog(line) {
   console.log(line);
 }
 
-export function createServer({ runnerKey, execFn = defaultExecFn, log = defaultLog } = {}) {
+export function createServer({
+  runnerKey,
+  execFn = defaultExecFn,
+  log = defaultLog,
+  uploadRoot = DEFAULT_UPLOAD_ROOT,
+} = {}) {
   if (!runnerKey || typeof runnerKey !== 'string') {
     throw new Error('RUNNER_KEY is required; refusing to start without an auth key');
   }
@@ -813,6 +1055,104 @@ export function createServer({ runnerKey, execFn = defaultExecFn, log = defaultL
           retryable: false,
         });
       }
+      return;
+    }
+
+    // Bearer-required upload endpoint: stream a file this box downloaded to a
+    // signed blob-store URL the caller minted. Authenticated EXACTLY as /run is
+    // — the same bearer, the same constant-time comparison — because it reads
+    // this box's disk and makes it dial out.
+    if (method === 'POST' && url === '/upload') {
+      if (!authed) {
+        sendJson(res, 401, { error: 'unauthorized' });
+        return;
+      }
+
+      let raw;
+      try {
+        raw = await readBody(req);
+      } catch (err) {
+        if (err && err.tooLarge) {
+          sendJson(res, 400, { error: 'request body too large', retryable: false });
+          drainAndDestroy(req);
+          return;
+        }
+        sendJson(res, 400, { error: 'failed to read request body', retryable: false });
+        return;
+      }
+
+      let body;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        sendJson(res, 400, { error: 'body must be valid JSON', retryable: false });
+        return;
+      }
+
+      const invalid = validateUploadRequest(body);
+      if (invalid) {
+        sendJson(res, 400, { error: invalid, retryable: false });
+        return;
+      }
+
+      const resolved = await resolveUploadPath(uploadRoot, body.path);
+      if (resolved.error) {
+        // Every refusal here is decided BEFORE anything is dialled: an
+        // oversized file, an escaped path and a missing one all cost the
+        // gateway nothing.
+        argsDesc = `upload refused (${resolved.status})`;
+        sendJson(res, resolved.status, {
+          error: resolved.error,
+          retryable: resolved.retryable ?? false,
+        });
+        return;
+      }
+
+      argsDesc = `upload ${resolved.bytes} bytes`;
+      let answer;
+      try {
+        answer = await putFileToUrl({
+          url: body.url,
+          file: resolved.file,
+          bytes: resolved.bytes,
+          contentType: body.contentType,
+        });
+      } catch (err) {
+        // The transfer never completed: a severed socket, a timeout, a read
+        // error off the volume. Transient by nature, so 5xx + retryable —
+        // scrubbed, because the message is about to be logged.
+        const message = withoutUrlSecrets((err && err.message) || 'the upload failed', body.url);
+        argsDesc = `upload failed: ${message}`;
+        sendJson(res, 502, { error: message, retryable: true });
+        return;
+      }
+
+      const gatewayBody = withoutUrlSecrets(answer.body, body.url);
+      if (answer.status >= 200 && answer.status < 300) {
+        argsDesc = `upload ${resolved.bytes} bytes -> ${answer.status}`;
+        sendJson(res, 200, { ok: true, status: answer.status, bytes: resolved.bytes });
+        return;
+      }
+      argsDesc = `upload ${resolved.bytes} bytes -> ${answer.status}`;
+      if (answer.status >= 500) {
+        // The far side is broken, not the request: the same PUT can succeed.
+        sendJson(res, 502, {
+          error: `the blob store answered ${answer.status}: ${gatewayBody}`.trim(),
+          status: answer.status,
+          retryable: true,
+        });
+        return;
+      }
+      // 422, not 4xx-passed-through: the gateway's own status would collide
+      // with this endpoint's (a 403 from the blob store is not a bearer
+      // failure here), and a refused signature, an expired `exp` or a
+      // content-type mismatch is deterministic — the caller must re-mint, not
+      // retry. `status` carries the gateway's verdict faithfully.
+      sendJson(res, 422, {
+        error: `the blob store refused the upload with ${answer.status}: ${gatewayBody}`.trim(),
+        status: answer.status,
+        retryable: false,
+      });
       return;
     }
 
