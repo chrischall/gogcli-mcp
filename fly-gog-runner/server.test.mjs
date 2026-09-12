@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import os from 'node:os';
+import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter, once } from 'node:events';
 import {
@@ -12,6 +13,8 @@ import {
   MAX_BODY_BYTES,
   MAX_ARG_LEN,
   MAX_FILE_ARG_BYTES,
+  MAX_UPLOAD_BYTES,
+  withoutUrlSecrets,
   installGracefulShutdown,
   withMaterializedArgs,
   MaterializationError,
@@ -36,9 +39,11 @@ const RUNNER_KEY = 'test-runner-key-123';
 const LOOPBACK = '127.0.0.1';
 
 // Spin up a createServer instance on an ephemeral port for one test, invoke the
-// callback with a base URL, then close it.
-async function withServer(execFn, fn) {
-  const server = createServer({ runnerKey: RUNNER_KEY, execFn });
+// callback with a base URL, then close it. `options` reaches createServer
+// verbatim (the /upload tests use it to point `uploadRoot` at a temp dir
+// instead of the real /tmp/gog-attachments).
+async function withServer(execFn, fn, options = {}) {
+  const server = createServer({ runnerKey: RUNNER_KEY, execFn, ...options });
   server.listen(0, LOOPBACK);
   await once(server, 'listening');
   const { port } = server.address();
@@ -1925,4 +1930,547 @@ test('a probe the caller abandoned still records what the probe found', async ()
     server.close();
     await once(server, 'close');
   }
+});
+
+// ---------------------------------------------------------------------------
+// POST /upload — stream an attachment from this box's disk to a signed
+// blob-store URL.
+//
+// The bytes never pass through the MCP child: `gog gmail attachment --out`
+// wrote them HERE, and this box is the only party that can read them. That is
+// the same seam `gog drive upload <path>` already uses; the destination is
+// mcp-host's blob store rather than Drive, and a signed URL is the whole of the
+// access control.
+//
+// A signed URL is a CREDENTIAL. It is never logged, and it never appears in an
+// error message — the tests below pin both.
+// ---------------------------------------------------------------------------
+
+// A stub for the gateway's blob-store door. Records every request it received
+// (method, headers, full body) so a test can assert what actually crossed the
+// wire, and lets the test decide the answer.
+async function withReceiver(respond, fn) {
+  const received = [];
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      received.push({
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: Buffer.concat(chunks),
+      });
+      respond(res);
+    });
+  });
+  server.listen(0, LOOPBACK);
+  await once(server, 'listening');
+  const base = `http://${LOOPBACK}:${server.address().port}`;
+  try {
+    return await fn({ base, received });
+  } finally {
+    server.close();
+    await once(server, 'close');
+  }
+}
+
+const ok200 = (res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}'); };
+
+// A temp stand-in for /tmp/gog-attachments, removed afterwards.
+async function withUploadRoot(fn) {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'gog-upload-root-'));
+  try {
+    return await fn(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+// Write one attachment where gog would have written it: <root>/<msg>/<name>.
+async function seedAttachment(root, messageId, filename, contents) {
+  const dir = path.join(root, messageId);
+  await mkdir(dir, { recursive: true });
+  const file = path.join(dir, filename);
+  await writeFile(file, contents);
+  return file;
+}
+
+function postUpload(base, body, extra = {}) {
+  return request(base, {
+    method: 'POST',
+    path: '/upload',
+    headers: { ...bearer(RUNNER_KEY), 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    ...extra,
+  });
+}
+
+test('POST /upload streams the file to the signed URL with its own byte length', async () => {
+  // Big enough to cross several chunks. Nothing below distinguishes streaming
+  // from buffering, though — Content-Length, byte equality and "not chunked"
+  // are satisfied identically by a `req.end(buf)` of the whole file — so the
+  // streaming property is pinned by the memory test that follows, not here.
+  const bytes = Buffer.alloc(300_000, 0x41);
+  bytes.write('%PDF-1.7', 0);
+
+  await withUploadRoot(async (root) => {
+    const file = await seedAttachment(root, 'msg123', 'Invoice #1234.pdf', bytes);
+    await withReceiver(ok200, async ({ base: gateway, received }) => {
+      const url = `${gateway}/b/reg_abc/gmail/msg123/Invoice%20%231234.pdf?exp=1789999999999&sig=dGVzdC1zaWduYXR1cmU`;
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        // Deliberately case- AND parameter-bearing: the PUT signature commits
+        // to this exact string, so a re-casing or a re-serialisation anywhere
+        // on the way out is a signature the gateway cannot verify. A lowercase
+        // `application/pdf` here would be byte-identical before and after such
+        // a regression and would pin nothing.
+        const res = await postUpload(base, {
+          path: file, url, contentType: 'application/PDF; charset=UTF-8',
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.json.ok, true);
+        assert.equal(res.json.bytes, bytes.length, 'reports the byte count it sent');
+      }, { uploadRoot: root });
+
+      assert.equal(received.length, 1, 'exactly one PUT reached the gateway');
+      const put = received[0];
+      assert.equal(put.method, 'PUT');
+      assert.equal(put.url, '/b/reg_abc/gmail/msg123/Invoice%20%231234.pdf?exp=1789999999999&sig=dGVzdC1zaWduYXR1cmU',
+        'the signed path and query cross the wire byte for byte');
+      // Content-Length is REQUIRED by the gateway (a chunked PUT is a 411), and
+      // it must be the file's own size, not the chunk count.
+      assert.equal(put.headers['content-length'], String(bytes.length));
+      assert.ok(!('transfer-encoding' in put.headers), 'not chunked');
+      // The PUT signature commits to the content type, so the header must be
+      // byte-identical to the one that was signed.
+      assert.equal(put.headers['content-type'], 'application/PDF; charset=UTF-8');
+      assert.ok(put.body.equals(bytes), 'every byte of the file arrived unchanged');
+    });
+  });
+});
+
+// The streaming rule has to be asserted by MEASUREMENT rather than by shape.
+// Content-Length, byte equality and "not chunked" above are all satisfied
+// identically by `readFile(file).then((buf) => req.end(buf))`, because
+// `req.end(buf)` sets the same length and sends the same bytes — so a naive
+// edit back to a whole-file read would go green there and then OOM this 512 MB
+// machine on a 100 MiB attachment.
+//
+// What DOES discriminate is how much is resident at the moment the first byte
+// reaches the far end. The receiver samples `process.memoryUsage().arrayBuffers`
+// on its first `data` event — the server under test runs in this same process —
+// and a buffered sender has already materialized the whole file by then.
+// Measured on this file: ~0.4 MiB over baseline streaming, ~80.3 MiB buffered.
+// The margin is ~20x, so the ceiling below is a verdict, not a flaky threshold.
+test('POST /upload never materializes the file in memory', async () => {
+  const SIZE = 80 * 1024 * 1024;
+  const CEILING = 16 * 1024 * 1024;
+
+  await withUploadRoot(async (root) => {
+    const dir = path.join(root, 'msg123');
+    await mkdir(dir, { recursive: true });
+    const file = path.join(dir, 'big.bin');
+    // Sparse, exactly as the oversize test is: no 80 MiB is ever written.
+    await writeFile(file, '');
+    fs.truncateSync(file, SIZE);
+
+    // Its own receiver rather than `withReceiver`: what is being measured is
+    // the SENDER's residency, and an 80 MiB accumulating receive buffer in the
+    // same process would drown it. This one discards every chunk.
+    let atFirstByte = null;
+    const receiver = http.createServer((req, res) => {
+      req.on('data', () => {
+        if (atFirstByte === null) atFirstByte = process.memoryUsage().arrayBuffers;
+      });
+      req.on('end', () => ok200(res));
+    });
+    receiver.listen(0, LOOPBACK);
+    await once(receiver, 'listening');
+    const gateway = `http://${LOOPBACK}:${receiver.address().port}`;
+
+    try {
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        const baseline = process.memoryUsage().arrayBuffers;
+        const res = await postUpload(base, {
+          path: file,
+          url: `${gateway}/b/reg_abc/big.bin?exp=1789999999999&sig=dGVzdA`,
+          contentType: 'application/octet-stream',
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.json.bytes, SIZE, 'the whole file was sent');
+        assert.notEqual(atFirstByte, null, 'the receiver saw at least one byte');
+        const grew = atFirstByte - baseline;
+        assert.ok(grew < CEILING,
+          `the file was read into memory before it was sent: arrayBuffers grew ${grew} bytes by the time the first byte reached the wire`);
+      }, { uploadRoot: root });
+    } finally {
+      receiver.close();
+      await once(receiver, 'close');
+    }
+  });
+});
+
+test('POST /upload refuses a file past the blob-store ceiling before it sends anything', async () => {
+  await withUploadRoot(async (root) => {
+    const dir = path.join(root, 'msg123');
+    await mkdir(dir, { recursive: true });
+    const file = path.join(dir, 'huge.bin');
+    // Sparse: no 100 MiB is ever written, but stat() reports the real size.
+    await writeFile(file, '');
+    fs.truncateSync(file, MAX_UPLOAD_BYTES + 1);
+
+    await withReceiver(ok200, async ({ base: gateway, received }) => {
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        const res = await postUpload(base, {
+          path: file,
+          url: `${gateway}/b/reg_abc/huge.bin?exp=1789999999999&sig=dGVzdA`,
+          contentType: 'application/octet-stream',
+        });
+        assert.equal(res.status, 400);
+        assert.match(res.json.error, new RegExp(String(MAX_UPLOAD_BYTES)), 'names the limit');
+        assert.match(res.json.error, new RegExp(String(MAX_UPLOAD_BYTES + 1)), 'and the actual size');
+      }, { uploadRoot: root });
+      assert.equal(received.length, 0, 'the gateway is never dialled for a file it would refuse');
+    });
+  });
+});
+
+test('POST /upload refuses a path outside the attachment directory', async () => {
+  await withUploadRoot(async (root) => {
+    // A file the runner must never be made to read: outside the root, reachable
+    // only by escaping it.
+    const outside = path.join(path.dirname(root), `gog-upload-secret-${process.pid}.txt`);
+    await writeFile(outside, 'RUNNER-PRIVATE-DO-NOT-UPLOAD');
+    // A sibling directory whose name merely BEGINS with the root's. Nothing
+    // about `<root>-evil` says `..`, it exists, and it is a real regular file
+    // at the end of it — so only the separator-terminated comparison in
+    // `isInside` refuses it. A bare `startsWith(root)` uploads it.
+    const sibling = `${root}-evil`;
+    await mkdir(sibling, { recursive: true });
+    const siblingFile = path.join(sibling, 'x.txt');
+    await writeFile(siblingFile, 'RUNNER-PRIVATE-DO-NOT-UPLOAD');
+    try {
+      await withReceiver(ok200, async ({ base: gateway, received }) => {
+        const url = `${gateway}/b/reg_abc/x.txt?exp=1789999999999&sig=dGVzdA`;
+        await withServer(async () => ({ stdout: '' }), async (base) => {
+          for (const attempt of [
+            outside,                                          // plainly elsewhere
+            path.join(root, '..', path.basename(outside)),    // .. out of the root
+            path.join(root, 'msg', '..', '..', path.basename(outside)),
+            siblingFile,                                      // `<root>-evil`, not `<root>`
+            '/etc/passwd',
+            // Nothing on disk answers to this one. It must still be refused as
+            // an ESCAPE (400) rather than reported missing (404): the lexical
+            // check decides before anything is looked up, so the answer says
+            // nothing about what does or does not exist outside the root.
+            path.join(root, '..', 'gog-upload-nothing-here.txt'),
+          ]) {
+            const res = await postUpload(base, { path: attempt, url, contentType: 'text/plain' });
+            assert.equal(res.status, 400, `refused: ${attempt}`);
+            assert.match(res.json.error, /must be inside/);
+            assert.ok(!res.json.error.includes('RUNNER-PRIVATE'), 'and never quotes the file');
+          }
+        }, { uploadRoot: root });
+        assert.equal(received.length, 0, 'nothing outside the root is ever streamed anywhere');
+      });
+    } finally {
+      await rm(outside, { force: true });
+      await rm(sibling, { recursive: true, force: true });
+    }
+  });
+});
+
+test('POST /upload refuses a symlink out of the attachment directory', async () => {
+  // The lexical check above cannot see this one: the path never says `..` and
+  // resolves inside the root. Only the REAL path leaves it — and a symlink is
+  // something `gog gmail attachment` would never write, so the tree it points
+  // into (/data holds the Google refresh token) is exactly what this refuses.
+  await withUploadRoot(async (root) => {
+    const outside = path.join(path.dirname(root), `gog-upload-target-${process.pid}.txt`);
+    await writeFile(outside, 'RUNNER-PRIVATE-DO-NOT-UPLOAD');
+    const dir = path.join(root, 'msg123');
+    await mkdir(dir, { recursive: true });
+    const link = path.join(dir, 'innocent.txt');
+    fs.symlinkSync(outside, link);
+    try {
+      await withReceiver(ok200, async ({ base: gateway, received }) => {
+        await withServer(async () => ({ stdout: '' }), async (base) => {
+          const res = await postUpload(base, {
+            path: link,
+            url: `${gateway}/b/reg_abc/innocent.txt?exp=1789999999999&sig=dGVzdA`,
+            contentType: 'text/plain',
+          });
+          assert.equal(res.status, 400);
+          assert.match(res.json.error, /must be inside/);
+        }, { uploadRoot: root });
+        assert.equal(received.length, 0, 'the link target never leaves this box');
+      });
+    } finally {
+      await rm(outside, { force: true });
+    }
+  });
+});
+
+test('POST /upload surfaces the gateway’s refusal instead of swallowing it', async () => {
+  await withUploadRoot(async (root) => {
+    const file = await seedAttachment(root, 'msg123', 'note.txt', 'hello');
+    const refuse = (res) => {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      res.end('{"error":"signature does not verify"}');
+    };
+    await withReceiver(refuse, async ({ base: gateway, received }) => {
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        const res = await postUpload(base, {
+          path: file,
+          url: `${gateway}/b/reg_abc/note.txt?exp=1789999999999&sig=d3Jvbmc`,
+          contentType: 'text/plain',
+        });
+        // 422, not 5xx, for the same reason /run answers 422: the request was
+        // delivered and deterministically refused, so retrying changes nothing.
+        assert.equal(res.status, 422);
+        assert.equal(res.json.status, 403, 'the gateway’s own status is reported faithfully');
+        assert.equal(res.json.retryable, false);
+        assert.match(res.json.error, /signature does not verify/, 'and its words are legible');
+      }, { uploadRoot: root });
+      assert.equal(received.length, 1);
+    });
+  });
+});
+
+test('POST /upload lets go of the socket when the gateway refuses mid-body', async () => {
+  // The likeliest failure this route has: the gateway judges the SIGNATURE off
+  // the request headers and answers 403 without ever reading the body, while we
+  // are still pumping a large attachment at it. Stopping the file read is only
+  // half of it — the ClientRequest still has an unfinished body, and NOTHING
+  // times it out (`req.setTimeout` is an inactivity timer, and the promise has
+  // already settled), so the socket is held open for nothing: one leaked
+  // descriptor per refused upload, on exactly the path a stale signature or an
+  // expiry skew takes. The refusal itself is asserted above; this pins the
+  // cleanup.
+  //
+  // 8 MiB so the body cannot be handed to the kernel in one go — the response
+  // lands while we are demonstrably still sending.
+  const big = Buffer.alloc(8 * 1024 * 1024, 0x41);
+
+  await withUploadRoot(async (root) => {
+    const file = await seedAttachment(root, 'msg123', 'big.bin', big);
+
+    // A receiver that answers on the headers and never touches `req`, which is
+    // what `withReceiver` cannot do: it reads the whole body first.
+    const live = new Set();
+    const gateway = http.createServer((req, res) => {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      res.end('{"error":"signature does not verify"}');
+    });
+    gateway.on('connection', (socket) => {
+      live.add(socket);
+      socket.on('close', () => live.delete(socket));
+    });
+    gateway.on('clientError', (_err, socket) => socket.destroy());
+    gateway.listen(0, LOOPBACK);
+    await once(gateway, 'listening');
+    const url = `http://${LOOPBACK}:${gateway.address().port}`
+      + '/b/reg_abc/big.bin?exp=1789999999999&sig=d3Jvbmc';
+
+    try {
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        const res = await postUpload(base, {
+          path: file,
+          url,
+          contentType: 'application/octet-stream',
+        });
+        assert.equal(res.status, 422);
+        assert.equal(res.json.status, 403);
+      }, { uploadRoot: root });
+
+      // Allow the close to land, then insist that it did.
+      for (let i = 0; i < 40 && live.size > 0; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      assert.equal(live.size, 0, 'the outbound socket is gone once the upload is refused');
+    } finally {
+      for (const socket of live) socket.destroy();
+      gateway.close();
+      await once(gateway, 'close');
+    }
+  });
+});
+
+test('the blob store’s own 5xx is retryable where its refusal is not', async () => {
+  // The same split /run draws: a deterministic refusal is 422 and must not be
+  // retried, while the far side being briefly broken is 5xx and the identical
+  // PUT can succeed. The gateway's verdict rides along either way.
+  await withUploadRoot(async (root) => {
+    const file = await seedAttachment(root, 'msg123', 'note.txt', 'hello');
+    const brokenGateway = (res) => { res.writeHead(503); res.end('{"error":"no backend"}'); };
+    await withReceiver(brokenGateway, async ({ base: gateway }) => {
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        const res = await postUpload(base, {
+          path: file,
+          url: `${gateway}/b/reg_abc/note.txt?exp=1789999999999&sig=dGVzdA`,
+          contentType: 'text/plain',
+        });
+        assert.equal(res.status, 502);
+        assert.equal(res.json.status, 503);
+        assert.equal(res.json.retryable, true);
+      }, { uploadRoot: root });
+    });
+  });
+});
+
+test('malformed /upload bodies are rejected before anything is dialled', async () => {
+  await withUploadRoot(async (root) => {
+    const file = await seedAttachment(root, 'msg123', 'note.txt', 'hello');
+    const dir = path.join(root, 'msg123');
+    await withReceiver(ok200, async ({ base: gateway, received }) => {
+      const url = `${gateway}/b/reg_abc/note.txt?exp=1789999999999&sig=dGVzdA`;
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        const cases = [
+          [{ url, contentType: 'text/plain' }, /path must be/],
+          [{ path: 42, url, contentType: 'text/plain' }, /path must be/],
+          [{ path: `${file}\u0000.png`, url, contentType: 'text/plain' }, /NUL/],
+          [{ path: file, contentType: 'text/plain' }, /url must be/],
+          // Not a URL at all, and a scheme this box will not dial: `file:` would
+          // turn an upload into a local copy.
+          [{ path: file, url: 'not-a-url', contentType: 'text/plain' }, /url must be/],
+          [{ path: file, url: 'file:///etc/passwd', contentType: 'text/plain' }, /url must be/],
+          [{ path: file, url }, /contentType must be/],
+          [{ path: file, url, contentType: 7 }, /contentType must be/],
+          // A header value cannot carry CR/LF, and a signature committed to a
+          // content type with one in it could never be verified anyway.
+          [{ path: file, url, contentType: 'text/plain\r\nX-Evil: 1' }, /contentType must be/],
+          [{ path: file, url, contentType: 'textplain' }, /contentType must be/],
+          // A directory resolves and is contained; it is still not a file.
+          [{ path: dir, url, contentType: 'text/plain' }, /regular file/],
+          // Inside the root, but nothing is there.
+          [{ path: path.join(root, 'msg123', 'gone.txt'), url, contentType: 'text/plain' }, /no such file/],
+        ];
+        for (const [body, expected] of cases) {
+          const res = await postUpload(base, body);
+          assert.ok(res.status === 400 || res.status === 404, `refused: ${JSON.stringify(body)}`);
+          assert.match(res.json.error, expected);
+          assert.equal(res.json.retryable, false, 'and says so: none of these is worth a retry');
+        }
+      }, { uploadRoot: root });
+      assert.equal(received.length, 0, 'no bad request ever reaches the gateway');
+    });
+  });
+});
+
+// The scrubber's guards belong IN the function, not at its call sites: it is
+// exported, so an invariant held only by `validateUploadRequest` running first
+// is an invariant the next caller does not inherit. An empty `url` is the case
+// that turns a scrubber into a shredder — `text.split('')` splits the message
+// into single characters and rejoining on the replacement interleaves it
+// between every one of them, which is the opposite of legible.
+test('withoutUrlSecrets leaves the text alone when there is no url to redact', () => {
+  assert.equal(withoutUrlSecrets('the upload failed', ''), 'the upload failed');
+  assert.equal(withoutUrlSecrets('the upload failed', undefined), 'the upload failed');
+  assert.equal(withoutUrlSecrets('', 'http://gw.test/b/r/x?exp=1&sig=abc'), '');
+  // The two halves it does do, kept beside the guard so the guard cannot be
+  // widened into a no-op without this failing.
+  assert.equal(
+    withoutUrlSecrets('PUT http://gw.test/b/r/x?exp=1&sig=abc failed', 'http://gw.test/b/r/x?exp=1&sig=abc'),
+    'PUT <signed url> failed',
+  );
+  assert.equal(
+    withoutUrlSecrets('signature abc is stale', 'http://gw.test/b/r/x?exp=1&sig=abc'),
+    'signature <signature> is stale',
+  );
+});
+
+test('POST /upload requires bearer', async () => {
+  await withUploadRoot(async (root) => {
+    const file = await seedAttachment(root, 'msg123', 'note.txt', 'hello');
+    await withReceiver(ok200, async ({ base: gateway, received }) => {
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        const body = JSON.stringify({
+          path: file,
+          url: `${gateway}/b/reg_abc/note.txt?exp=1789999999999&sig=dGVzdA`,
+          contentType: 'text/plain',
+        });
+        const noAuth = await request(base, {
+          method: 'POST', path: '/upload', headers: { 'content-type': 'application/json' }, body,
+        });
+        assert.equal(noAuth.status, 401);
+
+        const wrongSameLen = await request(base, {
+          method: 'POST',
+          path: '/upload',
+          headers: { ...bearer('x'.repeat(RUNNER_KEY.length)), 'content-type': 'application/json' },
+          body,
+        });
+        assert.equal(wrongSameLen.status, 401);
+      }, { uploadRoot: root });
+      assert.equal(received.length, 0, 'an unauthenticated caller cannot make this box fetch anything');
+    });
+  });
+});
+
+// A signed URL is a credential with the lifetime of its `exp` — up to 24 hours
+// of anybody-who-holds-it access to that object. The failure paths are where it
+// is most tempting to quote, and the failure text is the one value here expected
+// to reach a log. Both of them go through the scrubber, and the gateway's own
+// words are a THIRD PARTY's text: an error page that echoes the request URL
+// (which proxies routinely do) would otherwise carry the signature back out
+// through our own log line.
+const LOGGED_SIG = 'U0lHTkFUVVJFLURPLU5PVC1MT0c';
+
+test('a signed URL never reaches a log line when the gateway refuses', async () => {
+  const lines = [];
+  let res403;
+  await withUploadRoot(async (root) => {
+    const file = await seedAttachment(root, 'msg123', 'note.txt', 'hello');
+    let url;
+    // The refusal quotes the whole request URL back at us AND names the bare
+    // signature on its own — two shapes, because the scrubber has two halves
+    // and either alone leaves one of them standing.
+    const refuse = (res) => {
+      res.writeHead(403, { 'content-type': 'text/plain' });
+      res.end(`cannot PUT ${url} (sig ${LOGGED_SIG} rejected)`);
+    };
+    await withReceiver(refuse, async ({ base: gateway }) => {
+      url = `${gateway}/b/reg_abc/note.txt?exp=1789999999999&sig=${LOGGED_SIG}`;
+      await withServer(async () => ({ stdout: '' }), async (base) => {
+        const res = await postUpload(base, { path: file, url, contentType: 'text/plain' });
+        res403 = res.json;
+        assert.equal(res.status, 422);
+        assert.equal(res.json.status, 403, 'the verdict still crosses');
+        assert.ok(!JSON.stringify(res.json).includes(LOGGED_SIG), 'the signature does not');
+      }, { uploadRoot: root, log: (line) => lines.push(line) });
+
+      assert.ok(lines.some((l) => l.includes('/upload')), 'the request is still logged');
+      assert.ok(!lines.some((l) => l.includes(LOGGED_SIG)), 'no log line carries the signature');
+      assert.ok(!lines.some((l) => l.includes(url)), 'no log line carries the URL');
+      // Not even with the signature masked: the address alone names the object
+      // and its expiry, and the rule is that the signed URL does not appear.
+      const object = '/b/reg_abc/note.txt';
+      assert.ok(!lines.some((l) => l.includes(object)), 'nor the object it addresses');
+      assert.ok(!JSON.stringify(res403).includes(object), 'and the response says no more');
+    });
+  });
+});
+
+test('a signed URL never reaches a log line when the transfer itself fails', async () => {
+  const lines = [];
+  await withUploadRoot(async (root) => {
+    const file = await seedAttachment(root, 'msg123', 'note.txt', 'hello');
+    // Take the receiver down first, so the PUT cannot connect at all: the
+    // upload fails before any status exists to report.
+    let dead;
+    await withReceiver(ok200, async ({ base }) => { dead = base; });
+    const url = `${dead}/b/reg_abc/note.txt?exp=1789999999999&sig=${LOGGED_SIG}`;
+
+    await withServer(async () => ({ stdout: '' }), async (base) => {
+      const res = await postUpload(base, { path: file, url, contentType: 'text/plain' });
+      // Nothing was delivered, so this one IS worth retrying.
+      assert.equal(res.status, 502);
+      assert.equal(res.json.retryable, true);
+      assert.ok(!JSON.stringify(res.json).includes(LOGGED_SIG), 'the signature stays out of the error');
+    }, { uploadRoot: root, log: (line) => lines.push(line) });
+
+    assert.ok(lines.some((l) => l.includes('/upload')), 'the request is still logged');
+    assert.ok(!lines.some((l) => l.includes(LOGGED_SIG)), 'no log line carries the signature');
+    assert.ok(!lines.some((l) => l.includes(url)), 'no log line carries the URL');
+  });
 });
