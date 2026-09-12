@@ -284,6 +284,38 @@ test('sanitizedEnv strips secrets (incl. our own RUNNER_KEY) but keeps gog confi
   }
 });
 
+// The suffix list was `_TOKEN|_SECRET|_API_KEY|_PRIVATE_KEY` — four spellings of
+// "a key" with the bare one missing, which is why RUNNER_KEY needed a named
+// exclusion of its own. A bare `_KEY` rule covers the class, so the next
+// credential on this box is stripped on the day it is added rather than on the
+// day somebody remembers to name it.
+//
+// GOG_KEYRING_PASSWORD is the CONTROL: this box runs GOG_KEYRING_BACKEND=file
+// and that variable is what decrypts the keyring, so a `_PASSWORD` rule would
+// break every call. The widening stops at what the child does not read.
+test('sanitizedEnv strips a bare *_KEY but keeps the keyring password gog needs', () => {
+  const saved = { ...process.env };
+  const keys = ['MCP_BLOB_SIGNING_KEY', 'STRIPE_KEY', 'AWS_CREDENTIALS', 'GOG_KEYRING_PASSWORD', 'GOG_KEYRING_BACKEND'];
+  try {
+    process.env.MCP_BLOB_SIGNING_KEY = 'blob-signing-secret';
+    process.env.STRIPE_KEY = 'sk-live-secret';
+    process.env.AWS_CREDENTIALS = '/creds';
+    process.env.GOG_KEYRING_PASSWORD = 'keyring-pass';
+    process.env.GOG_KEYRING_BACKEND = 'file';
+    const env = sanitizedEnv();
+    assert.equal(env.MCP_BLOB_SIGNING_KEY, undefined);
+    assert.equal(env.STRIPE_KEY, undefined);
+    assert.equal(env.AWS_CREDENTIALS, undefined);
+    assert.equal(env.GOG_KEYRING_PASSWORD, 'keyring-pass');
+    assert.equal(env.GOG_KEYRING_BACKEND, 'file');
+  } finally {
+    for (const k of keys) {
+      if (!(k in saved)) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+});
+
 test('readBody rejects with tooLarge past the cap and stops buffering', async () => {
   // A fake request stream so we can drive the cap deterministically (an
   // integration test over real HTTP races the client's upload against the

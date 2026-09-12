@@ -221,7 +221,7 @@ safety flags before forwarding. Do not assume this service adds them.
 The service does **not** redact secrets — it returns raw stdout to the trusted
 Worker over HTTPS, and redaction happens at that Worker boundary. As
 defense-in-depth, the child `gog` process runs with ambient `*_TOKEN` /
-`*_SECRET` / `*_API_KEY` / `*_PRIVATE_KEY` env vars (and `GOG_ACCESS_TOKEN`,
+`*_SECRET` / `*_KEY` / `*_CREDENTIALS` env vars (and `GOG_ACCESS_TOKEN`,
 `GOOGLE_APPLICATION_CREDENTIALS`) stripped; `GOG_HOME` and `PATH` are preserved.
 
 ## Deploy

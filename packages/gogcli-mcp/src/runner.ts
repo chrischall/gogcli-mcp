@@ -236,12 +236,29 @@ function readonlyEnvEnabled(): boolean {
 // instead of the stored refresh token. The broader patterns are
 // defense-in-depth — the parent process's shell may have other Google /
 // cloud / API secrets in scope that the child has no business seeing.
+//
+// `_KEY`, not `_API_KEY|_PRIVATE_KEY`: those were four spellings of "a key"
+// with the bare one missing, and TWO credentials this repo hands its own
+// process fell in that gap. `MCP_BLOB_SIGNING_KEY` mints the signed blob URLs
+// a `deliver="url"` download is uploaded to — a signature IS the whole access
+// control on that store — and `GOG_RUNNER_KEY` is the bearer for the Fly
+// backend, where `POST /run` is arbitrary `gog` argv. Neither is read by the
+// child: both are spent HERE, and when `GOG_RUNNER_URL` is set nothing is
+// spawned at all. `_CREDENTIALS` generalises the named
+// GOOGLE_APPLICATION_CREDENTIALS above, which stays named because it is the
+// one gog itself would act on.
+//
+// The list is bounded by what the child LEGITIMATELY READS, which is why
+// `_PASSWORD` is deliberately NOT on it: `GOG_KEYRING_PASSWORD` decrypts gog's
+// own file keyring (`GOG_KEYRING_BACKEND=file`), so that rule would strip the
+// one credential the child needs and turn every call into an auth failure.
+// Both directions are tested — a widening with no control case is a guess.
 function sanitizedEnv(): NodeJS.ProcessEnv {
   const result: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (key === 'GOG_ACCESS_TOKEN') continue;
     if (key === 'GOOGLE_APPLICATION_CREDENTIALS') continue;
-    if (/(_TOKEN|_SECRET|_API_KEY|_PRIVATE_KEY)$/.test(key)) continue;
+    if (/(_TOKEN|_SECRET|_KEY|_CREDENTIALS)$/.test(key)) continue;
     result[key] = value;
   }
   return result;

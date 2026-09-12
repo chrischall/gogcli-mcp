@@ -499,7 +499,7 @@ describe('run', () => {
     }
   });
 
-  it('strips GOOGLE_APPLICATION_CREDENTIALS and *_TOKEN/*_SECRET/*_API_KEY/*_PRIVATE_KEY vars', async () => {
+  it('strips GOOGLE_APPLICATION_CREDENTIALS and *_TOKEN/*_SECRET/*_KEY/*_CREDENTIALS vars', async () => {
     const spawner = makeSpawner(0, '{}');
     const snapshot = {
       GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS,
@@ -524,6 +524,67 @@ describe('run', () => {
       expect(envPassed.AWS_SECRET).toBeUndefined();
       expect(envPassed.MY_PRIVATE_KEY).toBeUndefined();
       expect(envPassed.BENIGN_VAR).toBe('hello');
+    } finally {
+      for (const [k, v] of Object.entries(snapshot)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
+  // The suffix list was `_TOKEN|_SECRET|_API_KEY|_PRIVATE_KEY` — four spellings
+  // of "a key", none of which is a bare `_KEY`. Two credentials this repo hands
+  // its own process sit in exactly that gap: `MCP_BLOB_SIGNING_KEY` (mints the
+  // signed blob URLs a `deliver="url"` download is uploaded to) and
+  // `GOG_RUNNER_KEY` (the bearer for the Fly backend, and for `POST /upload`,
+  // which is arbitrary-gog-argv on that box). Neither is anything `gog` reads.
+  it('strips a bare *_KEY var — the host signing key and the runner bearer', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const snapshot = {
+      MCP_BLOB_SIGNING_KEY: process.env.MCP_BLOB_SIGNING_KEY,
+      GOG_RUNNER_KEY: process.env.GOG_RUNNER_KEY,
+      STRIPE_KEY: process.env.STRIPE_KEY,
+      AWS_CREDENTIALS: process.env.AWS_CREDENTIALS,
+    };
+    process.env.MCP_BLOB_SIGNING_KEY = 'blob-signing-secret';
+    process.env.GOG_RUNNER_KEY = 'runner-bearer-secret';
+    process.env.STRIPE_KEY = 'sk-live-secret';
+    process.env.AWS_CREDENTIALS = '/path/to/creds';
+    try {
+      await run(['docs', 'cat', 'id'], { spawner });
+      const envPassed = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
+      expect(envPassed.MCP_BLOB_SIGNING_KEY).toBeUndefined();
+      expect(envPassed.GOG_RUNNER_KEY).toBeUndefined();
+      expect(envPassed.STRIPE_KEY).toBeUndefined();
+      // `_CREDENTIALS`, generalising the one named GOOGLE_APPLICATION_CREDENTIALS.
+      expect(envPassed.AWS_CREDENTIALS).toBeUndefined();
+    } finally {
+      for (const [k, v] of Object.entries(snapshot)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
+  // The CONTROL on widening, and the reason the list is not simply "anything
+  // that smells like a credential": `GOG_KEYRING_PASSWORD` is how gog decrypts
+  // its own file keyring (`GOG_KEYRING_BACKEND=file`), so a `_PASSWORD` rule
+  // would strip the one credential the child legitimately needs and turn every
+  // call into an auth failure. `GOG_KEYRING_BACKEND` is the same story without
+  // the secret.
+  it('keeps the credentials gog itself reads from the environment', async () => {
+    const spawner = makeSpawner(0, '{}');
+    const snapshot = {
+      GOG_KEYRING_PASSWORD: process.env.GOG_KEYRING_PASSWORD,
+      GOG_KEYRING_BACKEND: process.env.GOG_KEYRING_BACKEND,
+    };
+    process.env.GOG_KEYRING_PASSWORD = 'keyring-pass';
+    process.env.GOG_KEYRING_BACKEND = 'file';
+    try {
+      await run(['docs', 'cat', 'id'], { spawner });
+      const envPassed = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
+      expect(envPassed.GOG_KEYRING_PASSWORD).toBe('keyring-pass');
+      expect(envPassed.GOG_KEYRING_BACKEND).toBe('file');
     } finally {
       for (const [k, v] of Object.entries(snapshot)) {
         if (v === undefined) delete process.env[k];

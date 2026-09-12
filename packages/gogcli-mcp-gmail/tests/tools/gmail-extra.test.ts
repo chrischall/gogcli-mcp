@@ -2843,7 +2843,7 @@ describe('inline/file param conflicts are rejected before gog runs', () => {
 // Every flag below is env-bound in gog, so an ambient GOG_GMAIL_* var on the
 // host silently changes the SHAPE of the output (or, for the attachment
 // download, makes gog reject the caller's own argument). runner.ts strips only
-// *_TOKEN/*_SECRET/*_API_KEY/*_PRIVATE_KEY, and on the remote runner the child
+// *_TOKEN/*_SECRET/*_KEY/*_CREDENTIALS, and on the remote runner the child
 // env belongs to a backend this wrapper does not control — so the tests below
 // assert the flag is PINNED on every call, not merely pushed when true.
 // ---------------------------------------------------------------------------

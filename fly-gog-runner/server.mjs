@@ -510,6 +510,17 @@ export function summarizeAuthProbe(stdout) {
 // below still runs. A variable on this box is shared by every request, so
 // honouring one would rebuild the shared-identity problem from the other
 // direction. Only a value that belongs to one call may act for one call.
+//
+// `_KEY`, not `_API_KEY|_PRIVATE_KEY`: those were four spellings of "a key"
+// with the bare one missing, which is exactly why RUNNER_KEY needed a named
+// exclusion beside them. The bare rule covers the class, so the next
+// credential on this box is stripped the day it is added rather than the day
+// somebody remembers to name it; RUNNER_KEY stays named because it is the one
+// whose leak hands a child the `/run` escape hatch. Kept OFF the list:
+// `_PASSWORD`, because GOG_KEYRING_PASSWORD is what decrypts gog's own file
+// keyring here (GOG_KEYRING_BACKEND=file) — the widening stops at what the
+// child legitimately reads, and both directions are tested. Mirrors runner.ts's
+// own list; the two are one rule, documented once in the README.
 export function sanitizedEnv(accessToken) {
   const result = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -517,7 +528,7 @@ export function sanitizedEnv(accessToken) {
     if (key === 'GOOGLE_APPLICATION_CREDENTIALS') continue;
     if (key === 'RUNNER_KEY') continue;
     if (key === 'PORT') continue;
-    if (/(_TOKEN|_SECRET|_API_KEY|_PRIVATE_KEY)$/.test(key)) continue;
+    if (/(_TOKEN|_SECRET|_KEY|_CREDENTIALS)$/.test(key)) continue;
     result[key] = value;
   }
   if (accessToken) result.GOG_ACCESS_TOKEN = accessToken;
