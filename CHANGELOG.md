@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.30.0](https://github.com/chrischall/gogcli-mcp/compare/v2.29.1...v2.30.0) (2026-09-13)
+
+
+### Features
+
+* **gmail:** deliver an attachment as a signed URL an agent can curl ([#348](https://github.com/chrischall/gogcli-mcp/issues/348)) ([b3fbe31](https://github.com/chrischall/gogcli-mcp/commit/b3fbe3109c0133094fb32bb69d0d3dc5692e07d4))
+
+
+### Bug Fixes
+
+* **gmail:** sanitise the caller's messageId on every delivery path, not just the new one ([#351](https://github.com/chrischall/gogcli-mcp/issues/351)) ([7cd51ed](https://github.com/chrischall/gogcli-mcp/commit/7cd51edcb686c4e70c55a1fe28305cca279c8509))
+* require gog 0.40.0 so inserts before row 1 and styled slide text replaces work ([#354](https://github.com/chrischall/gogcli-mcp/issues/354)) ([076ac17](https://github.com/chrischall/gogcli-mcp/commit/076ac17e11cb82ddadc3716320568dc1f87c801f))
+
 ## [2.29.1](https://github.com/chrischall/gogcli-mcp/compare/v2.29.0...v2.29.1) (2026-09-06)
 
 
