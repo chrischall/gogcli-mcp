@@ -1701,6 +1701,20 @@ describe('gog_gmail_drafts_get', () => {
 });
 
 describe('gog_gmail_drafts_create', () => {
+  // The draft-side tools never mutate the mailbox irreversibly on their own —
+  // saving a draft is always reversible — so unlike gog_gmail_reply/send/
+  // forward/autoreply they take no `confirmed` param and dispatch on the
+  // first call. A caller that (mistakenly) passes `confirmed: true` here
+  // must not have it silently swallowed as if it did something; zod would
+  // strip it, and this pins that gog never sees it either way.
+  it('requires no confirmation — writes the draft on the first call, with no confirmed flag', async () => {
+    await harness.callTool('gog_gmail_drafts_create', { subject: 'Hi', body: 'Hello', confirmed: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'create', '--subject=Hi', '--body=Hello', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
   it('calls runOrDiagnose with minimal required flags', async () => {
     await harness.callTool('gog_gmail_drafts_create', {
       subject: 'Hi',
@@ -2058,7 +2072,7 @@ describe('gog_gmail_drafts_send', () => {
 
 describe('gog_gmail_forward', () => {
   it('calls runOrDiagnose with messageId and required --to', async () => {
-    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com' });
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', confirmed: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'forward', 'm1', '--to=a@b.com'],
       { account: undefined },
@@ -2074,6 +2088,7 @@ describe('gog_gmail_forward', () => {
       note: 'FYI',
       from: 'me@x.com',
       skipAttachments: true,
+      confirmed: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
@@ -2090,11 +2105,53 @@ describe('gog_gmail_forward', () => {
   });
 
   it('omits --skip-attachments when false', async () => {
-    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', skipAttachments: false });
+    await harness.callTool('gog_gmail_forward', {
+      messageId: 'm1', to: 'a@b.com', skipAttachments: false, confirmed: true,
+    });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'forward', 'm1', '--to=a@b.com'],
       { account: undefined },
     );
+  });
+
+  // ==========================================================================
+  // THE CONFIRMATION GATE. gog_gmail_forward sends on the first call unless the
+  // caller stops to check what would go out — the exact gap that let a
+  // "save it as a draft" request send for real (see gog_gmail_reply's block
+  // below for the incident this guards against).
+  // ==========================================================================
+  it('sends nothing and returns a preview when confirmed is omitted', async () => {
+    const result = await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com, b@c.com' });
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    const preview = JSON.parse(result.content[0].text as string);
+    expect(preview.preview).toBe(true);
+    expect(preview.sent).toBe(false);
+    expect(preview.recipients).toEqual(['a@b.com', 'b@c.com']);
+    expect(preview.recipientCount).toBe(2);
+  });
+
+  it('sends nothing when confirmed is explicitly false', async () => {
+    const result = await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', confirmed: false });
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    expect(JSON.parse(result.content[0].text as string).sent).toBe(false);
+  });
+
+  it('logs a gmail_dispatch event with the recipients after a confirmed send', async () => {
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', confirmed: true });
+    const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+    expect(event.event).toBe('gmail_dispatch');
+    expect(event.tool).toBe('gog_gmail_forward');
+    expect(event.recipientCount).toBe(1);
+    writeSpy.mockRestore();
+  });
+
+  it('does not log when the confirmed send fails', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(errorResult('boom'));
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', confirmed: true });
+    expect(writeSpy).not.toHaveBeenCalled();
+    writeSpy.mockRestore();
   });
 });
 
@@ -2105,6 +2162,16 @@ describe('gog_gmail_forward', () => {
 // a regression would silently break — is that these route to `drafts <verb>`
 // and therefore never send.
 describe('gog_gmail_drafts_reply', () => {
+  // No confirmation gate here — it reuses replySchema verbatim (not the
+  // send-side's sendReplySchema), and staging a draft is reversible.
+  it('requires no confirmation, unlike gog_gmail_reply', async () => {
+    await harness.callTool('gog_gmail_drafts_reply', { messageId: 'm1', body: 'Thanks', confirmed: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'reply', 'm1', '--body=Thanks', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
   it('routes to gmail drafts reply, not the sending reply', async () => {
     await harness.callTool('gog_gmail_drafts_reply', { messageId: 'm1', body: 'Thanks' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -2161,6 +2228,14 @@ describe('gog_gmail_drafts_reply', () => {
 });
 
 describe('gog_gmail_drafts_reply_all', () => {
+  it('requires no confirmation, unlike gog_gmail_reply_all', async () => {
+    await harness.callTool('gog_gmail_drafts_reply_all', { messageId: 'm1', body: 'Thanks all', confirmed: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'reply-all', 'm1', '--body=Thanks all', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
   it('routes to gmail drafts reply-all', async () => {
     await harness.callTool('gog_gmail_drafts_reply_all', { messageId: 'm1', body: 'Thanks all' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -2187,6 +2262,14 @@ describe('gog_gmail_drafts_reply_all', () => {
 });
 
 describe('gog_gmail_drafts_forward', () => {
+  it('requires no confirmation, unlike gog_gmail_forward', async () => {
+    await harness.callTool('gog_gmail_drafts_forward', { messageId: 'm1', to: 'a@b.com', confirmed: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'forward', 'm1', '--to=a@b.com'],
+      { account: undefined },
+    );
+  });
+
   it('omits --to entirely when no recipients are given', async () => {
     await harness.callTool('gog_gmail_drafts_forward', { messageId: 'm1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -2233,7 +2316,7 @@ describe('gog_gmail_drafts_forward', () => {
 
 describe('gog_gmail_autoreply', () => {
   it('calls runOrDiagnose with query and --body', async () => {
-    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks' });
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks', confirmed: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'autoreply', 'is:unread', '--body=Thanks'],
       { account: undefined },
@@ -2254,6 +2337,7 @@ describe('gog_gmail_autoreply', () => {
       markRead: true,
       skipBulk: true,
       allowSelf: true,
+      confirmed: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
@@ -2282,6 +2366,7 @@ describe('gog_gmail_autoreply', () => {
       markRead: false,
       skipBulk: false,
       allowSelf: false,
+      confirmed: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'autoreply', 'is:unread', '--body=Thanks'],
@@ -2290,11 +2375,110 @@ describe('gog_gmail_autoreply', () => {
   });
 
   it('supports HTML-only body (no plain --body)', async () => {
-    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', bodyHtml: '<p>Hi</p>' });
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', bodyHtml: '<p>Hi</p>', confirmed: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'autoreply', 'is:unread', '--body-html=<p>Hi</p>'],
       { account: undefined },
     );
+  });
+
+  // ==========================================================================
+  // THE CONFIRMATION GATE. autoreply is the highest-blast-radius tool here — it
+  // dispatches across every message a query matches, not just one — so its
+  // preview runs a bounded search instead of just echoing the query back.
+  // ==========================================================================
+  it('sends nothing and previews the matching senders when confirmed is omitted', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(JSON.stringify({
+      threads: [{ from: 'Alice <alice@example.com>' }, { from: 'Bob <bob@example.com>' }],
+    })));
+    const result = await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['gmail', 'search', 'is:unread', '--max=20'], { account: undefined });
+    const preview = JSON.parse(result.content[0].text as string);
+    expect(preview.preview).toBe(true);
+    expect(preview.sent).toBe(false);
+    expect(preview.matchCount).toBe(2);
+    expect(preview.sampleSenders).toEqual(['alice@example.com', 'bob@example.com']);
+  });
+
+  it('measures bodyLength from bodyHtml when no plain body is given', async () => {
+    const result = await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', bodyHtml: '<p>Hi</p>' });
+    expect(JSON.parse(result.content[0].text as string).bodyLength).toBe('<p>Hi</p>'.length);
+  });
+
+  it('measures bodyLength as zero when neither body nor bodyHtml is given', async () => {
+    const result = await harness.callTool('gog_gmail_autoreply', { query: 'is:unread' });
+    expect(JSON.parse(result.content[0].text as string).bodyLength).toBe(0);
+  });
+
+  it('treats a valid-JSON search response with no threads array as zero matches', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const result = await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks' });
+    const preview = JSON.parse(result.content[0].text as string);
+    expect(preview.matchCount).toBe(0);
+  });
+
+  it('treats a non-text search result as zero matches', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue({ content: [{ type: 'image', data: Buffer.from('x').toString('base64'), mimeType: 'image/png' }] });
+    const result = await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks' });
+    const preview = JSON.parse(result.content[0].text as string);
+    expect(preview.matchCount).toBe(0);
+  });
+
+  it('treats an unparseable search response as zero matches rather than crashing', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('not json at all'));
+    const result = await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks' });
+    const preview = JSON.parse(result.content[0].text as string);
+    expect(preview.matchCount).toBe(0);
+    expect(preview.sampleSenders).toEqual([]);
+  });
+
+  it('surfaces a search failure at preview time instead of a false-looking preview', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(errorResult('search failed'));
+    const result = await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks' });
+    expect(result.isError).toBe(true);
+  });
+
+  it('logs a gmail_dispatch event with the actually-replied-to senders after a confirmed send', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(JSON.stringify({
+      autoReply: {
+        results: [
+          { action: 'replied', messageId: 'm1', replyTo: 'alice@example.com' },
+          { action: 'skipped', messageId: 'm2', reason: 'no_reply_recipient' },
+        ],
+      },
+    })));
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks', confirmed: true });
+    const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+    expect(event.tool).toBe('gog_gmail_autoreply');
+    expect(event.recipientCount).toBe(1);
+    writeSpy.mockRestore();
+  });
+
+  it('does not log when the confirmed autoreply itself fails', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(errorResult('boom'));
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks', confirmed: true });
+    expect(writeSpy).not.toHaveBeenCalled();
+    writeSpy.mockRestore();
+  });
+
+  it('logs zero recipients for a non-text confirmed response rather than crashing', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue({ content: [{ type: 'image', data: Buffer.from('x').toString('base64'), mimeType: 'image/png' }] });
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks', confirmed: true });
+    const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+    expect(event.recipientCount).toBe(0);
+    writeSpy.mockRestore();
+  });
+
+  it('logs zero recipients rather than crashing on an unparseable confirmed response', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('not json at all'));
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: 'Thanks', confirmed: true });
+    const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+    expect(event.recipientCount).toBe(0);
+    writeSpy.mockRestore();
   });
 });
 
@@ -2791,7 +2975,7 @@ describe('large payloads route to file args', () => {
   });
 
   it('gog_gmail_forward routes a large note to --note-file', async () => {
-    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', note: big });
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', note: big, confirmed: true });
     expect(args()).toEqual([
       'gmail', 'forward', 'm1', '--to=a@b.com',
       { kind: 'file', flag: 'note-file', contents: big, ext: undefined },
@@ -2800,7 +2984,7 @@ describe('large payloads route to file args', () => {
 
   it('gog_gmail_autoreply routes a large body to --body-file but keeps bodyHtml inline', async () => {
     // gog 0.34.1 gives `gmail autoreply` a --body-file but no --body-html-file.
-    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: big, bodyHtml: '<p>Hi</p>' });
+    await harness.callTool('gog_gmail_autoreply', { query: 'is:unread', body: big, bodyHtml: '<p>Hi</p>', confirmed: true });
     expect(args()).toEqual([
       'gmail', 'autoreply', 'is:unread',
       { kind: 'file', flag: 'body-file', contents: big, ext: undefined },

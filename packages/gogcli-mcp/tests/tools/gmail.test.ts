@@ -230,7 +230,7 @@ describe('gog_gmail_send', () => {
   it('calls run with required args', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"id":"msg2"}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_send', { to: 'bob@example.com', subject: 'Hi', body: 'Hello' });
+    await harness.callTool('gog_gmail_send', { to: 'bob@example.com', subject: 'Hi', body: 'Hello', confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', 'send', '--to=bob@example.com', '--subject=Hi', '--body=Hello'],
       { account: undefined },
@@ -248,6 +248,7 @@ describe('gog_gmail_send', () => {
       bcc: 'dave@example.com',
       replyToMessageId: 'msg1',
       threadId: 'thread1',
+      confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -267,7 +268,7 @@ describe('gog_gmail_send', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_send', {
       to: 'bob@example.com', subject: 'Re: Hi', body: 'Sure',
-      replyToMessageId: 'msg1', quote: true,
+      replyToMessageId: 'msg1', quote: true, confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -287,6 +288,7 @@ describe('gog_gmail_send', () => {
       subject: 'Evidence',
       body: 'See attached',
       attach: ['/tmp/shot.png', '/tmp/notes.pdf'],
+      confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -312,6 +314,7 @@ describe('gog_gmail_send', () => {
       subject: 'Layouts',
       body: 'See attached',
       attachInline: [{ filename: 'pendant-layouts.png', contentBase64: png }],
+      confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -333,6 +336,7 @@ describe('gog_gmail_send', () => {
       body: 'x',
       attach: ['/tmp/on-server.pdf'],
       attachInline: [{ filename: 'from-client.txt', contentBase64: bytes }],
+      confirmed: true,
     });
     const args = vi.mocked(runner.run).mock.calls[0][0];
     expect(args).toContain('--attach=/tmp/on-server.pdf');
@@ -348,6 +352,7 @@ describe('gog_gmail_send', () => {
     await harness.callTool('gog_gmail_send', {
       to: 'bob@example.com', subject: 's', body: 'b',
       attachInline: [{ filename, contentBase64: Buffer.from('x').toString('base64') }],
+      confirmed: true,
     });
     const args = vi.mocked(runner.run).mock.calls[0][0];
     expect(args.at(-1)).toMatchObject({ filename });
@@ -380,7 +385,7 @@ describe('gog_gmail_send', () => {
   it('leaves the arg list untouched when attachInline is absent', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_send', { to: 'b@e.com', subject: 'Hi', body: 'Hello' });
+    await harness.callTool('gog_gmail_send', { to: 'b@e.com', subject: 'Hi', body: 'Hello', confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', 'send', '--to=b@e.com', '--subject=Hi', '--body=Hello'],
       { account: undefined },
@@ -395,7 +400,7 @@ describe('gog_gmail_send', () => {
     const harness = await setupHandlers();
     const big = 'x'.repeat(PAYLOAD_INLINE_MAX + 1);
     await harness.callTool('gog_gmail_send', {
-      to: 'bob@example.com', subject: 'Long', body: big, cc: 'carol@example.com',
+      to: 'bob@example.com', subject: 'Long', body: big, cc: 'carol@example.com', confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -412,7 +417,7 @@ describe('gog_gmail_send', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     const atLimit = 'x'.repeat(PAYLOAD_INLINE_MAX);
-    await harness.callTool('gog_gmail_send', { to: 'b@x.com', subject: 'S', body: atLimit });
+    await harness.callTool('gog_gmail_send', { to: 'b@x.com', subject: 'S', body: atLimit, confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', 'send', '--to=b@x.com', '--subject=S', `--body=${atLimit}`],
       { account: undefined },
@@ -422,8 +427,82 @@ describe('gog_gmail_send', () => {
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Send failed'));
     const harness = await setupHandlers();
-    const result = await harness.callTool('gog_gmail_send', { to: 'x', subject: 'y', body: 'z' });
+    const result = await harness.callTool('gog_gmail_send', { to: 'x', subject: 'y', body: 'z', confirmed: true });
     expect(result.content[0].text).toBe('Error: Send failed');
+  });
+
+  // ==========================================================================
+  // THE CONFIRMATION GATE. Unlike reply/reply-all, send's recipients are
+  // explicit params, so its preview needs no extra gog call at all.
+  // ==========================================================================
+  describe('confirmation gate', () => {
+    it('sends nothing and returns a preview when confirmed is omitted', async () => {
+      const harness = await setupHandlers();
+      const result = await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', cc: 'carol@example.com', subject: 'Hi', body: 'Hello',
+        replyToMessageId: 'm1', quote: true,
+      });
+      expect(runner.run).not.toHaveBeenCalled();
+      const preview = JSON.parse(result.content[0].text as string);
+      expect(preview.preview).toBe(true);
+      expect(preview.sent).toBe(false);
+      expect(preview.recipients).toEqual(['bob@example.com', 'carol@example.com']);
+      expect(preview.recipientCount).toBe(2);
+      expect(preview.threaded).toBe(true);
+      expect(preview.quoting).toBe(true);
+    });
+
+    it('sends nothing when confirmed is explicitly false', async () => {
+      const harness = await setupHandlers();
+      const result = await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 'Hi', body: 'Hello', confirmed: false,
+      });
+      expect(runner.run).not.toHaveBeenCalled();
+      expect(JSON.parse(result.content[0].text as string).sent).toBe(false);
+    });
+
+    it('reports threaded: false and quoting: false when neither is set', async () => {
+      const harness = await setupHandlers();
+      const result = await harness.callTool('gog_gmail_send', { to: 'b@e.com', subject: 'Hi', body: 'Hello' });
+      const preview = JSON.parse(result.content[0].text as string);
+      expect(preview.threaded).toBe(false);
+      expect(preview.quoting).toBe(false);
+    });
+
+    it('logs a gmail_dispatch event with the recipients after a confirmed send', async () => {
+      vi.mocked(runner.run).mockResolvedValue('{}');
+      const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const harness = await setupHandlers();
+      await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 'Hi', body: 'Hello', confirmed: true,
+      });
+      const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+      expect(event.event).toBe('gmail_dispatch');
+      expect(event.tool).toBe('gog_gmail_send');
+      expect(event.recipientCount).toBe(1);
+      writeSpy.mockRestore();
+    });
+
+    it('does not log when the confirmed send fails', async () => {
+      vi.mocked(runner.run).mockRejectedValue(new Error('Send failed'));
+      const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const harness = await setupHandlers();
+      await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 'Hi', body: 'Hello', confirmed: true,
+      });
+      expect(writeSpy).not.toHaveBeenCalled();
+      writeSpy.mockRestore();
+    });
+
+    it('still validates attachments before either preview or send', async () => {
+      const harness = await setupHandlers();
+      const res = await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 's', body: 'b',
+        attachInline: [{ filename: 'a.png', contentBase64: 'not!valid!base64!' }],
+      });
+      expect(res.isError).toBe(true);
+      expect(runner.run).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -458,7 +537,7 @@ describe.each([
   it('calls run with the message id and body, quoting by default', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"id":"msg9"}');
     const harness = await setupHandlers();
-    await harness.callTool(tool, { messageId: 'msg1', body: 'Sounds good' });
+    await harness.callTool(tool, { messageId: 'msg1', body: 'Sounds good', confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', subcommand, 'msg1', '--body=Sounds good', '--auto-from-addressed-alias=false'],
       { account: undefined },
@@ -468,7 +547,7 @@ describe.each([
   it('appends --no-quote only when noQuote is set', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool(tool, { messageId: 'msg1', body: 'Ack', noQuote: true });
+    await harness.callTool(tool, { messageId: 'msg1', body: 'Ack', noQuote: true, confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', subcommand, 'msg1', '--body=Ack', '--no-quote', '--auto-from-addressed-alias=false'],
       { account: undefined },
@@ -488,6 +567,7 @@ describe.each([
       subject: 'Re: Custom',
       from: 'me@example.com',
       account: 'me@example.com',
+      confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -503,7 +583,7 @@ describe.each([
   it('pins --auto-from-addressed-alias on when requested', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool(tool, { messageId: 'msg1', body: 'Hi', autoFromAddressedAlias: true });
+    await harness.callTool(tool, { messageId: 'msg1', body: 'Hi', autoFromAddressedAlias: true, confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', subcommand, 'msg1', '--body=Hi', '--auto-from-addressed-alias'],
       { account: undefined },
@@ -517,6 +597,7 @@ describe.each([
       messageId: 'msg1',
       body: 'See attached',
       attach: ['/tmp/shot.png', '/tmp/notes.pdf'],
+      confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -536,6 +617,7 @@ describe.each([
       messageId: 'msg1',
       body: 'Bytes',
       attachInline: [{ filename: 'a.txt', contentBase64: bytes }],
+      confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -551,7 +633,7 @@ describe.each([
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     const big = 'x'.repeat(PAYLOAD_INLINE_MAX + 1);
-    await harness.callTool(tool, { messageId: 'msg1', body: big });
+    await harness.callTool(tool, { messageId: 'msg1', body: big, confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       [
         'gmail', subcommand, 'msg1',
@@ -565,7 +647,7 @@ describe.each([
   it('returns error text on failure', async () => {
     vi.mocked(runner.run).mockRejectedValue(new Error('Reply failed'));
     const harness = await setupHandlers();
-    const result = await harness.callTool(tool, { messageId: 'msg1', body: 'x' });
+    const result = await harness.callTool(tool, { messageId: 'msg1', body: 'x', confirmed: true });
     expect(result.content[0].text).toBe('Error: Reply failed');
   });
 });
@@ -577,7 +659,7 @@ describe('gog_gmail_reply — full flag set', () => {
   it('calls runOrDiagnose with messageId and --body', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Thanks' });
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Thanks', confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', 'reply', 'm1', '--body=Thanks', '--auto-from-addressed-alias=false'],
       { account: undefined },
@@ -603,6 +685,7 @@ describe('gog_gmail_reply — full flag set', () => {
       signatureFrom: 'alias@x.com',
       signatureFile: '/tmp/sig.txt',
       account: 'me@gmail.com',
+      confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -630,7 +713,9 @@ describe('gog_gmail_reply — full flag set', () => {
   it('omits --no-quote and --signature when false', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', noQuote: false, signature: false });
+    await harness.callTool('gog_gmail_reply', {
+      messageId: 'm1', body: 'Hi', noQuote: false, signature: false, confirmed: true,
+    });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', 'reply', 'm1', '--body=Hi', '--auto-from-addressed-alias=false'],
       { account: undefined },
@@ -642,7 +727,7 @@ describe('gog_gmail_reply_all — full flag set', () => {
   it('uses the reply-all subcommand', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_reply_all', { messageId: 'm1', body: 'Thanks all' });
+    await harness.callTool('gog_gmail_reply_all', { messageId: 'm1', body: 'Thanks all', confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', 'reply-all', 'm1', '--body=Thanks all', '--auto-from-addressed-alias=false'],
       { account: undefined },
@@ -658,6 +743,7 @@ describe('gog_gmail_reply_all — full flag set', () => {
       cc: ['x@y.com', 'z@y.com'],
       remove: ['drop@y.com'],
       signatureFile: '/tmp/sig.html',
+      confirmed: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -672,6 +758,151 @@ describe('gog_gmail_reply_all — full flag set', () => {
     );
   });
 });
+
+// ============================================================================
+// THE CONFIRMATION GATE. gog_gmail_reply / reply_all send on the first call
+// unless the caller stops to check who it's actually going to — the exact gap
+// that let a "save it as a draft reply" request send for real to three
+// people, including outside counsel, with no review step. Every metadata-get
+// mock below returns real headers so the preview's `recipients` field is
+// something other than an empty array — an empty-array preview would pass a
+// test that a genuinely broken recipient computation would also pass.
+// ============================================================================
+describe.each([
+  ['gog_gmail_reply', 'reply' as const],
+  ['gog_gmail_reply_all', 'reply-all' as const],
+])('%s — confirmation gate', (tool, subcommand) => {
+  const METADATA = JSON.stringify({
+    headers: { from: 'Alice <alice@example.com>', to: 'me@example.com', cc: 'Carol <carol@law-firm.example>', subject: 'Contract terms' },
+  });
+
+  it('fetches the target message but sends nothing when confirmed is omitted', async () => {
+    vi.mocked(runner.run).mockResolvedValue(METADATA);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'Sounds good' });
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'm1', '--format=metadata'], { account: undefined });
+    const preview = JSON.parse(result.content[0].text as string);
+    expect(preview.preview).toBe(true);
+    expect(preview.sent).toBe(false);
+    expect(preview.note).toContain('confirmed: true');
+    if (subcommand === 'reply') {
+      expect(preview.recipients).toEqual(['alice@example.com']);
+    } else {
+      expect(preview.recipients).toEqual(['alice@example.com', 'me@example.com', 'carol@law-firm.example']);
+    }
+  });
+
+  it('sends nothing when confirmed is explicitly false', async () => {
+    vi.mocked(runner.run).mockResolvedValue(METADATA);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'x', confirmed: false });
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(result.content[0].text as string).sent).toBe(false);
+  });
+
+  it('falls back to "Re: <original subject>" in the preview when no subject override is given', async () => {
+    vi.mocked(runner.run).mockResolvedValue(METADATA);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'x' });
+    expect(JSON.parse(result.content[0].text as string).subject).toBe('Re: Contract terms');
+  });
+
+  it('prefers an explicit subject override in the preview over the inherited one', async () => {
+    vi.mocked(runner.run).mockResolvedValue(METADATA);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'x', subject: 'Custom subject' });
+    expect(JSON.parse(result.content[0].text as string).subject).toBe('Custom subject');
+  });
+
+  it('actually sends and logs the resolved recipients once confirmed: true is passed', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce(METADATA)
+      .mockResolvedValueOnce('{"id":"sent1"}');
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'Sounds good', confirmed: true });
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(runner.run).toHaveBeenNthCalledWith(1, ['gmail', 'get', 'm1', '--format=metadata'], { account: undefined });
+    expect(runner.run).toHaveBeenNthCalledWith(
+      2,
+      ['gmail', subcommand, 'm1', '--body=Sounds good', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+    expect(result.content[0].text).toBe('{"id":"sent1"}');
+    const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+    expect(event.event).toBe('gmail_dispatch');
+    expect(event.tool).toBe(tool);
+    expect(event.recipientCount).toBeGreaterThan(0);
+    writeSpy.mockRestore();
+  });
+
+  it('does not log when the confirmed send itself fails', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce(METADATA)
+      .mockRejectedValueOnce(new Error('quota exceeded'));
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'x', confirmed: true });
+    expect(result.isError).toBe(true);
+    expect(writeSpy).not.toHaveBeenCalled();
+    writeSpy.mockRestore();
+  });
+
+  it('surfaces a bad messageId as a diagnosed error, without ever building a preview', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('message not found'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'bad', body: 'x' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('message not found');
+  });
+
+  it('measures bodyLength from bodyHtml when no plain body is given', async () => {
+    vi.mocked(runner.run).mockResolvedValue(METADATA);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', bodyHtml: '<p>Hi</p>' });
+    expect(JSON.parse(result.content[0].text as string).bodyLength).toBe('<p>Hi</p>'.length);
+  });
+
+  it('measures bodyLength as zero when neither body nor bodyHtml is given', async () => {
+    vi.mocked(runner.run).mockResolvedValue(METADATA);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1' });
+    expect(JSON.parse(result.content[0].text as string).bodyLength).toBe(0);
+  });
+
+  it('ignores a non-string header value in the metadata response', async () => {
+    vi.mocked(runner.run).mockResolvedValue(JSON.stringify({
+      headers: { from: 'alice@example.com', subject: 42 },
+    }));
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'x' });
+    const preview = JSON.parse(result.content[0].text as string);
+    expect(preview.recipients).toEqual(['alice@example.com']);
+    expect(preview.subject).toBeUndefined();
+  });
+
+  it('treats an unparseable metadata response as empty headers rather than crashing', async () => {
+    vi.mocked(runner.run).mockResolvedValue('not json at all');
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'x' });
+    const preview = JSON.parse(result.content[0].text as string);
+    expect(preview.preview).toBe(true);
+    expect(preview.recipients).toEqual([]);
+  });
+
+  it('applies to/cc/bcc adds and remove drops on top of the inherited recipients in the preview', async () => {
+    vi.mocked(runner.run).mockResolvedValue(METADATA);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, {
+      messageId: 'm1', body: 'x', to: ['dave@example.com'], remove: ['carol@law-firm.example'],
+    });
+    const preview = JSON.parse(result.content[0].text as string);
+    expect(preview.recipients).not.toContain('carol@law-firm.example');
+    expect(preview.recipients).toContain('dave@example.com');
+  });
+});
+
 describe('gog_gmail_reply body-vs-file conflicts', () => {
   it('rejects bodyHtml plus bodyHtmlFile before gog runs', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
@@ -699,7 +930,9 @@ describe('gog_gmail_reply body-vs-file conflicts', () => {
   it('passes bodyHtmlFile alone through as --body-html-file', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', bodyHtmlFile: '/tmp/b.html' });
+    await harness.callTool('gog_gmail_reply', {
+      messageId: 'm1', body: 'Hi', bodyHtmlFile: '/tmp/b.html', confirmed: true,
+    });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', 'reply', 'm1', '--body=Hi', '--body-html-file=/tmp/b.html', '--auto-from-addressed-alias=false'],
       { account: undefined },
@@ -711,7 +944,7 @@ describe('gog_gmail_reply body-vs-file conflicts', () => {
     const harness = await setupHandlers();
     const big = 'x'.repeat(PAYLOAD_INLINE_MAX + 1);
     const bigHtml = `<p>${'y'.repeat(PAYLOAD_INLINE_MAX)}</p>`;
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: big, bodyHtml: bigHtml });
+    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: big, bodyHtml: bigHtml, confirmed: true });
     expect(runner.run).toHaveBeenCalledWith(
       [
         'gmail', 'reply', 'm1',

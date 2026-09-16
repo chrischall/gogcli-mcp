@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore} from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, confirmedParam, dispatchPreviewResult, extractEmails, logGmailDispatch} from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
@@ -2352,6 +2352,33 @@ async function forkAwareDraftFailure(
     : draftForkedResult(tool, draftId, text, report, replyTarget);
 }
 
+// autoreply is bulk and query-driven — there is no single "the message" to
+// fetch headers from, so the preview instead runs the SAME search (bounded by
+// the same max) to show which messages would actually be matched, rather
+// than just echoing the query text back.
+function parseSearchSenders(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw) as { threads?: Array<{ from?: string }> };
+    return Array.isArray(parsed.threads) ? parsed.threads.map((t) => t.from).filter((v): v is string => Boolean(v)) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Unlike the preview, the confirmed send needs no extra call: gog's own
+// autoreply response already reports the resolved reply target per matched
+// message (internal/cmd/gmail_autoreply.go's gmailAutoReplyResult.ReplyTo,
+// serialized as `replyTo`) — skipped messages simply omit it.
+function parseAutoReplyRecipients(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw) as { autoReply?: { results?: Array<{ replyTo?: string }> } };
+    const results = parsed.autoReply?.results ?? [];
+    return results.map((r) => r.replyTo).filter((v): v is string => Boolean(v));
+  } catch {
+    return [];
+  }
+}
+
 export function registerExtraGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_raw', {
     description: 'Dump the raw Gmail API response as JSON (lossless; for scripting and LLM consumption).',
@@ -3254,7 +3281,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   }
 
   server.registerTool('gog_gmail_drafts_create', {
-    description: 'Create a new Gmail draft. Recipients (to/cc/bcc) are optional; omit them (or set omitRecipients) to create a recipient-less draft as an accidental-send guard. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) — don\'t pass a thread id into replyToMessageId, which mis-threads silently.',
+    description: 'SAVES ONLY. DOES NOT SEND. Create a new Gmail draft. Recipients (to/cc/bcc) are optional; omit them (or set omitRecipients) to create a recipient-less draft as an accidental-send guard. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) — don\'t pass a thread id into replyToMessageId, which mis-threads silently.',
     inputSchema: draftWriteSchema,
   }, async ({ account, returnFull, ...flags }) => {
     const args: GogArg[] = ['gmail', 'drafts', 'create'];
@@ -3400,7 +3427,12 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_forward', {
-    description: 'Forward an existing Gmail message to new recipients.',
+    description:
+      'SENDS MAIL — requires confirmed: true. Without it, this call sends nothing and instead returns a preview '
+      + '(recipients, note size, attachment handling) so you can check it first; call again with confirmed: true '
+      + 'and the same other arguments to actually send. To STAGE a forward instead of sending it, use '
+      + 'gog_gmail_drafts_forward, which never needs confirmation. '
+      + 'Forward an existing Gmail message to new recipients.',
     annotations: { destructiveHint: true },
     inputSchema: {
       messageId: z.string().describe('Gmail message ID to forward'),
@@ -3410,16 +3442,27 @@ export function registerExtraGmailTools(server: McpServer): void {
       note: z.string().optional().describe('Introductory text above the forwarded message'),
       from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
       skipAttachments: z.boolean().optional().describe('Do not include original attachments'),
+      confirmed: confirmedParam,
       account: accountParam,
     },
-  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, account }) => {
+  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, confirmed, account }) => {
+    const recipients = extractEmails(to, cc, bcc);
+    if (!confirmed) {
+      return dispatchPreviewResult('gmail.forward', {
+        messageId, to, cc, bcc, recipients, recipientCount: recipients.length,
+        noteLength: note?.length ?? 0,
+        skipAttachments: Boolean(skipAttachments),
+      });
+    }
     const args: GogArg[] = ['gmail', 'forward', messageId, `--to=${to}`];
     if (cc) args.push(`--cc=${cc}`);
     if (bcc) args.push(`--bcc=${bcc}`);
     if (note) args.push(payloadArg('note', 'note-file', note));
     if (from) args.push(`--from=${from}`);
     if (skipAttachments) args.push('--skip-attachments');
-    return runOrDiagnose(args, { account });
+    const result = await runOrDiagnose(args, { account });
+    if (!result.isError) logGmailDispatch('gog_gmail_forward', recipients, account);
+    return result;
   });
 
   // gog >= 0.36.0: the draft-side twins of reply / reply-all / forward. They
@@ -3442,7 +3485,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_drafts_reply', {
     description:
-      'Save a reply to a Gmail message as a draft (to the original sender only).' + draftReplyNote.replace('%s', '') +
+      'SAVES ONLY. DOES NOT SEND. Save a reply to a Gmail message as a draft (to the original sender only).' + draftReplyNote.replace('%s', '') +
       ' Prefer this over gog_gmail_drafts_create + replyToMessageId when the draft is a real reply: that route threads ' +
       'the draft but leaves recipients and quoting for you to reconstruct.',
     inputSchema: { ...replySchema, returnFull: draftWriteSchema.returnFull },
@@ -3454,7 +3497,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_drafts_reply_all', {
     description:
-      'Save a reply-all to a Gmail message as a draft (sender plus every To/Cc recipient).' +
+      'SAVES ONLY. DOES NOT SEND. Save a reply-all to a Gmail message as a draft (sender plus every To/Cc recipient).' +
       draftReplyNote.replace('%s', '_all') +
       ' Use the remove flag to drop recipients BEFORE the draft exists, rather than editing them out afterwards.',
     inputSchema: { ...replySchema, returnFull: draftWriteSchema.returnFull },
@@ -3466,7 +3509,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_drafts_forward', {
     description:
-      'Save a forward of a Gmail message as a draft. Same composition as gog_gmail_forward — the original ' +
+      'SAVES ONLY. DOES NOT SEND. Save a forward of a Gmail message as a draft. Same composition as gog_gmail_forward — the original ' +
       'message quoted below an optional note, with its attachments carried over — but nothing is sent. ' +
       'Unlike gog_gmail_forward, `to` is OPTIONAL here: omit it to stage a recipient-less forward as an ' +
       'accidental-send guard, then add recipients with gog_gmail_drafts_update before gog_gmail_drafts_send.',
@@ -3493,7 +3536,14 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_autoreply', {
-    description: 'Reply once to all messages matching a Gmail search query. Use the label flag to dedupe across runs.',
+    description:
+      'SENDS MAIL, to every message matching the query — requires confirmed: true. Without it, this call sends '
+      + 'nothing and instead returns a preview (a bounded search against the same query, showing how many messages '
+      + 'match and who sent them) so you can check it first; call again with confirmed: true and the same other '
+      + 'arguments to actually send. There is no draft-only counterpart for this one: it acts across a query-defined '
+      + 'set of messages rather than a single reply target, so gog has no "stage all of these as drafts" command to '
+      + 'stand in for it — the preview here is this tool\'s only pre-send check. '
+      + 'Reply once to all messages matching a Gmail search query. Use the label flag to dedupe across runs.',
     annotations: { destructiveHint: true },
     inputSchema: {
       query: z.string().describe('Gmail search query'),
@@ -3508,9 +3558,27 @@ export function registerExtraGmailTools(server: McpServer): void {
       markRead: z.boolean().optional().describe('Mark threads as read after auto-replying'),
       skipBulk: z.boolean().optional().describe('Skip auto-generated/list mail'),
       allowSelf: z.boolean().optional().describe('Allow replying to messages sent by your own address'),
+      confirmed: confirmedParam,
       account: accountParam,
     },
-  }, async ({ query, max, subject, body, bodyHtml, from, replyTo, label, archive, markRead, skipBulk, allowSelf, account }) => {
+  }, async ({ query, max, subject, body, bodyHtml, from, replyTo, label, archive, markRead, skipBulk, allowSelf, confirmed, account }) => {
+    if (!confirmed) {
+      const searchResult = await runOrDiagnose(['gmail', 'search', query, `--max=${max ?? 20}`], { account });
+      if (searchResult.isError) return searchResult;
+      const senders = parseSearchSenders(resultText(searchResult) ?? '{}');
+      const sampleSenders = extractEmails(...senders);
+      return dispatchPreviewResult('gmail.autoreply', {
+        query,
+        matchCount: senders.length,
+        sampleSenders,
+        subject: subject || undefined,
+        bodyLength: (body ?? bodyHtml ?? '').length,
+        max: max ?? 20,
+        label: label || 'AutoReplied',
+        archive: Boolean(archive),
+        markRead: Boolean(markRead),
+      });
+    }
     const args: GogArg[] = ['gmail', 'autoreply', query];
     if (max !== undefined) args.push(`--max=${max}`);
     if (subject) args.push(`--subject=${subject}`);
@@ -3526,7 +3594,12 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (markRead) args.push('--mark-read');
     if (skipBulk) args.push('--skip-bulk');
     if (allowSelf) args.push('--allow-self');
-    return runOrDiagnose(args, { account });
+    const result = await runOrDiagnose(args, { account });
+    if (!result.isError) {
+      const recipients = extractEmails(...parseAutoReplyRecipients(resultText(result) ?? '{}'));
+      logGmailDispatch('gog_gmail_autoreply', recipients, account);
+    }
+    return result;
   });
 
   server.registerTool('gog_gmail_messages_search', {
