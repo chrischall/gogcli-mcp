@@ -37,7 +37,7 @@ import { handleAuthorize } from './connector-login.js';
 // connector with all ~360 tools at once. Add whichever paths you want as separate
 // connectors in claude.ai (each authorizes with the same connector key).
 
-const VERSION = '2.30.0'; // x-release-please-version
+const VERSION = '3.0.0'; // x-release-please-version
 
 type WorkerEnv = { FLY_ENDPOINT: string };
 
