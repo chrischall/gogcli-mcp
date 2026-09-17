@@ -14,7 +14,7 @@ import { registerExtraSheetsTools } from '../../gogcli-mcp-sheets/src/tools/shee
 import { registerExtraGmailTools } from '../../gogcli-mcp-gmail/src/tools/gmail-extra.js';
 import { registerExtraDriveTools } from '../../gogcli-mcp-drive/src/tools/drive-extra.js';
 import { registerExtraDocsTools } from '../../gogcli-mcp-docs/src/tools/docs-extra.js';
-import { makeFlyExecutor, wrapServer } from './connector-runtime.js';
+import { createFlyExecutorResolver, wrapServer } from './connector-runtime.js';
 import { gogAuth, CONNECTOR_INSTRUCTIONS, type GogProps } from './connector-auth.js';
 import { handleAuthorize } from './connector-login.js';
 
@@ -24,7 +24,7 @@ import { handleAuthorize } from './connector-login.js';
 // every assembled `gog` arg-array by forwarding it to a Fly.io backend (a Worker
 // cannot spawn processes). The bridge is the `runExecutor` AsyncLocalStorage seam
 // in `runner.ts`: `wrapServer` scopes each tool handler in `runExecutor.run(...)`
-// so the handler's `run()` forwards to the per-session Fly executor.
+// so the handler's `run()` forwards to the authenticated caller's Fly executor.
 //
 // One stateless Worker serves several MCP endpoints under one OAuth login:
 //   /mcp          all-services base (BASE_TOOL_REGISTRARS)
@@ -41,6 +41,11 @@ const VERSION = '2.30.0'; // x-release-please-version
 
 type WorkerEnv = { FLY_ENDPOINT: string };
 
+// One resolver per Worker isolate. Reusing an executor for the same backend
+// credential preserves makeFlyExecutor's refusal-probe throttle across
+// stateless requests; different credentials retain independent throttles.
+const resolveFlyExecutor = createFlyExecutorResolver();
+
 // Build a fresh SDK v2 server for every HTTP request. That is the transport
 // model required by MCP 2026-07-28 multi round-trip requests: input_required
 // returns to the client, and the later request reconstructs the server from
@@ -54,8 +59,8 @@ function makeHandler(route: string, registrars: ToolRegistrar[]) {
         const executor = ((args, options) => {
           const props = getMcpAuthContext()?.props as GogProps | undefined;
           if (!props?.key) throw new Error('Missing authenticated gogcli connector key');
-          return makeFlyExecutor(env.FLY_ENDPOINT, props.key)(args, options);
-        }) satisfies ReturnType<typeof makeFlyExecutor>;
+          return resolveFlyExecutor(env.FLY_ENDPOINT, props.key)(args, options);
+        }) satisfies ReturnType<typeof resolveFlyExecutor>;
 
         // `instructions` is the connector's only channel to the model that is
         // not a tool description. It explains that connector authentication

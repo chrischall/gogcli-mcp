@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { run, runExecutor } from '../src/runner.js';
 import type { GogArg, GogExecutor, GogFileArg } from '../src/runner.js';
-import { makeFlyExecutor, wrapServer, RunnerTransportError, isRunnerTransportError } from '../src/connector-runtime.js';
+import { createFlyExecutorResolver, makeFlyExecutor, wrapServer, RunnerTransportError, isRunnerTransportError } from '../src/connector-runtime.js';
 import { runOrDiagnose } from '../src/tools/utils.js';
 import { makeAccessTokenSource, clearAccessTokenCache } from '../src/google-token.js';
 
@@ -9,6 +9,26 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe('createFlyExecutorResolver', () => {
+  it('reuses one executor for the same endpoint and key while isolating different credentials', () => {
+    const factory = vi.fn((_endpoint: string, _key: string): GogExecutor => vi.fn());
+    const resolve = createFlyExecutorResolver(factory);
+
+    const first = resolve('https://runner.example', 'key-a');
+    expect(resolve('https://runner.example', 'key-a')).toBe(first);
+    expect(resolve('https://runner.example', 'key-b')).not.toBe(first);
+    expect(resolve('https://other.example', 'key-a')).not.toBe(first);
+    expect(factory).toHaveBeenCalledTimes(3);
+  });
+
+  it('uses makeFlyExecutor by default', () => {
+    const resolve = createFlyExecutorResolver();
+    expect(resolve('https://runner.example', 'key-a')).toBe(
+      resolve('https://runner.example', 'key-a'),
+    );
+  });
 });
 
 describe('wrapServer', () => {

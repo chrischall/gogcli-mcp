@@ -59,7 +59,7 @@ This opens a browser to authorize the CLI against your Cloudflare account.
 
 ### 3. Create the OAuth KV namespace
 
-The connector stores OAuth state and per-user session data (including each
+The connector stores OAuth state and per-user grant data (including each
 user's encrypted connector key) in a KV namespace bound as `OAUTH_KV` (see
 `wrangler.jsonc`).
 
@@ -192,10 +192,12 @@ npm run worker:test                # Worker-specific suite (Miniflare / real Wor
 2. Paste the deployed URL with `/mcp` appended — the custom domain
    `https://connector.gogcli.nullnet.app/mcp` (or, before the custom domain's
    TLS is ready, `https://gogcli-connector.<your-subdomain>.workers.dev/mcp`).
+   The legacy sessionful `/sse` endpoint was removed with the MCP 2026-07-28
+   migration; existing connector registrations must use `/mcp`.
 3. Claude opens the connector's login page (served by the Worker at
    `/authorize`) and prompts for a **gogcli connector key**. Enter the same
    `RUNNER_KEY` you set on the Fly backend in step 1. The key is verified against
-   the backend's `/health` endpoint before the session is created.
+   the backend's `/health` endpoint before the OAuth grant is created.
 
 **If the login page shows an error, read which of the two it is** — they are not
 the same problem and only one of them is about your key:
@@ -231,11 +233,11 @@ If those work, the deploy is verified end-to-end.
 - **Field login, not Google OAuth.** Each user who adds the connector logs in
   with the **connector key** (the Fly backend's `RUNNER_KEY`) via the Worker's
   `/authorize` page. The key is verified (`GET <FLY_ENDPOINT>/health` with the
-  key as a bearer token) before the session is created.
+  key as a bearer token) before the OAuth grant is created.
 - That key is stored **encrypted at rest** in the OAuth provider's KV-backed
-  props (`OAUTH_KV`), scoped to that session, and turned into a per-session Fly
-  executor by `worker.ts`'s `buildClient`. It is used only to authenticate calls
-  to `<FLY_ENDPOINT>/run`.
+  props (`OAUTH_KV`), scoped to that grant, and resolved to a cached Fly
+  executor for each stateless MCP request. It is used only to authenticate
+  calls to `<FLY_ENDPOINT>/run`.
 - **Google credentials never reach the Worker.** The Google OAuth refresh token
   lives inside the Fly backend's `gog` install; the Worker only ever forwards
   assembled `gog` arg-arrays and gets back stdout.
@@ -270,7 +272,7 @@ land in the MCP host's server log.
 | `connect.google-unmeasured` | Connect time: nothing was learned about the credential — the runner is older than `GET /health/google` (HTTP 404), was draining, the probe timed out, `gog` could not be run at all, its output could not be parsed, or it declined to state validity (`measured:false`) — or it answered without stating `measured` at all, in which case nothing is read out of its `ok` either. **This is a fact about the probe, not about the credential**; it is never reported as ill health. |
 | `refusal.google-ok` | **The one record that means "we cannot explain this."** Google refused a real hosted call, and a live check of the same credential taken seconds later succeeded — so neither a dead grant nor the 7-day cliff accounts for it. Emitted at `error` level because it is the only evidence that could ever justify building automatic recovery on the hosted path; its continued absence is what retires that idea. |
 | `refusal.google-unhealthy` | Google refused a hosted call and the live check **reached a verdict** that agrees the credential is refused (`measured:true`). `reason` carries the runner's classification (e.g. `invalid_grant`). This is the expected shape of the weekly Testing-mode expiry, and the user must re-authorize. |
-| `refusal.google-unmeasured` | Google refused a hosted call and the live check reached no verdict — the runner predates `GET /health/google` (HTTP 404), the probe was throttled (at most one per minute per session), too little of the call's deadline remained, or the runner answered `measured:false` (it timed out, `gog` could not be run, the output could not be parsed) or did not state `measured` at all. **A fact about the probe, not about the credential.** |
+| `refusal.google-unmeasured` | Google refused a hosted call and the live check reached no verdict — the runner predates `GET /health/google` (HTTP 404), the probe was throttled (at most one per minute per backend credential in one Worker isolate), too little of the call's deadline remained, or the runner answered `measured:false` (it timed out, `gog` could not be run, the output could not be parsed) or did not state `measured` at all. **A fact about the probe, not about the credential.** |
 
 Read `measured` before `ok`, always. The runner reports **both**, because "is the
 Google layer healthy" and "did anything find out" are independent questions and
@@ -333,7 +335,8 @@ The reading is deliberately cheap and deliberately powerless:
 - It is **skipped when `gog` already said `invalid_grant`** (that path logs
   `grant.dead`). Spending a Google API call to be told what gog just said would
   cost the most on the single most common failure and learn nothing.
-- It is **throttled to one per minute per session** and bounded by whatever is
+- It is **throttled to one per minute per backend credential in each Worker
+  isolate** and bounded by whatever is
   left of the tool call's own deadline. `/health/google` spawns a real `gog auth
   list --check`, which costs a Google API call and takes the keyring's exclusive
   `flock` — `auth list` → `store.ListTokens()` → `withWriteLock` →
@@ -367,7 +370,7 @@ Two limits worth knowing before you read these lines as a live status:
 
 - **Rotate the connector key:** set a new `RUNNER_KEY` on the Fly backend
   (`fly secrets set RUNNER_KEY=…`); every user re-adds the connector with the new
-  key. (Old sessions stop working the moment the backend stops honouring the old
+  key. (Existing OAuth grants stop working the moment the backend stops honouring the old
   key.)
 - **Tear down the Worker:**
 
@@ -376,6 +379,6 @@ Two limits worth knowing before you read these lines as a live status:
   npx wrangler delete
   ```
 
-  Deleting the KV namespace invalidates every stored session — everyone will
+  Deleting the KV namespace invalidates every stored OAuth grant — everyone will
   need to log in again if it's redeployed.
 - **Tear down the backend:** `fly apps destroy <app>` (see `fly-gog-runner/README.md`).

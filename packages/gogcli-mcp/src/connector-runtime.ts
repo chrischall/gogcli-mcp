@@ -504,14 +504,11 @@ export function makeFlyExecutor(
   // Throttle state for the refusal probe, held PER EXECUTOR rather than in a
   // module-level map.
   //
-  // That is the scope the thing being throttled actually has: on the Worker one
-  // executor is built per agent session (`worker.ts` `init()`), on stdio one per
-  // process (`remote-runner.ts`). So a session that is hammering a refused
-  // credential rate-limits itself without a second, unrelated session's probe
-  // being suppressed by it — a module global would let one caller's retry loop
-  // silence everybody else's first and only measurement. It also means the state
-  // dies with the session instead of accumulating endpoints for the isolate's
-  // lifetime.
+  // That is the scope the thing being throttled actually has: the stateless
+  // Worker caches one executor per endpoint + connector key for the isolate,
+  // while stdio builds one per process (`remote-runner.ts`). Callers sharing a
+  // backend credential therefore share its throttle, without one credential's
+  // retry loop suppressing the first measurement for another credential.
   let lastProbeAt = Number.NEGATIVE_INFINITY;
 
   /**
@@ -860,10 +857,36 @@ async function attempt(
   return stdout;
 }
 
+/**
+ * Cache Fly executors by endpoint and connector key for one runtime isolate.
+ *
+ * `makeFlyExecutor` owns the refusal-probe throttle state, so resolving a new
+ * executor for every stateless tool call would reset that state and allow each
+ * retry to spawn another keyring-locking Google probe.
+ */
+export function createFlyExecutorResolver(
+  factory: (endpoint: string, key: string) => GogExecutor = makeFlyExecutor,
+): (endpoint: string, key: string) => GogExecutor {
+  const byEndpoint = new Map<string, Map<string, GogExecutor>>();
+  return (endpoint, key) => {
+    let byKey = byEndpoint.get(endpoint);
+    if (!byKey) {
+      byKey = new Map();
+      byEndpoint.set(endpoint, byKey);
+    }
+    let executor = byKey.get(key);
+    if (!executor) {
+      executor = factory(endpoint, key);
+      byKey.set(key, executor);
+    }
+    return executor;
+  };
+}
+
 // Wrap an McpServer in a Proxy whose `registerTool` (and `tool`, if any
 // registrar uses it) intercepts the tool handler so it runs inside the
 // `runExecutor` ALS scope. This is the crux of the connector: it lets the
-// UNCHANGED base registrars forward every `gog` call to the per-session Fly
+// UNCHANGED base registrars forward every `gog` call to the request's Fly
 // executor without any change to the registrars or `runner.ts` — when a
 // handler's `run()` looks up `runExecutor.getStore()` it finds `executor` and
 // forwards instead of spawning. Everything else proxies through via Reflect.

@@ -76,6 +76,7 @@ DISPLAY_TZ=<IANA>     # zone for *Display fields and for interpreting naive gog 
 GOG_TIMEZONE=<IANA>   # zone gog itself formats in; pinned on the Fly runner, keep in sync with DISPLAY_TZ
 GOG_RUNNER_URL=<url>  # run gog on the Fly backend instead of spawning the binary (remote-runner.ts)
 GOG_RUNNER_KEY=<key>  # bearer for that backend; BOTH or neither — either alone is refused, not silently spawned
+GOG_GMAIL_TRUSTED_DOMAINS=<csv> # additional domains excluded from external-recipient audit alerts
 ```
 
 `GOG_RUNNER_URL` + `GOG_RUNNER_KEY` are what let a host with no `gog` binary

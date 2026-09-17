@@ -116,6 +116,14 @@ describe('logGmailDispatch', () => {
     expect(event.externalRecipients).toEqual([]);
   });
 
+  it('treats unresolved desktop placeholders as unset env vars', () => {
+    process.env.GOG_GMAIL_TRUSTED_DOMAINS = '${user_config.trusted_domains}';
+    process.env.GOG_ACCOUNT = '${user_config.account}';
+    logGmailDispatch('gog_gmail_send', ['person@user_config.trusted_domains']);
+    const event = loggedEvent();
+    expect(event.externalRecipients).toEqual(['person@user_config.trusted_domains']);
+  });
+
   it('treats a recipient with no @ as external, not a crash', () => {
     logGmailDispatch('gog_gmail_send', ['not-an-email'], 'me@example.com');
     const event = loggedEvent();

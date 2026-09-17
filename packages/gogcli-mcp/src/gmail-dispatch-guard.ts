@@ -1,5 +1,5 @@
 import type { CallToolResult, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
-import { requireConfirmation } from '@chrischall/mcp-utils';
+import { readEnvVar, requireConfirmation } from '@chrischall/mcp-utils';
 
 // ============================================================================
 // THE SAFETY RAIL. gog_gmail_reply / reply_all / send / forward / autoreply are
@@ -58,14 +58,14 @@ export function extractEmails(...values: Array<string | undefined | null>): stri
 // the account itself never reads as a surprise. Comma-separated, additive.
 function trustedDomains(account: string | undefined): Set<string> {
   const domains = new Set<string>();
-  const raw = process.env.GOG_GMAIL_TRUSTED_DOMAINS;
+  const raw = readEnvVar('GOG_GMAIL_TRUSTED_DOMAINS');
   if (raw) {
     for (const part of raw.split(',')) {
       const domain = part.trim().toLowerCase();
       if (domain) domains.add(domain);
     }
   }
-  const acct = account ?? process.env.GOG_ACCOUNT;
+  const acct = account ?? readEnvVar('GOG_ACCOUNT');
   const at = acct?.indexOf('@') ?? -1;
   if (acct && at > -1) domains.add(acct.slice(at + 1).toLowerCase());
   return domains;

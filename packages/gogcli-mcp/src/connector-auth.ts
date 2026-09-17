@@ -25,8 +25,8 @@ export interface ConnectorAuth<Props> {
  * The gogcli remote connector authenticates each user with a single long-lived
  * personal "connector key" — a shared secret (the Fly backend's `RUNNER_KEY`)
  * that authorizes calls to that user's own `gog` backend on Fly.io. There is no
- * refresh cycle: `worker.ts`'s `buildClient` turns this key straight into a
- * per-session Fly executor. These props are encrypted at rest in `OAUTH_KV` by
+ * refresh cycle: `worker.ts` resolves this key to a cached Fly executor for
+ * each stateless request. These props are encrypted at rest in `OAUTH_KV` by
  * the OAuth provider.
  *
  * NOTE: this is a FIELD LOGIN (a personal key), NOT Google OAuth. The Google
