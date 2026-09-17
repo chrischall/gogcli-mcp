@@ -13,7 +13,7 @@ export type { RunnerFailureKind } from './runner.js';
 
 // Runtime helpers for the Cloudflare connector (worker.ts), split out here so
 // they can be unit-tested under the node pool — worker.ts itself imports the
-// Worker-only `@chrischall/mcp-connector`/`agents` runtime and cannot load in
+// Worker-only `agents` runtime and cannot load in
 // node. These helpers touch only the `runExecutor` seam and global `fetch`.
 
 // Mirrors runner.ts's TIMEOUT_MS: the budget the stdio path gives a `gog` call

@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { viewParam, resolveView } from '@chrischall/mcp-utils';
 import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken } from './utils.js';
@@ -82,7 +82,7 @@ export function registerCalendarTools(server: McpServer): void {
       + 'gog returns only 10 events by default, so a wide date range is USUALLY INCOMPLETE: raise max, or page with pageToken until the response carries no nextPageToken. '
       + 'A response carrying "truncated": true is an incomplete view — never conclude an event does not exist from one.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       calendarId: z.string().optional().describe('Calendar ID (default: primary calendar)'),
       from: z.string().optional().describe('Start time filter (RFC3339, date, or natural language)'),
       to: z.string().optional().describe('End time filter (RFC3339, date, or natural language). Mutually exclusive with today and with days.'),
@@ -105,7 +105,7 @@ export function registerCalendarTools(server: McpServer): void {
           + 'listing\'s bytes — plus etag/iCalUID/kind. Ask for full when you need a body or a guest list.',
       }),
       account: accountParam,
-    },
+    }),
   }, async ({ calendarId, from, to, days, today, query, max, pageToken, page, all, eventTypes, timezone, view, account }) => {
     const args = ['calendar', 'events'];
     if (calendarId) args.push(calendarId);
@@ -134,12 +134,12 @@ export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_get', {
     description: 'Get a specific calendar event by ID.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),
       timezone: z.string().optional().describe('Display timezone for event times (IANA name, e.g. America/New_York, or "local" for the system timezone). Default: the event\'s timezone, then its calendar\'s timezone.'),
       account: accountParam,
-    },
+    }),
   }, async ({ calendarId, eventId, timezone, account }) => {
     const args = ['calendar', 'event', calendarId, eventId];
     if (timezone) args.push(`--timezone=${timezone}`);
@@ -149,7 +149,7 @@ export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_create', {
     description: 'Create a calendar event. Set withZoom=true to attach a Zoom meeting (requires Zoom S2S OAuth setup via gog_zoom_auth_setup; the join URL + meeting ID + passcode are appended to the event description — Google rejects native conference card writes from non-Workspace-Marketplace OAuth clients).',
     annotations: { destructiveHint: false },
-    inputSchema: {
+    inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID (use "primary" for the default calendar)'),
       summary: z.string().describe('Event title'),
       from: z.string().describe('Start time (RFC3339 or date for all-day events)'),
@@ -162,7 +162,7 @@ export function registerCalendarTools(server: McpServer): void {
       withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event (requires Zoom S2S OAuth setup)'),
       ...reminderParams,
       account: accountParam,
-    },
+    }),
   }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, timezone, withZoom, reminders, noReminders, account }) => {
     const args = ['calendar', 'create', calendarId, `--summary=${summary}`, `--from=${from}`, `--to=${to}`];
     if (description) args.push(`--description=${description}`);
@@ -178,7 +178,7 @@ export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_update', {
     description: 'Update an existing calendar event. Zoom: withZoom adds a Zoom meeting, regenerateZoom replaces the existing one, removeZoom strips it. removeMeet clears the event\'s Google Meet conference data (e.g. before attaching another provider). Conference flags are independent — use one per call.',
     annotations: { destructiveHint: false },
-    inputSchema: {
+    inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),
       summary: z.string().optional().describe('New event title'),
@@ -195,7 +195,7 @@ export function registerCalendarTools(server: McpServer): void {
       removeMeet: z.boolean().optional().describe('Remove the event\'s Google Meet video conference (clears conference data only)'),
       ...reminderParams,
       account: accountParam,
-    },
+    }),
   }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, removeMeet, reminders, noReminders, account }) => {
     const args = ['calendar', 'update', calendarId, eventId];
     if (summary !== undefined) args.push(`--summary=${summary}`);
@@ -217,11 +217,11 @@ export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_delete', {
     description: 'Delete a calendar event.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ calendarId, eventId, account }) => {
     // gog gates this delete behind a confirmation; the runner injects
     // --no-input, so without --force it refuses at runtime.
@@ -231,13 +231,13 @@ export function registerCalendarTools(server: McpServer): void {
   server.registerTool('gog_calendar_respond', {
     description: 'Respond to a calendar event invitation.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),
       status: z.enum(['accepted', 'declined', 'tentative']).describe('Response status'),
       comment: z.string().optional().describe('Optional comment to include with response'),
       account: accountParam,
-    },
+    }),
   }, async ({ calendarId, eventId, status, comment, account }) => {
     const args = ['calendar', 'respond', calendarId, eventId, `--status=${status}`];
     if (comment) args.push(`--comment=${comment}`);

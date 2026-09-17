@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import {
   accountParam,
@@ -35,10 +35,10 @@ export function registerAppScriptTools(server: McpServer): void {
       'Get an Apps Script project\'s metadata: title, creator, create/update times, and the parent Drive file when the '
       + 'project is bound to a Sheet, Doc or Form. Use gog_appscript_content to read the actual code.' + apiEnableNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       scriptId: scriptIdParam,
       account: accountParam,
-    },
+    }),
   }, async ({ scriptId, account }) => {
     return runOrDiagnose(['appscript', 'get', scriptId], { account });
   });
@@ -49,10 +49,10 @@ export function registerAppScriptTools(server: McpServer): void {
       + 'tool to reach for when the question is "what does this script do"; it needs no filesystem, so it works the same '
       + 'on a hosted deployment as it does locally, unlike gog_appscript_pull.' + apiEnableNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       scriptId: scriptIdParam,
       account: accountParam,
-    },
+    }),
   }, async ({ scriptId, account }) => {
     return runOrDiagnose(['appscript', 'content', scriptId], { account });
   });
@@ -65,12 +65,12 @@ export function registerAppScriptTools(server: McpServer): void {
       + 'reach them. Use gog_appscript_content there instead — it returns the same source in the response. Existing files '
       + 'are left alone unless overwrite is set. Read-only as far as Google is concerned: nothing is pushed back.'
       + apiEnableNote,
-    inputSchema: {
+    inputSchema: z.object({
       scriptId: scriptIdParam,
       dir: z.string().describe('Destination directory, resolved on the machine where gog runs'),
       overwrite: z.boolean().optional().describe('Overwrite files that already exist in dir'),
       account: accountParam,
-    },
+    }),
   }, async ({ scriptId, dir, overwrite, account }) => {
     const args = ['appscript', 'pull', scriptId, dir];
     if (overwrite) args.push('--overwrite');
@@ -82,11 +82,11 @@ export function registerAppScriptTools(server: McpServer): void {
       'Create a new, empty Apps Script project. Pass parentId to bind it to a Drive file (a Sheet, Doc or Form), which is '
       + 'what makes the script a container-bound script with access to that document; omit it for a standalone project. '
       + 'gog cannot upload code, so the project starts empty either way.' + apiEnableNote,
-    inputSchema: {
+    inputSchema: z.object({
       title: z.string().describe('Project title'),
       parentId: z.string().optional().describe('Drive file ID to bind the project to (Sheet, Doc or Form). Omit for a standalone project.'),
       account: accountParam,
-    },
+    }),
   }, async ({ title, parentId, account }) => {
     const args = ['appscript', 'create', `--title=${title}`];
     if (parentId) args.push(`--parent-id=${parentId}`);
@@ -99,11 +99,11 @@ export function registerAppScriptTools(server: McpServer): void {
       + 'deployment ID from here is what gog_appscript_run_function needs when a script is not running in dev mode.'
       + apiEnableNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       scriptId: scriptIdParam,
       ...paginationParams,
       account: accountParam,
-    },
+    }),
   }, async ({ scriptId, max, pageToken, page, all, account }) => {
     const args = ['appscript', 'deployments', scriptId];
     pushPaginationFlags(args, { max, pageToken, page, all });
@@ -115,11 +115,11 @@ export function registerAppScriptTools(server: McpServer): void {
       'List a project\'s saved versions — the immutable snapshots deployments point at, with their numbers and '
       + 'descriptions. Useful for answering "what is actually deployed" next to gog_appscript_deployments.' + apiEnableNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       scriptId: scriptIdParam,
       ...paginationParams,
       account: accountParam,
-    },
+    }),
   }, async ({ scriptId, max, pageToken, page, all, account }) => {
     const args = ['appscript', 'versions', scriptId];
     pushPaginationFlags(args, { max, pageToken, page, all });
@@ -136,13 +136,13 @@ export function registerAppScriptTools(server: McpServer): void {
       + 'deployed version, and only works if the account owns the script. '
       + 'This is NOT the escape hatch — gog_appscript_run is that.' + apiEnableNote,
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       scriptId: scriptIdParam,
       functionName: z.string().describe('Name of the function to call, e.g. "doWork"'),
       params: z.string().optional().describe('Function parameters as a JSON ARRAY of positional arguments, e.g. \'["a", 1]\' — not an object'),
       devMode: z.boolean().optional().describe('Run the latest saved code rather than the deployed version (owner only)'),
       account: accountParam,
-    },
+    }),
   }, async ({ scriptId, functionName, params, devMode, account }) => {
     // gog passes --params through to the API as-is, so a malformed value comes
     // back as a Google error about the request body rather than about the

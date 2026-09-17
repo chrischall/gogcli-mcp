@@ -1,20 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { rawTextResult } from '@chrischall/mcp-utils';
 import {
-  confirmedParam,
-  dispatchPreviewResult,
   extractEmails,
   logGmailDispatch,
   resultText,
 } from '../src/gmail-dispatch-guard.js';
-
-describe('confirmedParam', () => {
-  it('is optional and defaults to undefined (unconfirmed)', () => {
-    expect(confirmedParam.parse(undefined)).toBeUndefined();
-    expect(confirmedParam.parse(true)).toBe(true);
-    expect(confirmedParam.parse(false)).toBe(false);
-  });
-});
 
 describe('extractEmails', () => {
   it('extracts a bare address', () => {
@@ -51,24 +41,6 @@ describe('resultText', () => {
 
   it('falls back to an empty object when content is empty', () => {
     expect(resultText({ content: [] })).toBe('{}');
-  });
-});
-
-describe('dispatchPreviewResult', () => {
-  it('marks the result as an unsent preview and carries the supplied details', () => {
-    const result = dispatchPreviewResult('gmail.send', { recipients: ['a@b.com'], recipientCount: 1 });
-    const parsed = JSON.parse(result.content[0].text as string);
-    expect(parsed.preview).toBe(true);
-    expect(parsed.sent).toBe(false);
-    expect(parsed.op).toBe('gmail.send');
-    expect(parsed.recipients).toEqual(['a@b.com']);
-    expect(parsed.recipientCount).toBe(1);
-    expect(parsed.note).toContain('confirmed: true');
-  });
-
-  it('is never flagged as an error result', () => {
-    const result = dispatchPreviewResult('gmail.reply', {});
-    expect(result.isError).toBeUndefined();
   });
 });
 

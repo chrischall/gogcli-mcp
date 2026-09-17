@@ -38,10 +38,10 @@ describe('zod is installed exactly once', () => {
     expect(resolveFrom('@chrischall/mcp-utils')).toBe(realpathSync(here.resolve('zod')));
   });
 
-  it('resolves to the same file for the MCP SDK, which types every tool schema', () => {
+  it('resolves to the same file for the MCP server SDK, which types every tool schema', () => {
     // `registerTool` accepts the raw shape and infers the handler's argument
     // types from it; a second copy makes every one of those schemas foreign.
-    expect(resolveFrom('@modelcontextprotocol/sdk/server/mcp.js')).toBe(
+    expect(resolveFrom('@modelcontextprotocol/server')).toBe(
       realpathSync(here.resolve('zod')),
     );
   });

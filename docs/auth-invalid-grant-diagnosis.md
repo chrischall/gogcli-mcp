@@ -39,7 +39,7 @@ publishing status — and therefore the fix — is fully in your control.
 ### Concurrent keyring writes — ruled out (checked again 2026-08-09)
 
 A recurring theory holds that the Fly runner's parallelism corrupts the keyring: all four
-connectors (sheets/gmail/drive/docs) are Durable Objects pointing at **one** Machine and **one**
+stateless connectors (sheets/gmail/drive/docs) point at **one** Machine and **one**
 `/data` volume, `fly-gog-runner/server.mjs` has no queue or mutex (`server.inFlight` is only a
 drain counter), so two `gog` processes could read-modify-write the same encrypted keyring at once.
 

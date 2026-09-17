@@ -113,8 +113,8 @@ npm run worker:deploy
 ```
 
 This runs `wrangler deploy`, which bundles and pushes
-`packages/gogcli-mcp/src/worker.ts` (plus the per-session agent Durable Objects
-and the `OAUTH_KV` namespace from step 3). The Cloudflare API token you deploy
+`packages/gogcli-mcp/src/worker.ts` (the stateless MCP handler plus the
+`OAUTH_KV` namespace from step 3). The Cloudflare API token you deploy
 with needs **Workers Scripts: Edit**; **Workers KV Storage: Edit** is only needed
 if you want `wrangler kv namespace create`/`list` to work from the same token.
 

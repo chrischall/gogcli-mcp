@@ -1,7 +1,6 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { McpAgent } from 'agents/mcp';
+import { McpServer } from '@modelcontextprotocol/server';
+import { createMcpHandler, getMcpAuthContext } from 'agents/mcp/server';
 import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
-import { handleAuthorize } from '@chrischall/mcp-connector';
 import type { ToolRegistrar } from '@chrischall/mcp-utils';
 import {
   BASE_TOOL_REGISTRARS,
@@ -17,6 +16,7 @@ import { registerExtraDriveTools } from '../../gogcli-mcp-drive/src/tools/drive-
 import { registerExtraDocsTools } from '../../gogcli-mcp-docs/src/tools/docs-extra.js';
 import { makeFlyExecutor, wrapServer } from './connector-runtime.js';
 import { gogAuth, CONNECTOR_INSTRUCTIONS, type GogProps } from './connector-auth.js';
+import { handleAuthorize } from './connector-login.js';
 
 // The Cloudflare remote-connector entrypoint for gogcli-mcp.
 //
@@ -26,8 +26,7 @@ import { gogAuth, CONNECTOR_INSTRUCTIONS, type GogProps } from './connector-auth
 // in `runner.ts`: `wrapServer` scopes each tool handler in `runExecutor.run(...)`
 // so the handler's `run()` forwards to the per-session Fly executor.
 //
-// One Worker serves several MCP endpoints under one OAuth login, each a distinct
-// tool set backed by its own Durable Object:
+// One stateless Worker serves several MCP endpoints under one OAuth login:
 //   /mcp          all-services base (BASE_TOOL_REGISTRARS)
 //   /mcp/sheets   auth + Sheets base + Sheets extras
 //   /mcp/gmail    auth + Gmail base + Gmail extras
@@ -40,50 +39,41 @@ import { gogAuth, CONNECTOR_INSTRUCTIONS, type GogProps } from './connector-auth
 
 const VERSION = '2.30.0'; // x-release-please-version
 
-// Build an McpAgent subclass whose init() registers `registrars` onto its server,
-// each handler wrapped in the ALS scope carrying the per-session Fly executor.
-// (Kept in worker.ts, not connector-runtime.ts, because it imports the Worker-only
-// `agents` runtime; the node-testable helpers stay in connector-runtime.ts.)
-function makeAgent(registrars: ToolRegistrar[]): typeof McpAgent {
-  class GogAgent extends McpAgent<unknown, unknown, GogProps> {
-    // `instructions` is the connector's only channel to the model that is not a
-    // tool description, and it carries the one thing the client UI gets wrong:
-    // "connected"/"refreshed" is a statement about the connector key, not about
-    // Google. See CONNECTOR_INSTRUCTIONS for why that has to be said out loud.
-    server = new McpServer(
-      { name: 'gogcli-mcp', version: VERSION },
-      { instructions: CONNECTOR_INSTRUCTIONS },
-    );
-    async init() {
-      // NO third argument, deliberately: the hosted connector supplies no
-      // per-caller access token, so `gog` runs as the Fly volume's own identity
-      // and refreshes from its own keyring. That is what makes the eviction +
-      // replay machinery in connector-runtime.ts INERT here — with no token
-      // source there is no module-level cache that can go stale, so a Google
-      // 401 on this path stops at the `no access token was supplied` guard and
-      // logs `replay.declined`. That record is the expected outcome for a
-      // hosted connector, not a bug; the transport-failure classification and
-      // the auth log itself do apply here.
-      //
-      // Inert is not the same as unobserved. Because `gog` is spawned fresh per
-      // /run and re-reads the keyring each time, a Google 401 here means the
-      // STORED credential was refused — which no retry can repair, so no retry
-      // is built. Instead that same guard first takes one live reading of the
-      // Google layer (`GET /health/google` on the runner) and records it as
-      // `refusal.google-ok` / `-unhealthy` / `-unmeasured`. It is throttled,
-      // deadline-bounded, cannot throw, and leaves the caller's error
-      // byte-identical; its whole job is to answer, in the log, the question
-      // that could not be answered after the incident: at the moment Google
-      // refused, was the refresh token on the volume alive or dead?
-      // (docs/DEPLOY-CONNECTOR.md, "Reading the auth log" and "Why a hosted
-      // Google 401 is measured rather than retried", says this for whoever is
-      // reading logs rather than code.)
-      const executor = makeFlyExecutor((this.env as { FLY_ENDPOINT: string }).FLY_ENDPOINT, this.props.key);
-      const wrapped = wrapServer(this.server, executor);
-      for (const register of registrars) register(wrapped);
-    }
-  }
-  return GogAgent as unknown as typeof McpAgent;
+type WorkerEnv = { FLY_ENDPOINT: string };
+
+// Build a fresh SDK v2 server for every HTTP request. That is the transport
+// model required by MCP 2026-07-28 multi round-trip requests: input_required
+// returns to the client, and the later request reconstructs the server from
+// the tool arguments plus protocol-managed inputResponses.
+function makeHandler(route: string, registrars: ToolRegistrar[]) {
+  return {
+    fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext) {
+      const handler = createMcpHandler(() => {
+        // Resolve the OAuth props lazily while the tool runs. OAuthProvider
+        // establishes this request context before calling the MCP handler.
+        const executor = ((args, options) => {
+          const props = getMcpAuthContext()?.props as GogProps | undefined;
+          if (!props?.key) throw new Error('Missing authenticated gogcli connector key');
+          return makeFlyExecutor(env.FLY_ENDPOINT, props.key)(args, options);
+        }) satisfies ReturnType<typeof makeFlyExecutor>;
+
+        // `instructions` is the connector's only channel to the model that is
+        // not a tool description. It explains that connector authentication
+        // does not prove the Google credential itself is healthy.
+        const server = new McpServer(
+          { name: 'gogcli-mcp', version: VERSION },
+          { instructions: CONNECTOR_INSTRUCTIONS },
+        );
+        const wrapped = wrapServer(server, executor);
+        for (const register of registrars) register(wrapped);
+        return server;
+      }, {
+        route,
+        allowedHostnames: ['connector.gogcli.nullnet.app'],
+      });
+      return handler(request, env, ctx);
+    },
+  };
 }
 
 // auth + <service> base + <service> extras — the exact set each sub-package's
@@ -93,12 +83,6 @@ function makeAgent(registrars: ToolRegistrar[]): typeof McpAgent {
 // poison its re-auth with invalid_scope. The base /mcp agent keeps 'all'.
 const svc = (service: string, base: ToolRegistrar, extra: ToolRegistrar): ToolRegistrar[] =>
   [authToolsFor(service), base, extra];
-
-export class GogcliMcpAgent extends makeAgent(BASE_TOOL_REGISTRARS) {}
-export class GogcliSheetsAgent extends makeAgent(svc('sheets', registerSheetsTools, registerExtraSheetsTools)) {}
-export class GogcliGmailAgent extends makeAgent(svc('gmail', registerGmailTools, registerExtraGmailTools)) {}
-export class GogcliDriveAgent extends makeAgent(svc('drive,driveactivity,drivelabels', registerDriveTools, registerExtraDriveTools)) {}
-export class GogcliDocsAgent extends makeAgent(svc('docs', registerDocsTools, registerExtraDocsTools)) {}
 
 const defaultHandler = {
   fetch(request: Request, env: unknown): Response | Promise<Response> {
@@ -113,12 +97,11 @@ const defaultHandler = {
 // (otherwise `/mcp` greedily swallows `/mcp/sheets`).
 const handler = new OAuthProvider({
   apiHandlers: {
-    '/mcp/sheets': GogcliSheetsAgent.serve('/mcp/sheets', { binding: 'SHEETS_MCP' }) as never,
-    '/mcp/gmail': GogcliGmailAgent.serve('/mcp/gmail', { binding: 'GMAIL_MCP' }) as never,
-    '/mcp/drive': GogcliDriveAgent.serve('/mcp/drive', { binding: 'DRIVE_MCP' }) as never,
-    '/mcp/docs': GogcliDocsAgent.serve('/mcp/docs', { binding: 'DOCS_MCP' }) as never,
-    '/mcp': GogcliMcpAgent.serve('/mcp') as never,
-    '/sse': GogcliMcpAgent.serveSSE('/sse') as never,
+    '/mcp/sheets': makeHandler('/mcp/sheets', svc('sheets', registerSheetsTools, registerExtraSheetsTools)) as never,
+    '/mcp/gmail': makeHandler('/mcp/gmail', svc('gmail', registerGmailTools, registerExtraGmailTools)) as never,
+    '/mcp/drive': makeHandler('/mcp/drive', svc('drive,driveactivity,drivelabels', registerDriveTools, registerExtraDriveTools)) as never,
+    '/mcp/docs': makeHandler('/mcp/docs', svc('docs', registerDocsTools, registerExtraDocsTools)) as never,
+    '/mcp': makeHandler('/mcp', BASE_TOOL_REGISTRARS) as never,
   },
   defaultHandler: defaultHandler as never,
   authorizeEndpoint: '/authorize',

@@ -26,10 +26,9 @@ export type { ReplyFlags } from './tools/gmail.js';
 // gmail sub-package's send-side forward/autoreply tools reuse these directly
 // rather than re-declaring the gate; the draft-side twins never import them.
 export {
-  confirmedParam,
-  dispatchPreviewResult,
   extractEmails,
   logGmailDispatch,
+  requireGmailDispatchConfirmation,
   resultText,
 } from './gmail-dispatch-guard.js';
 export { run, runBinary, runExecutor, isGogFileArg, MIN_GOG_VERSION } from './runner.js';

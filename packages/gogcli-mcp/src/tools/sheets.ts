@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { run } from '../runner.js';
 import { rawTextResult } from '@chrischall/mcp-utils';
@@ -25,11 +25,11 @@ export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_get', {
     description: 'Read values from a Google Sheets range. Returns a JSON object with a "values" array of rows.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       range: z.string().describe('Range in A1 notation, e.g. Sheet1!A1:B10 or a named range'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, account }) => {
     return runOrDiagnose(['sheets', 'get', spreadsheetId, range], { account });
   });
@@ -37,7 +37,7 @@ export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_update', {
     description: 'Write values to a Google Sheets range, overwriting existing content. Values may be strings, numbers, booleans, or null. Strings starting with "=" are interpreted as formulas (e.g. "=SUM(A1:A10)").',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       range: z.string().describe('Top-left cell or range in A1 notation, e.g. Sheet1!A1'),
       values: z.array(z.array(cellValueParam)).describe('2D array of values (rows of columns). Cells may be string/number/boolean/null; strings starting with "=" are formulas.'),
@@ -45,7 +45,7 @@ export function registerSheetsTools(server: McpServer): void {
       fail_if_not_empty: failIfNotEmptyParam,
       fail_on_formula_error: z.boolean().optional().describe('After writing, read the range back and fail if any cell holds a Sheets formula error (#REF!, #DIV/0!, etc.).'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, values, account, dry_run, fail_if_not_empty, fail_on_formula_error }) => {
     const cols = values.reduce((max, row) => Math.max(max, row.length), 0);
     if (fail_if_not_empty && values.length > 0 && cols > 0) {
@@ -79,13 +79,13 @@ export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_append', {
     description: 'Append rows to a Google Sheet after the last row with data in the given range. Values may be strings, numbers, booleans, or null. Strings starting with "=" are interpreted as formulas.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       range: z.string().describe('Range indicating which sheet/columns to append to, e.g. Sheet1!A:C'),
       values: z.array(z.array(cellValueParam)).describe('2D array of rows to append. Cells may be string/number/boolean/null; strings starting with "=" are formulas.'),
       dry_run: dryRunParam,
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, values, account, dry_run }) => {
     const args = ['sheets', 'append', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`];
     if (dry_run) args.push('--dry-run');
@@ -95,12 +95,12 @@ export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_clear', {
     description: 'Clear all values in a Google Sheets range (formatting is preserved).',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range in A1 notation to clear'),
       dry_run: dryRunParam,
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, account, dry_run }) => {
     const args = ['sheets', 'clear', spreadsheetId, range];
     if (dry_run) args.push('--dry-run');
@@ -110,10 +110,10 @@ export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_metadata', {
     description: 'Get spreadsheet metadata: title, named ranges, and per-tab properties including grid dimensions (gridProperties.rowCount / columnCount). Use this to learn a sheet\'s current size before writing — a write outside the grid fails.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, account }) => {
     return runOrDiagnose(['sheets', 'metadata', spreadsheetId], { account });
   });
@@ -121,10 +121,10 @@ export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_create', {
     description: 'Create a new Google Spreadsheet. Returns JSON with the new spreadsheetId and URL.',
     annotations: { destructiveHint: false },
-    inputSchema: {
+    inputSchema: z.object({
       title: z.string().describe('Title for the new spreadsheet'),
       account: accountParam,
-    },
+    }),
   }, async ({ title, account }) => {
     return runOrDiagnose(['sheets', 'create', title], { account });
   });
@@ -132,12 +132,12 @@ export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_find_replace', {
     description: 'Find and replace text across an entire Google Spreadsheet.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       find: z.string().describe('Text to find'),
       replace: z.string().describe('Replacement text'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, find, replace, account }) => {
     return runOrDiagnose(['sheets', 'find-replace', spreadsheetId, find, replace], { account });
   });

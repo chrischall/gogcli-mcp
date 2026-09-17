@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken} from '../../../gogcli-mcp/src/lib.js';
 
@@ -8,9 +8,9 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_people_me', {
     description: 'Show your own People profile (people/me).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       account: accountParam,
-    },
+    }),
   }, async ({ account }) => {
     return runOrDiagnose(['people', 'me'], { account });
   });
@@ -18,10 +18,10 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_people_get', {
     description: 'Get a People profile by resource name.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       userId: z.string().describe('Person resource name (people/...) or email'),
       account: accountParam,
-    },
+    }),
   }, async ({ userId, account }) => {
     return runOrDiagnose(['people', 'get', userId], { account });
   });
@@ -29,14 +29,14 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_people_search', {
     description: 'Search the Google Workspace directory (covers internal users, unlike contacts search which is limited to your personal contacts).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       query: z.string().describe('Search query (name, email, etc.)'),
       max: z.number().optional().describe('Max results (default: 50)'),
       pageToken: pageTokenParam,
       page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
-    },
+    }),
   }, async ({ query, max, pageToken, page, all, account }) => {
     const args = ['people', 'search', query];
     if (max !== undefined) args.push(`--max=${max}`);
@@ -49,11 +49,11 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_people_relations', {
     description: 'Get relations (manager, reports, etc.) for a user. Defaults to self when userId is omitted.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       userId: z.string().optional().describe('Person resource name (defaults to self when omitted)'),
       type: z.string().optional().describe('Filter to a specific relation type (e.g. "manager")'),
       account: accountParam,
-    },
+    }),
   }, async ({ userId, type, account }) => {
     const args = ['people', 'relations'];
     if (userId) args.push(userId);
@@ -63,7 +63,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_update', {
     description: 'Update an existing Google Contact. Empty string clears a field; repeatable fields (url/address/custom/relation) take comma/semicolon-separated lists.',
-    inputSchema: {
+    inputSchema: z.object({
       resourceName: z.string().describe('Contact resource name (people/...)'),
       given: z.string().optional().describe('Given (first) name'),
       family: z.string().optional().describe('Family (last) name'),
@@ -77,7 +77,7 @@ export function registerExtraContactsTools(server: McpServer): void {
       birthday: z.string().optional().describe('Birthday in YYYY-MM-DD (empty string clears)'),
       ignoreEtag: z.boolean().optional().describe('Allow update even if a supplied etag is stale (may overwrite concurrent changes)'),
       account: accountParam,
-    },
+    }),
   }, async ({ resourceName, given, family, email, phone, org, title, url, note, address, birthday, ignoreEtag, account }) => {
     const args = ['contacts', 'update', resourceName];
     if (given !== undefined) args.push(`--given=${given}`);
@@ -97,10 +97,10 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_delete', {
     description: 'Delete a Google Contact by resource name.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       resourceName: z.string().describe('Contact resource name (people/...)'),
       account: accountParam,
-    },
+    }),
   }, async ({ resourceName, account }) => {
     return runOrDiagnose(['contacts', 'delete', resourceName, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
@@ -108,7 +108,7 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_export', {
     description: 'Export contacts as vCard (.vcf). Provide a selector (resource name, email, or name), or use query / all to export multiple.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       selector: z.string().optional().describe('Contact resource name (people/...), email, or name'),
       query: z.string().optional().describe('Search query to export (max 30 results)'),
       all: z.boolean().optional().describe('Export all personal contacts'),
@@ -117,7 +117,7 @@ export function registerExtraContactsTools(server: McpServer): void {
       pageToken: pageTokenParam,
       page: pageAliasParam,
       account: accountParam,
-    },
+    }),
   }, async ({ selector, query, all, out, max, pageToken, page, account }) => {
     const args = ['contacts', 'export'];
     if (selector) args.push(selector);
@@ -133,14 +133,14 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_dedupe', {
     description: 'Find likely duplicate personal contacts. Defaults to a read-only preview of the merge plan; set apply to actually merge each duplicate group and delete the redundant contacts (etag-checked, with ambiguous or unmergeable groups refused). Scope a risky apply with resource. Always preview first.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       match: z.string().optional().describe('Match fields, comma-separated from email,phone,name (default: email,phone)'),
       max: z.number().optional().describe('Max contacts to scan (0 = all). Mutually exclusive with resource — gog rejects passing both.'),
       resource: z.array(z.string()).optional().describe('Limit dedupe to these exact contact resource names (e.g. people/c123), repeatable — useful to scope an apply to known duplicates. Mutually exclusive with max.'),
       apply: z.boolean().optional().describe('Merge each duplicate group and DELETE the redundant contacts. Without this the tool only previews the plan. Destructive — preview first.'),
       failEmpty: z.boolean().optional().describe('Exit with an error (code 3) when no duplicates are found, instead of succeeding empty.'),
       account: accountParam,
-    },
+    }),
   }, async ({ match, max, resource, apply, failEmpty, account }) => {
     const args = ['contacts', 'dedupe'];
     if (match) args.push(`--match=${match}`);
@@ -155,13 +155,13 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_directory_list', {
     description: 'List people from the Google Workspace directory (domain shared contacts).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       max: z.number().optional().describe('Max results (default: 50)'),
       pageToken: pageTokenParam,
       page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
-    },
+    }),
   }, async ({ max, pageToken, page, all, account }) => {
     const args = ['contacts', 'directory', 'list'];
     if (max !== undefined) args.push(`--max=${max}`);
@@ -174,13 +174,13 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_other_list', {
     description: 'List "other contacts" — auto-collected addresses (e.g. people you have emailed) that are not in your saved contacts.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       max: z.number().optional().describe('Max results (default: 100)'),
       pageToken: pageTokenParam,
       page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       account: accountParam,
-    },
+    }),
   }, async ({ max, pageToken, page, all, account }) => {
     const args = ['contacts', 'other', 'list'];
     if (max !== undefined) args.push(`--max=${max}`);
@@ -193,11 +193,11 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_other_search', {
     description: 'Search "other contacts" — auto-collected addresses not in your saved contacts.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       query: z.string().describe('Search query'),
       max: z.number().optional().describe('Max results (default: 50)'),
       account: accountParam,
-    },
+    }),
   }, async ({ query, max, account }) => {
     const args = ['contacts', 'other', 'search', query];
     if (max !== undefined) args.push(`--max=${max}`);
@@ -207,12 +207,12 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_people_raw', {
     description: 'Dump the raw People API response as JSON (lossless; for scripting and LLM consumption).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       userId: z.string().describe('Person resource name (people/...) or email'),
       personFields: z.string().optional().describe('People API personFields mask (default: broad set)'),
       pretty: z.boolean().optional().describe('Pretty-print JSON (default: compact single-line)'),
       account: accountParam,
-    },
+    }),
   }, async ({ userId, personFields, pretty, account }) => {
     const args = ['people', 'raw', userId];
     if (personFields) args.push(`--person-fields=${personFields}`);

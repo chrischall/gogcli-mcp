@@ -773,15 +773,10 @@ describe('gog_sheets_links_set', () => {
   // so `@-` blocks until the 30 s timeout rather than reading anything. The
   // description must steer callers away from it.
   it('cellsJson description documents @file and rules out @- stdin', async () => {
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
-    const server = new McpServer({ name: 'test', version: '0.0.0' });
-    const configs = new Map<string, { inputSchema?: Record<string, { description?: string }> }>();
-    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
-      configs.set(name, config as { inputSchema?: Record<string, { description?: string }> });
-      return undefined as never;
-    });
-    registerExtraSheetsTools(server);
-    const desc = configs.get('gog_sheets_links_set')?.inputSchema?.cellsJson?.description ?? '';
+    const harness = await setupHandlers();
+    const listed = (await harness.client.listTools()).tools.find((tool) => tool.name === 'gog_sheets_links_set');
+    const properties = listed?.inputSchema.properties as Record<string, { description?: string }> | undefined;
+    const desc = properties?.cellsJson?.description ?? '';
     expect(desc).toMatch(/@file/);
     expect(desc).toMatch(/@-/);
   });
@@ -1747,7 +1742,7 @@ describe('gog_sheets_datasource_delete', () => {
   // package (index.ts composes auth + base sheets + these extras), because a
   // description may legitimately point at a tool another registrar supplies.
   it('names only tools this package actually registers', async () => {
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const { McpServer } = await import('@modelcontextprotocol/server');
     const server = new McpServer({ name: 'test', version: '0.0.0' });
     const configs = new Map<string, { description?: string }>();
     vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {

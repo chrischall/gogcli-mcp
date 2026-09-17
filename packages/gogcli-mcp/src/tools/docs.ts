@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
@@ -6,10 +6,10 @@ export function registerDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_info', {
     description: 'Get Google Doc metadata: title, ID, and other properties.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       account: accountParam,
-    },
+    }),
   }, async ({ docId, account }) => {
     return runOrDiagnose(['docs', 'info', docId], { account });
   });
@@ -17,11 +17,11 @@ export function registerDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_cat', {
     description: 'Read a Google Doc as plain text.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       chips: z.boolean().optional().describe('Render Google Docs smart chips (people, dates, rich links) inline in the text output'),
       account: accountParam,
-    },
+    }),
   }, async ({ docId, chips, account }) => {
     const args = ['docs', 'cat', docId];
     if (chips) args.push('--chips');
@@ -30,10 +30,10 @@ export function registerDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_create', {
     description: 'Create a new Google Doc. Returns JSON with the new docId and URL.',
-    inputSchema: {
+    inputSchema: z.object({
       title: z.string().describe('Title for the new document'),
       account: accountParam,
-    },
+    }),
   }, async ({ title, account }) => {
     return runOrDiagnose(['docs', 'create', title], { account });
   });
@@ -41,7 +41,7 @@ export function registerDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_write', {
     description: 'Write text content to a Google Doc, replacing existing body content by default. Set append=true to add after existing content.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().describe('Text content to write'),
       append: z.boolean().optional().describe('Append to existing content instead of replacing (default: false)'),
@@ -59,7 +59,7 @@ export function registerDocsTools(server: McpServer): void {
       keepWithNext: z.boolean().optional().describe('Keep the paragraph with the next paragraph (true) or clear that setting (false)'),
       batch: z.string().optional().describe('Append this mutation to a persisted batch (from gog_batch_begin in gogcli-mcp-docs) instead of applying it — nothing changes in the doc until the batch is submitted.'),
       account: accountParam,
-    },
+    }),
   }, async ({ docId, text, append, checkOrphans, bullets, bulletPreset, ordered, noBullets, indentStart, indentEnd, indentFirstLine, spaceAbove, spaceBelow, keepLinesTogether, keepWithNext, batch, account }) => {
     const args = ['docs', 'write', docId, `--text=${text}`];
     if (append) args.push('--append');
@@ -82,12 +82,12 @@ export function registerDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_find_replace', {
     description: 'Find and replace text in a Google Doc.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       find: z.string().describe('Text to find'),
       replace: z.string().describe('Replacement text'),
       account: accountParam,
-    },
+    }),
   }, async ({ docId, find, replace, account }) => {
     return runOrDiagnose(['docs', 'find-replace', docId, find, replace], { account });
   });
@@ -95,10 +95,10 @@ export function registerDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_structure', {
     description: 'Show a Google Doc\'s structure with numbered paragraphs. Useful for understanding the document layout before making index-based edits.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       account: accountParam,
-    },
+    }),
   }, async ({ docId, account }) => {
     return runOrDiagnose(['docs', 'structure', docId], { account });
   });

@@ -38,7 +38,7 @@ describe('gog_chat_spaces_list', () => {
   // description a model reads — a source comment would not reach it. Every chat
   // tool carries the note, because any of them can be the first one called.
   it('warns in EVERY description that Chat is Workspace-only', async () => {
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const { McpServer } = await import('@modelcontextprotocol/server');
     const server = new McpServer({ name: 'test', version: '0.0.0' });
     const configs = new Map<string, { description?: string }>();
     vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {

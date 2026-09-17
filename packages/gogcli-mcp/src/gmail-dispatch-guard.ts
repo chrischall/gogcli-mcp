@@ -1,6 +1,5 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { z } from 'zod';
-import { rawTextResult } from '@chrischall/mcp-utils';
+import type { CallToolResult, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
+import { requireConfirmation } from '@chrischall/mcp-utils';
 
 // ============================================================================
 // THE SAFETY RAIL. gog_gmail_reply / reply_all / send / forward / autoreply are
@@ -11,37 +10,27 @@ import { rawTextResult } from '@chrischall/mcp-utils';
 // tool — or an agent that inherited the wrong reply target — used to find out
 // only after the send API call already succeeded.
 //
-// `confirmed` makes the first call inert: it returns a PREVIEW (recipients,
-// subject, size) instead of sending, and only a second call with
-// confirmed:true dispatches. This is deliberately NOT part of replySchema —
-// gog_gmail_drafts_reply/reply_all reuse that schema and must never gain a
-// confirmation gate, since they never send on their own.
+// MCP elicitation makes the first round inert: it returns an input_required
+// result containing the preview, and only the protocol retry carrying the
+// user's accepted confirmation dispatches. The confirmation is never a tool
+// argument, so a model cannot bypass the user by setting a boolean itself.
 // ============================================================================
-export const confirmedParam = z.boolean().optional().describe(
-  'Set true to actually send. Without it (or false), NOTHING IS SENT — this call instead returns a preview of ' +
-  'what would go out (recipients, subject, size) so you can check it before committing. Read the preview, then ' +
-  'call again with confirmed: true and the SAME other arguments to send for real.',
-);
-
-// The shape every preview shares, so a caller learns the contract once. Uses
-// rawTextResult (indented) rather than the minified seam other tools go
-// through: a preview is read by a person or model deciding whether to
-// proceed, not machine-consumed at scale, and the tools here make ~1 call —
-// none of the token-budget pressure that motivates minifying a `drive ls`
-// applies to a single preview object.
-export function dispatchPreviewResult(op: string, details: Record<string, unknown>): CallToolResult {
-  return rawTextResult(JSON.stringify({
-    preview: true,
-    sent: false,
-    op,
-    ...details,
-    note: 'PREVIEW ONLY — nothing was sent. Review the recipients above, then call again with confirmed: true ' +
-      '(and the same other arguments) to send for real.',
-  }, null, 2));
+/** Apply the shared stateless confirmation flow with Gmail-specific copy. */
+export function requireGmailDispatchConfirmation(
+  ctx: ServerContext,
+  op: string,
+  details: Record<string, unknown>,
+): InputRequiredResult | CallToolResult | undefined {
+  return requireConfirmation(ctx, {
+    action: op,
+    message: 'Review and confirm this email dispatch:',
+    details,
+    confirmationLabel: 'Confirm that this email should be sent now.',
+  });
 }
 
 // Over-inclusive on purpose: this feeds an audit log and a caller-facing
-// preview, neither of which is the enforcement point (the confirmed gate is).
+// preview, neither of which is the enforcement point (the protocol gate is).
 // Missing a real recipient would be the dangerous direction of error; catching
 // an extra email-shaped substring is not.
 const EMAIL_PATTERN = /[a-z0-9!#$%&'*+/=?^_`{|}~.-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi;

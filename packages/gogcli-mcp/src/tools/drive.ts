@@ -1,5 +1,5 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult, viewParam, resolveView } from '@chrischall/mcp-utils';
 
@@ -38,7 +38,7 @@ export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_ls', {
     description: 'List files in a Google Drive folder (default: root).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       folderId: z.string().optional().describe('Folder ID to list (default: root)'),
       max: z.number().optional().describe('Max results (default: 20)'),
       pageToken: pageTokenParam,
@@ -50,7 +50,7 @@ export function registerDriveTools(server: McpServer): void {
           + 'near-constant across a listing and 48% of its bytes. Ask for full to get them.',
       }),
       account: accountParam,
-    },
+    }),
   }, async ({ folderId, max, pageToken, page, query, allDrives, view, account }) => {
     const args = ['drive', 'ls'];
     if (folderId) args.push(`--parent=${folderId}`);
@@ -69,14 +69,14 @@ export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_search', {
     description: 'Search Google Drive files by full-text query.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       query: z.string().describe('Search query'),
       // gog's `drive search` accepts no --fields mask, so unlike gog_drive_ls
       // this tool's compact rung is a LOCAL projection. Same vocabulary either
       // way: a caller does not need to know which lever is being pulled.
       view: viewParam(['compact', 'full'], { note: 'compact (the default) drops thumbnailLink — a URL a model cannot see, and 30%+ of a Drive file record. Ask for full to get it back.' }),
       account: accountParam,
-    },
+    }),
   }, async ({ query, view, account }) => {
     return runOrDiagnose(['drive', 'search', query], {
       account,
@@ -87,7 +87,7 @@ export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_get', {
     description: 'Get metadata for a Google Drive file.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       // A --fields mask saves only 7% here: the default set is already narrow,
       // which is why this tool takes no mask. The media strip saves 27.5% of
@@ -97,7 +97,7 @@ export function registerDriveTools(server: McpServer): void {
       // what the tool returns. The end-to-end figure is the one a caller sees.)
       view: viewParam(['compact', 'full'], { note: 'compact (the default) drops thumbnailLink — a URL a model cannot see, and 30%+ of a Drive file record. Ask for full to get it back.' }),
       account: accountParam,
-    },
+    }),
   }, async ({ fileId, view, account }) => {
     return runOrDiagnose(['drive', 'get', fileId], {
       account,
@@ -108,10 +108,10 @@ export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_mkdir', {
     description: 'Create a new folder in Google Drive.',
     annotations: { destructiveHint: false },
-    inputSchema: {
+    inputSchema: z.object({
       name: z.string().describe('Folder name'),
       account: accountParam,
-    },
+    }),
   }, async ({ name, account }) => {
     return runOrDiagnose(['drive', 'mkdir', name], { account });
   });
@@ -119,11 +119,11 @@ export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_rename', {
     description: 'Rename a file or folder in Google Drive.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       fileId: z.string().describe('File or folder ID'),
       newName: z.string().describe('New name'),
       account: accountParam,
-    },
+    }),
   }, async ({ fileId, newName, account }) => {
     return runOrDiagnose(['drive', 'rename', fileId, newName], { account });
   });
@@ -131,11 +131,11 @@ export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_move', {
     description: 'Move a file to a different folder in Google Drive.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       fileId: z.string().describe('File ID to move'),
       parentId: z.string().describe('Destination folder ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ fileId, parentId, account }) => {
     return runOrDiagnose(['drive', 'move', fileId, `--parent=${parentId}`], { account });
   });
@@ -143,11 +143,11 @@ export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_delete', {
     description: 'Move a Google Drive file to trash, or permanently delete it with permanent=true (irreversible).',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       fileId: z.string().describe('File ID to delete'),
       permanent: z.boolean().optional().describe('Permanently delete instead of moving to trash (irreversible)'),
       account: accountParam,
-    },
+    }),
   }, async ({ fileId, permanent, account }) => {
     const args = ['drive', 'delete', fileId];
     if (permanent) args.push('--permanent');
@@ -160,14 +160,14 @@ export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_share', {
     description: 'Share a Google Drive file or folder.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       fileId: z.string().describe('File or folder ID'),
       to: z.enum(['user', 'anyone', 'domain']).describe('Share target type'),
       email: z.string().optional().describe('User email (required when to=user)'),
       domain: z.string().optional().describe('Domain (required when to=domain)'),
       role: z.enum(['reader', 'writer']).optional().describe('Permission role (default: reader)'),
       account: accountParam,
-    },
+    }),
   }, async ({ fileId, to, email, domain, role, account }) => {
     const args = ['drive', 'share', fileId, `--to=${to}`];
     if (email) args.push(`--email=${email}`);
@@ -189,7 +189,7 @@ export function registerDriveTools(server: McpServer): void {
       'host filesystem, no scope widening. For a large file, page through with offset/maxChars.',
     // Creates and deletes a temporary Doc for non-native files, so not read-only.
     annotations: { destructiveHint: false },
-    inputSchema: {
+    inputSchema: z.object({
       fileId: z.string().describe('Drive file ID (e.g. the id returned by gog_gmail_attachment)'),
       ocrLanguage: z.string().optional().describe(
         'BCP-47 language hint for OCR of scanned/image PDFs (e.g. "en", "fr"). Optional.',
@@ -197,7 +197,7 @@ export function registerDriveTools(server: McpServer): void {
       offset: z.number().int().nonnegative().optional().describe('Character offset to start from (default: 0)'),
       maxChars: z.number().int().positive().optional().describe('Max characters to return (default: all from offset)'),
       account: accountParam,
-    },
+    }),
   }, async ({ fileId, ocrLanguage, offset = 0, maxChars, account }) => {
     let tempDocId: string | undefined;
     try {
@@ -255,10 +255,10 @@ export function registerDriveTools(server: McpServer): void {
       'stdio server; over the hosted connector the transport is text-only and this returns a clear error ' +
       '(use gog_drive_extract_text there).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       fileId: z.string().describe('Drive file ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ fileId, account }): Promise<CallToolResult> => {
     try {
       const { name, mimeType } = fileMeta(await run(['drive', 'get', fileId], { account }));

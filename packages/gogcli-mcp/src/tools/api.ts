@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose } from './utils.js';
 
@@ -10,10 +10,10 @@ export function registerApiTools(server: McpServer): void {
   server.registerTool('gog_api_list', {
     description: 'List the Google Discovery APIs available for gog_api_call / gog_api_describe (name + version + title).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       all: z.boolean().optional().describe('Include every Discovery API (including preview/less-common ones) instead of the curated default set'),
       account: accountParam,
-    },
+    }),
   }, async ({ all, account }) => {
     const args = ['api', 'list'];
     if (all) args.push('--all');
@@ -23,12 +23,12 @@ export function registerApiTools(server: McpServer): void {
   server.registerTool('gog_api_describe', {
     description: 'Describe a Google Discovery API, or a single method within it — its parameters, request/response schema, and required OAuth scopes. Use this to discover the exact api/version/method and params before calling gog_api_call.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       api: z.string().describe('Discovery API name (e.g. drive, gmail, calendar)'),
       version: z.string().describe('API version (e.g. v3, v1)'),
       method: z.string().optional().describe('Optional method id to describe a single method (e.g. files.list); omit to describe the whole API'),
       account: accountParam,
-    },
+    }),
   }, async ({ api, version, method, account }) => {
     const args = ['api', 'describe', api, version];
     if (method) args.push(method);
@@ -38,7 +38,7 @@ export function registerApiTools(server: McpServer): void {
   server.registerTool('gog_api_call', {
     description: 'Call any Discovery-described Google API method directly — an escape hatch for endpoints gog has no dedicated tool for. Find the exact api/version/method/params with gog_api_describe first. Read methods (GET/LIST) run as-is. Mutating methods (POST/PUT/PATCH/DELETE) are refused unless you set allowWrite=true — keep it false to preview, or set dryRun=true to print the intended request without sending it.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       api: z.string().describe('Discovery API name (e.g. drive, gmail, calendar)'),
       version: z.string().describe('API version (e.g. v3, v1)'),
       method: z.string().describe('Method id to call (e.g. files.list, files.create)'),
@@ -48,7 +48,7 @@ export function registerApiTools(server: McpServer): void {
       allowWrite: z.boolean().optional().describe('Required to invoke a mutating method (POST/PUT/PATCH/DELETE). Without it, gog refuses write methods. Leave unset for read-only calls.'),
       dryRun: z.boolean().optional().describe('Print the intended request and exit without sending it (no changes made)'),
       account: accountParam,
-    },
+    }),
   }, async ({ api, version, method, params, body, scope, allowWrite, dryRun, account }) => {
     const args = ['api', 'call', api, version, method];
     if (params) args.push(`--params=${params}`);

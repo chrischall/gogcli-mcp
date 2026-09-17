@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { run } from '../runner.js';
 import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
@@ -35,7 +35,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'exactly like a healthy one, scopes and all. Use gog_auth_health to check whether an account ' +
       'can actually authenticate.',
     annotations: { readOnlyHint: true },
-    inputSchema: {},
+    inputSchema: z.object({}),
   }, async () => {
     try {
       return rawTextResult(await run(['auth', 'list']));
@@ -50,7 +50,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'name this is not a health check — it reads local setup and does not contact Google, so it says ' +
       'nothing about whether an account can still authenticate. Use gog_auth_health for that.',
     annotations: { readOnlyHint: true },
-    inputSchema: {},
+    inputSchema: z.object({}),
   }, async () => {
     try {
       return rawTextResult(await run(['auth', 'status']));
@@ -72,7 +72,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'connector key that reaches the gog machine, and nothing else — the Google credential lives on ' +
       'that machine and can be dead while the connection looks perfectly healthy.',
     annotations: { readOnlyHint: true },
-    inputSchema: {},
+    inputSchema: z.object({}),
   }, async () => {
     try {
       // `run` injects --json; --check makes gog probe each token live.
@@ -85,7 +85,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
   server.registerTool('gog_auth_services', {
     description: 'List all Google services supported by gogcli and the OAuth scopes each requires.',
     annotations: { readOnlyHint: true },
-    inputSchema: {},
+    inputSchema: z.object({}),
   }, async () => {
     try {
       return rawTextResult(await run(['auth', 'services']));
@@ -102,11 +102,11 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'If the browser does not open automatically, a fallback URL is included in the response. ' +
       'Use gog_auth_list to check which accounts are already configured.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       email: z.string().describe('Google account email to authorize'),
       services: z.string().optional().default(defaultServices).describe(servicesDescribe),
       extraScopes: z.string().optional().describe(extraScopesDescribe),
-    },
+    }),
   }, async ({ email, services = defaultServices, extraScopes }) => {
     try {
       const args = ['auth', 'add', email, '--services', services];
@@ -135,11 +135,11 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'full redirected URL (from the address bar) and you pass it to gog_auth_add_complete. The link is ' +
       'valid for 10 minutes. If you pass a custom `services` here, pass the SAME value to ' +
       'gog_auth_add_complete or the second step will not match this one.',
-    inputSchema: {
+    inputSchema: z.object({
       email: z.string().describe('Google account email to authorize'),
       services: z.string().optional().default(defaultServices).describe(servicesDescribe),
       extraScopes: z.string().optional().describe(`${extraScopesDescribe} Pass the SAME value to gog_auth_add_complete.`),
-    },
+    }),
   }, async ({ email, services = defaultServices, extraScopes }) => {
     try {
       // --force-consent guarantees a refresh token even if a prior grant exists
@@ -161,7 +161,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'it. Use the SAME `services` value you passed to gog_auth_add_url. Must run within 10 minutes of ' +
       'step 1 and against the same gogcli host.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       email: z.string().describe('Google account email being authorized (same as step 1)'),
       redirectUrl: z.string().describe(
         'The full localhost redirect URL the user copied from the browser address bar after signing in ' +
@@ -174,7 +174,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
         'Extra OAuth scope URIs — MUST match the value passed to gog_auth_add_url, for the same reason `services` must: ' +
         'the two steps have to describe the same grant.',
       ),
-    },
+    }),
   }, async ({ email, redirectUrl, services = defaultServices, extraScopes }) => {
     try {
       const args = ['auth', 'add', email, '--remote', '--step', '2', '--auth-url', redirectUrl,
