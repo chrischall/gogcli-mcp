@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
@@ -6,13 +6,13 @@ export function registerSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_export', {
     description: 'Export a Google Slides presentation to a local file (pdf or pptx).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       out: z.string().optional().describe('Output file path'),
       format: z.enum(['pdf', 'pptx']).optional().describe('Export format (default: pptx)'),
       overwrite: z.boolean().optional().describe('Overwrite the output file if it already exists (gog refuses otherwise)'),
       account: accountParam,
-    },
+    }),
   }, async ({ presentationId, out, format, overwrite, account }) => {
     const args = ['slides', 'export', presentationId];
     if (out) args.push(`--out=${out}`);
@@ -24,22 +24,22 @@ export function registerSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_info', {
     description: 'Get metadata for a Google Slides presentation (title, ID, slide count, etc.).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ presentationId, account }) => {
     return runOrDiagnose(['slides', 'info', presentationId], { account });
   });
 
   server.registerTool('gog_slides_create', {
     description: 'Create a new Google Slides presentation, optionally in a folder or copying from a template.',
-    inputSchema: {
+    inputSchema: z.object({
       title: z.string().describe('Presentation title'),
       parent: z.string().optional().describe('Destination folder ID'),
       template: z.string().optional().describe('Template presentation ID to copy from'),
       account: accountParam,
-    },
+    }),
   }, async ({ title, parent, template, account }) => {
     const args = ['slides', 'create', title];
     if (parent) args.push(`--parent=${parent}`);
@@ -49,12 +49,12 @@ export function registerSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_copy', {
     description: 'Copy a Google Slides presentation to a new presentation with the given title.',
-    inputSchema: {
+    inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID to copy'),
       title: z.string().describe('Title for the new copy'),
       parent: z.string().optional().describe('Destination folder ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ presentationId, title, parent, account }) => {
     const args = ['slides', 'copy', presentationId, title];
     if (parent) args.push(`--parent=${parent}`);
@@ -64,10 +64,10 @@ export function registerSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_list_slides', {
     description: 'List slides in a Google Slides presentation.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ presentationId, account }) => {
     return runOrDiagnose(['slides', 'list-slides', presentationId], { account });
   });
@@ -75,12 +75,12 @@ export function registerSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_read_slide', {
     description: 'Read the content of a slide (text, shapes, speaker notes). Set detail=true to also include normalized element geometry, styled text runs, paragraphs, table-cell content, and image source URLs.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID to read'),
       detail: z.boolean().optional().describe('Include normalized element geometry, styled text runs, paragraphs, table-cell content, and image source URLs'),
       account: accountParam,
-    },
+    }),
   }, async ({ presentationId, slideId, detail, account }) => {
     const args = ['slides', 'read-slide', presentationId, slideId];
     if (detail) args.push('--detail');

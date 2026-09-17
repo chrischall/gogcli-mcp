@@ -189,7 +189,7 @@ describe('gog_drive_upload', () => {
   // and it is reachable only through the gog_drive_run escape hatch — so the
   // description has to say so or the flag is unusable.
   it('description explains how to obtain the current version', async () => {
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const { McpServer } = await import('@modelcontextprotocol/server');
     const server = new McpServer({ name: 'test', version: '0.0.0' });
     const configs = new Map<string, { description?: string }>();
     vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
@@ -803,15 +803,9 @@ describe('gog_drive_shortcut_create', () => {
 // conditional replace. The description has to say to convert it.
 describe('gog_drive_upload ifVersion description', () => {
   it('warns that the version reads back as a JSON string', async () => {
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
-    const server = new McpServer({ name: 'test', version: '0.0.0' });
-    const schemas = new Map<string, Record<string, { description?: string }>>();
-    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
-      schemas.set(name, (config as { inputSchema: Record<string, { description?: string }> }).inputSchema);
-      return undefined as never;
-    });
-    registerExtraDriveTools(server);
-    const desc = schemas.get('gog_drive_upload')?.ifVersion?.description ?? '';
+    const listed = (await harness.client.listTools()).tools.find((tool) => tool.name === 'gog_drive_upload');
+    const properties = listed?.inputSchema.properties as Record<string, { description?: string }> | undefined;
+    const desc = properties?.ifVersion?.description ?? '';
     expect(desc).toMatch(/string/i);
     expect(desc).toMatch(/number/i);
   });

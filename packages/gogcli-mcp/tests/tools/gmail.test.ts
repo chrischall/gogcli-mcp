@@ -3,10 +3,14 @@ import { registerGmailTools } from '../../src/tools/gmail.js';
 import * as runner from '../../src/runner.js';
 import { PAYLOAD_INLINE_MAX } from '../../src/tools/utils.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import type { ElicitRequest, ElicitResult } from '@modelcontextprotocol/server';
 
 vi.mock('../../src/runner.js');
 
-const setupHandlers = () => createTestHarness(registerGmailTools);
+const setupHandlers = (
+  elicitation: (request: ElicitRequest) => ElicitResult | Promise<ElicitResult> =
+    async () => ({ action: 'accept', content: { confirmed: true } }),
+) => createTestHarness(registerGmailTools, { elicitation });
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -425,6 +429,88 @@ describe('gog_gmail_send', () => {
     const result = await harness.callTool('gog_gmail_send', { to: 'x', subject: 'y', body: 'z' });
     expect(result.content[0].text).toBe('Error: Send failed');
   });
+
+  // ==========================================================================
+  // THE CONFIRMATION GATE. Unlike reply/reply-all, send's recipients are
+  // explicit params, so its preview needs no extra gog call at all.
+  // ==========================================================================
+  describe('confirmation gate', () => {
+    it('elicits a recipient preview and sends only after the user accepts it', async () => {
+      vi.mocked(runner.run).mockResolvedValue('{}');
+      let request: ElicitRequest | undefined;
+      const harness = await setupHandlers(async (value) => {
+        request = value;
+        return { action: 'accept', content: { confirmed: true } };
+      });
+      const result = await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', cc: 'carol@example.com', subject: 'Hi', body: 'Hello',
+        replyToMessageId: 'm1', quote: true,
+      });
+      expect(request?.params.message).toContain('bob@example.com');
+      expect(request?.params.message).toContain('carol@example.com');
+      expect(request?.params.message).toContain('"threaded": true');
+      expect(request?.params.requestedSchema).toEqual(expect.objectContaining({ type: 'object' }));
+      expect(result.isError).not.toBe(true);
+      expect(runner.run).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends nothing when the user declines the elicitation', async () => {
+      const harness = await setupHandlers(async () => ({ action: 'decline' }));
+      const result = await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 'Hi', body: 'Hello',
+      });
+      expect(runner.run).not.toHaveBeenCalled();
+      expect(JSON.parse(result.content[0].text as string)).toEqual(expect.objectContaining({
+        confirmed: false,
+        cancelled: true,
+        action: 'gmail.send',
+      }));
+    });
+
+    it('sends nothing when the user accepts but leaves confirmation false', async () => {
+      const harness = await setupHandlers(async () => ({ action: 'accept', content: { confirmed: false } }));
+      const result = await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 'Hi', body: 'Hello',
+      });
+      expect(runner.run).not.toHaveBeenCalled();
+      expect(JSON.parse(result.content[0].text as string).cancelled).toBe(true);
+    });
+
+    it('logs a gmail_dispatch event with the recipients after an accepted send', async () => {
+      vi.mocked(runner.run).mockResolvedValue('{}');
+      const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const harness = await setupHandlers();
+      await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 'Hi', body: 'Hello',
+      });
+      const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+      expect(event.event).toBe('gmail_dispatch');
+      expect(event.tool).toBe('gog_gmail_send');
+      expect(event.recipientCount).toBe(1);
+      writeSpy.mockRestore();
+    });
+
+    it('does not log when the accepted send fails', async () => {
+      vi.mocked(runner.run).mockRejectedValue(new Error('Send failed'));
+      const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const harness = await setupHandlers();
+      await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 'Hi', body: 'Hello',
+      });
+      expect(writeSpy).not.toHaveBeenCalled();
+      writeSpy.mockRestore();
+    });
+
+    it('still validates attachments before either preview or send', async () => {
+      const harness = await setupHandlers();
+      const res = await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 's', body: 'b',
+        attachInline: [{ filename: 'a.png', contentBase64: 'not!valid!base64!' }],
+      });
+      expect(res.isError).toBe(true);
+      expect(runner.run).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('gog_gmail_run', () => {
@@ -630,7 +716,9 @@ describe('gog_gmail_reply — full flag set', () => {
   it('omits --no-quote and --signature when false', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', noQuote: false, signature: false });
+    await harness.callTool('gog_gmail_reply', {
+      messageId: 'm1', body: 'Hi', noQuote: false, signature: false,
+    });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', 'reply', 'm1', '--body=Hi', '--auto-from-addressed-alias=false'],
       { account: undefined },
@@ -672,6 +760,150 @@ describe('gog_gmail_reply_all — full flag set', () => {
     );
   });
 });
+
+// ============================================================================
+// THE CONFIRMATION GATE. The first protocol round returns input_required and
+// the harness routes its embedded elicitation through the handler supplied to
+// setupHandlers. Declining lets these tests inspect the prompt while proving
+// the send subcommand was never reached.
+// ============================================================================
+describe.each([
+  ['gog_gmail_reply', 'reply' as const],
+  ['gog_gmail_reply_all', 'reply-all' as const],
+])('%s — confirmation gate', (tool, subcommand) => {
+  const METADATA = JSON.stringify({
+    headers: { from: 'Alice <alice@example.com>', to: 'me@example.com', cc: 'Carol <carol@law-firm.example>', subject: 'Contract terms' },
+  });
+
+  const promptedDetails = async (args: Record<string, unknown>, metadata = METADATA) => {
+    vi.mocked(runner.run).mockResolvedValue(METADATA);
+    if (metadata !== METADATA) vi.mocked(runner.run).mockResolvedValue(metadata);
+    let request: ElicitRequest | undefined;
+    const harness = await setupHandlers(async (value) => {
+      request = value;
+      return { action: 'decline' };
+    });
+    const result = await harness.callTool(tool, { messageId: 'm1', ...args });
+    return {
+      result,
+      request,
+      details: (JSON.parse(request?.params.message.split('\n').slice(1).join('\n') ?? '{}') as {
+        details?: Record<string, unknown>;
+      }).details ?? {},
+    };
+  };
+
+  it('elicits the resolved recipients and sends nothing when the user declines', async () => {
+    const { result, request, details } = await promptedDetails({ body: 'Sounds good' });
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'm1', '--format=metadata'], { account: undefined });
+    expect(request?.params.requestedSchema).toEqual(expect.objectContaining({ type: 'object' }));
+    expect(JSON.parse(result.content[0].text as string)).toEqual(expect.objectContaining({
+      confirmed: false,
+      cancelled: true,
+      action: `gmail.${subcommand}`,
+    }));
+    if (subcommand === 'reply') {
+      expect(details.recipients).toEqual(['alice@example.com']);
+    } else {
+      expect(details.recipients).toEqual(['alice@example.com', 'me@example.com', 'carol@law-firm.example']);
+    }
+  });
+
+  it('sends nothing when the user accepts but leaves confirmation false', async () => {
+    vi.mocked(runner.run).mockResolvedValue(METADATA);
+    const harness = await setupHandlers(async () => ({ action: 'accept', content: { confirmed: false } }));
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'x' });
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(result.content[0].text as string).cancelled).toBe(true);
+  });
+
+  it('falls back to "Re: <original subject>" in the prompt when no subject override is given', async () => {
+    const { details } = await promptedDetails({ body: 'x' });
+    expect(details.subject).toBe('Re: Contract terms');
+  });
+
+  it('prefers an explicit subject override in the prompt over the inherited one', async () => {
+    const { details } = await promptedDetails({ body: 'x', subject: 'Custom subject' });
+    expect(details.subject).toBe('Custom subject');
+  });
+
+  it('actually sends and logs the resolved recipients after the user accepts', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce(METADATA)
+      .mockResolvedValueOnce(METADATA)
+      .mockResolvedValueOnce('{"id":"sent1"}');
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'Sounds good' });
+    expect(runner.run).toHaveBeenCalledTimes(3);
+    expect(runner.run).toHaveBeenNthCalledWith(1, ['gmail', 'get', 'm1', '--format=metadata'], { account: undefined });
+    expect(runner.run).toHaveBeenNthCalledWith(
+      3,
+      ['gmail', subcommand, 'm1', '--body=Sounds good', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+    expect(result.content[0].text).toBe('{"id":"sent1"}');
+    const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+    expect(event.event).toBe('gmail_dispatch');
+    expect(event.tool).toBe(tool);
+    expect(event.recipientCount).toBeGreaterThan(0);
+    writeSpy.mockRestore();
+  });
+
+  it('does not log when the accepted send itself fails', async () => {
+    vi.mocked(runner.run)
+      .mockResolvedValueOnce(METADATA)
+      .mockResolvedValueOnce(METADATA)
+      .mockRejectedValueOnce(new Error('quota exceeded'));
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'm1', body: 'x' });
+    expect(result.isError).toBe(true);
+    expect(writeSpy).not.toHaveBeenCalled();
+    writeSpy.mockRestore();
+  });
+
+  it('surfaces a bad messageId as a diagnosed error, without ever building a preview', async () => {
+    vi.mocked(runner.run).mockRejectedValue(new Error('message not found'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool(tool, { messageId: 'bad', body: 'x' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('message not found');
+  });
+
+  it('measures bodyLength from bodyHtml when no plain body is given', async () => {
+    const { details } = await promptedDetails({ bodyHtml: '<p>Hi</p>' });
+    expect(details.bodyLength).toBe('<p>Hi</p>'.length);
+  });
+
+  it('measures bodyLength as zero when neither body nor bodyHtml is given', async () => {
+    const { details } = await promptedDetails({});
+    expect(details.bodyLength).toBe(0);
+  });
+
+  it('ignores a non-string header value in the metadata response', async () => {
+    const { details } = await promptedDetails({ body: 'x' }, JSON.stringify({
+      headers: { from: 'alice@example.com', subject: 42 },
+    }));
+    expect(details.recipients).toEqual(['alice@example.com']);
+    expect(details.subject).toBeUndefined();
+  });
+
+  it('treats an unparseable metadata response as empty headers rather than crashing', async () => {
+    const { details } = await promptedDetails({ body: 'x' }, 'not json at all');
+    expect(details.recipients).toEqual([]);
+  });
+
+  it('applies to/cc/bcc adds and remove drops on top of the inherited recipients in the prompt', async () => {
+    const { details } = await promptedDetails({
+      body: 'x', to: ['dave@example.com'], remove: ['carol@law-firm.example'],
+    });
+    expect(details.recipients).not.toContain('carol@law-firm.example');
+    expect(details.recipients).toContain('dave@example.com');
+  });
+});
+
 describe('gog_gmail_reply body-vs-file conflicts', () => {
   it('rejects bodyHtml plus bodyHtmlFile before gog runs', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
@@ -699,7 +931,9 @@ describe('gog_gmail_reply body-vs-file conflicts', () => {
   it('passes bodyHtmlFile alone through as --body-html-file', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Hi', bodyHtmlFile: '/tmp/b.html' });
+    await harness.callTool('gog_gmail_reply', {
+      messageId: 'm1', body: 'Hi', bodyHtmlFile: '/tmp/b.html',
+    });
     expect(runner.run).toHaveBeenCalledWith(
       ['gmail', 'reply', 'm1', '--body=Hi', '--body-html-file=/tmp/b.html', '--auto-from-addressed-alias=false'],
       { account: undefined },
@@ -729,17 +963,13 @@ describe('gog_gmail_reply body-vs-file conflicts', () => {
 // timeout. No file param may advertise it as usable.
 describe('reply file params never advertise stdin as usable', () => {
   it.each(['gog_gmail_reply', 'gog_gmail_reply_all'])('%s.bodyHtmlFile warns that stdin hangs', async (tool) => {
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
-    const server = new McpServer({ name: 'test', version: '0.0.0' });
-    const configs = new Map<string, Record<string, { description?: string }>>();
-    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
-      configs.set(name, (config as { inputSchema: Record<string, { description?: string }> }).inputSchema);
-      return undefined as never;
-    });
-    registerGmailTools(server);
-    const desc = configs.get(tool)?.bodyHtmlFile?.description ?? '';
+    const harness = await setupHandlers();
+    const listed = (await harness.client.listTools()).tools.find((candidate) => candidate.name === tool);
+    const properties = listed?.inputSchema.properties as Record<string, { description?: string }> | undefined;
+    const desc = properties?.bodyHtmlFile?.description ?? '';
     expect(desc).not.toBe('');
     expect(desc).not.toMatch(/(?:or|use)\s+"?-"?\s+(?:for|to read)/i);
     expect(desc).toMatch(/stdin/i);
+    expect(properties).not.toHaveProperty('confirmed');
   });
 });

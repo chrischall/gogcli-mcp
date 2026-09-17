@@ -1,6 +1,6 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { rawTextResult } from '@chrischall/mcp-utils';
 import { accountParam, runOrDiagnose, run, diagnose, errorText, payloadArg } from '../../../gogcli-mcp/src/lib.js';
 
@@ -81,10 +81,10 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_list_tabs', {
     description: 'List tabs (sheets) in a spreadsheet with their titles, sheetIds, and indices. A friendlier view than gog_sheets_metadata when you only need the tab list — useful for restructuring a workbook over a long agent session without losing track of names.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, account }) => {
     // jq projection keeps the response compact: sheetId, title, index, gridProperties only.
     return runOrDiagnose(
@@ -95,11 +95,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_add_tab', {
     description: 'Add a new sheet tab to a spreadsheet.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       tabName: z.string().describe('Name for the new tab'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, tabName, account }) => {
     return runOrDiagnose(['sheets', 'add-tab', spreadsheetId, tabName], { account });
   });
@@ -107,11 +107,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_delete_tab', {
     description: 'Delete a sheet tab from a spreadsheet.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tabName: z.string().describe('Name of the tab to delete'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, tabName, account }) => {
     return runOrDiagnose(['sheets', 'delete-tab', spreadsheetId, tabName, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
@@ -119,24 +119,24 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_rename_tab', {
     description: 'Rename a sheet tab.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       oldName: z.string().describe('Current tab name'),
       newName: z.string().describe('New tab name'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, oldName, newName, account }) => {
     return runOrDiagnose(['sheets', 'rename-tab', spreadsheetId, oldName, newName], { account });
   });
 
   server.registerTool('gog_sheets_copy', {
     description: 'Copy a spreadsheet to a new spreadsheet with the given title.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID to copy'),
       title: z.string().describe('Title for the new copy'),
       parent: z.string().optional().describe('Parent folder ID to place the copy in'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, title, parent, account }) => {
     const args = ['sheets', 'copy', spreadsheetId, title];
     if (parent) args.push(`--parent=${parent}`);
@@ -146,13 +146,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_export', {
     description: 'Export a spreadsheet as CSV, TSV, or PDF.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       format: z.string().optional().describe('Export format: csv, tsv, pdf (default: csv)'),
       out: z.string().optional().describe('Output file path'),
       overwrite: z.boolean().optional().describe('Overwrite the output file if it already exists (gog refuses otherwise)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, format, out, overwrite, account }) => {
     const args = ['sheets', 'export', spreadsheetId];
     if (format) args.push(`--format=${format}`);
@@ -164,13 +164,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_freeze', {
     description: 'Freeze rows and/or columns in a sheet.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       rows: z.number().optional().describe('Number of rows to freeze'),
       cols: z.number().optional().describe('Number of columns to freeze'),
       sheet: z.string().optional().describe('Sheet tab name (default: first sheet)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, rows, cols, sheet, account }) => {
     const args = ['sheets', 'freeze', spreadsheetId];
     if (rows !== undefined) args.push(`--rows=${rows}`);
@@ -182,7 +182,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_insert', {
     description: 'Insert rows or columns into a sheet. With after:false (default), the new dimension lands at start. With after:true, the new dimension lands at start+1 (the existing dimension at start is preserved).',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       sheet: z.string().describe('Sheet tab name'),
       dimension: z.string().describe('Dimension to insert: ROWS or COLUMNS'),
@@ -191,7 +191,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       after: z.boolean().optional().describe('Insert after the start index instead of before. With after:true the new dimension lands at start+1, leaving the existing dimension at start untouched.'),
       inheritFromBefore: z.boolean().optional().describe('Inherit number format / styling from the row/column before the insertion. Defaults to true with after:true, false otherwise; pass false to inherit from the row/column after the insertion instead. Cannot inherit from before when inserting at the first row/column.'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, sheet, dimension, start, count, after, inheritFromBefore, account }) => {
     // gog's positional `<start>` is 1-based, and it rejects 0 ("start must be >= 1").
     // Without --after it inserts *before* the position, so API start_index = positional - 1;
@@ -209,14 +209,14 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_copy_paste', {
     description: 'Copy a source range\'s values/formulas/format to a destination range via the Sheets CopyPasteRequest. A destination larger than the source tiles the source to fill it — the canonical way to fill formulas down or across with relative references adjusted (aliases: fill, copy-range). Use type to control what is pasted (NORMAL pastes everything; FORMULA fills formulas with adjusted references; VALUES/FORMAT/etc. paste only that aspect).',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       source: z.string().describe('Source range (e.g. Sheet1!A2:H71)'),
       dest: z.string().describe('Destination range (e.g. Sheet1!A2:H120). Larger than the source tiles/fills it.'),
       type: z.enum(['NORMAL', 'VALUES', 'FORMAT', 'FORMULA', 'NO_BORDERS', 'DATA_VALIDATION', 'CONDITIONAL_FORMATTING']).optional().describe('Paste type (default: NORMAL pastes everything)'),
       transpose: z.boolean().optional().describe('Paste transposed (swap rows and columns)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, source, dest, type, transpose, account }) => {
     const args = ['sheets', 'copy-paste', spreadsheetId, source, dest];
     if (type) args.push(`--type=${type}`);
@@ -227,12 +227,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_merge', {
     description: 'Merge cells in a range.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to merge (e.g. Sheet1!A1:C3)'),
       type: z.string().optional().describe('Merge type: MERGE_ALL, MERGE_COLUMNS, MERGE_ROWS'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, type, account }) => {
     const args = ['sheets', 'merge', spreadsheetId, range];
     if (type) args.push(`--type=${type}`);
@@ -242,11 +242,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_unmerge', {
     description: 'Unmerge previously merged cells in a range.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to unmerge (e.g. Sheet1!A1:C3)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, account }) => {
     return runOrDiagnose(['sheets', 'unmerge', spreadsheetId, range], { account });
   });
@@ -254,7 +254,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_format', {
     description: 'Apply cell formatting to a range. The named flags (bold, italic, backgroundColor, etc.) compose into a Sheets API CellFormat — use them for the 90% case. For full API control, pass formatJson + formatFields (Sheets CellFormat + field mask) directly.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to format (e.g. Sheet1!A1:C3)'),
       bold: z.boolean().optional().describe('Set bold'),
@@ -271,7 +271,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       formatJson: z.string().optional().describe('Escape hatch: raw CellFormat JSON. When provided, named flags above are ignored and formatJson is sent as-is.'),
       formatFields: z.string().optional().describe('Comma-separated field mask (e.g. textFormat.bold,backgroundColor). Required when using formatJson; auto-computed when using named flags.'),
       account: accountParam,
-    },
+    }),
   }, async (rawArgs) => {
     const a = rawArgs as {
       spreadsheetId: string;
@@ -343,14 +343,14 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_number_format', {
     description: 'Set number format on a range (currency, percentage, date, etc.). When type is DATE or DATE_TIME, the target range is peeked first; if every numeric cell is a small integer (< 10000), a warning is prepended to the response because Sheets will render those as 1899/1900 day-serials. Pass force:true to skip the check.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to format (e.g. Sheet1!A1:A10)'),
       type: z.string().optional().describe('Format type: NUMBER, CURRENCY, PERCENT, DATE, DATE_TIME, TIME, SCIENTIFIC, etc.'),
       pattern: z.string().optional().describe('Custom format pattern (e.g. "#,##0.00", "yyyy-mm-dd")'),
       force: z.boolean().optional().describe('Skip the DATE/DATE_TIME small-integer warning check'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, type, pattern, force, account }) => {
     const isDateType = type === 'DATE' || type === 'DATE_TIME';
     const warning = isDateType && !force
@@ -369,12 +369,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_read_format', {
     description: 'Read cell formatting for a range.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to read formatting from'),
       effective: z.boolean().optional().describe('Return effective (computed) format including inherited styles'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, effective, account }) => {
     const args = ['sheets', 'read-format', spreadsheetId, range];
     if (effective) args.push('--effective');
@@ -384,13 +384,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_resize_columns', {
     description: 'Resize column widths. Use --auto for auto-fit or --width for a specific pixel width.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       columns: z.string().describe('Column range (e.g. A:C, or Sheet1!A:C)'),
       width: z.number().optional().describe('Width in pixels'),
       auto: z.boolean().optional().describe('Auto-fit column width to content'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, columns, width, auto, account }) => {
     const args = ['sheets', 'resize-columns', spreadsheetId, columns];
     if (width !== undefined) args.push(`--width=${width}`);
@@ -401,13 +401,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_resize_rows', {
     description: 'Resize row heights. Use --auto for auto-fit or --height for a specific pixel height.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       rows: z.string().describe('Row range (e.g. 1:10, or Sheet1!1:10)'),
       height: z.number().optional().describe('Height in pixels'),
       auto: z.boolean().optional().describe('Auto-fit row height to content'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, rows, height, auto, account }) => {
     const args = ['sheets', 'resize-rows', spreadsheetId, rows];
     if (height !== undefined) args.push(`--height=${height}`);
@@ -418,11 +418,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_notes', {
     description: 'Read cell notes in a range.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to read notes from (e.g. Sheet1!A1:B5)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, account }) => {
     return runOrDiagnose(['sheets', 'notes', spreadsheetId, range], { account });
   });
@@ -430,12 +430,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_update_note', {
     description: 'Add, update, or clear a cell note. Pass an empty string to clear the note.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Cell or range to set the note on (e.g. Sheet1!A1)'),
       note: z.string().describe('Note text (empty string clears the note). Large notes are written to a temp file and passed to gog as --note-file automatically.'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, note, account }) => {
     // payloadArg keeps normal notes on `--note=` and spills a large one to a
     // temp file passed as `--note-file`, so it can't blow the argv size cap.
@@ -450,11 +450,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_links', {
     description: 'List hyperlinks in a range.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to scan for hyperlinks (e.g. Sheet1!A1:Z100)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, account }) => {
     return runOrDiagnose(['sheets', 'links', spreadsheetId, range], { account });
   });
@@ -465,7 +465,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       '(2) multi-link cell — pass cell + runsJson, a JSON array of rich-text runs (a run with an empty uri is plain text); ' +
       '(3) batch — pass cellsJson, a JSON array of {cell,url,text} or {cell,runs:[...]} objects written in one request.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       cell: z.string().optional().describe('Target cell in A1 notation (e.g. Sheet1!B2). Used by single-link and runsJson modes; omit for batch (cellsJson).'),
       url: z.string().optional().describe('Hyperlink URL for single-link mode'),
@@ -473,7 +473,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       runsJson: z.string().optional().describe('Multi-link cell: JSON array of runs, e.g. [{"text":"Act A","uri":"https://a"},{"text":" / "},{"text":"Act B","uri":"https://b"}]. A run with an empty uri is plain text.'),
       cellsJson: z.string().optional().describe('Batch: JSON array of {cell,url,text} or {cell,runs:[{text,uri}]} objects, written in one request. Inline JSON or @file (a path gog reads itself — cheaper than inlining a large batch). gog also accepts @- for stdin, but this server never writes to gog\'s stdin, so @- would hang until the call times out.'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, cell, url, text, runsJson, cellsJson, account }) => {
     const args = ['sheets', 'links', 'set', spreadsheetId];
     if (cell) args.push(cell);
@@ -487,11 +487,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_validation_get', {
     description: 'Read the data-validation rules (dropdowns, checkboxes, number/date conditions, custom formulas) applied to a range.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to inspect (e.g. Sheet1!A1:A10)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, account }) => {
     return runOrDiagnose(['sheets', 'validation', 'get', spreadsheetId, range], { account });
   });
@@ -499,7 +499,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_validation_set', {
     description: 'Set a data-validation rule on a range — dropdowns (ONE_OF_LIST / ONE_OF_RANGE), checkboxes (BOOLEAN), number/date conditions, or custom formulas. Overwrites any existing rule on the range. Repeat values for list entries or between-bounds.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to apply the rule to (e.g. Sheet1!A1:A10)'),
       type: z.string().describe('Condition type, e.g. ONE_OF_LIST, ONE_OF_RANGE, NUMBER_BETWEEN, NUMBER_GREATER, DATE_AFTER, BOOLEAN, CUSTOM_FORMULA'),
@@ -509,7 +509,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       showCustomUi: z.boolean().optional().describe('Show dropdown or checkbox UI where supported'),
       filteredRowsIncluded: z.boolean().optional().describe('Apply the rule to filtered rows too; required for table-managed dropdown columns'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, type, values, strict, inputMessage, showCustomUi, filteredRowsIncluded, account }) => {
     const args = ['sheets', 'validation', 'set', spreadsheetId, range, `--type=${type}`];
     if (values) for (const v of values) args.push(`--value=${v}`);
@@ -523,12 +523,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_validation_clear', {
     description: 'Remove all data-validation rules from a range.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to clear (e.g. Sheet1!A1:A10)'),
       filteredRowsIncluded: z.boolean().optional().describe('Clear rules from filtered rows too; required for table-managed dropdown columns'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, filteredRowsIncluded, account }) => {
     const args = ['sheets', 'validation', 'clear', spreadsheetId, range];
     if (filteredRowsIncluded) args.push('--filtered-rows-included');
@@ -538,14 +538,14 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_delete_dimension', {
     description: 'Delete a span of rows or columns, table-aware: intersecting table objects are preserved (shrunk) along with their remaining data, instead of being corrupted as with a raw DeleteDimension batch update. Target by A1 range (e.g. Sheet1!5:7 or Sheet1!C:D) or by sheet name plus start/end.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       rangeOrSheet: z.string().describe('A1 range covering the rows/columns to delete, or a sheet name (then start/end are required)'),
       dimension: z.enum(['ROWS', 'COLUMNS']).describe('Dimension to delete'),
       start: z.number().int().optional().describe('First row/column to delete (1-based, inclusive; required with a sheet-name target)'),
       end: z.number().int().optional().describe('Last row/column to delete (1-based, inclusive; required with a sheet-name target)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, rangeOrSheet, dimension, start, end, account }) => {
     const args = ['sheets', 'delete-dimension', spreadsheetId, rangeOrSheet, `--dimension=${dimension}`];
     if (start !== undefined) args.push(`--start=${start}`);
@@ -557,10 +557,10 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_named_ranges_list', {
     description: 'List all named ranges in a spreadsheet.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, account }) => {
     return runOrDiagnose(['sheets', 'named-ranges', 'list', spreadsheetId], { account });
   });
@@ -568,23 +568,23 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_named_ranges_get', {
     description: 'Get a named range by name or ID.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       nameOrId: z.string().describe('Named range name or ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, nameOrId, account }) => {
     return runOrDiagnose(['sheets', 'named-ranges', 'get', spreadsheetId, nameOrId], { account });
   });
 
   server.registerTool('gog_sheets_named_ranges_add', {
     description: 'Create a new named range.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       name: z.string().describe('Name for the range'),
       range: z.string().describe('Cell range (e.g. Sheet1!A1:B10)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, name, range, account }) => {
     return runOrDiagnose(['sheets', 'named-ranges', 'add', spreadsheetId, name, range], { account });
   });
@@ -592,13 +592,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_named_ranges_update', {
     description: 'Update a named range (change its name, range, or both).',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       nameOrId: z.string().describe('Current named range name or ID'),
       name: z.string().optional().describe('New name'),
       range: z.string().optional().describe('New cell range'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, nameOrId, name, range, account }) => {
     const args = ['sheets', 'named-ranges', 'update', spreadsheetId, nameOrId];
     if (name) args.push(`--name=${name}`);
@@ -609,11 +609,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_named_ranges_delete', {
     description: 'Delete a named range.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       nameOrId: z.string().describe('Named range name or ID to delete'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, nameOrId, account }) => {
     return runOrDiagnose(['sheets', 'named-ranges', 'delete', spreadsheetId, nameOrId], { account });
   });
@@ -621,7 +621,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_batch_update', {
     description: 'Update values in multiple ranges with one Sheets API request. dataJson is a JSON array of {range, values} objects — pass it inline as a literal JSON string. Atomic — either all ranges update or none do. (The CLI also accepts "@/path/to/file.json", but that file is read on the gog server\'s filesystem, not the caller\'s, so inline JSON is the right form for remote MCP callers.)',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataJson: z.string().describe('Value ranges as an inline JSON array, e.g. [{"range":"Sheet1!A1:B2","values":[["a","b"]]}]. (An "@/path" form is read on the gog server filesystem, not yours — inline the JSON instead.)'),
       input: z.enum(['RAW', 'USER_ENTERED']).optional().describe('Value input option (default: USER_ENTERED)'),
@@ -629,7 +629,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       responseRender: z.enum(['FORMATTED_VALUE', 'UNFORMATTED_VALUE', 'FORMULA']).optional().describe('Response value render option'),
       responseDateTimeRender: z.enum(['SERIAL_NUMBER', 'FORMATTED_STRING']).optional().describe('Response date/time render option'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, dataJson, input, includeValuesInResponse, responseRender, responseDateTimeRender, account }) => {
     const args = ['sheets', 'batch-update', spreadsheetId, `--data-json=${dataJson}`];
     if (input) args.push(`--input=${input}`);
@@ -642,12 +642,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_reorder_tab', {
     description: 'Move a tab to a specific 0-based position. `tab` is the tab name or numeric sheetId; `to=0` is the leftmost slot.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tab: z.string().describe('Target tab by name or numeric sheet ID'),
       to: z.number().int().min(0).describe('Destination final 0-based tab index'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, tab, to, account }) => {
     return runOrDiagnose(
       ['sheets', 'reorder-tab', spreadsheetId, `--tab=${tab}`, `--to=${to}`],
@@ -660,10 +660,10 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_chart_list', {
     description: 'List embedded charts in a spreadsheet (chartId, type, position).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, account }) => {
     return runOrDiagnose(['sheets', 'chart', 'list', spreadsheetId], { account });
   });
@@ -671,18 +671,18 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_chart_get', {
     description: 'Get the full definition (spec + position) of a single chart by its numeric chart ID.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       chartId: z.string().describe('Numeric chart ID (from gog_sheets_chart_list)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, chartId, account }) => {
     return runOrDiagnose(['sheets', 'chart', 'get', spreadsheetId, chartId], { account });
   });
 
   server.registerTool('gog_sheets_chart_create', {
     description: 'Create an embedded chart from a JSON spec. specJson is a Sheets API ChartSpec (or full EmbeddedChart) — inline or @/path/to/file.json. Anchor the chart with sheet + anchor (A1 cell), and optionally size it with width/height pixels.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       specJson: z.string().describe('ChartSpec or EmbeddedChart JSON (inline or @file)'),
       sheet: z.string().optional().describe('Sheet name for the anchor (resolved to sheetId)'),
@@ -690,7 +690,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       width: z.number().optional().describe('Chart width in pixels (default: 600)'),
       height: z.number().optional().describe('Chart height in pixels (default: 371)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, specJson, sheet, anchor, width, height, account }) => {
     const args = ['sheets', 'chart', 'create', spreadsheetId, `--spec-json=${specJson}`];
     if (sheet) args.push(`--sheet=${sheet}`);
@@ -703,12 +703,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_chart_update', {
     description: 'Replace a chart spec by chart ID. specJson is a Sheets API ChartSpec (or full EmbeddedChart) — inline or @/path/to/file.json.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       chartId: z.string().describe('Numeric chart ID to update'),
       specJson: z.string().describe('ChartSpec or EmbeddedChart JSON (inline or @file)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, chartId, specJson, account }) => {
     return runOrDiagnose(
       ['sheets', 'chart', 'update', spreadsheetId, chartId, `--spec-json=${specJson}`],
@@ -719,11 +719,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_chart_delete', {
     description: 'Delete a chart by its numeric chart ID.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       chartId: z.string().describe('Numeric chart ID to delete'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, chartId, account }) => {
     return runOrDiagnose(['sheets', 'chart', 'delete', spreadsheetId, chartId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
@@ -733,10 +733,10 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_table_list', {
     description: 'List Google Sheets tables in a spreadsheet (tableId, name, range).',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, account }) => {
     return runOrDiagnose(['sheets', 'table', 'list', spreadsheetId], { account });
   });
@@ -744,24 +744,24 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_table_get', {
     description: 'Get a single Google Sheets table (definition + columns) by its table ID.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID (from gog_sheets_table_list)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, tableId, account }) => {
     return runOrDiagnose(['sheets', 'table', 'get', spreadsheetId, tableId], { account });
   });
 
   server.registerTool('gog_sheets_table_create', {
     description: 'Create a Google Sheets table over a range. columnsJson is a JSON array of column definitions (each {columnName, columnType?}); valid columnType values: TEXT, DOUBLE, BOOLEAN, DATE, DROPDOWN. Inline JSON or @/path/to/file.json.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range the table covers (e.g. Sheet1!A1:D20)'),
       name: z.string().describe('Table name'),
       columnsJson: z.string().describe('Column definitions as JSON array or @file (columnName + optional columnType)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, name, columnsJson, account }) => {
     return runOrDiagnose(
       ['sheets', 'table', 'create', spreadsheetId, range, `--name=${name}`, `--columns-json=${columnsJson}`],
@@ -771,13 +771,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_table_append', {
     description: 'Append data rows to a table. valuesJson is a JSON 2D array of row values.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID to append to'),
       valuesJson: z.string().describe('Values as JSON 2D array (e.g. [["a",1],["b",2]])'),
       input: z.enum(['RAW', 'USER_ENTERED']).optional().describe('Value input option (default: USER_ENTERED)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, tableId, valuesJson, input, account }) => {
     const args = ['sheets', 'table', 'append', spreadsheetId, tableId, `--values-json=${valuesJson}`];
     if (input) args.push(`--input=${input}`);
@@ -787,11 +787,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_table_clear', {
     description: 'Clear all data rows from a table (keeps the table and its columns).',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID to clear'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, tableId, account }) => {
     return runOrDiagnose(['sheets', 'table', 'clear', spreadsheetId, tableId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
@@ -803,14 +803,14 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'Formatting and banding are still lost; data-validation dropdowns are also not restored automatically, but you can snapshot them first with gog_sheets_validation_get and re-apply with gog_sheets_validation_set. ' +
       'Set keep_data=false to delete the table AND wipe its cell data (the raw destructive behaviour). To preserve everything, snapshot the whole spreadsheet first with gog_sheets_snapshot.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID to delete'),
       keep_data: z.boolean().optional().describe(
         'Default true: preserve the table\'s cell values and formulas (read → delete → restore), emulating "Convert to range". Set false to delete the table AND its data.',
       ),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, tableId, keep_data = true, account }) => {
     if (!keep_data) {
       // Raw destructive delete: removes the table and its cell data. gog ≥ 0.23
@@ -868,11 +868,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_banding_list', {
     description: 'List alternating-color banded ranges. Optionally scope to a single sheet.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       sheet: z.string().optional().describe('Only list banding from this sheet'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, sheet, account }) => {
     const args = ['sheets', 'banding', 'list', spreadsheetId];
     if (sheet) args.push(`--sheet=${sheet}`);
@@ -881,13 +881,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_banding_set', {
     description: 'Apply alternating colors to a range. Provide rowPropertiesJson and/or columnPropertiesJson — each a Sheets API BandingProperties JSON object ({headerColor, firstBandColor, secondBandColor, footerColor}). At least one is required.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to band (e.g. Sheet1!A1:D20)'),
       rowPropertiesJson: z.string().optional().describe('BandingProperties JSON for row colors'),
       columnPropertiesJson: z.string().optional().describe('BandingProperties JSON for column colors'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, rowPropertiesJson, columnPropertiesJson, account }) => {
     const args = ['sheets', 'banding', 'set', spreadsheetId, range];
     if (rowPropertiesJson) args.push(`--row-properties-json=${rowPropertiesJson}`);
@@ -898,13 +898,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_banding_clear', {
     description: 'Remove alternating-color banding. Pass id to remove a single banded range, or all:true with sheet to remove every banding on that sheet.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       id: z.number().optional().describe('Banded range ID to remove'),
       all: z.boolean().optional().describe('Remove all banding from the sheet (requires sheet)'),
       sheet: z.string().optional().describe('Sheet name (used with all:true)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, id, all, sheet, account }) => {
     const args = ['sheets', 'banding', 'clear', spreadsheetId];
     if (id !== undefined) args.push(`--id=${id}`);
@@ -918,12 +918,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_filter_set', {
     description: 'Set a basic filter on a range (the filter/sort header Sheets shows on a data range). A sheet can hold one basic filter; replacing an existing one requires replace=true — without it, gog refuses rather than silently overwriting.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to filter (A1 notation with sheet name, e.g. Sheet1!A1:C100, or a named range name)'),
       replace: z.boolean().optional().describe('Replace the sheet\'s existing basic filter if one is set (appends --force)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, replace, account }) => {
     const args = ['sheets', 'filter', 'set', spreadsheetId, range];
     if (replace) args.push('--force');
@@ -935,11 +935,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_conditional_format_list', {
     description: 'List conditional formatting rules. Optionally scope to a single sheet.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       sheet: z.string().optional().describe('Only list rules from this sheet'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, sheet, account }) => {
     const args = ['sheets', 'conditional-format', 'list', spreadsheetId];
     if (sheet) args.push(`--sheet=${sheet}`);
@@ -948,7 +948,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_conditional_format_add', {
     description: 'Add a conditional formatting rule to a range. Boolean rules: type picks the condition, expr is its value/formula (omit for blank/not-blank), formatJson is the CellFormat to apply when the condition matches (inline or @file); use formatFields to force-send zero/false fields (e.g. backgroundColor,textFormat.bold). Gradient rules (color scales): pass gradientRuleJson instead — a GradientRule JSON with minpoint/maxpoint (and optional midpoint), each {"color":{...},"type":"MIN|MAX|NUMBER|PERCENT|PERCENTILE","value":"..."}. The two modes are mutually exclusive.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range the rule applies to (e.g. Sheet1!A1:A100)'),
       type: z.enum([
@@ -961,7 +961,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       formatFields: z.string().optional().describe('Format field mask for force-sending zero/false fields (e.g. backgroundColor,textFormat.bold)'),
       gradientRuleJson: z.string().optional().describe('GradientRule JSON for gradient conditional formats (inline or @file; must include minpoint and maxpoint)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, range, type, formatJson, expr, formatFields, gradientRuleJson, account }) => {
     const args = ['sheets', 'conditional-format', 'add', spreadsheetId, range];
     if (type) args.push(`--type=${type}`);
@@ -975,13 +975,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_conditional_format_clear', {
     description: 'Remove conditional formatting rules from a sheet. Pass index to remove a single rule by its 0-based index, or all:true to remove every rule on the sheet.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       sheet: z.string().describe('Sheet name to clear rules from'),
       index: z.number().optional().describe('0-based rule index to remove'),
       all: z.boolean().optional().describe('Remove all conditional formatting rules from the sheet'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, sheet, index, all, account }) => {
     const args = ['sheets', 'conditional-format', 'clear', spreadsheetId, `--sheet=${sheet}`];
     if (index !== undefined) args.push(`--index=${index}`);
@@ -994,12 +994,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
     description:
       'Make a backup copy of an entire spreadsheet — a one-call safety snapshot to take BEFORE a risky or destructive edit (table delete, bulk clear, large rewrite). ' +
       'Returns the new copy\'s file ID and URL; if the edit goes wrong, restore by copying the backup back or sharing it. The copy is independent — later edits to the original do not affect it.',
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID to back up'),
       name: z.string().describe('Name for the backup copy, e.g. "Budget — backup before table delete"'),
       parent: z.string().optional().describe('Destination folder ID for the copy (default: same location as the original)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, name, parent, account }) => {
     const args = ['drive', 'copy', spreadsheetId, name];
     if (parent) args.push(`--parent=${parent}`);
@@ -1032,10 +1032,10 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'and current execution status. This is the discovery call — start here to get the dataSourceId the describe tool wants. ' +
       'Deliberately does not print custom SQL; use gog_sheets_datasource_describe for that.' + bigQueryScopeNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, account }) => {
     return runOrDiagnose(['sheets', 'datasource', 'list', spreadsheetId], { account });
   });
@@ -1047,11 +1047,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'Refreshes are asynchronous and this tool cannot start one — poll it until state is SUCCEEDED or FAILED, and read the ' +
       'status error text when it is FAILED.' + bigQueryScopeNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, dataSourceId, account }) => {
     return runOrDiagnose(['sheets', 'datasource', 'describe', spreadsheetId, dataSourceId], { account });
   });
@@ -1063,11 +1063,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'sheet-qualified A1 anchor (e.g. "Extracts!B3"). That anchor is what the describe and read tools take. Filter with ' +
       'dataSourceId to see only one source\'s extracts.' + bigQueryScopeNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().optional().describe('Only list tables belonging to this data source ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, dataSourceId, account }) => {
     const args = ['sheets', 'datasource', 'table', 'list', spreadsheetId];
     if (dataSourceId) args.push(`--data-source-id=${dataSourceId}`);
@@ -1080,11 +1080,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'row limit. Read this before gog_sheets_datasource_table_read when you need to know what the columns MEAN — the read ' +
       'returns values, not the extract\'s definition.' + bigQueryScopeNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       anchor: z.string().describe('Sheet-qualified A1 anchor of the extract\'s top-left cell, e.g. "Extracts!B3". Get it from gog_sheets_datasource_table_list — an extract has no other identifier.'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, anchor, account }) => {
     return runOrDiagnose(['sheets', 'datasource', 'table', 'describe', spreadsheetId, anchor], { account });
   });
@@ -1097,13 +1097,13 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'conclude a value is absent from it; raise maxRows or narrow the extract instead. Use render=UNFORMATTED_VALUE for ' +
       'arithmetic (FORMATTED_VALUE returns display strings) or render=FORMULA to see the cell formulas.' + bigQueryScopeNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       anchor: z.string().describe('Sheet-qualified A1 anchor of the extract\'s top-left cell, e.g. "Extracts!B3" (from gog_sheets_datasource_table_list)'),
       maxRows: z.number().int().positive().optional().describe('Maximum data rows to read (gog default: 1000). The header row is returned separately and does not count against this.'),
       render: z.enum(['FORMATTED_VALUE', 'UNFORMATTED_VALUE', 'FORMULA']).optional().describe('How cell values are rendered (gog default: FORMATTED_VALUE)'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, anchor, maxRows, render, account }) => {
     const args = ['sheets', 'datasource', 'table', 'read', spreadsheetId, anchor];
     if (maxRows !== undefined) args.push(`--max-rows=${maxRows}`);
@@ -1138,7 +1138,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'BigQuery project charged for the query; tableProject only names which project OWNS the table, and defaults to the ' +
       'billing project. Returns the new dataSourceId, which every other datasource tool takes.' +
       bigQueryChargeNote + bigQueryScopeNote,
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       billingProject: z.string().describe('Billing-enabled BigQuery project charged for this source\'s queries'),
       query: z.string().optional().describe('BigQuery SQL to run. Mutually exclusive with dataset/table/tableProject.'),
@@ -1146,7 +1146,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       table: z.string().optional().describe('BigQuery table ID. Requires dataset; mutually exclusive with query.'),
       tableProject: z.string().optional().describe('BigQuery project that owns the table (default: the billing project). Only valid with dataset/table.'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, billingProject, query, dataset, table, tableProject, account }) => {
     const tableFlags = tableProject !== undefined || dataset !== undefined || table !== undefined;
     if (query !== undefined && tableFlags) {
@@ -1171,7 +1171,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'gog_sheets_datasource_describe first if you are unsure which kind it is. Replacing the SQL DISCARDS the source\'s ' +
       'current results.' + bigQueryChargeNote + bigQueryScopeNote,
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
       billingProject: z.string().optional().describe('New billing-enabled BigQuery project to charge executions to'),
@@ -1180,7 +1180,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       table: z.string().optional().describe('Replacement table ID. Only valid on a table-backed source.'),
       tableProject: z.string().optional().describe('Replacement project owning the table. Only valid on a table-backed source.'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, dataSourceId, billingProject, query, dataset, table, tableProject, account }) => {
     const tableFlags = tableProject !== undefined || dataset !== undefined || table !== undefined;
     if (query !== undefined && tableFlags) {
@@ -1218,12 +1218,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'Re-run a Connected Sheets data source so its sheet and extracts pick up current BigQuery data. Google refuses to ' +
       'refresh a source whose previous execution FAILED; forceRefresh overrides that, which is what you want after fixing ' +
       'the underlying query or permissions.' + bigQueryChargeNote + bigQueryScopeNote,
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
       forceRefresh: z.boolean().optional().describe('Refresh even when the previous execution failed'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, dataSourceId, forceRefresh, account }) => {
     const args = ['sheets', 'datasource', 'refresh', spreadsheetId, dataSourceId];
     if (forceRefresh) args.push('--force-refresh');
@@ -1237,11 +1237,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'objects on other tabs that the caller never named. Take gog_sheets_snapshot first if any of that matters. The ' +
       'BigQuery data itself is untouched; only the spreadsheet\'s connection to it goes away.' + bigQueryScopeNote,
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
       account: accountParam,
-    },
+    }),
   }, async ({ spreadsheetId, dataSourceId, account }) => {
     // gog gates this delete behind a confirmation; the runner injects
     // --no-input, so without --force it refuses at runtime. Verified live

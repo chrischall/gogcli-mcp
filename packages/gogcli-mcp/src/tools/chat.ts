@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import {
   accountParam,
@@ -49,10 +49,10 @@ export function registerChatTools(server: McpServer): void {
       + 'Start here when you do not yet have a space name; gog_chat_spaces_find is faster when you know the room\'s title.'
       + workspaceOnlyNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       ...paginationParams,
       account: accountParam,
-    },
+    }),
   }, async ({ max, pageToken, page, all, account }) => {
     const args = ['chat', 'spaces', 'list'];
     pushPaginationFlags(args, { max, pageToken, page, all });
@@ -65,12 +65,12 @@ export function registerChatTools(server: McpServer): void {
       + 'user names a room approximately ("the launch room"); pass exact=true to require the whole title. DMs have no '
       + 'display name — use gog_chat_dm_space to reach a person.' + workspaceOnlyNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       displayName: z.string().describe('Space display name, or part of one'),
       exact: z.boolean().optional().describe('Require an exact (still case-insensitive) match on the whole display name'),
       max: z.number().int().optional().describe('Max results per page'),
       account: accountParam,
-    },
+    }),
   }, async ({ displayName, exact, max, account }) => {
     const args = ['chat', 'spaces', 'find', displayName];
     if (exact) args.push('--exact');
@@ -82,11 +82,11 @@ export function registerChatTools(server: McpServer): void {
     description:
       'Create a named Chat space, optionally seeding its membership. Members are added immediately and are notified — this '
       + 'is visible to other people the moment it runs, so confirm the member list before calling it.' + workspaceOnlyNote,
-    inputSchema: {
+    inputSchema: z.object({
       displayName: z.string().describe('Display name for the new space'),
       members: z.array(z.string()).optional().describe('Initial members, as email addresses or "users/..." resource names'),
       account: accountParam,
-    },
+    }),
   }, async ({ displayName, members, account }) => {
     const args = ['chat', 'spaces', 'create', displayName];
     if (members) for (const member of members) args.push(`--member=${member}`);
@@ -98,11 +98,11 @@ export function registerChatTools(server: McpServer): void {
       'List the threads in a space, so a reply can be targeted at an existing conversation rather than starting a new one. '
       + 'Pass a thread name from here as `thread` to gog_chat_messages_send.' + workspaceOnlyNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       space: spaceParam,
       ...paginationParams,
       account: accountParam,
-    },
+    }),
   }, async ({ space, max, pageToken, page, all, account }) => {
     const args = ['chat', 'threads', 'list', space];
     pushPaginationFlags(args, { max, pageToken, page, all });
@@ -117,7 +117,7 @@ export function registerChatTools(server: McpServer): void {
       + 'miss". Newest-first needs an explicit order="createTime desc"; Chat\'s own default is oldest-first.'
       + workspaceOnlyNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       space: spaceParam,
       thread: threadParam,
       unread: z.boolean().optional().describe('Only messages posted after the account last read this space'),
@@ -125,7 +125,7 @@ export function registerChatTools(server: McpServer): void {
         .optional().describe('Sort order (Chat default: "createTime asc", i.e. OLDEST first — ask for "createTime desc" when you want the latest messages)'),
       ...paginationParams,
       account: accountParam,
-    },
+    }),
   }, async ({ space, thread, unread, order, max, pageToken, page, all, account }) => {
     const args = ['chat', 'messages', 'list', space];
     if (thread) args.push(`--thread=${thread}`);
@@ -146,7 +146,7 @@ export function registerChatTools(server: McpServer): void {
       + 'which gog\'s chat scope set does NOT request (re-auth with extraScopes to get it). Missing metadata is OMITTED '
       + 'rather than defaulted, so an absent `read` means unknown while an explicit false means unread.' + workspaceOnlyNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       query: z.string().describe('Google Chat filter-syntax query — keywords, or filters such as "from:alice@example.com budget"'),
       order: z.enum(['create_time desc', 'relevance desc']).optional().describe(
         'Sort order. NOTE the snake_case, which differs from gog_chat_messages_list\'s camelCase. "relevance desc" needs '
@@ -160,7 +160,7 @@ export function registerChatTools(server: McpServer): void {
       ...paginationParams,
       max: z.number().int().min(1).max(100).optional().describe('Max results per page (1-100; Chat search caps a page at 100)'),
       account: accountParam,
-    },
+    }),
   }, async ({ query, order, view, markup, max, pageToken, page, all, account }) => {
     const args = ['chat', 'messages', 'search', query];
     if (order) args.push(`--order=${order}`);
@@ -176,7 +176,7 @@ export function registerChatTools(server: McpServer): void {
       + 'this tool, so treat it like sending mail, not like saving a draft. Pass `thread` to reply inside an existing '
       + 'conversation (from gog_chat_threads_list or a message\'s thread field); omit it to start a new one. Text supports '
       + 'Chat\'s markdown-ish formatting (*bold*, _italic_, `code`).' + workspaceOnlyNote,
-    inputSchema: {
+    inputSchema: z.object({
       space: spaceParam,
       text: z.string().optional().describe('Message text. Optional only when an attachment is supplied.'),
       thread: threadParam,
@@ -186,7 +186,7 @@ export function registerChatTools(server: McpServer): void {
       ),
       attachInline: attachInlineParam,
       account: accountParam,
-    },
+    }),
   }, async ({ space, text, thread, attach, attachInline, account }) => {
     if (text === undefined && !attach?.length && !attachInline?.length) {
       throw new Error('A Chat message needs text, an attachment, or both.');
@@ -207,12 +207,12 @@ export function registerChatTools(server: McpServer): void {
       'Send a direct message to one person by email address, creating the DM space if this is the first message. Delivered '
       + 'immediately and cannot be unsent through this tool. For a room rather than a person, use gog_chat_messages_send.'
       + workspaceOnlyNote,
-    inputSchema: {
+    inputSchema: z.object({
       email: z.string().describe('Recipient email address'),
       text: z.string().describe('Message text'),
       thread: threadParam,
       account: accountParam,
-    },
+    }),
   }, async ({ email, text, thread, account }) => {
     const args = ['chat', 'dm', 'send', email, `--text=${text}`];
     if (thread) args.push(`--thread=${thread}`);
@@ -223,10 +223,10 @@ export function registerChatTools(server: McpServer): void {
     description:
       'Resolve the DM space for an email address — the bridge from a person to the "spaces/..." name the message tools '
       + 'want. Creates the space if none exists yet, which is silent: it does not message the person.' + workspaceOnlyNote,
-    inputSchema: {
+    inputSchema: z.object({
       email: z.string().describe('The other person\'s email address'),
       account: accountParam,
-    },
+    }),
   }, async ({ email, account }) => {
     return runOrDiagnose(['chat', 'dm', 'space', email], { account });
   });
@@ -237,12 +237,12 @@ export function registerChatTools(server: McpServer): void {
       + 'SUMMARY per message; come here when you need the individual reactors, or the reaction resource names that '
       + 'gog_chat_reactions_delete takes.' + workspaceOnlyNote,
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       message: z.string().describe('Message resource name ("spaces/AAAA/messages/BBBB"), or a bare message ID together with `space`'),
       space: z.string().optional().describe('Space resource name — required only when `message` is a bare ID'),
       ...paginationParams,
       account: accountParam,
-    },
+    }),
   }, async ({ message, space, max, pageToken, page, all, account }) => {
     const args = ['chat', 'messages', 'reactions', 'list', message];
     if (space) args.push(`--space=${space}`);
@@ -254,12 +254,12 @@ export function registerChatTools(server: McpServer): void {
     description:
       'React to a message with an emoji. Visible to the space immediately. Pass the emoji itself ("👍"), not a :shortcode:.'
       + workspaceOnlyNote,
-    inputSchema: {
+    inputSchema: z.object({
       message: z.string().describe('Message resource name ("spaces/AAAA/messages/BBBB"), or a bare message ID together with `space`'),
       emoji: z.string().describe('The emoji character to react with, e.g. "👍"'),
       space: z.string().optional().describe('Space resource name — required only when `message` is a bare ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ message, emoji, space, account }) => {
     const args = ['chat', 'messages', 'reactions', 'create', message, emoji];
     if (space) args.push(`--space=${space}`);
@@ -272,10 +272,10 @@ export function registerChatTools(server: McpServer): void {
       + 'the message\'s and not the emoji — get it from gog_chat_reactions_list. An account can only remove its own reaction.'
       + workspaceOnlyNote,
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       reaction: z.string().describe('Reaction resource name, e.g. "spaces/AAAA/messages/BBBB/reactions/CCCC"'),
       account: accountParam,
-    },
+    }),
   }, async ({ reaction, account }) => {
     return runOrDiagnose(['chat', 'messages', 'reactions', 'delete', reaction], { account });
   });

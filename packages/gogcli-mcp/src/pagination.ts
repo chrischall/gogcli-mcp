@@ -1,4 +1,4 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolResult } from '@modelcontextprotocol/server';
 import { rawTextResult } from '@chrischall/mcp-utils';
 
 // gog reports an exhausted cursor as `"nextPageToken": ""` rather than omitting

@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 
@@ -6,10 +6,10 @@ export function registerContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_search', {
     description: 'Search personal Google Contacts by name, email, or phone. For searching the Workspace directory (internal users not in your personal contacts), use gog_people_search from gogcli-mcp-contacts.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       query: z.string().describe('Search query (name, email, or phone)'),
       account: accountParam,
-    },
+    }),
   }, async ({ query, account }) => {
     return runOrDiagnose(['contacts', 'search', query], { account });
   });
@@ -17,9 +17,9 @@ export function registerContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_list', {
     description: 'List all Google Contacts.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       account: accountParam,
-    },
+    }),
   }, async ({ account }) => {
     return runOrDiagnose(['contacts', 'list'], { account });
   });
@@ -27,10 +27,10 @@ export function registerContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_get', {
     description: 'Get a contact by resource name.',
     annotations: { readOnlyHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       resourceName: z.string().describe('Contact resource name (e.g. people/c12345)'),
       account: accountParam,
-    },
+    }),
   }, async ({ resourceName, account }) => {
     return runOrDiagnose(['contacts', 'get', resourceName], { account });
   });
@@ -38,7 +38,7 @@ export function registerContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_create', {
     description: 'Create a new Google Contact.',
     annotations: { destructiveHint: false },
-    inputSchema: {
+    inputSchema: z.object({
       givenName: z.string().describe('Given (first) name'),
       familyName: z.string().optional().describe('Family (last) name'),
       email: z.string().optional().describe('Email address'),
@@ -46,7 +46,7 @@ export function registerContactsTools(server: McpServer): void {
       org: z.string().optional().describe('Organization/company name'),
       title: z.string().optional().describe('Job title'),
       account: accountParam,
-    },
+    }),
   }, async ({ givenName, familyName, email, phone, org, title, account }) => {
     const args = ['contacts', 'create', `--given=${givenName}`];
     if (familyName) args.push(`--family=${familyName}`);

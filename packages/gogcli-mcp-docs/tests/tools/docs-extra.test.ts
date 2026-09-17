@@ -565,7 +565,7 @@ describe('gog_docs_comments_list', () => {
   });
 
   it('description states the extra fetch, the Docs scope, and that --tab drops orphans', async () => {
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const { McpServer } = await import('@modelcontextprotocol/server');
     const server = new McpServer({ name: 'test', version: '0.0.0' });
     const configs = new Map<string, { description?: string }>();
     vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
@@ -796,7 +796,7 @@ describe('gog_docs_append', () => {
   it('description warns about all 3 known upstream markdown limitations', async () => {
     // Local mock to capture the registration config (the shared harness only
     // captures the handler callback).
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const { McpServer } = await import('@modelcontextprotocol/server');
     const server = new McpServer({ name: 'test', version: '0.0.0' });
     const configs = new Map<string, { description?: string }>();
     vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
@@ -2262,15 +2262,10 @@ describe('server-side file params never advertise stdin as usable', () => {
   ];
 
   it.each(STDIN_PARAMS)('%s.%s warns that stdin hangs instead of offering it', async (tool, param) => {
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
-    const server = new McpServer({ name: 'test', version: '0.0.0' });
-    const schemas = new Map<string, Record<string, { description?: string }>>();
-    vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
-      schemas.set(name, (config as { inputSchema: Record<string, { description?: string }> }).inputSchema);
-      return undefined as never;
-    });
-    registerExtraDocsTools(server);
-    const desc = schemas.get(tool)?.[param]?.description ?? '';
+    const harness = await setupHandlers();
+    const listed = (await harness.client.listTools()).tools.find((candidate) => candidate.name === tool);
+    const properties = listed?.inputSchema.properties as Record<string, { description?: string }> | undefined;
+    const desc = properties?.[param]?.description ?? '';
     expect(desc).not.toBe('');
     expect(desc).not.toMatch(/(?:use|or)\s+"?-"?\s*(?:for|to read)/i);
     expect(desc).toMatch(/stdin/i);

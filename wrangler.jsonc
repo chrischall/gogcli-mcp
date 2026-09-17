@@ -4,25 +4,17 @@
   "main": "packages/gogcli-mcp/src/worker.ts",
   "compatibility_date": "2025-11-01",
   "compatibility_flags": ["nodejs_compat"],
-  // One Durable Object per MCP endpoint (worker.ts). Each agent class holds a
-  // distinct tool set: MCP_OBJECT = all-services base (/mcp); the per-service
-  // ones = auth + <service> base + <service> extras (/mcp/<service>). The
-  // connector is otherwise stateless (every gog call is forwarded to
-  // FLY_ENDPOINT), so these DOs hold only the per-session MCP transport state.
-  "durable_objects": {
-    "bindings": [
-      { "name": "MCP_OBJECT", "class_name": "GogcliMcpAgent" },
-      { "name": "SHEETS_MCP", "class_name": "GogcliSheetsAgent" },
-      { "name": "GMAIL_MCP", "class_name": "GogcliGmailAgent" },
-      { "name": "DRIVE_MCP", "class_name": "GogcliDriveAgent" },
-      { "name": "DOCS_MCP", "class_name": "GogcliDocsAgent" }
-    ]
-  },
+  // v3 removes the Durable Objects used by the old sessionful MCP transport.
+  // The 2026-07-28 handler is stateless; every request creates a fresh server.
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["GogcliMcpAgent"] },
     {
       "tag": "v2",
       "new_sqlite_classes": ["GogcliSheetsAgent", "GogcliGmailAgent", "GogcliDriveAgent", "GogcliDocsAgent"]
+    },
+    {
+      "tag": "v3",
+      "deleted_classes": ["GogcliMcpAgent", "GogcliSheetsAgent", "GogcliGmailAgent", "GogcliDriveAgent", "GogcliDocsAgent"]
     }
   ],
   // gogcli-connector's own OAuth token store (title: gogcli-connector-oauth).

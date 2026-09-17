@@ -21,6 +21,16 @@ export {
 // same tool name from both registrar lists would be a duplicate-name error.
 export { replySchema, appendReplyFlags } from './tools/gmail.js';
 export type { ReplyFlags } from './tools/gmail.js';
+// The gmail confirmation gate — gog_gmail_reply/send/forward/autoreply are
+// the only tools that dispatch mail irreversibly on the first call. The
+// gmail sub-package's send-side forward/autoreply tools reuse these directly
+// rather than re-declaring the gate; the draft-side twins never import them.
+export {
+  extractEmails,
+  logGmailDispatch,
+  requireGmailDispatchConfirmation,
+  resultText,
+} from './gmail-dispatch-guard.js';
 export { run, runBinary, runExecutor, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
 // Sub-package tools that read gog JSON through bare `run()` (rather than the
 // `runOrDiagnose` seam) must still apply this, or their timestamps skip the

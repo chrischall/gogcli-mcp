@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose } from '../../../gogcli-mcp/src/lib.js';
 
@@ -34,11 +34,11 @@ const courseworkSharedFields = {
 export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_create', {
     description: 'Create a new Google Classroom course.',
-    inputSchema: {
+    inputSchema: z.object({
       name: z.string().describe('Course name'),
       ...courseSharedFields,
       account: accountParam,
-    },
+    }),
   }, async ({ name, owner, section, descriptionHeading, description, room, state, account }) => {
     const args = ['classroom', 'courses', 'create', `--name=${name}`];
     if (owner) args.push(`--owner=${owner}`);
@@ -53,12 +53,12 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_update', {
     description: 'Update an existing Google Classroom course.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       name: z.string().optional().describe('Course name'),
       ...courseSharedFields,
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, name, owner, section, descriptionHeading, description, room, state, account }) => {
     const args = ['classroom', 'courses', 'update', courseId];
     if (name) args.push(`--name=${name}`);
@@ -74,10 +74,10 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_delete', {
     description: 'Delete a Google Classroom course.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, account }) => {
     return runOrDiagnose(['classroom', 'courses', 'delete', courseId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
@@ -85,32 +85,32 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_archive', {
     description: 'Archive a Google Classroom course.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, account }) => {
     return runOrDiagnose(['classroom', 'courses', 'archive', courseId], { account });
   });
 
   server.registerTool('gog_classroom_courses_unarchive', {
     description: 'Unarchive a Google Classroom course (restore to ACTIVE).',
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, account }) => {
     return runOrDiagnose(['classroom', 'courses', 'unarchive', courseId], { account });
   });
 
   server.registerTool('gog_classroom_students_add', {
     description: 'Add a student to a Google Classroom course.',
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Student user ID (or "me")'),
       enrollmentCode: z.string().optional().describe('Enrollment code (required if adding self via code)'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, userId, enrollmentCode, account }) => {
     const args = ['classroom', 'students', 'add', courseId, userId];
     if (enrollmentCode) args.push(`--enrollment-code=${enrollmentCode}`);
@@ -120,22 +120,22 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_students_remove', {
     description: 'Remove a student from a Google Classroom course.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Student user ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, userId, account }) => {
     return runOrDiagnose(['classroom', 'students', 'remove', courseId, userId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_teachers_add', {
     description: 'Add a teacher to a Google Classroom course.',
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Teacher user ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, userId, account }) => {
     return runOrDiagnose(['classroom', 'teachers', 'add', courseId, userId], { account });
   });
@@ -143,23 +143,23 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_teachers_remove', {
     description: 'Remove a teacher from a Google Classroom course.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Teacher user ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, userId, account }) => {
     return runOrDiagnose(['classroom', 'teachers', 'remove', courseId, userId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_coursework_create', {
     description: 'Create a new coursework item (assignment, question, etc.) in a course.',
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       title: z.string().describe('Coursework title'),
       ...courseworkSharedFields,
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account }) => {
     const args = ['classroom', 'coursework', 'create', courseId, `--title=${title}`];
     if (description) args.push(`--description=${description}`);
@@ -177,13 +177,13 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_coursework_update', {
     description: 'Update an existing coursework item.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
       title: z.string().optional().describe('New title'),
       ...courseworkSharedFields,
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, courseworkId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account }) => {
     const args = ['classroom', 'coursework', 'update', courseId, courseworkId];
     if (title) args.push(`--title=${title}`);
@@ -202,11 +202,11 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_coursework_delete', {
     description: 'Delete a coursework item.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, courseworkId, account }) => {
     return runOrDiagnose(['classroom', 'coursework', 'delete', courseId, courseworkId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
@@ -214,14 +214,14 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_announcements_update', {
     description: 'Update an existing announcement.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       announcementId: z.string().describe('Announcement ID'),
       text: z.string().optional().describe('New text'),
       state: workState.optional().describe('State'),
       scheduled: z.string().optional().describe('Scheduled publish time'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, announcementId, text, state, scheduled, account }) => {
     const args = ['classroom', 'announcements', 'update', courseId, announcementId];
     if (text) args.push(`--text=${text}`);
@@ -233,22 +233,22 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_announcements_delete', {
     description: 'Delete an announcement.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       announcementId: z.string().describe('Announcement ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, announcementId, account }) => {
     return runOrDiagnose(['classroom', 'announcements', 'delete', courseId, announcementId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_topics_create', {
     description: 'Create a topic in a Google Classroom course.',
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       name: z.string().describe('Topic name'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, name, account }) => {
     return runOrDiagnose(['classroom', 'topics', 'create', courseId, `--name=${name}`], { account });
   });
@@ -256,12 +256,12 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_topics_update', {
     description: 'Rename an existing topic.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       topicId: z.string().describe('Topic ID'),
       name: z.string().describe('New topic name'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, topicId, name, account }) => {
     return runOrDiagnose(['classroom', 'topics', 'update', courseId, topicId, `--name=${name}`], { account });
   });
@@ -269,23 +269,23 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_topics_delete', {
     description: 'Delete a topic.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       topicId: z.string().describe('Topic ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, topicId, account }) => {
     return runOrDiagnose(['classroom', 'topics', 'delete', courseId, topicId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_classroom_invitations_create', {
     description: 'Create an invitation to a Google Classroom course.',
-    inputSchema: {
+    inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('User ID to invite'),
       role: z.enum(['STUDENT', 'TEACHER', 'OWNER']).describe('Role for the invited user'),
       account: accountParam,
-    },
+    }),
   }, async ({ courseId, userId, role, account }) => {
     return runOrDiagnose(['classroom', 'invitations', 'create', courseId, userId, `--role=${role}`], { account });
   });
@@ -293,10 +293,10 @@ export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_invitations_delete', {
     description: 'Delete (revoke) a Google Classroom invitation.',
     annotations: { destructiveHint: true },
-    inputSchema: {
+    inputSchema: z.object({
       invitationId: z.string().describe('Invitation ID'),
       account: accountParam,
-    },
+    }),
   }, async ({ invitationId, account }) => {
     return runOrDiagnose(['classroom', 'invitations', 'delete', invitationId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });

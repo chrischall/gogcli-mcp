@@ -1,7 +1,23 @@
-import type { ConnectorAuth } from '@chrischall/mcp-connector';
 import { logAuthTransition, type AuthTransition } from './auth-log.js';
 import { readGoogleProbe } from './google-probe.js';
 import { redactSecrets } from './runner.js';
+
+/** One credential field rendered by the connector authorization page. */
+export interface LoginField {
+  name: string;
+  label: string;
+  type?: 'text' | 'password';
+}
+
+/** Login-page configuration consumed by the local authorization handler. */
+export interface ConnectorAuth<Props> {
+  service: string;
+  fields: LoginField[];
+  userId?: string;
+  login(fields: Record<string, string>, env: unknown): Promise<Props>;
+  privacyNote?: string;
+  accent?: string;
+}
 
 /**
  * OAuth props stored per user by the Cloudflare connector's OAuth provider.
@@ -9,16 +25,16 @@ import { redactSecrets } from './runner.js';
  * The gogcli remote connector authenticates each user with a single long-lived
  * personal "connector key" — a shared secret (the Fly backend's `RUNNER_KEY`)
  * that authorizes calls to that user's own `gog` backend on Fly.io. There is no
- * refresh cycle: `worker.ts`'s `buildClient` turns this key straight into a
- * per-session Fly executor. These props are encrypted at rest in `OAUTH_KV` by
+ * refresh cycle: `worker.ts` resolves this key to a cached Fly executor for
+ * each stateless request. These props are encrypted at rest in `OAUTH_KV` by
  * the OAuth provider.
  *
  * NOTE: this is a FIELD LOGIN (a personal key), NOT Google OAuth. The Google
  * OAuth handshake lives entirely inside the Fly backend's `gog` install; the
  * connector never sees a Google token.
  *
- * The index signature satisfies `createConnector`'s
- * `Props extends Record<string, unknown>` constraint.
+ * The index signature keeps these props usable across the OAuth provider and
+ * MCP request-context boundaries.
  */
 export interface GogProps {
   key: string;
@@ -275,7 +291,7 @@ async function recordGoogleLayerAtConnect(endpoint: string, key: string): Promis
  * `ConnectorAuth` for the gogcli remote connector: the login page collects the
  * user's connector key, verifies it by hitting the Fly backend's `/health`
  * endpoint with the key as a bearer token, and stores `{ key }` as the OAuth
- * props that `worker.ts`'s `buildClient` turns into a per-session Fly executor.
+ * props that `worker.ts` turns into a request-scoped Fly executor.
  *
  * Only the runner judging the bearer (401/403) refuses the login; a backend that
  * does not answer is retried once and then reported as unreachable, never as a

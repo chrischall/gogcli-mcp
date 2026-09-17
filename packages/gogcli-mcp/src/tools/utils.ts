@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { McpServer, CallToolResult } from '@modelcontextprotocol/server';
 import { errorResult, rawTextResult, minifiedResult, stripMediaUrls } from '@chrischall/mcp-utils';
 import { run, isRunnerTransportError } from '../runner.js';
 import type { GogArg, RunnerFailureKind } from '../runner.js';
@@ -149,7 +148,7 @@ export function registerRunTool(
   server.registerTool(`gog_${service}_run`, {
     description,
     annotations: { destructiveHint: true },
-    inputSchema,
+    inputSchema: z.object(inputSchema),
   }, async (rawArgs) => {
     const { subcommand, args, account } = rawArgs as { subcommand: string; args: string[]; account?: string };
     return runOrDiagnose([service, subcommand, ...args], { account });

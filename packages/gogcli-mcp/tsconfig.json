@@ -5,8 +5,6 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  // src/worker.ts is the Cloudflare-Worker entry: it imports
-  // @chrischall/mcp-connector (which pulls the `agents` runtime + Cloudflare
-  // types) and is compiled by wrangler/esbuild, not by this stdio tsc build.
+  // The Worker entry is compiled by wrangler/esbuild, not the stdio build.
   "exclude": ["node_modules", "dist", "src/worker.ts"]
 }

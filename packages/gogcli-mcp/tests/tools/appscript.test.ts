@@ -56,7 +56,7 @@ describe('gog_appscript_pull', () => {
   // hosted connector. A caller who does not know that gets a "success" whose
   // files they cannot reach.
   it('says in its description where the directory resolves', async () => {
-    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const { McpServer } = await import('@modelcontextprotocol/server');
     const server = new McpServer({ name: 'test', version: '0.0.0' });
     const configs = new Map<string, { description?: string }>();
     vi.spyOn(server, 'registerTool').mockImplementation((name, config) => {
