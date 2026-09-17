@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/chrischall/gogcli-mcp/compare/v2.30.0...v3.0.0) (2026-09-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** the Gmail dispatch tools remove their `confirmed` input, exported MCP server types move from SDK v1 to the modular SDK v2 packages, and the legacy sessionful `/sse` Worker endpoint is removed in favor of `/mcp`.
+
+### Features
+
+* **mcp:** migrate confirmations to stateless SDK v2 ([#358](https://github.com/chrischall/gogcli-mcp/issues/358)) ([a0992e9](https://github.com/chrischall/gogcli-mcp/commit/a0992e997f5691e1f6cd7889dbb42c62b4d33a57))
+
 ## [2.30.0](https://github.com/chrischall/gogcli-mcp/compare/v2.29.1...v2.30.0) (2026-09-13)
 
 
