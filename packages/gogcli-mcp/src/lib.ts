@@ -43,6 +43,8 @@ export { annotateTruncatedList, stripConsumedPageToken } from './pagination.js';
 export { finalizeGmailSearch, fetchGmailPages } from './gmail-results.js';
 export type { FinalizeOptions, GmailListMethod } from './gmail-results.js';
 export { useRemoteGogRunner } from './remote-runner.js';
+export { bootstrapGogAuth, AUTH_BOOTSTRAP_MARKER } from './bootstrap-auth.js';
+export type { AuthBootstrapStatus, AuthBootstrapOptions } from './bootstrap-auth.js';
 export type { RunOptions, Spawner, GogExecutor, GogArg, GogFileArg } from './runner.js';
 // Caller-supplied attachment bytes — the only outbound attachment path that
 // works when the caller and gog share no filesystem (hosted connector, or any
