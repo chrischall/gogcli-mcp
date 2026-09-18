@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'node:child_process';
 import { delimiter, join } from 'node:path';
 import { parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
+import { naiveSourceTimeZone } from './timestamps.js';
 
 export type Spawner = (
   command: string,
@@ -371,7 +372,9 @@ async function spawnGog(
   const effectiveTimeout = timeout ?? TIMEOUT_MS;
 
   return new Promise((resolve, reject) => {
-    const childEnv = { ...sanitizedEnv(), PATH: augmentedPath() };
+    // gog must format naive dates in the zone normalizeTimestamps assumes; left
+    // to itself it falls back to the host's local zone (UTC on mcp-host).
+    const childEnv = { ...sanitizedEnv(), GOG_TIMEZONE: naiveSourceTimeZone(), PATH: augmentedPath() };
     const child = spawn(readEnvVar('GOG_PATH') ?? 'gog', fullArgs, { env: childEnv });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
