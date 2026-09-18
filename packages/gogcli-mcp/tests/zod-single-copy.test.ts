@@ -6,12 +6,12 @@ import { fileURLToPath } from 'node:url';
 // The zod counterpart of sdk-single-copy.test.ts, guarding the invariant that
 // broke dependabot #333: the whole monorepo must resolve ONE copy of zod.
 //
-// Same shape of failure, a different package. `@cloudflare/vitest-pool-workers`
-// (a root devDependency) declares zod as an **exact** pin, so it takes the
-// hoisted root slot that `@chrischall/mcp-utils` and the MCP SDK resolve their
-// zod peer from. The moment our workspaces ask for a newer zod than that pin,
-// each nests its own copy — and because a `ZodType` carries brand-bearing
-// internals, TypeScript compares the two NOMINALLY: every schema our tools hand
+// Same shape of failure, a different package. Any dependency that pins zod
+// can take the hoisted root slot that `@chrischall/mcp-utils` and the MCP SDK
+// resolve their zod peer from (#333: a since-removed devDependency's exact pin).
+// The moment our workspaces ask for a newer zod than that pin, each nests its
+// own copy — and because a `ZodType` carries brand-bearing internals,
+// TypeScript compares the two NOMINALLY: every schema our tools hand
 // `registerTool` fails with `TS2322: Type 'ZodString' is not assignable to type
 // 'AnySchema'`, with no API change and nothing to fix in the source. #333 split
 // the tree exactly that way and produced 11,024 type errors from a bump of one
@@ -42,14 +42,6 @@ describe('zod is installed exactly once', () => {
     // `registerTool` accepts the raw shape and infers the handler's argument
     // types from it; a second copy makes every one of those schemas foreign.
     expect(resolveFrom('@modelcontextprotocol/server')).toBe(
-      realpathSync(here.resolve('zod')),
-    );
-  });
-
-  it('resolves to the same file for @cloudflare/vitest-pool-workers, which exact-pins zod', () => {
-    // The exact pin here is what captured the root hoist slot in #333, and it
-    // is why the root `overrides` block carries a zod entry.
-    expect(resolveFrom('@cloudflare/vitest-pool-workers')).toBe(
       realpathSync(here.resolve('zod')),
     );
   });

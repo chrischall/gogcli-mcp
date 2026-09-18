@@ -125,9 +125,8 @@ describe('inlineAttachmentArgs', () => {
   // The budget belongs to the REQUEST, not to the attachments. `payloadArg`
   // turns any body over 4 KiB into a GogFileArg that rides in the same JSON
   // body at ~1:1, so a near-max attachment set plus a multi-MiB body overruns
-  // the runner even though each input is inside its own documented limit. That
-  // is the same invisible-transport-rejection failure the ceiling exists to
-  // prevent, so the sibling args are measured rather than assumed small.
+  // the budget even though each input is inside its own documented limit, so
+  // the sibling args are measured rather than assumed small.
   it('counts the message body against the same budget as the attachments', () => {
     // Three files just under the 8 MiB per-file cap, summing to just under the
     // per-message total — i.e. every input inside its own documented limit.
@@ -176,20 +175,18 @@ describe('inlineAttachmentArgs', () => {
 
   // THE INVARIANT behind the per-message ceiling, asserted rather than trusted.
   //
-  // connector-runtime sends every payload base64-encoded inside ONE JSON body,
-  // and the Fly runner caps that body at MAX_BODY_BYTES. Base64 inflates by 4/3,
-  // so a ceiling expressed in decoded bytes has to be derived from the wire cap
-  // or it documents a size that gets rejected as "request body too large" — a
-  // transport rejection from a layer the caller cannot see, which is the exact
-  // failure the tool-layer check exists to prevent. A 25 MiB total encoded to
-  // 34,952,536 chars against a 33,554,432 cap, so the limit was unreachable.
-  it('keeps a full message under the Fly runner request-body cap once base64-inflated', () => {
-    const RUNNER_MAX_BODY_BYTES = 32 * 1024 * 1024; // fly-gog-runner/server.mjs
+  // Every payload rides base64-encoded inside ONE JSON body, capped at a 32 MiB
+  // request budget. Base64 inflates by 4/3, so a ceiling expressed in decoded
+  // bytes has to be derived from the wire cap or it documents a size that cannot
+  // actually be sent. A 25 MiB total encoded to 34,952,536 chars against a
+  // 33,554,432 cap, so the limit was unreachable.
+  it('keeps a full message under the 32 MiB request budget once base64-inflated', () => {
+    const REQUEST_MAX_BODY_BYTES = 32 * 1024 * 1024;
     const encodedLength = (decoded: number): number => 4 * Math.ceil(decoded / 3);
 
     // The payload budget must leave the JSON structure room inside the cap…
-    expect(MAX_REQUEST_PAYLOAD_WIRE_BYTES).toBeLessThan(RUNNER_MAX_BODY_BYTES);
-    expect(RUNNER_MAX_BODY_BYTES - MAX_REQUEST_PAYLOAD_WIRE_BYTES).toBeGreaterThanOrEqual(128 * 1024);
+    expect(MAX_REQUEST_PAYLOAD_WIRE_BYTES).toBeLessThan(REQUEST_MAX_BODY_BYTES);
+    expect(REQUEST_MAX_BODY_BYTES - MAX_REQUEST_PAYLOAD_WIRE_BYTES).toBeGreaterThanOrEqual(128 * 1024);
     // …and a full attachment set must fit inside that budget once inflated.
     expect(encodedLength(MAX_INLINE_ATTACHMENT_TOTAL_BYTES)).toBeLessThanOrEqual(MAX_REQUEST_PAYLOAD_WIRE_BYTES);
     // The advertised number must itself be sendable — floor, not round.

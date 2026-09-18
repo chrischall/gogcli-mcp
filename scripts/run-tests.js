@@ -1,25 +1,17 @@
 #!/usr/bin/env node
 // Run every test suite in the repo UNCONDITIONALLY and fail if any of them
-// failed.
-//
-// THE BUG THIS FIXES: the root `test` script used to be
-//   npm test --workspaces && npm test --prefix fly-gog-runner
-// With `&&`, a single failing workspace assertion short-circuits and the
-// fly-gog-runner suite produces ZERO output — it never runs. CI passes
-// `test-command: npm test`, so the runner suite got skipped precisely on the
-// runs where something was already broken, which is when its signal matters
-// most. Every suite runs here; the exit code is the worst of them.
+// failed. With `&&` chaining, one failing suite would short-circuit the rest and
+// they would produce ZERO output — skipped precisely on the runs where something
+// was already broken. Every suite runs here; the exit code is the worst of them.
 const { spawnSync } = require('child_process');
 const { resolve } = require('path');
 
 const root = resolve(__dirname, '..');
 
 // Each suite is a named script in the root package.json, so the actual commands
-// stay declared in one place and remain individually runnable
-// (`npm run test:runner`) when you want just one.
+// stay declared in one place and remain individually runnable.
 const suites = [
   { name: 'workspaces', script: 'test:workspaces' },
-  { name: 'fly-gog-runner', script: 'test:runner' },
 ];
 
 const failed = [];

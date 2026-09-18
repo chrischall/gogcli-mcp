@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ChildProcess } from 'node:child_process';
 import { delimiter, join } from 'node:path';
 import { parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
@@ -9,12 +8,11 @@ export type Spawner = (
   options: { env: NodeJS.ProcessEnv },
 ) => ChildProcess;
 
-// A payload too large to live in argv. Every argv element is capped — the Fly
-// runner rejects args over 4 KiB, and the Linux kernel hard-caps a single argv
-// string at MAX_ARG_STRLEN (128 KiB) regardless of ARG_MAX — so big values
-// (a long HTML mail body, slide notes) must leave argv entirely. gog exposes
-// `--x-file` companions for exactly these flags; the executor writes the
-// payload to a private temp file and passes the path instead.
+// A payload too large to live in argv. The Linux kernel hard-caps a single argv
+// string at MAX_ARG_STRLEN (128 KiB) regardless of ARG_MAX, so big values (a
+// long HTML mail body, slide notes) must leave argv entirely. gog exposes
+// `--x-file` companions for exactly these flags; the runner writes the payload
+// to a private temp file and passes the path instead.
 export interface GogFileArg {
   /** Discriminant separating this from a plain argv string. */
   kind: 'file';
@@ -50,9 +48,8 @@ export interface GogFileArg {
    * Emit the materialized path as a BARE argv element instead of `--flag=path`.
    *
    * For subcommands taking the file as a positional argument — `gog drive
-   * upload <localPath>` is the only one today. Argument ORDER is preserved by
-   * every executor, so a positional file arg lands exactly where it sat in the
-   * caller's array.
+   * upload <localPath>` is the only one today. Argument ORDER is preserved, so
+   * a positional file arg lands exactly where it sat in the caller's array.
    */
   positional?: boolean;
 }
@@ -61,114 +58,6 @@ export type GogArg = string | GogFileArg;
 
 export function isGogFileArg(arg: GogArg): arg is GogFileArg {
   return typeof arg !== 'string';
-}
-
-// An executor runs a FULLY-ASSEMBLED gog arg list (already including
-// --json/--no-input/--color=never, --account, --readonly, and the service
-// subcommand) and returns its stdout as a string (or throws). This is the
-// injection seam that lets the same tool registrars run either by spawning
-// `gog` (stdio transport) or by forwarding the arg list to a remote HTTP
-// backend (hosted Cloudflare-Worker connector, which cannot spawn processes).
-// Elements may be GogFileArgs; EVERY executor is responsible for materializing
-// them to a private temp file and removing that file afterwards.
-export type GogExecutor = (
-  args: GogArg[],
-  opts: { timeout?: number; interactive?: boolean },
-) => Promise<string>;
-
-// Which layer authored a failure, when the layer was OURS and not gog's.
-//
-// A remote executor (the Fly/Worker path) can fail in two categorically
-// different ways, and every consumer downstream needs to tell them apart:
-//
-//   - `gog` ran on the backend and failed. The message is gog's — or Google's,
-//     relayed by gog — so it is PROSE, and the only way to classify it is to
-//     read it. That failure is NOT a RunnerTransportError; it stays a plain
-//     Error so tools/utils.ts keeps applying its patterns to it.
-//   - The request never got that far: the runner rejected our bearer token,
-//     refused the request shape, was draining, or never answered. Nothing was
-//     ever shown to Google, so no amount of re-authorizing a Google account can
-//     help — and the runner's own words ("unauthorized") are indistinguishable
-//     from Google's when read as prose. That is what this type exists for.
-//
-// The kinds, and what each one asks of the caller:
-//   transport-auth      the runner rejected OUR bearer (GOG_RUNNER_KEY on the
-//                       Worker vs RUNNER_KEY on the Fly app). An operator has
-//                       to fix a key; the end user's Google grant is fine.
-//   transport-request   the runner refused the request shape (oversized arg,
-//                       malformed JSON). Deterministic; retrying is pointless.
-//   transport-retryable the runner is draining, could not reach its disk, or
-//                       never answered. The same call can succeed shortly.
-export type RunnerFailureKind = 'transport-auth' | 'transport-request' | 'transport-retryable';
-
-// `Symbol.for`, not a private symbol or a bare `instanceof`: the class can be
-// evaluated more than once in one process (the stdio bundle and the Worker
-// bundle are separate builds of the same source, and vitest can load a module
-// twice across pools), and a second copy of the class would make `instanceof`
-// answer false for an error that IS one. The registry symbol is the same value
-// in every copy, so the brand survives.
-const RUNNER_TRANSPORT_BRAND = Symbol.for('gogcli.RunnerTransportError');
-
-/**
- * A failure authored by the gog-runner itself (or by the hop to it) rather than
- * by `gog`/Google. Carries the runner's HTTP status when there was one.
- */
-export class RunnerTransportError extends Error {
-  readonly kind: RunnerFailureKind;
-  readonly status: number | undefined;
-
-  constructor(message: string, kind: RunnerFailureKind, status?: number) {
-    super(message);
-    this.name = 'RunnerTransportError';
-    this.kind = kind;
-    this.status = status;
-    // Non-enumerable so the brand never shows up in a serialized error body.
-    Object.defineProperty(this, RUNNER_TRANSPORT_BRAND, { value: true });
-  }
-}
-
-/** Structural check for the above — see RUNNER_TRANSPORT_BRAND on why not `instanceof`. */
-export function isRunnerTransportError(err: unknown): err is RunnerTransportError {
-  return err instanceof Error && (err as unknown as Record<symbol, unknown>)[RUNNER_TRANSPORT_BRAND] === true;
-}
-
-// Ambient override for the executor `run()` uses when no options.spawner is
-// given. The Worker/Fly path wraps request handling in
-// `runExecutor.run({ executor }, ...)`; unset, `run()` falls back to spawning.
-export const runExecutor = new AsyncLocalStorage<{ executor: GogExecutor }>();
-
-/**
- * The PROCESS-WIDE executor, for a host that has exactly one backend for the
- * whole process — a stdio bin pointed at a Fly runner (`useRemoteGogRunner`).
- *
- * It exists because AsyncLocalStorage cannot express that. `enterWith` sets the
- * store on the async resource that is current when it runs, and a bin runs it
- * during module evaluation; the tool calls arrive later as I/O events on the
- * transport's own resources, which are not descendants of that evaluation, so
- * `getStore()` is undefined exactly where it is needed. That is not a bug in
- * `enterWith` — a process-lifetime default is simply not a scoped value, and
- * storing it in a scope meant the seam silently reverted to spawning a binary
- * the host does not have.
- *
- * A per-request store still WINS over this (see `activeExecutor`), because the
- * Worker serves many callers from one isolate and each has its own backend
- * credential; this is the fallback for the one-backend case, never a second
- * answer to "whose backend is this".
- */
-let defaultExecutor: { executor: GogExecutor } | undefined;
-
-/** Install the process-wide executor. Passing undefined clears it (tests). */
-export function setDefaultGogExecutor(executor: GogExecutor | undefined): void {
-  defaultExecutor = executor ? { executor } : undefined;
-}
-
-/**
- * Whose executor applies right now: the request's, else the process's, else
- * none (meaning `run()` spawns the local binary). Both call sites ask through
- * here so they can never disagree about which of the three it is.
- */
-function activeExecutor(): { executor: GogExecutor } | undefined {
-  return runExecutor.getStore() ?? defaultExecutor;
 }
 
 export interface RunOptions {
@@ -238,13 +127,11 @@ function readonlyEnvEnabled(): boolean {
 // cloud / API secrets in scope that the child has no business seeing.
 //
 // `_KEY`, not `_API_KEY|_PRIVATE_KEY`: those were four spellings of "a key"
-// with the bare one missing, and TWO credentials this repo hands its own
-// process fell in that gap. `MCP_BLOB_SIGNING_KEY` mints the signed blob URLs
-// a `deliver="url"` download is uploaded to — a signature IS the whole access
-// control on that store — and `GOG_RUNNER_KEY` is the bearer for the Fly
-// backend, where `POST /run` is arbitrary `gog` argv. Neither is read by the
-// child: both are spent HERE, and when `GOG_RUNNER_URL` is set nothing is
-// spawned at all. `_CREDENTIALS` generalises the named
+// with the bare one missing, and a credential this repo hands its own process
+// fell in that gap. `MCP_BLOB_SIGNING_KEY` mints the signed blob URLs a
+// `deliver="url"` download is uploaded to — a signature IS the whole access
+// control on that store — and it is spent HERE, never read by the child.
+// `_CREDENTIALS` generalises the named
 // GOOGLE_APPLICATION_CREDENTIALS above, which stays named because it is the
 // one gog itself would act on.
 //
@@ -411,10 +298,6 @@ function formatTimeout(ms: number): string {
 // Write every GogFileArg to a private temp file, run gog against the resulting
 // plain argv, and remove the temp dir afterwards — on success, on a non-zero
 // exit, and on timeout alike. A leaked temp file holds user email content.
-//
-// node:fs/promises and node:os are imported LAZILY (matching the lazy
-// node:child_process import below) so a Cloudflare Worker importing this module
-// doesn't eagerly pull node builtins, which would break the Worker bundle.
 async function spawnWithTempFiles(
   args: GogArg[],
   opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
@@ -460,7 +343,7 @@ async function spawnWithTempFiles(
   }
 }
 
-// Spawn-based executor. Deliberately NOT async: when no element is a
+// Spawn gog, materializing GogFileArgs first. Deliberately NOT async: when no element is a
 // GogFileArg (the overwhelmingly common case) it must create no temp dir and
 // introduce no extra microtask tick before `spawn` is called — the spawn has
 // to happen synchronously within the `run()` call, which the fake-timer tests
@@ -477,11 +360,8 @@ function spawnExecutor(
 
 // Owns everything process-specific — building the sanitized child env, PATH
 // augmentation, spawning, collecting stdout/stderr, and the timeout kill. It
-// returns raw output (no redaction — `run()` wraps that around whichever
-// executor runs). The child_process import is LAZY so a Cloudflare Worker
-// importing this module doesn't eagerly pull node:child_process (which would
-// break the Worker bundle); the injected `spawner` bypasses it.
-
+// returns raw output (no redaction — `run()` wraps that around it). The
+// injected `spawner` bypasses the real child_process spawn.
 async function spawnGog(
   fullArgs: string[],
   opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
@@ -583,58 +463,26 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
 
   const fullArgs = assembleArgs(args, { account, interactive, readonly });
 
-  // Pick the executor: an injected spawner keeps the stdio spawn path (and all
-  // its tests) intact and always wins; otherwise an ambient runExecutor store
-  // (the Worker/Fly HTTP-forward path) takes over; otherwise the default lazy
-  // real spawn. Redaction wraps the executor regardless of which one runs — a
-  // successful `gog auth tokens` (or any command echoing a credential) would
-  // otherwise return raw Google tokens (ya29.…/1//…) into model context, where
-  // a sibling tool (gog_gmail_send) could exfiltrate them.
-  const store = activeExecutor();
+  // Redaction wraps the spawn: a successful `gog auth tokens` (or any command
+  // echoing a credential) would otherwise return raw Google tokens (ya29.…/1//…)
+  // into model context, where a sibling tool (gog_gmail_send) could exfiltrate
+  // them.
   try {
-    let output: string;
-    if (spawner) {
-      output = await spawnExecutor(fullArgs, { timeout, interactive, spawner });
-    } else if (store) {
-      output = await store.executor(fullArgs, { timeout, interactive });
-    } else {
-      output = await spawnExecutor(fullArgs, { timeout, interactive });
-    }
-    return redact(output);
+    return redact(await spawnExecutor(fullArgs, { timeout, interactive, spawner }));
   } catch (err) {
     // A thrown non-Error would make `.message` undefined and redact() blow up
     // with a TypeError, masking the real failure. Same instanceof guard the
     // codebase already uses in errorText() (tools/utils.ts).
-    const message = base(err instanceof Error ? err.message : String(err));
-    // Redaction must not cost the error its TYPE. `RunnerTransportError` is the
-    // structural claim "this failure was ours, not Google's"; flattening it to a
-    // bare Error here would put diagnose() straight back to guessing from prose,
-    // which is the bug this type exists to close. Rebuilt rather than mutated so
-    // the un-redacted message never survives anywhere.
-    if (isRunnerTransportError(err)) {
-      throw new RunnerTransportError(message, err.kind, err.status);
-    }
-    throw new Error(message);
+    throw new Error(base(err instanceof Error ? err.message : String(err)));
   }
 }
 
 // Run gog and return its stdout as raw bytes, base64-encoded — for binary
 // payloads (a Drive file's bytes) that run()'s utf8 decode + secret redaction
-// would corrupt. Spawn path only: the hosted-connector executor forwards over
-// HTTP and hands back a decoded string, so binary cannot survive it — callers
-// on that path get a clear error instead of a mangled file. No redaction: the
-// base64 of a user's own binary file is opaque and has no token shapes to leak.
+// would corrupt. No redaction: the base64 of a user's own binary file is opaque
+// and has no token shapes to leak.
 export async function runBinary(args: GogArg[], options: RunOptions = {}): Promise<string> {
   const { account, spawner, timeout, readonly = false } = options;
-  // An injected spawner is the stdio/test path and always wins. Otherwise, if an
-  // ambient forward executor is installed (the Worker/Fly connector), refuse:
-  // its text-only transport can't carry bytes intact.
-  if (!spawner && activeExecutor()) {
-    throw new Error(
-      'Raw byte retrieval is not available over the hosted connector (its transport is text-only). ' +
-      'Use the text-extraction path instead, or run the local stdio server to fetch bytes.',
-    );
-  }
   const fullArgs = assembleArgs(args, { account, interactive: false, readonly });
   return spawnExecutor(fullArgs, { timeout, interactive: false, spawner, binary: true });
 }

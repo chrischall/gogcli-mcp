@@ -67,10 +67,10 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'service. Reports per account: whether the token is currently valid, the mapped cause when it is ' +
       'not, how long ago it was authorized, and a warning as it approaches the 7-day refresh-token limit ' +
       'that applies to OAuth apps whose consent screen is still in "Testing" mode. Run it proactively to ' +
-      're-authorize on your own schedule instead of mid-task. On the hosted connector this is the ONLY ' +
+      're-authorize on your own schedule instead of mid-task. On a hosted deployment this is the ONLY ' +
       'check that measures Google: a connector showing "connected" or "refreshed" has verified the ' +
-      'connector key that reaches the gog machine, and nothing else — the Google credential lives on ' +
-      'that machine and can be dead while the connection looks perfectly healthy.',
+      'client\'s connection to the MCP host, and nothing else — the Google credential lives in gog\'s ' +
+      'keyring on that host and can be dead while the connection looks perfectly healthy.',
     annotations: { readOnlyHint: true },
     inputSchema: z.object({}),
   }, async () => {
@@ -129,8 +129,8 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
   server.registerTool('gog_auth_add_url', {
     description:
       'Begin REMOTE/headless Google authorization (step 1 of 2). Returns a sign-in URL to open in any ' +
-      'browser — no local server or terminal on the gogcli host is needed, so this works over the hosted ' +
-      'connector where the interactive gog_auth_add cannot. Hand the URL to the user; after they sign in, ' +
+      'browser — no local server or terminal on the gogcli host is needed, so this works on a hosted ' +
+      'deployment where the interactive gog_auth_add cannot. Hand the URL to the user; after they sign in, ' +
       'the browser is redirected to a localhost URL that fails to load — that is expected. They copy that ' +
       'full redirected URL (from the address bar) and you pass it to gog_auth_add_complete. The link is ' +
       'valid for 10 minutes. If you pass a custom `services` here, pass the SAME value to ' +

@@ -1,204 +1,279 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { uploadToBlobStore, RUNNER_UPLOAD_TIMEOUT_MS } from '../src/blob-upload.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { mkdtemp, mkdir, writeFile, symlink, truncate, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  uploadToBlobStore,
+  ATTACHMENT_DOWNLOAD_ROOT,
+  BLOB_UPLOAD_TIMEOUT_MS,
+  MAX_BLOB_UPLOAD_BYTES,
+} from '../src/blob-upload.js';
 
-// A minted PUT URL, with the two shapes the scrubber has to recognise: the
-// whole string, and the bare signature it carries.
 const SIG = 'AbCdEf-_1234';
-const PUT_URL = `https://host.example/b/reg_1/gmail/m1/Guest%20Copy.pdf?exp=1757000000000&sig=${SIG}`;
+const CONTENT = Buffer.from('%PDF-1.7 twelve bytes and a few more');
 
-const ENV = { GOG_RUNNER_URL: 'https://runner.example', GOG_RUNNER_KEY: 'runner-key' };
-
-const REQUEST = { path: '/tmp/gog-attachments/m1/Guest_Copy.pdf', url: PUT_URL, contentType: 'application/pdf' };
-
-function answers(status: number, body: unknown, ok = status >= 200 && status < 300) {
-  return vi.fn(async () => ({
-    ok,
-    status,
-    text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
-  }));
+interface Received {
+  method?: string;
+  headers: IncomingMessage['headers'];
+  body: Buffer;
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.unstubAllEnvs();
+let server: Server;
+let base: string;
+let received: Received[];
+let handler: (req: IncomingMessage, res: ServerResponse, body: Buffer) => void;
+let root: string;
+let outside: string;
+
+function signedUrl(path = '/b/reg_1/gmail/m1/a1/Guest%20Copy.pdf'): string {
+  return `${base}${path}?exp=1757000000000&sig=${SIG}`;
+}
+
+beforeEach(async () => {
+  received = [];
+  handler = (_req, res) => { res.writeHead(200); res.end(); };
+  server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      const body = Buffer.concat(chunks);
+      received.push({ method: req.method, headers: req.headers, body });
+      handler(req, res, body);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+  const scratch = await mkdtemp(join(tmpdir(), 'blob-upload-'));
+  root = join(scratch, 'gog-attachments');
+  outside = join(scratch, 'outside');
+  await mkdir(join(root, 'm1', 'a1'), { recursive: true });
+  await mkdir(outside);
+  await writeFile(join(root, 'm1', 'a1', 'Guest_Copy.pdf'), CONTENT);
+  await writeFile(join(outside, 'refresh-token'), 'secret');
 });
 
+afterEach(async () => {
+  server.closeAllConnections();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await rm(join(root, '..'), { recursive: true, force: true });
+});
+
+const file = () => join(root, 'm1', 'a1', 'Guest_Copy.pdf');
+const request = (overrides: Partial<{ path: string; url: string; contentType: string }> = {}) => ({
+  path: file(),
+  url: signedUrl(),
+  contentType: 'application/pdf',
+  ...overrides,
+});
+const failure = (promise: Promise<unknown>) => promise.then(
+  () => { throw new Error('expected the upload to fail'); },
+  (err: Error) => err,
+);
+
 describe('uploadToBlobStore', () => {
-  it('POSTs the path, the URL and the content type to the runner, bearing its key', async () => {
-    const fetchMock = answers(200, { ok: true, status: 200, bytes: 99723 });
-    vi.stubGlobal('fetch', fetchMock);
+  it('PUTs the file to the signed URL and reports the size streamed and the status', async () => {
+    handler = (_req, res) => { res.writeHead(201); res.end(); };
 
-    const outcome = await uploadToBlobStore(REQUEST, { env: { ...ENV, GOG_RUNNER_URL: 'https://runner.example//' } });
+    const outcome = await uploadToBlobStore(request(), { root });
 
-    expect(outcome).toEqual({ bytes: 99723, status: 200 });
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    // Trailing slashes trimmed — `<endpoint>//upload` is a different route.
-    expect(url).toBe('https://runner.example/upload');
-    expect(init.method).toBe('POST');
-    expect(init.headers).toMatchObject({
-      Authorization: 'Bearer runner-key',
-      'Content-Type': 'application/json',
+    expect(outcome).toEqual({ bytes: CONTENT.length, status: 201 });
+    expect(received).toHaveLength(1);
+    expect(received[0].method).toBe('PUT');
+    expect(received[0].body.equals(CONTENT)).toBe(true);
+    // Content-Length from the file's own size — a chunked PUT is a 411 at the
+    // gateway, so this must never be left to the transport.
+    expect(received[0].headers['content-length']).toBe(String(CONTENT.length));
+    expect(received[0].headers['transfer-encoding']).toBeUndefined();
+  });
+
+  // The PUT signature commits to the content type, so any normalisation —
+  // re-casing, a charset appended, a default substituted — is a refusal that
+  // reads like a missing object.
+  it('sends the content type byte for byte as given', async () => {
+    await uploadToBlobStore(request({ contentType: 'Application/PDF; Name="x"' }), { root });
+
+    expect(received[0].headers['content-type']).toBe('Application/PDF; Name="x"');
+  });
+
+  it('accepts a path relative to the root', async () => {
+    await expect(uploadToBlobStore(request({ path: 'm1/a1/Guest_Copy.pdf' }), { root }))
+      .resolves.toEqual({ bytes: CONTENT.length, status: 200 });
+  });
+
+  describe('confinement to the download root', () => {
+    it('refuses a path that walks out of the root, without dialling', async () => {
+      const err = await failure(uploadToBlobStore(
+        request({ path: join(root, '..', 'outside', 'refresh-token') }), { root },
+      ));
+
+      expect(err.message).toMatch(/must be inside/);
+      expect(received).toHaveLength(0);
     });
-    expect(JSON.parse(init.body as string)).toEqual({
-      path: REQUEST.path,
-      url: PUT_URL,
-      contentType: 'application/pdf',
+
+    it('refuses a sibling that merely shares the root as a prefix', async () => {
+      await mkdir(`${root}-evil`);
+      await writeFile(`${root}-evil/x`, 'nope');
+
+      const err = await failure(uploadToBlobStore(request({ path: `${root}-evil/x` }), { root }));
+
+      expect(err.message).toMatch(/must be inside/);
+      expect(received).toHaveLength(0);
     });
-    // A deadline of our own: the runner's 120 s is an INACTIVITY timer and
-    // cannot bound a transfer that keeps dribbling, so nothing else protects
-    // the MCP caller from a request that never ends.
-    expect(init.signal).toBeInstanceOf(AbortSignal);
+
+    it('refuses a symlink inside the root that points outside it', async () => {
+      await symlink(join(outside, 'refresh-token'), join(root, 'm1', 'escape'));
+
+      const err = await failure(uploadToBlobStore(request({ path: join(root, 'm1', 'escape') }), { root }));
+
+      expect(err.message).toMatch(/must be inside/);
+      expect(received).toHaveLength(0);
+    });
+
+    it('refuses a directory', async () => {
+      const err = await failure(uploadToBlobStore(request({ path: join(root, 'm1') }), { root }));
+
+      expect(err.message).toMatch(/regular file/);
+      expect(received).toHaveLength(0);
+    });
+
+    it('says the file is missing, rather than failing somewhere later', async () => {
+      const err = await failure(uploadToBlobStore(request({ path: join(root, 'm1', 'gone.pdf') }), { root }));
+
+      expect(err.message).toMatch(/could not be found/);
+      expect(received).toHaveLength(0);
+    });
+
+    it('confines to the real attachment root when no root is given', async () => {
+      expect(ATTACHMENT_DOWNLOAD_ROOT).toBe('/tmp/gog-attachments');
+
+      const err = await failure(uploadToBlobStore(request({ path: '/etc/passwd' })));
+
+      expect(err.message).toContain('must be inside /tmp/gog-attachments');
+      expect(received).toHaveLength(0);
+    });
   });
 
-  it('refuses, without dialling, when no gog runner is configured', async () => {
-    const fetchMock = answers(200, { ok: true });
-    vi.stubGlobal('fetch', fetchMock);
+  // mcp-host's blob store answers 413 past 100 MiB, but only after the whole
+  // transfer has run — and a caller reads a late size error as a signing one.
+  it('refuses a file over the blob store\'s ceiling before dialling', async () => {
+    expect(MAX_BLOB_UPLOAD_BYTES).toBe(100 * 1024 * 1024);
+    const big = join(root, 'm1', 'a1', 'huge.bin');
+    await writeFile(big, '');
+    await truncate(big, MAX_BLOB_UPLOAD_BYTES + 1); // sparse: no 100 MiB write
 
-    await expect(uploadToBlobStore(REQUEST, { env: { GOG_RUNNER_URL: ENV.GOG_RUNNER_URL } }))
-      .rejects.toThrow(/GOG_RUNNER_URL.*GOG_RUNNER_KEY/s);
-    await expect(uploadToBlobStore(REQUEST, { env: { GOG_RUNNER_KEY: ENV.GOG_RUNNER_KEY } }))
-      .rejects.toThrow(/GOG_RUNNER_URL.*GOG_RUNNER_KEY/s);
-    expect(fetchMock).not.toHaveBeenCalled();
+    const err = await failure(uploadToBlobStore(request({ path: big }), { root }));
+
+    expect(err.message).toContain(`${MAX_BLOB_UPLOAD_BYTES + 1} bytes`);
+    expect(err.message).toContain(String(MAX_BLOB_UPLOAD_BYTES));
+    expect(received).toHaveLength(0);
   });
 
-  it('reports the blob store\'s own verdict when the runner relays a refusal', async () => {
-    vi.stubGlobal('fetch', answers(422, {
-      error: 'the blob store refused the upload with 403: forbidden',
-      status: 403,
-      retryable: false,
-    }));
-
-    await expect(uploadToBlobStore(REQUEST, { env: ENV }))
-      .rejects.toThrow(/the blob store refused the upload with 403: forbidden/);
+  it('refuses a URL that is not absolute http(s), without dialling', async () => {
+    for (const url of ['not a url at all', 'ftp://blob.example/x', '']) {
+      const err = await failure(uploadToBlobStore(request({ url }), { root }));
+      expect(err.message).toMatch(/absolute http\(s\) URL/);
+    }
+    expect(received).toHaveLength(0);
   });
 
-  it('names the runner\'s status when it answers with no error text', async () => {
-    vi.stubGlobal('fetch', answers(502, { retryable: true }));
+  it('throws with the blob store\'s status and a bounded quote of its answer', async () => {
+    handler = (_req, res) => {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'signature does not verify' }));
+    };
 
-    await expect(uploadToBlobStore(REQUEST, { env: ENV })).rejects.toThrow(/502/);
+    const err = await failure(uploadToBlobStore(request(), { root }));
+
+    expect(err.message).toMatch(/403/);
+    expect(err.message).toContain('signature does not verify');
   });
 
-  it('survives an answer that is not JSON at all (a proxy\'s HTML error page)', async () => {
-    vi.stubGlobal('fetch', answers(504, '<html>gateway timeout</html>'));
+  it('quotes no more than a snippet of a long error body', async () => {
+    handler = (_req, res) => {
+      res.writeHead(500);
+      res.write('x'.repeat(400));
+      setTimeout(() => {
+        res.write('y'.repeat(400));
+        setTimeout(() => res.end('z'.repeat(400)), 20);
+      }, 20);
+    };
 
-    // The body is quoted, not parsed — and the throw is about the upload, never
-    // a SyntaxError from somewhere inside this module.
-    await expect(uploadToBlobStore(REQUEST, { env: ENV })).rejects.toThrow(/504/);
+    const err = await failure(uploadToBlobStore(request(), { root }));
+
+    expect(err.message).toMatch(/500/);
+    expect(err.message).not.toContain('z');
+    expect(err.message.length).toBeLessThan(1000);
+  });
+
+  it('gives up at its total deadline rather than hanging the MCP request', async () => {
+    handler = () => { /* never answers */ };
+
+    const err = await failure(uploadToBlobStore(request(), { root, timeoutMs: 50 }));
+
+    expect(err.message).toMatch(/did not finish within 50ms/);
+  });
+
+  it('keeps a deadline of its own by default', () => {
+    expect(BLOB_UPLOAD_TIMEOUT_MS).toBeGreaterThan(30_000);
   });
 
   // A signed URL is a credential with up to 24 h of anybody-who-holds-it access
-  // to the object. The runner scrubs its own words, but the far side's text is
-  // a third party's and may quote the request URL straight back — and an error
-  // thrown here is the one value on this path that is expected to be logged.
-  it('never lets the signed URL, or its bare signature, into the error it throws', async () => {
-    vi.stubGlobal('fetch', answers(422, { error: `refused: PUT ${PUT_URL} (sig ${SIG})`, status: 403 }));
+  // to the object, and everything thrown here is expected to be logged.
+  describe('never lets the signed URL or its bare signature into a message', () => {
+    it('scrubs the blob store quoting the request back', async () => {
+      handler = (req, res) => { res.writeHead(403); res.end(`refused PUT ${base}${req.url} (sig ${SIG})`); };
 
-    const err = await uploadToBlobStore(REQUEST, { env: ENV }).catch((e: Error) => e);
-    expect(err).toBeInstanceOf(Error);
-    expect((err as Error).message).not.toContain(PUT_URL);
-    expect((err as Error).message).not.toContain(SIG);
-    expect((err as Error).message).toContain('<signed url>');
-  });
+      const err = await failure(uploadToBlobStore(request(), { root }));
 
-  it('scrubs a transport failure too — a rejected fetch may quote the URL', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error(`connect ECONNREFUSED while sending ${PUT_URL}`);
-    }));
+      expect(err.message).not.toContain(signedUrl());
+      expect(err.message).not.toContain(SIG);
+      expect(err.message).toContain('<signed url>');
+    });
 
-    const err = await uploadToBlobStore(REQUEST, { env: ENV }).catch((e: Error) => e);
-    expect((err as Error).message).not.toContain(PUT_URL);
-    expect((err as Error).message).not.toContain(SIG);
-    expect((err as Error).message).toContain('ECONNREFUSED');
-  });
+    it('scrubs a transport failure', async () => {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      server = createServer();
+      server.listen(0);
 
-  it('reports a transport failure that threw something other than an Error', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw 'socket hang up'; }));
+      const err = await failure(uploadToBlobStore(request(), { root }));
 
-    await expect(uploadToBlobStore(REQUEST, { env: ENV })).rejects.toThrow(/socket hang up/);
-  });
+      expect(err.message).toMatch(/ECONNREFUSED/);
+      expect(err.message).not.toContain(SIG);
+    });
 
-  // The response ARRIVES and then its body fails to read — a severed or
-  // truncated answer. That is a third shape of transport failure, and the
-  // module's contract is about every one of them: nothing it throws carries the
-  // URL. undici's own body errors ('terminated', 'Premature close') happen to
-  // name nothing, so this is the guarantee being a property of the function
-  // rather than a fact about today's runtime.
-  it('scrubs a body that fails to read, as it scrubs a failed dial', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => { throw new Error(`terminated while reading ${PUT_URL}`); },
-    })));
+    it('scrubs a response severed mid-body', async () => {
+      handler = (_req, res) => {
+        res.writeHead(403, { 'content-length': '1000' });
+        res.write('partial', () => res.socket?.destroy());
+      };
 
-    const err = await uploadToBlobStore(REQUEST, { env: ENV }).catch((e: Error) => e);
-    expect(err).toBeInstanceOf(Error);
-    expect((err as Error).message).not.toContain(PUT_URL);
-    expect((err as Error).message).not.toContain(SIG);
-    expect((err as Error).message).toContain('terminated');
-  });
+      const err = await failure(uploadToBlobStore(request(), { root }));
 
-  it('reports a body read that rejected with something other than an Error', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => { throw 'premature close'; },
-    })));
+      expect(err.message).toMatch(/upload to the blob store did not complete/);
+      expect(err.message).not.toContain(SIG);
+    });
 
-    await expect(uploadToBlobStore(REQUEST, { env: ENV })).rejects.toThrow(/premature close/);
-  });
+    it('scrubs a TLS failure on an https URL', async () => {
+      const url = signedUrl().replace('http:', 'https:');
 
-  // The whole-string replacement is what does the work for a URL with no `sig`
-  // at all — and a URL that is not parseable must still be redacted rather than
-  // throwing on the way to a redaction.
-  it('scrubs a URL that carries no signature and does not parse', async () => {
-    const odd = 'not a url at all';
-    vi.stubGlobal('fetch', answers(422, { error: `refused: ${odd}`, status: 400 }));
+      const err = await failure(uploadToBlobStore(request({ url }), { root }));
 
-    const err = await uploadToBlobStore({ ...REQUEST, url: odd }, { env: ENV }).catch((e: Error) => e);
-    expect((err as Error).message).not.toContain(odd);
-    expect((err as Error).message).toContain('<signed url>');
-  });
+      expect(err.message).toMatch(/upload to the blob store did not complete/);
+      expect(err.message).not.toContain(url);
+      expect(err.message).not.toContain(SIG);
+    });
 
-  // `split('')` cuts a message into single characters and interleaves the
-  // replacement between every one of them, so an empty needle does not redact a
-  // message, it destroys it. Today's one call site always mints a URL first —
-  // this is a property of the function, which is why it is asserted on it.
-  it('an empty URL leaves the message intact rather than shredding it', async () => {
-    vi.stubGlobal('fetch', answers(422, { error: 'the blob store refused the upload', status: 403 }));
+    // `split('')` would cut the message into characters and interleave the
+    // replacement between every one of them.
+    it('leaves a message intact when the URL is empty', async () => {
+      const err = await failure(uploadToBlobStore(request({ url: '' }), { root }));
 
-    const err = await uploadToBlobStore({ ...REQUEST, url: '' }, { env: ENV }).catch((e: Error) => e);
-    expect((err as Error).message).toContain('the blob store refused the upload');
-    expect((err as Error).message).not.toContain('<signed url>');
-  });
-
-  it('reads the ambient environment, and its own deadline, when given neither', async () => {
-    const fetchMock = answers(200, { ok: true, status: 200, bytes: 12 });
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('GOG_RUNNER_URL', ENV.GOG_RUNNER_URL);
-    vi.stubEnv('GOG_RUNNER_KEY', ENV.GOG_RUNNER_KEY);
-
-    await expect(uploadToBlobStore(REQUEST)).resolves.toEqual({ bytes: 12, status: 200 });
-    expect((fetchMock.mock.calls[0] as [string, RequestInit])[0]).toBe('https://runner.example/upload');
-  });
-
-  it('exposes its deadline as a constant rather than a literal at the call site', () => {
-    expect(RUNNER_UPLOAD_TIMEOUT_MS).toBeGreaterThan(30_000);
-  });
-
-  // The rule this repo already applies at the other hop (`DEADLINE_GRACE_MS` in
-  // connector-runtime.ts: 30 s backend budget + 5 s): the CALLER's deadline sits
-  // ABOVE the backend's own, so the backend loses the race only when it
-  // genuinely cannot answer. The doc block here cited that rule while the
-  // numbers inverted it — 90 s against the runner's 120 s — so a socket that
-  // went quiet was aborted on this side 30 s before the runner's own timer could
-  // name it, turning "the upload timed out after 120000ms" into exactly the
-  // opaque client abort the rule exists to prevent.
-  //
-  // Restated rather than imported: `fly-gog-runner/server.mjs` must not be
-  // pulled into the Worker bundle (the same reason the attachment ceilings are
-  // restated in attachments.ts), so the two move by hand and this is the guard.
-  it('sits above the runner\'s own upload timeout, so the runner answers first', () => {
-    const UPLOAD_TIMEOUT_MS_ON_THE_BOX = 120_000; // server.mjs UPLOAD_TIMEOUT_MS
-    expect(RUNNER_UPLOAD_TIMEOUT_MS).toBeGreaterThan(UPLOAD_TIMEOUT_MS_ON_THE_BOX);
+      expect(err.message).not.toContain('<signed url>');
+      expect(err.message).toMatch(/absolute http\(s\) URL/);
+    });
   });
 });

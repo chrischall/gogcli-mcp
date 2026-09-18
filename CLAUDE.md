@@ -73,18 +73,27 @@ GOG_ACCOUNT=<email>   # default account passed as --account to every gog call (p
 GOG_PATH=<path>       # absolute path to the gog binary; defaults to `gog` on PATH
 GOG_READONLY=1        # block all mutating gog API requests (injects gog's --readonly); set to 0/false/no/off (or unset) to allow writes
 DISPLAY_TZ=<IANA>     # zone for *Display fields and for interpreting naive gog values; defaults to America/New_York
-GOG_TIMEZONE=<IANA>   # zone gog itself formats in; pinned on the Fly runner, keep in sync with DISPLAY_TZ
-GOG_RUNNER_URL=<url>  # run gog on the Fly backend instead of spawning the binary (remote-runner.ts)
-GOG_RUNNER_KEY=<key>  # bearer for that backend; BOTH or neither — either alone is refused, not silently spawned
+GOG_TIMEZONE=<IANA>   # zone gog itself formats in; keep in sync with DISPLAY_TZ
 GOG_GMAIL_TRUSTED_DOMAINS=<csv> # additional domains excluded from external-recipient audit alerts
+GOG_CLIENT_ID=<id>          # startup auth bootstrap: OAuth client id, imported into gog's keyring
+GOG_CLIENT_SECRET=<secret>  # startup auth bootstrap: OAuth client secret
+GOG_REFRESH_TOKEN=<token>   # startup auth bootstrap: refresh token for GOG_ACCOUNT (`gog auth tokens export`)
+GOG_KEYRING_BACKEND=file    # gog's own var; `file` on a headless host with no OS keychain
+GOG_KEYRING_PASSWORD=<pw>   # gog's own var; encrypts the file keyring — required with the file backend
 ```
 
-`GOG_RUNNER_URL` + `GOG_RUNNER_KEY` are what let a host with no `gog` binary
-serve at all — notably mcp-host, whose runner image is Node + git + tar and
-nothing else. Set them and `useRemoteGogRunner()` installs the same executor the
-Cloudflare connector uses, forwarding arg-arrays to `<runner>/run`; leave either
-unset and nothing changes. `GOG_PATH` is then irrelevant, since nothing is
-spawned.
+`bootstrapGogAuth()` (`src/bootstrap-auth.ts`) runs once at startup, before any
+tool is served: with all four of `GOG_CLIENT_ID` / `GOG_CLIENT_SECRET` /
+`GOG_REFRESH_TOKEN` / `GOG_ACCOUNT` set, it feeds them to `gog auth credentials
+set` and `gog auth tokens import` as temp files — `GOG_CLIENT_SECRET` and
+`GOG_REFRESH_TOKEN` are stripped from every spawned `gog`'s env (the `_SECRET` /
+`_TOKEN` rule; `GOG_CLIENT_ID` is not a secret and passes), so files are the only
+way in. A sha256
+of the four is kept at `~/.gogcli-mcp/auth-bootstrap.sha256`: an unchanged secret
+is not re-imported, a rotated one is. It never throws — a broken bootstrap still
+leaves the auth tools reachable. Set none of them and it does nothing (local
+installs authorise with `gog auth add` as before); set some and it logs what is
+missing and skips.
 
 `runner.ts` treats unresolved `.mcpb` placeholders (`${user_config.xxx}`) and empty strings as unset — useful for desktop clients that pass blank user-config fields through literally.
 
@@ -114,27 +123,24 @@ an SDK base64 rejection is a protocol fault the caller cannot act on.
 ### Outbound attachments (`src/attachments.ts`)
 
 Every gog attachment input is a **path resolved where gog runs**, which is
-unreachable whenever the caller and gog share no filesystem (hosted connector,
-any `GOG_RUNNER_URL` backend). `attachInline` / `content` carry the bytes
+unreachable whenever the caller and gog share no filesystem (any hosted
+connector). `attachInline` / `content` carry the bytes
 instead, riding the existing `GogFileArg` temp-file seam — now with
 `encoding: 'base64'`, an exact `filename` (gog reads an attachment's MIME
 filename off the path), and `positional` for `gog drive upload <localPath>`.
 Ceilings are enforced in the tool layer so the error names the file rather than
-arriving from a transport the caller cannot see, and **both are derived from the
-Fly runner's own constants** rather than picked: 8 MiB per file mirrors
-`MAX_FILE_ARG_BYTES`, and the per-message total is computed backwards from
-`MAX_BODY_BYTES` (32 MiB) because payloads travel base64-encoded inside one JSON
-body — a limit stated in decoded bytes has to absorb the 4/3 inflation or it
-documents a size the runner rejects. Restate a runner constant here and keep the
-two in sync; the alternative is importing a package the Worker bundle must not
-pull in.
+arriving from somewhere the caller cannot see. They are this wrapper's own caps
+(they began as the retired remote runner's limits and were kept): 8 MiB per file,
+and a per-message total computed backwards from a 32 MiB request budget spelled
+base64-encoded — a limit stated in decoded bytes has to absorb the 4/3 inflation
+or it documents a size the budget rejects.
 
 The budget belongs to the **request**, not to the attachments: a mail body over
 `PAYLOAD_INLINE_MAX` becomes a `GogFileArg` riding in that same JSON body, so
 `inlineAttachmentArgs` measures the sibling args it is handed rather than
 assuming they are small. Pass the args assembled so far when calling it —
 otherwise "every input was inside its own documented limit" can still add up to
-a rejected request. Each payload is materialized into its **own** numbered subdirectory, so
+an over-budget request. Each payload is materialized into its **own** numbered subdirectory, so
 repeated `--attach` with colliding basenames is safe.
 
 Every gog response passes through `normalizeTimestamps` (`src/timestamps.ts`) on the `runOrDiagnose` seam, which rewrites allowlisted timestamp fields to ISO-8601 with an explicit offset and adds a `<field>Display` sibling. Both the key and the value shape must match before anything is rewritten — a name-only match would corrupt spreadsheet cell data. See [`docs/timestamps.md`](docs/timestamps.md).
@@ -185,26 +191,50 @@ This needed mcp-utils **0.23.0**: 0.22.0's `MEDIA_KEY` was anchored to a bare no
 
 ### Required gog version
 
-`runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.40.0**. A bump must also move the `fly-gog-runner/Dockerfile` `GOG_VERSION` build arg **and the `tag:` in all nine `packages/*/mint.yaml` `dependencies` blocks** — those pin the `gog` release a hosted install provisions, so leaving them behind hands the child a binary older than the floor its tools assume. `scripts/check-runner-gog-version.mjs` enforces all three together and fails `npm test` on any pin below the floor, so a missed one is a red build rather than a broken hosted install.
+`runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.40.0**. A bump must also move **the `tag:` in all nine `packages/*/mint.yaml` `dependencies` blocks** — those pin the `gog` release a hosted install provisions, so leaving them behind hands the child a binary older than the floor its tools assume. `scripts/check-runner-gog-version.mjs` checks those against the floor and fails `npm test` on any pin below it, so a missed one is a red build.
+
+A third pin set it **cannot** see is the `dependencies` pin stored on each live mcp-host registration. mcp-host resolves a dependency to an exact tag + asset + sha256 at registration time and keeps it; the follow cron moves only the *package* version, never a dependency pin. So a floor bump also means, on each of the six registrations below:
+
+```sh
+mcp-host set <id> --dep 'github:openclaw/gogcli@v<NEW>:gogcli_*_linux_amd64.tar.gz#gog'
+```
+
+(`set --dep` replaces the whole list, which is fine — gog is the only one.) Skip it and the connector follows to a release whose tools send flags its pinned `gog` does not have.
 
 ### Hosted registrations (mcp-host)
 
-Each sub-package is registered on mcp-host as its own connector — `gog-docs`,
-`gog-drive`, `gog-gmail`, `gog-sheets`, `gog-slides` — all `--npm`, `--follow`,
-`dataDir: false` and no `gog` dependency, because they drive the Fly runner
-(`GOG_RUNNER_URL` + the `GOG_RUNNER_KEY` secret) rather than spawning a binary.
-That deliberately contradicts `mint.yaml`, which describes the local-spawn
-install, so every row carries two permanent `unmet` manifest asks (the
-`github-release:openclaw/gogcli` dependency, and `dataDir`). Both are expected.
-Registering a new one mirrors the others:
+Six sub-packages are registered on mcp-host as their own connectors —
+`gog-classroom`, `gog-docs`, `gog-drive`, `gog-gmail`, `gog-sheets`,
+`gog-slides` — each `--npm`, `--follow` and `--data-dir`, with the
+`openclaw/gogcli` dependency and the auth secrets. mcp-host installs `gog` onto
+the child's PATH, the child spawns it locally with `$HOME` on the persistent data
+dir, and `bootstrapGogAuth()` seeds gog's file keyring there from the secrets at
+startup. That is exactly what `mint.yaml` declares, so a registration has no
+standing `unmet` manifest asks. Registering a new one mirrors the others:
 
 ```sh
 mcp-host register --slug gog-<service> --npm gogcli-mcp-<service> \
-  --name 'gog <service>' --follow \
-  --env "GOG_RUNNER_URL=https://gogcli-gog-runner.fly.dev" \
-  --secret-env GOG_RUNNER_KEY=GOG_RUNNER_KEY \
+  --name 'gog <service>' --follow --data-dir \
+  --dep 'github:openclaw/gogcli@v0.40.0:gogcli_*_linux_amd64.tar.gz#gog' \
+  --env GOG_KEYRING_BACKEND=file \
+  --secret-env GOG_CLIENT_ID=GOG_CLIENT_ID \
+  --secret-env GOG_CLIENT_SECRET=GOG_CLIENT_SECRET \
+  --secret-env GOG_REFRESH_TOKEN=GOG_REFRESH_TOKEN \
+  --secret-env GOG_ACCOUNT=GOG_ACCOUNT \
+  --secret-env GOG_KEYRING_PASSWORD=GOG_KEYRING_PASSWORD \
   --tools "$(node -e '…manifest minus *_run…')"
 ```
+
+The `--dep` tag is the current `MIN_GOG_VERSION` — see [Required gog version](#required-gog-version).
+
+**Rotating auth.** Two paths, and the marker decides between them. Either update
+the `GOG_REFRESH_TOKEN` secret (a fresh one comes from `gog auth tokens export`
+on a machine where the account is authorised) and restart the child — the
+changed fingerprint makes the bootstrap re-import it — or re-auth in-connector
+with `gog_auth_add_url` → `gog_auth_add_complete`. The in-connector token lands
+in the keyring on the data dir and survives restarts, because the bootstrap only
+re-imports when the *secret* changes; the next secret rotation then overrides
+it.
 
 **The `enabledTools` allowlist rots, and only we can see it.** Its whole job is
 to withhold the two `*_run` escape hatches — arbitrary `gog` subcommand
@@ -355,7 +385,7 @@ write-verification, transport archetypes, testing traps) live in
 - **Sub-packages bundle base source directly**: each sub-package's `tsconfig.json` includes `../gogcli-mcp/src/**/*` and esbuild inlines it. Don't try to import from the published `gogcli-mcp/lib` path inside the workspace.
 - **Registrar lists, not server factories**: every package's `index.ts` boots via `runMcp` from `@chrischall/mcp-utils` with a registrar list. Sub-packages assemble their own list from `lib.js` registrars; only the base bin uses `BASE_TOOL_REGISTRARS`.
 - **stdio transport**: stdout is reserved for JSON-RPC — never `console.log` from request handlers. Log to stderr.
-- **Secrets in env**: `runner.ts` strips `GOG_ACCESS_TOKEN`, `GOOGLE_APPLICATION_CREDENTIALS`, and any var ending in `_TOKEN`/`_SECRET`/`_KEY`/`_CREDENTIALS` before spawning `gog` — and `fly-gog-runner/server.mjs` applies the same list to the box-side child. `_PASSWORD` is deliberately NOT on it: `GOG_KEYRING_PASSWORD` decrypts gog's own file keyring, so that rule would strip the one credential the child needs. Adding new ambient credentials? Audit the regex, in both places, with a control case for anything the child legitimately reads.
+- **Secrets in env**: `runner.ts` strips `GOG_ACCESS_TOKEN`, `GOOGLE_APPLICATION_CREDENTIALS`, and any var ending in `_TOKEN`/`_SECRET`/`_KEY`/`_CREDENTIALS` before spawning `gog`. `_PASSWORD` is deliberately NOT on it: `GOG_KEYRING_PASSWORD` decrypts gog's own file keyring, so that rule would strip the one credential the child needs. Adding new ambient credentials? Audit the regex with a control case for anything the child legitimately reads.
 - **PATH augmentation**: desktop MCP clients spawn with a stripped PATH; the runner re-adds `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/go/bin`. If `gog` lives elsewhere, set `GOG_PATH`.
 - **Coverage gate**: 100% on `src/**` (excluding each package's `src/index.ts`). New code without tests fails CI.
 - **`--force` on gated destructive commands**: gog gates MOST destructive commands behind a confirmation, and the runner always injects `--no-input`, so without `--force` they fail at runtime with `refusing to … without --force (non-interactive)`. Assume a new delete/remove/clear-style subcommand is gated unless proven otherwise — the authoritative check is `confirmDestructive`/`dryRunAndConfirmDestructive` call sites in gogcli's `internal/cmd/`, or probe live with fake IDs: `gog <cmd> fakeid --no-input` (the gate fires before any API call — but beware commands that resolve names via the API *first*; those show an API error on fake IDs even when gated, e.g. `sheets delete-tab`, `gmail labels delete`). Conventions: append `--force` as the LAST arg; conditional gates get a conditional push (`drive share` only for `to=anyone`, `api call` only with `allowWrite`, `gmail filters create` only with `forward`, `docs insert-image`/`replace-image` only with a local `file`, `contacts dedupe` only with `apply`). Exception: `gog_gmail_drafts_delete` and `gog_gmail_batch_delete` deliberately expose `force` as a tool param instead of auto-appending — permanent deletions that bypass Trash keep the extra friction. Known non-gated (leave alone): `docs table-row/column delete`, `docs named-range delete`, `docs delete`, `docs clear`, `sheets named-ranges delete`, `sheets clear`, `sheets validation clear`, `classroom courses archive`, `gmail batch trash`. The mocked unit tests only assert the arg array, so a missing `--force` passes CI but breaks live.

@@ -468,14 +468,22 @@ describe('gog_drive_read_bytes', () => {
     expect(res.resource.uri).toBe('gogdrive://f2/file');
   });
 
-  it('surfaces the connector-degradation error via diagnose', async () => {
+  it('surfaces a byte-fetch failure via diagnose', async () => {
     vi.mocked(runner.run)
       .mockResolvedValueOnce(JSON.stringify({ file: { name: 'a.pdf', mimeType: 'application/pdf' } }))
       .mockResolvedValueOnce('user@x.com'); // diagnose -> auth list
-    vi.mocked(runner.runBinary).mockRejectedValueOnce(new Error('Raw byte retrieval is not available over the hosted connector'));
+    vi.mocked(runner.runBinary).mockRejectedValueOnce(new Error('gog exited with code 1'));
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_drive_read_bytes', { fileId: 'f1' });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('not available over the hosted connector');
+    expect(result.content[0].text).toContain('gog exited with code 1');
+  });
+
+  it('no longer claims the hosted transport cannot carry bytes', async () => {
+    const harness = await setupHandlers();
+    const { tools } = await harness.client.listTools();
+    const desc = tools.find((t) => t.name === 'gog_drive_read_bytes')!.description!;
+    expect(desc).not.toMatch(/text-only|hosted connector/i);
+    await harness.close();
   });
 });

@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { run, isGogFileArg } from '../src/runner.js';
-import type { Spawner, GogArg } from '../src/runner.js';
+import type { Spawner } from '../src/runner.js';
 import { payloadArg, PAYLOAD_INLINE_MAX } from '../src/tools/utils.js';
 
 // These tests deliberately use the REAL fs: the whole point is that the bytes
@@ -209,18 +209,6 @@ describe('run with GogFileArgs', () => {
 
     expect(capture.dirs).toHaveLength(1);
     expect(existsSync(capture.dirs[0])).toBe(false);
-  });
-
-  it('forwards GogFileArgs unmaterialized to an injected executor', async () => {
-    // The hosted (Worker/Fly) executor does its own materialization on the
-    // remote side, so run() must hand it the union, not a local path.
-    const { runExecutor } = await import('../src/runner.js');
-    let seen: GogArg[] = [];
-    const executor = vi.fn(async (args: GogArg[]) => { seen = args; return '{}'; });
-    await runExecutor.run({ executor }, () =>
-      run(['gmail', 'send', payloadArg('body', 'body-file', big(PAYLOAD_INLINE_MAX + 1))], {}),
-    );
-    expect(seen.at(-1)).toMatchObject({ kind: 'file', flag: 'body-file' });
   });
 });
 

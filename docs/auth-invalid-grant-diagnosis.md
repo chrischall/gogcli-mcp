@@ -38,9 +38,9 @@ publishing status — and therefore the fix — is fully in your control.
 
 ### Concurrent keyring writes — ruled out (checked again 2026-08-09)
 
-A recurring theory holds that the Fly runner's parallelism corrupts the keyring: all four
-stateless connectors (sheets/gmail/drive/docs) point at **one** Machine and **one**
-`/data` volume, `fly-gog-runner/server.mjs` has no queue or mutex (`server.inFlight` is only a
+A recurring theory held that the (since retired) Fly runner's parallelism corrupted the keyring:
+all four stateless connectors (sheets/gmail/drive/docs) pointed at **one** Machine and **one**
+`/data` volume, and the runner's server had no queue or mutex (`server.inFlight` was only a
 drain counter), so two `gog` processes could read-modify-write the same encrypted keyring at once.
 
 The premise is false, and the reason it keeps coming back is that people read the wrong file.
@@ -58,8 +58,8 @@ Evidence:
   `token.go`'s paths (`SetToken`, `GetToken`, delete, rotate) plus `secret.go` and
   `default_account.go`.
 - **It predates the deployment by a wide margin.** It landed in `f3d5753` *"fix(auth): serialize
-  file keyring access"* (2026-05-22), first released in **v0.19.0**; `fly-gog-runner/Dockerfile`
-  pins `GOG_VERSION=0.34.1`, which contains it.
+  file keyring access"* (2026-05-22), first released in **v0.19.0**; the runner's Dockerfile
+  pinned `GOG_VERSION=0.34.1`, which contains it.
 - **gogcli's own suite proves both properties, and it passes today.**
   `go test ./internal/secrets/ -run 'Lock|Concurren' -count=1 -v` →
   `TestKeyringLockBlocksConcurrentProcess` (spawns a **second OS process** that holds the flock and
@@ -110,7 +110,7 @@ not do) and reports, per account:
 
 The interactive `gog_auth_add` needs a browser on the same host as gog (its loopback callback),
 which the **hosted connector cannot provide**. The two-step remote flow works everywhere,
-including the Fly-backed connector, because both steps are non-interactive gog calls:
+including a hosted mcp-host connector, because both steps are non-interactive gog calls:
 
 1. **`gog_auth_add_url`** → returns a Google sign-in URL (valid 10 min). Hand it to the user.
 2. The user signs in; the browser is redirected to a `localhost` URL that **fails to load — that

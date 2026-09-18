@@ -24,7 +24,7 @@ export const replySchema = {
   remove: z.array(z.string()).optional().describe('Remove these recipients from all fields (repeatable) — e.g. to drop someone from a reply-all.'),
   subject: z.string().optional().describe('Override reply subject (default: "Re: <original>"). A changed subject starts a NEW Gmail thread.'),
   noQuote: z.boolean().optional().describe('Do not include the original message quoted below the reply (default: the original is quoted)'),
-  attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension.'),
+  attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension.'),
   attachInline: attachInlineParam,
   from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
   autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
@@ -66,9 +66,9 @@ export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
   if (f.noQuote) args.push('--no-quote');
   if (f.attach) for (const p of f.attach) args.push(`--attach=${p}`);
   // Same repeatable --attach flag, but the bytes travel with the call: the
-  // executor writes each one to a temp file beside gog and passes that path.
+  // runner writes each one to a temp file beside gog and passes that path.
   // This is the only attachment route that works when the caller and gog do not
-  // share a filesystem (hosted connector, GOG_RUNNER_URL backend). `args` is
+  // share a filesystem (a hosted deployment such as mcp-host). `args` is
   // passed so the size check sees the body too, which shares the same budget
   // once payloadArg has turned it into a file arg.
   args.push(...inlineAttachmentArgs('attach', f.attachInline, args));
@@ -78,8 +78,8 @@ export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
   if (f.signatureFile) args.push(`--signature-file=${f.signatureFile}`);
   // PINNED, not conditional: GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS in the host env
   // silently changes which address the mail goes out FROM, with nothing in the arg
-  // array to show for it — and the remote runner's backend env is not ours to set.
-  // An explicit flag is the only value authoritative on both transports.
+  // array to show for it — and a hosted deployment's env is not the caller's to set.
+  // An explicit flag is the only value authoritative everywhere.
   args.push(f.autoFromAddressedAlias ? '--auto-from-addressed-alias' : '--auto-from-addressed-alias=false');
 }
 
@@ -255,7 +255,7 @@ export function registerGmailTools(server: McpServer): void {
       replyToMessageId: z.string().optional().describe('Message ID to thread this message against — sets In-Reply-To/References only. It does NOT quote the original (pass quote for that), inherit its recipients, or prefix the subject with "Re:". For an actual reply use gog_gmail_reply.'),
       threadId: z.string().optional().describe('Thread ID to thread this message within. Same caveat as replyToMessageId: threading only, no quote and no inherited subject or recipients.'),
       quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or threadId. gog quotes by DEFAULT on gmail reply but never on gmail send, so without this a threaded send arrives with the original nowhere in it.'),
-      attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment.'),
+      attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment.'),
       attachInline: attachInlineParam,
       account: accountParam,
     }),
@@ -265,9 +265,9 @@ export function registerGmailTools(server: McpServer): void {
     // skipped this would tell a caller "looks fine, send it" about an
     // attachment that was always going to fail.
     //
-    // A long body cannot ride in argv: the hosted runner caps a single arg and
-    // Linux caps MAX_ARG_STRLEN at 128 KiB. payloadArg swaps it for --body-file
-    // past the shared threshold; the executor materializes the temp file.
+    // A long body cannot ride in argv: Linux caps MAX_ARG_STRLEN at 128 KiB.
+    // payloadArg swaps it for --body-file past the shared threshold; the runner
+    // materializes the temp file.
     const args: GogArg[] = ['gmail', 'send', `--to=${to}`, `--subject=${subject}`, payloadArg('body', 'body-file', body)];
     if (cc) args.push(`--cc=${cc}`);
     if (bcc) args.push(`--bcc=${bcc}`);

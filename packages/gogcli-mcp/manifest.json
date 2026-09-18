@@ -266,7 +266,7 @@
     },
     {
       "name": "gog_drive_read_bytes",
-      "description": "Fetch a Drive file's raw bytes as a base64 resource (local stdio only; connector returns text-only notice)"
+      "description": "Fetch a Drive file's raw bytes as a base64 resource"
     },
     {
       "name": "gog_drive_get",

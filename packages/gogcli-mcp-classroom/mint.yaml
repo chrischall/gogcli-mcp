@@ -12,25 +12,29 @@ env:
   - name: GOG_CLIENT_ID
     required: false
     help: >-
-      Google OAuth client id. NOTE: on the local-spawn path the child `gog`
-      receives a sanitized env — runner.ts drops GOG_ACCESS_TOKEN and every
-      *_TOKEN / *_SECRET / *_KEY / *_CREDENTIALS variable — so the CLI
-      authenticates from its own stored credentials under $HOME (see
-      state.dataDir), not from these variables being passed through.
+      Google OAuth client id. Read by the Node wrapper at startup
+      (bootstrap-auth.ts), which imports it into gog's keyring via a temp file
+      together with GOG_CLIENT_SECRET, GOG_REFRESH_TOKEN and GOG_ACCOUNT — set
+      all four or none. Not a secret, so unlike GOG_CLIENT_SECRET and
+      GOG_REFRESH_TOKEN it is not stripped from the spawned `gog`'s
+      environment; gog authenticates from its keyring under $HOME (see
+      state.dataDir).
   - name: GOG_CLIENT_SECRET
     secret: true
     required: false
     help: >-
-      Google OAuth client secret. Stripped from the spawned CLI's environment
-      by runner.ts's *_SECRET rule — see GOG_CLIENT_ID.
+      Google OAuth client secret. Imported into gog's keyring at startup with
+      GOG_CLIENT_ID; stripped from the spawned CLI's environment by runner.ts's
+      *_SECRET rule.
   - name: GOG_REFRESH_TOKEN
     secret: true
     required: false
     help: >-
-      Google OAuth refresh token. Stripped from the spawned CLI's environment
-      by runner.ts's *_TOKEN rule — see GOG_CLIENT_ID. A hosted deployment must
-      therefore carry gog's authorised-account state in its persisted data dir,
-      or drive a remote runner via GOG_RUNNER_URL.
+      Google OAuth refresh token (`gog auth tokens export` prints one). Imported
+      into gog's keyring at startup with GOG_CLIENT_ID; stripped from the
+      spawned CLI's environment by runner.ts's *_TOKEN rule. Changing it
+      re-imports on the next start; an in-connector re-auth
+      (gog_auth_add_url/complete) stays in effect until it changes.
   - name: GOG_ACCESS_TOKEN
     secret: true
     required: false
@@ -41,8 +45,21 @@ env:
   - name: GOG_ACCOUNT
     required: false
     help: >-
-      Which configured Google account to act as, when more than one is
-      authorised. Defaults to the single/most recent account.
+      The Google account to act as. Required for the startup auth bootstrap
+      (the refresh token is imported under this email); otherwise defaults to
+      gog's single/most recent account.
+  - name: GOG_KEYRING_BACKEND
+    required: false
+    help: >-
+      gog's credential store. Set to "file" on a headless host — there is no OS
+      keychain — so the keyring lives on the persistent data dir.
+  - name: GOG_KEYRING_PASSWORD
+    secret: true
+    required: false
+    help: >-
+      Encrypts gog's file keyring on the data dir. Required with
+      GOG_KEYRING_BACKEND=file. Deliberately not stripped from the spawned
+      CLI's environment — it is the one credential gog itself reads.
   - name: GOG_READONLY
     required: false
     help: >-
@@ -53,17 +70,6 @@ env:
     help: >-
       Path to the `gog` binary. Leave unset when the dependency below supplies
       it; set it only to point at a binary you manage yourself.
-  - name: GOG_RUNNER_URL
-    required: false
-    help: >-
-      URL of a remote gog runner to execute against instead of spawning the
-      local binary. If you set this, add its host to egress.allow.
-  - name: GOG_RUNNER_KEY
-    secret: true
-    required: false
-    help: >-
-      Shared key authenticating calls to GOG_RUNNER_URL. Required whenever that
-      is set.
   - name: GOG_TIMEZONE
     required: false
     help: >-
@@ -82,9 +88,8 @@ dependencies:
   # Every tool shells out to the `gog` CLI; without it the server starts and
   # then fails on the first call. This tag must track
   # packages/gogcli-mcp/src/runner.ts's MIN_GOG_VERSION (the floor the tools
-  # assume) and the fly-gog-runner/Dockerfile GOG_VERSION build arg. See
-  # CLAUDE.md "Required gog version" — bumping the floor means bumping these
-  # nine pins too.
+  # assume). See CLAUDE.md "Required gog version" — bumping the floor means
+  # bumping these nine pins, and the pin stored on each mcp-host registration.
   - kind: github-release
     repo: openclaw/gogcli
     tag: v0.40.0
@@ -93,15 +98,14 @@ dependencies:
 state:
   dataDir: true
   reason: >-
-    `gog` keeps its authorised-account state and token cache under $HOME.
-    Without a persistent data dir every cold start has no account configured and
-    every tool call fails until the credentials are re-supplied.
+    `gog` keeps its authorised-account state and file keyring under $HOME, and
+    the wrapper keeps its auth-bootstrap marker (~/.gogcli-mcp) there, so a
+    restart neither re-imports an unchanged secret nor discards an
+    in-connector re-auth. Without a persistent data dir every cold start has
+    only what the env secrets can re-seed.
 egress:
   allow:
     # Google OAuth token exchange and the Google REST APIs the CLI calls.
     - oauth2.googleapis.com
     - www.googleapis.com
     - googleapis.com
-    #
-    # NOTE: if you set GOG_RUNNER_URL to run against a remote gog runner, add
-    # that host here too — it is supplied at runtime and cannot be declared.

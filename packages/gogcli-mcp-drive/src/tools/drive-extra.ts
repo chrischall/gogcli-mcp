@@ -36,7 +36,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       'Conditional replacement refuses Google Workspace files (Docs/Sheets/Slides), which have no replaceable binary content.',
     annotations: { destructiveHint: true },
     inputSchema: z.object({
-      localPath: z.string().optional().describe('Path to the file to upload, resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on the hosted connector or any GOG_RUNNER_URL backend this path does not exist and the call fails with "no such file or directory" — use content there. Exactly one of localPath / content is required.'),
+      localPath: z.string().optional().describe('Path to the file to upload, resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) this path does not exist and the call fails with "no such file or directory" — use content there. Exactly one of localPath / content is required.'),
       content: z.string().optional().describe('The file\'s bytes, base64-encoded (standard alphabet, with padding) — upload a file you hold without it existing anywhere on the gog server. This is the only route that works when the caller and gog share no filesystem. Requires name (there is no path to take a filename from). Max 8 MiB; for anything larger use localPath from a local deployment. Exactly one of localPath / content is required — supplying both is an error, not a precedence rule.'),
       name: z.string().optional().describe('Override filename (create) or rename target (replace)'),
       parent: z.string().optional().describe('Destination folder ID (create only)'),

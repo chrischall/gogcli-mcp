@@ -31,7 +31,7 @@ export {
   requireGmailDispatchConfirmation,
   resultText,
 } from './gmail-dispatch-guard.js';
-export { run, runBinary, runExecutor, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
+export { run, runBinary, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
 // Sub-package tools that read gog JSON through bare `run()` (rather than the
 // `runOrDiagnose` seam) must still apply this, or their timestamps skip the
 // offset repair and the `<field>Display` sibling every other tool returns.
@@ -42,11 +42,12 @@ export { annotateTruncatedList, stripConsumedPageToken } from './pagination.js';
 // guarantees the base gog_gmail_search makes.
 export { finalizeGmailSearch, fetchGmailPages } from './gmail-results.js';
 export type { FinalizeOptions, GmailListMethod } from './gmail-results.js';
-export { useRemoteGogRunner } from './remote-runner.js';
-export type { RunOptions, Spawner, GogExecutor, GogArg, GogFileArg } from './runner.js';
+export { bootstrapGogAuth, AUTH_BOOTSTRAP_MARKER } from './bootstrap-auth.js';
+export type { AuthBootstrapStatus, AuthBootstrapOptions } from './bootstrap-auth.js';
+export type { RunOptions, Spawner, GogArg, GogFileArg } from './runner.js';
 // Caller-supplied attachment bytes — the only outbound attachment path that
-// works when the caller and gog share no filesystem (hosted connector, or any
-// GOG_RUNNER_URL backend). See src/attachments.ts.
+// works when the caller and gog share no filesystem (a hosted deployment such
+// as mcp-host). See src/attachments.ts.
 export {
   attachInlineParam,
   inlineAttachmentSchema,
@@ -88,8 +89,12 @@ export {
   BLOB_URL_DEFAULT_TTL_MS,
 } from './blob-urls.js';
 export type { BlobStoreConfig, BlobUrlMinter, MintOptions } from './blob-urls.js';
-// The other half of that hop: under the hosted connector the bytes are on the
-// RUNNER's disk and this child never sees them, so the runner is asked to
-// stream them to the URL this process minted. See src/blob-upload.ts.
-export { uploadToBlobStore, RUNNER_UPLOAD_TIMEOUT_MS } from './blob-upload.js';
+// The other half of that hop: stream a downloaded attachment off this machine's
+// disk to the URL this process minted. See src/blob-upload.ts.
+export {
+  uploadToBlobStore,
+  ATTACHMENT_DOWNLOAD_ROOT,
+  BLOB_UPLOAD_TIMEOUT_MS,
+  MAX_BLOB_UPLOAD_BYTES,
+} from './blob-upload.js';
 export type { BlobUploadRequest, BlobUploadOutcome, BlobUploadOptions } from './blob-upload.js';

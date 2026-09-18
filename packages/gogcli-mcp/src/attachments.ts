@@ -9,14 +9,13 @@ import type { GogArg, GogFileArg } from './runner.js';
  * Every attachment input gog offers is a PATH — `gmail send --attach`,
  * `gmail drafts create --attach`, `drive upload <localPath>` — and those paths
  * resolve wherever gog runs. On the local stdio transport that is the caller's
- * own machine and everything works. On the hosted connector, and on any host
- * that reaches a backend through GOG_RUNNER_URL, gog runs somewhere else
- * entirely: no path the caller can name exists there, so outbound attachments
- * were simply impossible — including via Drive, whose upload takes a path too.
+ * own machine and everything works. On a hosted deployment (mcp-host), gog
+ * runs somewhere else entirely: no path the caller can name exists there, so
+ * outbound attachments would be impossible — including via Drive, whose upload
+ * takes a path too.
  *
  * The seam that fixes it already existed. `GogFileArg` writes a payload to a
- * private temp file NEXT TO GOG — on the runner for the remote path, in a
- * mkdtemp dir for the local one — and passes the resulting path. It was built
+ * private temp file NEXT TO GOG (a mkdtemp dir) and passes the resulting path. It was built
  * for oversized text (a long HTML mail body) that could not fit in argv; all
  * binary attachments need on top of that is a base64 spelling and control of
  * the basename, both of which are now `GogFileArg` fields.
@@ -27,39 +26,34 @@ import type { GogArg, GogFileArg } from './runner.js';
 
 // Ceiling for ONE attachment's decoded bytes.
 //
-// Pinned to the Fly runner's own MAX_FILE_ARG_BYTES (fly-gog-runner/server.mjs)
-// so the two agree. That matters: without a check here the local stdio path
-// would accept any size while the remote path refused at 8 MiB, and the caller
-// would meet the limit as a transport rejection from a layer they cannot see.
-// Checked in the TOOL so the error names the file and the limit instead.
+// A published, stable limit: callers plan around it, so it stays fixed. Checked
+// in the TOOL so the error names the file and the limit, rather than the caller
+// meeting an oversized request as an opaque failure from a layer they cannot
+// see.
 export const MAX_INLINE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
-// The Fly runner caps an ENTIRE /run request body at 32 MiB
-// (fly-gog-runner/server.mjs MAX_BODY_BYTES). Restated rather than imported:
-// that package is not a dependency of this one, and the Worker bundle must not
-// pull it in. Keep the two in sync.
-const RUNNER_MAX_BODY_BYTES = 32 * 1024 * 1024;
+// The budget for an ENTIRE request's payload, as spelled on the wire (32 MiB).
+// An MCP tool call carries every attachment as base64 inside one JSON-RPC
+// message, so the whole request — not each file — is what has to stay bounded.
+const REQUEST_MAX_BODY_BYTES = 32 * 1024 * 1024;
 
 // Room inside that body for the JSON structure alone — key names, quoting,
-// commas, the accessToken, and the short flag strings (`--to=…`, `--subject=…`).
+// commas, and the short flag strings (`--to=…`, `--subject=…`).
 // It does NOT have to cover the mail body: a large body is a GogFileArg, and
 // GogFileArgs are measured explicitly below rather than absorbed here.
-const RUNNER_BODY_JSON_RESERVE_BYTES = 256 * 1024;
+const REQUEST_BODY_JSON_RESERVE_BYTES = 256 * 1024;
 
 /**
- * How many bytes of PAYLOAD one `/run` request can carry, counted as they are
- * spelled on the wire.
+ * How many bytes of PAYLOAD one request can carry, counted as they are spelled
+ * on the wire.
  *
  * The binding constraint on a message is its wire size, not the decoded size of
- * its files, and it is tighter than Gmail's own 25 MB limit: connector-runtime
- * sends every payload inside one `JSON.stringify({ args, accessToken })` body,
- * where binary rides as base64 (4/3 inflation) and text rides verbatim. A limit
- * expressed in decoded bytes must absorb that inflation or it documents a size
- * the runner rejects with "request body too large" — a rejection from a layer
- * the caller cannot see, which is exactly what pinning the per-file ceiling to
- * MAX_FILE_ARG_BYTES exists to prevent.
+ * its files, and it is tighter than Gmail's own 25 MB limit: every payload rides
+ * inside one JSON body, where binary rides as base64 (4/3 inflation) and text
+ * rides verbatim. A limit expressed in decoded bytes must absorb that inflation
+ * or it documents a size that cannot actually be sent.
  */
-export const MAX_REQUEST_PAYLOAD_WIRE_BYTES = RUNNER_MAX_BODY_BYTES - RUNNER_BODY_JSON_RESERVE_BYTES;
+export const MAX_REQUEST_PAYLOAD_WIRE_BYTES = REQUEST_MAX_BODY_BYTES - REQUEST_BODY_JSON_RESERVE_BYTES;
 
 // Ceiling for all inline attachments on one message, in DECODED bytes — the
 // units a caller thinks in, derived from the wire budget above.
@@ -70,15 +64,15 @@ export const MAX_REQUEST_PAYLOAD_WIRE_BYTES = RUNNER_MAX_BODY_BYTES - RUNNER_BOD
 // at roughly 1:1. `inlineAttachmentArgs` therefore measures the actual sibling
 // args rather than trusting this number, so a 23 MiB attachment set plus a
 // multi-MiB HTML body is refused here, with an error naming the body, instead of
-// arriving as a bare transport rejection.
+// arriving as an opaque failure.
 //
 // Neither bound is hypothetical at the edges: three attachments at the
 // documented 8 MiB per-file maximum is 24 MiB, which alone encodes to exactly
-// MAX_BODY_BYTES, leaving nothing for anything else.
+// the 32 MiB request budget, leaving nothing for anything else.
 export const MAX_INLINE_ATTACHMENT_TOTAL_BYTES = Math.floor((MAX_REQUEST_PAYLOAD_WIRE_BYTES * 3) / 4);
 
 /**
- * Bytes one already-assembled arg occupies in the `/run` JSON body.
+ * Bytes one already-assembled arg occupies in the request's JSON body.
  *
  * A plain string costs its UTF-8 length; a file arg costs the length of its
  * `contents` as spelled on the wire — the base64 text for binary, the UTF-8
@@ -127,8 +121,8 @@ export type InlineAttachmentInput = z.infer<typeof inlineAttachmentSchema>;
 /** Reusable tool parameter — the same field on send, drafts create and update. */
 export const attachInlineParam = z.array(inlineAttachmentSchema).optional().describe(
   'Attachments supplied as BYTES rather than as server-side paths — use this whenever you hold a file '
-  + 'and the gog server does not, which is always the case on the hosted connector and on any remote '
-  + `deployment. Each entry is {filename, contentBase64} (${INLINE_ATTACHMENT_LIMITS_TEXT}). `
+  + 'and the gog server does not, which is always the case on a hosted deployment (e.g. mcp-host). '
+  + `Each entry is {filename, contentBase64} (${INLINE_ATTACHMENT_LIMITS_TEXT}). `
   + 'Can be combined with `attach`: the two name disjoint files (paths read on the server vs. bytes sent '
   + 'with the call), and both end up as ordinary attachments on the message.',
 );
@@ -171,7 +165,7 @@ function decodedLength(contentBase64: string): number | null {
 
 /**
  * Validate ONE caller-supplied file and turn it into a `GogFileArg`, which the
- * executor materializes to a temp file beside gog.
+ * runner materializes to a temp file beside gog.
  *
  * Throws with an actionable message on anything invalid. The MCP layer turns a
  * thrown handler error into an `isError` result, so every rejection here reaches
