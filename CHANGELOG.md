@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.1](https://github.com/chrischall/gogcli-mcp/compare/v4.0.0...v4.0.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* **timestamps:** pin gog to the zone the wrapper reads its dates in ([#366](https://github.com/chrischall/gogcli-mcp/issues/366)) ([284d4af](https://github.com/chrischall/gogcli-mcp/commit/284d4aff2a76e66c29609d5cd0e4f0aacefd568b))
+
 ## [4.0.0](https://github.com/chrischall/gogcli-mcp/compare/v3.0.0...v4.0.0) (2026-09-18)
 
 
