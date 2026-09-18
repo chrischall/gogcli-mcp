@@ -85,8 +85,10 @@ GOG_KEYRING_PASSWORD=<pw>   # gog's own var; encrypts the file keyring — requi
 `bootstrapGogAuth()` (`src/bootstrap-auth.ts`) runs once at startup, before any
 tool is served: with all four of `GOG_CLIENT_ID` / `GOG_CLIENT_SECRET` /
 `GOG_REFRESH_TOKEN` / `GOG_ACCOUNT` set, it feeds them to `gog auth credentials
-set` and `gog auth tokens import` as temp files — the three secrets are still
-stripped from every spawned `gog`'s env, so files are the only way in. A sha256
+set` and `gog auth tokens import` as temp files — `GOG_CLIENT_SECRET` and
+`GOG_REFRESH_TOKEN` are stripped from every spawned `gog`'s env (the `_SECRET` /
+`_TOKEN` rule; `GOG_CLIENT_ID` is not a secret and passes), so files are the only
+way in. A sha256
 of the four is kept at `~/.gogcli-mcp/auth-bootstrap.sha256`: an unchanged secret
 is not re-imported, a rotated one is. It never throws — a broken bootstrap still
 leaves the auth tools reachable. Set none of them and it does nothing (local
@@ -191,7 +193,7 @@ This needed mcp-utils **0.23.0**: 0.22.0's `MEDIA_KEY` was anchored to a bare no
 
 `runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.40.0**. A bump must also move **the `tag:` in all nine `packages/*/mint.yaml` `dependencies` blocks** — those pin the `gog` release a hosted install provisions, so leaving them behind hands the child a binary older than the floor its tools assume. `scripts/check-runner-gog-version.mjs` checks those against the floor and fails `npm test` on any pin below it, so a missed one is a red build.
 
-The third pin set it **cannot** see is the `dependencies` pin stored on each live mcp-host registration. mcp-host resolves a dependency to an exact tag + asset + sha256 at registration time and keeps it; the follow cron moves only the *package* version, never a dependency pin. So a floor bump also means, on each of the six registrations below:
+A third pin set it **cannot** see is the `dependencies` pin stored on each live mcp-host registration. mcp-host resolves a dependency to an exact tag + asset + sha256 at registration time and keeps it; the follow cron moves only the *package* version, never a dependency pin. So a floor bump also means, on each of the six registrations below:
 
 ```sh
 mcp-host set <id> --dep 'github:openclaw/gogcli@v<NEW>:gogcli_*_linux_amd64.tar.gz#gog'

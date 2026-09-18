@@ -2574,12 +2574,12 @@ export function registerExtraGmailTools(server: McpServer): void {
           return errorResult(
             `The bytes returned for ${filename} were not valid base64, so they cannot be delivered inline ` +
             '(the MCP transport would reject them as a protocol error). The file WAS downloaded and is ' +
-            `readable server-side at ${path}. Use deliver="auto" or deliver="drive" to receive it.`,
+            `readable server-side at ${path}. Use deliver="url" or deliver="drive" to receive it.`,
           );
         }
         return errorResult(
           `Attachment is too large to return inline (${info.reason ?? "exceeds gog's inline size limit, 3 MiB by default — raise inlineMaxBytes"}). ` +
-          'Use deliver="auto" or deliver="drive" to receive it as a Google Drive link.',
+          'Use deliver="url" for a signed download link (hosted) or deliver="drive" for a Google Drive link.',
         );
       }
       // deliver === 'auto': images render everywhere; everything else is a

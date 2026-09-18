@@ -15,9 +15,10 @@ env:
       Google OAuth client id. Read by the Node wrapper at startup
       (bootstrap-auth.ts), which imports it into gog's keyring via a temp file
       together with GOG_CLIENT_SECRET, GOG_REFRESH_TOKEN and GOG_ACCOUNT — set
-      all four or none. Like every *_TOKEN / *_SECRET / *_KEY / *_CREDENTIALS
-      variable it is still stripped from each spawned `gog`'s environment;
-      gog authenticates from its keyring under $HOME (see state.dataDir).
+      all four or none. Not a secret, so unlike GOG_CLIENT_SECRET and
+      GOG_REFRESH_TOKEN it is not stripped from the spawned `gog`'s
+      environment; gog authenticates from its keyring under $HOME (see
+      state.dataDir).
   - name: GOG_CLIENT_SECRET
     secret: true
     required: false
