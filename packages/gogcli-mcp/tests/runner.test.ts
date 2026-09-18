@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { spawn as mockedSpawn } from 'node:child_process';
 import { run, runBinary } from '../src/runner.js';
@@ -586,6 +586,50 @@ describe('run', () => {
         else process.env[k] = v;
       }
     }
+  });
+
+  // gog formats naive dates in GOG_TIMEZONE, else the process's local zone; the
+  // wrapper re-attaches offsets assuming GOG_TIMEZONE, else DISPLAY_TZ. Unless
+  // gog is TOLD the zone the wrapper assumes, a UTC host shifts every date.
+  describe('pins gog to the zone the wrapper reads its naive dates in', () => {
+    const keys = ['GOG_TIMEZONE', 'DISPLAY_TZ'] as const;
+    let snapshot: Record<string, string | undefined>;
+    beforeEach(() => { snapshot = Object.fromEntries(keys.map((k) => [k, process.env[k]])); });
+    afterEach(() => {
+      for (const [k, v] of Object.entries(snapshot)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    });
+    const zoneGogGets = async (): Promise<string | undefined> => {
+      const spawner = makeSpawner(0, '{}');
+      await run(['gmail', 'search', 'x'], { spawner });
+      return ((spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv).GOG_TIMEZONE;
+    };
+
+    it('defaults gog to America/New_York when neither zone is set', async () => {
+      delete process.env.GOG_TIMEZONE;
+      delete process.env.DISPLAY_TZ;
+      expect(await zoneGogGets()).toBe('America/New_York');
+    });
+
+    it('hands gog DISPLAY_TZ when GOG_TIMEZONE is unset', async () => {
+      delete process.env.GOG_TIMEZONE;
+      process.env.DISPLAY_TZ = 'America/Los_Angeles';
+      expect(await zoneGogGets()).toBe('America/Los_Angeles');
+    });
+
+    it('passes a valid GOG_TIMEZONE through unchanged', async () => {
+      process.env.GOG_TIMEZONE = 'Europe/London';
+      process.env.DISPLAY_TZ = 'America/Los_Angeles';
+      expect(await zoneGogGets()).toBe('Europe/London');
+    });
+
+    it('replaces an invalid GOG_TIMEZONE with the zone the wrapper falls back to', async () => {
+      process.env.GOG_TIMEZONE = 'Not/AZone';
+      delete process.env.DISPLAY_TZ;
+      expect(await zoneGogGets()).toBe('America/New_York');
+    });
   });
 
   it('redacts Bearer with quoted/encoded characters', async () => {

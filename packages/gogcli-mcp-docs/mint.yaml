@@ -73,10 +73,10 @@ env:
   - name: GOG_TIMEZONE
     required: false
     help: >-
-      The IANA zone gog itself formats its naive timestamps in. The wrapper
-      reads it (naiveSourceTimeZone) to re-attach the correct offset, so it
-      should match gog's own configuration. Falls back to DISPLAY_TZ, then to
-      America/New_York.
+      The IANA zone gog formats its naive timestamps in. The wrapper passes
+      it to every spawned gog and reads it back (naiveSourceTimeZone) to
+      re-attach the offset, so the two always agree. Unset or invalid, both
+      use DISPLAY_TZ, then America/New_York — never the host's local zone.
   - name: DISPLAY_TZ
     required: false
     help: >-
