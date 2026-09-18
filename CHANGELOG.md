@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.0.0](https://github.com/chrischall/gogcli-mcp/compare/v3.0.0...v4.0.0) (2026-09-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* run hosted gog via mcp-host dependencies, retire Fly runner and Worker ([#361](https://github.com/chrischall/gogcli-mcp/issues/361))
+
+### Features
+
+* run hosted gog via mcp-host dependencies, retire Fly runner and Worker ([#361](https://github.com/chrischall/gogcli-mcp/issues/361)) ([357cefc](https://github.com/chrischall/gogcli-mcp/commit/357cefc333d85de75e67fde68950c12dd8ff12e9))
+
+
+### Documentation
+
+* describe the SDK and zod single-copy guards without the retired agents dep ([#365](https://github.com/chrischall/gogcli-mcp/issues/365)) ([006b566](https://github.com/chrischall/gogcli-mcp/commit/006b566ebf7f05fdfda3a63e9cc9c201d1e8a982))
+
 ## [3.0.0](https://github.com/chrischall/gogcli-mcp/compare/v2.30.0...v3.0.0) (2026-09-17)
 
 
