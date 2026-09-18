@@ -21,8 +21,11 @@ shift moves an event across a date line.
    `time.Local` — and renders message/thread dates in that zone. The (since
    retired) hosted runner container set none, so `time.Local` was UTC. That is
    why the same account produced `+0000` through the connector and `-0400` from
-   a local machine: identical code, different environment. A hosted deployment
-   should pin `GOG_TIMEZONE` (e.g. `America/New_York`).
+   a local machine: identical code, different environment. It resurfaced when
+   4.0.0 moved gog onto mcp-host (also UTC), so the fix now lives in the
+   wrapper: `runner.ts` passes `GOG_TIMEZONE` — the zone `naiveSourceTimeZone()`
+   reads naive values in — to every gog it spawns, so no deployment has to pin
+   it.
 2. **gog's list format is naive by construction.** `listDateLayout` is
    `"2006-01-02 15:04"` — no offset even when the zone is right. Still true as of
    gog 0.35.0: upstream did **not** change `date`, it added a second,
@@ -72,9 +75,9 @@ self-describing:
 - **`date` is a reconstruction.** It is the sender-written `Date:` header
   reformatted by gog into `GOG_TIMEZONE` with `listDateLayout`
   (`"2006-01-02 15:04"` — no offset). The wrapper has to re-attach an offset by
-  re-reading that wall time in `GOG_TIMEZONE`, so its correctness still rests on
-  the wrapper being told the same zone gog formatted in. That is the coupling
-  the `GOG_TIMEZONE` row below exists for.
+  re-reading that wall time in `GOG_TIMEZONE`, so its correctness rests on gog
+  and the wrapper using the same zone. The runner guarantees that by handing
+  gog the zone the wrapper reads in — see the `GOG_TIMEZONE` row below.
 
 The two may **legitimately disagree** — a skewed, malformed, or foreign-zone
 `Date:` header is common, and for API-imported mail the two can share a source
@@ -121,7 +124,7 @@ allowlisted so the same helper covers the OFW connector's shapes.
 | Variable | Default | Effect |
 |---|---|---|
 | `DISPLAY_TZ` | `America/New_York` | IANA zone for all `*Display` fields. An unrecognised value falls back to the default rather than throwing. |
-| `GOG_TIMEZONE` | unset (pin it on a hosted deployment) | The zone **gog itself** formats in — and therefore the zone a naive value is read as. The wrapper reads this var directly rather than assuming it equals `DISPLAY_TZ`, so the two can diverge without silently mis-labelling every naive timestamp. Falls back to `DISPLAY_TZ`. |
+| `GOG_TIMEZONE` | unset → `DISPLAY_TZ` | The zone gog formats naive values in **and** the zone the wrapper reads them in — one value, both directions: `naiveSourceTimeZone()` resolves it (falling back to `DISPLAY_TZ` when unset or invalid) and `runner.ts` passes that result to every spawned gog, so gog never falls back to the host's local zone. Set it only to make gog's naive values differ from `DISPLAY_TZ`. |
 
 Both are IANA names, never fixed offsets — a hardcoded `-04:00` would be an hour
 wrong from November through March. DST comes from the IANA database via `Intl`.
