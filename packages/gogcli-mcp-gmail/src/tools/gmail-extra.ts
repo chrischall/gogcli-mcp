@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, runExecutor, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
@@ -159,7 +159,7 @@ function extOf(name: string): string {
 // removed on the line above — which is precisely the kind of accident that
 // makes the gap look closed.) A '.' or '..' segment is the one shape the
 // gateway refuses outright rather than normalising, and the same string is
-// gog's `--out`, so it also asks the runner to read a file outside the only
+// gog's `--out`, so it also asks the upload to read a file outside the only
 // root it will read from. Trim, THEN strip, then trim again so stripping the
 // dots cannot expose whitespace of its own.
 function sanitizeFilename(name: string): string {
@@ -289,9 +289,9 @@ async function resolveByIndex(
 // machine stops — unlike gog's default (the gogcli config dir), which on the Fly
 // volume would accumulate downloaded attachments indefinitely.
 //
-// `/tmp/gog-attachments` is ALSO the Fly runner's `DEFAULT_UPLOAD_ROOT`, the only
-// directory its `POST /upload` will read a file back from. That is load-bearing
-// for deliver="url" and for nothing else — see blobOutPath.
+// `ATTACHMENT_DOWNLOAD_ROOT` is ALSO the only directory `uploadToBlobStore` will
+// read a file back from. That is load-bearing for deliver="url" and for nothing
+// else — see blobOutPath.
 //
 // `relDir` is ALREADY-SANITIZED segments and this function does not re-sanitize:
 // it is handed several of them for deliver="url" (`<messageId>/<attachmentRef>`),
@@ -300,7 +300,7 @@ async function resolveByIndex(
 // `sanitizeFilename` per segment — see `messageOutPath` and `blobOutPath`, which
 // are the only two.
 function defaultOutPath(relDir: string, filename: string): string {
-  return `/tmp/gog-attachments/${relDir}/${filename}`;
+  return `${ATTACHMENT_DOWNLOAD_ROOT}/${relDir}/${filename}`;
 }
 
 // Where every delivery mode OTHER than "url" lands its download: the message id
@@ -431,11 +431,9 @@ async function deliverViaDrive(
 // directly instead: a per-registration blob store at `/b/<registrationId>/…`
 // sitting OUTSIDE OAuth, where a signed URL is the entire access control.
 //
-// The bytes are on the RUNNER, not here. Under the hosted connector this child
-// is a forwarder — `gog gmail attachment --out` wrote the file to the runner's
-// disk and nothing crossed the wire — so the runner is asked to stream it, the
-// same seam `deliverViaDrive` uses when it has gog push a local path to a
-// remote destination.
+// gog runs in this process tree, so `gog gmail attachment --out` wrote the file
+// to this machine's disk and `uploadToBlobStore` streams it from there — the
+// bytes never pass through this process's memory as a whole.
 // ===========================================================================
 
 // A thrown value as text. `String()` rather than the message alone on the other
@@ -472,16 +470,16 @@ function blobObjectPath(messageId: string, attachmentRef: string, fileName: stri
 
 // Where a deliver="url" download must land on the server.
 //
-// This is the one delivery mode that asks the RUNNER to read the file back, and
-// its `POST /upload` confines `path` to `DEFAULT_UPLOAD_ROOT`
-// (`/tmp/gog-attachments`) — so the path is not the caller's to choose here, and
-// an `out` is ignored the way the connector already ignores one.
+// This is the one delivery mode that reads the file back, and `uploadToBlobStore`
+// confines `path` to `ATTACHMENT_DOWNLOAD_ROOT` — so the path is not the
+// caller's to choose here, and an `out` is ignored the way the connector already
+// ignores one.
 //
 // The segments are the SAME ones the object key is minted from, sanitized the
-// same way, so the string gog is told to write and the string the runner is
+// same way, so the string gog is told to write and the string the upload is
 // handed to read are one string. They were not: `defaultOutPath` interpolated
 // the raw messageId while the key sanitized it, so a messageId of `../../x`
-// minted a perfectly good key while asking the runner to read
+// minted a perfectly good key while asking the upload to read
 // `/tmp/gog-attachments/../../x/attachment`, which it refuses.
 function blobOutPath(messageId: string, attachmentRef: string, fileName: string): string {
   return defaultOutPath(attachmentKeySegments(messageId, attachmentRef), fileName);
@@ -490,7 +488,7 @@ function blobOutPath(messageId: string, attachmentRef: string, fileName: string)
 // Resolve the minter for this registration's blob store, or the refusal to
 // answer with instead. Called BEFORE the download: a `deliver="url"` that
 // discovers its own impossibility afterwards has paid for a Gmail fetch, left a
-// file on the runner's disk, and still has nothing to hand back.
+// file on disk, and still has nothing to hand back.
 function resolveBlobMinter(): BlobUrlMinter | CallToolResult {
   const store = blobStoreFromEnv();
   if (!store) {
@@ -513,8 +511,7 @@ function resolveBlobMinter(): BlobUrlMinter | CallToolResult {
   }
 }
 
-// Mint a write URL, have the runner stream the downloaded file to it, and hand
-// back a read URL.
+// Mint a write URL, stream the downloaded file to it, and hand back a read URL.
 //
 // GOG_READONLY does not reach this path, deliberately: that switch is the
 // wrapper adding `--readonly` to a gog invocation, and it exists to stop writes
@@ -528,7 +525,6 @@ async function deliverViaBlobUrl(
   path: string,
   fileName: string,
   mimeType: string,
-  bytes: number | undefined,
 ): Promise<CallToolResult> {
   const rest = blobObjectPath(messageId, attachmentRef, fileName);
   // The URL and the content type its signature COMMITS TO, together: the
@@ -562,10 +558,8 @@ async function deliverViaBlobUrl(
     url,
     fileName,
     mimeType,
-    // What the runner actually streamed, which is the size of the object now
-    // sitting at that URL; gog's own count is the fallback for a runner too old
-    // to report one.
-    bytes: outcome.bytes ?? bytes,
+    // What was actually streamed: the size of the object now at that URL.
+    bytes: outcome.bytes,
     expiresAt,
   });
 }
@@ -2486,10 +2480,9 @@ export function registerExtraGmailTools(server: McpServer): void {
       //    on-disk basename is provisional when `name` is absent; the response
       //    still reports the resolved filename.
       //    deliver="url" ignores it too, for a DIFFERENT reason and on a
-      //    deployment where `remote` is false: mcp-host's child is a forwarder
-      //    (`useRemoteGogRunner` installs a process-wide default executor, so
-      //    runExecutor's store is empty), and the runner will only read a file
-      //    back to upload it from its own download root.
+      //    deployment where `remote` is false: mcp-host's child spawns gog
+      //    itself, and `uploadToBlobStore` will only read a file back from the
+      //    attachment download root.
       const notes: string[] = [];
       let outPath = out;
       if (out && remote) {
@@ -2592,7 +2585,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       // was resolved before the download — so this branch cannot be reached
       // without one, and no other mode can fall into it.
       if (blobMinter) {
-        return withNote(await deliverViaBlobUrl(blobMinter, messageId, attachmentRef, path, filename, mimeType, info.bytes), notes);
+        return withNote(await deliverViaBlobUrl(blobMinter, messageId, attachmentRef, path, filename, mimeType), notes);
       }
       if (deliver === 'inline') {
         if (info.contentBase64) {

@@ -496,10 +496,10 @@ describe('gog_gmail_attachment', () => {
   // outright. mcp-host lends the missing surface: a per-registration blob store
   // where a signed URL is the whole access control.
   //
-  // The upload happens on the RUNNER, because that is where the bytes are —
-  // under the hosted connector this child is a forwarder and `gog gmail
-  // attachment --out` wrote the file to the runner's disk. `uploadToBlobStore`
-  // is the only thing mocked here; the SIGNING is the real minter, so these
+  // The upload happens in this process, which is where the bytes are — gog
+  // runs in the same process tree and `gog gmail attachment --out` wrote the
+  // file to this machine's disk. `uploadToBlobStore` is the only thing mocked
+  // here; the SIGNING is the real minter, so these
   // tests see the URLs the gateway would be asked to verify.
   // ==========================================================================
   describe('deliver="url"', () => {
@@ -523,7 +523,7 @@ describe('gog_gmail_attachment', () => {
     const uploaded = () => vi.mocked(lib.uploadToBlobStore).mock.calls[0][0];
     // gog writes where it was TOLD to write and reports that path back, so the
     // stub echoes the tool's own `--out`. A fixed literal cannot see the defect
-    // this mode is most exposed to: the path handed to the runner and the key
+    // this mode is most exposed to: the path handed to the upload and the key
     // the link is minted under are built from the same two caller strings, and a
     // stub answering the same path whatever it was asked hides them drifting.
     const PDF_DOWNLOAD = (args: string[]) => ({ path: outOf(args), bytes: 99723 });
@@ -540,12 +540,12 @@ describe('gog_gmail_attachment', () => {
       withBlobStore();
       stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
       // DELIBERATELY not gog's 99723: the object now sitting at that URL is what
-      // the runner streamed, and that is the number the caller is told.
+      // the upload streamed, and that is the number the caller is told.
       vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ bytes: 99730, status: 200 });
 
       const res = await asConnector(() => call({ deliver: 'url' }));
 
-      // The runner is asked to send the file gog wrote, to the URL we signed,
+      // The upload is asked to send the file gog wrote, to the URL we signed,
       // under the content type that signature commits to — byte for byte, or
       // the gateway answers the PUT as an object that does not exist.
       expect(uploaded().path).toBe(outOf(dlArgs()));
@@ -584,12 +584,12 @@ describe('gog_gmail_attachment', () => {
       expect(payload.note).toMatch(/expires/i);
     });
 
-    it('reports the size the runner actually streamed, falling back to gog\'s count', async () => {
+    it('links an image too when deliver="url" is explicit', async () => {
       withBlobStore();
       // An image, and still a link: deliver is explicit, so it outranks the
       // "images render everywhere" rule that `auto` applies.
       stubGog({ meta: PNG_LIST, download: (args: string[]) => ({ path: outOf(args), bytes: 24, contentBase64: PNG_B64 }) });
-      vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ status: 200 }); // an older runner reports no size
+      vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ bytes: 24, status: 200 });
 
       const res = await asConnector(() => call({ deliver: 'url' }));
 
@@ -597,15 +597,13 @@ describe('gog_gmail_attachment', () => {
       expect(payloadOf(res)).toMatchObject({ deliveredVia: 'url', bytes: 24, mimeType: 'image/png' });
     });
 
-    // THE DEPLOYMENT THIS MODE ACTUALLY RUNS ON. mcp-host's child is a
-    // FORWARDER: `useRemoteGogRunner` installs a process-wide default executor,
-    // so `runExecutor`'s store is EMPTY there and the handler's `remote` is
-    // false — which is why there is no `asConnector` here. A caller `out` is
-    // therefore honoured on exactly that deployment, and the runner's
-    // `POST /upload` refuses any path outside its own download root: honouring
-    // it means a 400 and no link, with the file left on the runner's disk. The
-    // path is not the caller's to choose for this mode.
-    it('ignores a caller `out` and downloads where the runner will read it back', async () => {
+    // THE DEPLOYMENT THIS MODE ACTUALLY RUNS ON. mcp-host's child spawns gog
+    // itself, so `runExecutor`'s store is EMPTY there and the handler's
+    // `remote` is false — which is why there is no `asConnector` here. A caller
+    // `out` would therefore be honoured, and `uploadToBlobStore` refuses any
+    // path outside the attachment download root: honouring it means a refusal
+    // and no link. The path is not the caller's to choose for this mode.
+    it('ignores a caller `out` and downloads where the upload will read it back', async () => {
       withBlobStore();
       stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
       vi.mocked(lib.uploadToBlobStore).mockResolvedValue({ bytes: 99723, status: 200 });
@@ -678,13 +676,13 @@ describe('gog_gmail_attachment', () => {
       withBlobStore();
       stubGog({ meta: PDF_LIST, download: PDF_DOWNLOAD });
       vi.mocked(lib.uploadToBlobStore).mockRejectedValue(
-        new Error('the runner could not store the attachment (HTTP 422, blob store 403): <signed url>'),
+        new Error('the blob store refused the upload with 403: <signed url>'),
       );
 
       const res = await asConnector(() => call({ deliver: 'url' }));
 
       expect(res.isError).toBe(true);
-      expect(textOf(res)).toContain('HTTP 422');
+      expect(textOf(res)).toContain('refused the upload with 403');
       expect(textOf(res)).toContain('deliver="drive"'); // a route that still works
       expect(textOf(res)).not.toContain(uploaded().url);
       expect(textOf(res)).not.toContain(new URL(uploaded().url).searchParams.get('sig'));
@@ -745,7 +743,7 @@ describe('gog_gmail_attachment', () => {
       expect(new URL(uploaded().url).pathname).toBe('/b/reg_7/gmail/_.._x/_b/Guest_Copy.pdf');
       // The SAME segments on disk. The string signed and the string read have to
       // be one string: `/tmp/gog-attachments/../../x/attachment` is outside the
-      // only root the runner will read from, so a raw id here is a 400 rather
+      // only root the upload will read from, so a raw id here is a refusal rather
       // than a link even though the key itself was minted correctly.
       expect(outOf(dlArgs())).toBe('/tmp/gog-attachments/_.._x/_b/attachment');
       expect(uploaded().path).toBe(outOf(dlArgs()));
@@ -753,7 +751,7 @@ describe('gog_gmail_attachment', () => {
       // A LEADING SPACE is the shape that got through: the dot strip ran before
       // the trim, so ' ..' arrived at the key as a literal '..' and '  . ' as
       // '.' — the two segments the gateway refuses outright, and the two that
-      // walk gog's `--out` off the only root the runner reads from. A tab works
+      // walk gog's `--out` off the only root the upload reads from. A tab works
       // (it is a control char, stripped first); a space is not one.
       vi.mocked(lib.run).mockClear();
       vi.mocked(lib.uploadToBlobStore).mockClear();

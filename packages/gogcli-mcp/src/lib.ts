@@ -90,8 +90,12 @@ export {
   BLOB_URL_DEFAULT_TTL_MS,
 } from './blob-urls.js';
 export type { BlobStoreConfig, BlobUrlMinter, MintOptions } from './blob-urls.js';
-// The other half of that hop: under the hosted connector the bytes are on the
-// RUNNER's disk and this child never sees them, so the runner is asked to
-// stream them to the URL this process minted. See src/blob-upload.ts.
-export { uploadToBlobStore, RUNNER_UPLOAD_TIMEOUT_MS } from './blob-upload.js';
+// The other half of that hop: stream a downloaded attachment off this machine's
+// disk to the URL this process minted. See src/blob-upload.ts.
+export {
+  uploadToBlobStore,
+  ATTACHMENT_DOWNLOAD_ROOT,
+  BLOB_UPLOAD_TIMEOUT_MS,
+  MAX_BLOB_UPLOAD_BYTES,
+} from './blob-upload.js';
 export type { BlobUploadRequest, BlobUploadOutcome, BlobUploadOptions } from './blob-upload.js';
