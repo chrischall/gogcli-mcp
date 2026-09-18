@@ -171,16 +171,17 @@ describe('gog_auth_add', () => {
 
 describe('gog_auth_health', () => {
   it('names itself as the only live measurement of the Google layer', async () => {
-    // DEFECT 1's wording half: the hosted connector's "connected" / "refreshed"
-    // is an OAuth refresh inside OAUTH_KV that contacts neither Fly nor Google.
-    // Nothing in this repo can change that word, so the tool that DOES measure
-    // has to say that it is the one that does.
+    // A hosted connector's "connected" / "refreshed" is the client's OAuth to
+    // the MCP host, which never contacts Google. Nothing in this repo can change
+    // that word, so the tool that DOES measure has to say that it is the one
+    // that does.
     const harness = await setupHandlers();
     const { tools } = await harness.client.listTools();
     const desc = tools.find((t) => t.name === 'gog_auth_health')!.description!;
 
     expect(desc).toMatch(/connected|refreshed/i);
     expect(desc).toMatch(/only|nothing else/i);
+    expect(desc).not.toMatch(/connector key|gog machine/i);
     await harness.close();
   });
 

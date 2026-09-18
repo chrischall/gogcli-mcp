@@ -9,9 +9,8 @@ import { diagnose } from '../../src/tools/utils.js';
  *
  *   Google API error (401 authError): Invalid Credentials
  *
- * That shape is hard-coded in connector-runtime.ts as /Google API error \(401\b/
- * and used as the fixture across auth-log and connector-runtime tests. Losing it
- * is strictly worse than the `row 401` false positive that motivated the change:
+ * That is the shape gog prints for a dead Google credential. Losing it is
+ * strictly worse than the `row 401` false positive that motivated the change:
  * a false positive sends someone on a pointless re-auth, but this leaves a REAL
  * dead credential with no hint at all.
  */

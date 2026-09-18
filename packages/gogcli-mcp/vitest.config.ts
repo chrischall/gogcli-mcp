@@ -1,11 +1,7 @@
-import { configDefaults, defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    // `tests/worker.test.ts` only runs under the Workers runtime pool
-    // (root `vitest.workers.config.mts` / `npm run worker:test`), which provides
-    // the virtual `cloudflare:test` module it imports. The node pool must skip it.
-    exclude: [...configDefaults.exclude, 'tests/worker.test.ts'],
     // Neutralize the gog env vars for the whole suite.
     //
     // THE BUG THIS FIXES: the runner tests assert the exact argv `run()` builds,
@@ -28,13 +24,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: [
-        'src/index.ts',
-        // The Worker-only entry is exercised by the Workers pool suite
-        // (`npm run worker:test`). Its node-loadable helpers stay in this
-        // suite and its 100% gate.
-        'src/worker.ts',
-      ],
+      exclude: ['src/index.ts'],
       thresholds: {
         lines: 100,
         functions: 100,

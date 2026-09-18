@@ -304,8 +304,8 @@ describe('gog_gmail_send', () => {
 
   // ==========================================================================
   // INLINE ATTACHMENT BYTES — for callers with no filesystem in common with gog
-  // (the hosted connector, any GOG_RUNNER_URL backend). The bytes ride with the
-  // call and the executor materializes them beside gog.
+  // (a hosted deployment such as mcp-host). The bytes ride with the call and
+  // the runner materializes them beside gog.
   // ==========================================================================
   it('turns attachInline bytes into repeatable --attach file args', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');

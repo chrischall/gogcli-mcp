@@ -18,11 +18,11 @@ shift moves an event across a date line.
 
 1. **The hosted runner had no timezone.** gog is timezone-aware — it resolves
    `--timezone` → `GOG_TIMEZONE` → config `DefaultTimezone` → the process's
-   `time.Local` — and renders message/thread dates in that zone. The Fly
-   container set none, so `time.Local` was UTC. That is why the same account
-   produced `+0000` through the connector and `-0400` from a local machine:
-   identical code, different environment. `fly-gog-runner/fly.toml` now pins
-   `GOG_TIMEZONE = "America/New_York"`.
+   `time.Local` — and renders message/thread dates in that zone. The (since
+   retired) hosted runner container set none, so `time.Local` was UTC. That is
+   why the same account produced `+0000` through the connector and `-0400` from
+   a local machine: identical code, different environment. A hosted deployment
+   should pin `GOG_TIMEZONE` (e.g. `America/New_York`).
 2. **gog's list format is naive by construction.** `listDateLayout` is
    `"2006-01-02 15:04"` — no offset even when the zone is right. Still true as of
    gog 0.35.0: upstream did **not** change `date`, it added a second,
@@ -121,7 +121,7 @@ allowlisted so the same helper covers the OFW connector's shapes.
 | Variable | Default | Effect |
 |---|---|---|
 | `DISPLAY_TZ` | `America/New_York` | IANA zone for all `*Display` fields. An unrecognised value falls back to the default rather than throwing. |
-| `GOG_TIMEZONE` | `America/New_York` on the Fly runner | The zone **gog itself** formats in — and therefore the zone a naive value is read as. The wrapper reads this var directly rather than assuming it equals `DISPLAY_TZ`, so the two can diverge without silently mis-labelling every naive timestamp. Falls back to `DISPLAY_TZ`. |
+| `GOG_TIMEZONE` | unset (pin it on a hosted deployment) | The zone **gog itself** formats in — and therefore the zone a naive value is read as. The wrapper reads this var directly rather than assuming it equals `DISPLAY_TZ`, so the two can diverge without silently mis-labelling every naive timestamp. Falls back to `DISPLAY_TZ`. |
 
 Both are IANA names, never fixed offsets — a hardcoded `-04:00` would be an hour
 wrong from November through March. DST comes from the IANA database via `Intl`.

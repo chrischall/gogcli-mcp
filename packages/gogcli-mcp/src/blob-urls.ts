@@ -56,11 +56,9 @@ import { readEnvVar } from '@chrischall/mcp-utils';
  * that is easy to get wrong is exactly the part below — which bytes are signed,
  * and which of them are percent-encoded on the way into the URL.
  *
- * `node:crypto` rather than WebCrypto (which `google-token.ts` uses, for the
- * Worker build): HMAC through `crypto.subtle` is async, and a URL minter that
- * returns a promise infects every call site for no gain here. The Worker build
- * sets `nodejs_compat` (wrangler.jsonc), so `createHmac` resolves there too if
- * this module is ever pulled into that graph.
+ * `node:crypto` rather than WebCrypto: HMAC through `crypto.subtle` is async,
+ * and a URL minter that returns a promise infects every call site for no gain
+ * here.
  */
 
 /**

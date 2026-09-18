@@ -251,9 +251,7 @@ export function registerDriveTools(server: McpServer): void {
     description:
       'Fetch a Drive file\'s raw bytes and return them base64-encoded as an embedded resource — the ' +
       'generic fallback for callers that want the file itself (to parse locally) rather than extracted ' +
-      'text. For readable text from a PDF, prefer gog_drive_extract_text. NOTE: only works on the local ' +
-      'stdio server; over the hosted connector the transport is text-only and this returns a clear error ' +
-      '(use gog_drive_extract_text there).',
+      'text. For readable text from a PDF, prefer gog_drive_extract_text.',
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('Drive file ID'),

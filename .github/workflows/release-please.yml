@@ -59,38 +59,3 @@ jobs:
           tag-name: ${{ needs.release-please.outputs.tag }}
           clawhub-token: ${{ secrets.CLAWHUB_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-  # Deploy the Fly backend at the released tag. Goes BEFORE the connector: the
-  # halves are compatible in both directions, but a new Worker against an old
-  # backend is the combination that leans on compatibility shims, so prefer the
-  # other order. A failure here skips the connector too, leaving a consistent
-  # pair rather than a half-updated one.
-  deploy-runner:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
-    permissions:
-      contents: read
-    uses: chrischall/workflows/.github/workflows/reusable-fly-deploy.yml@main
-    with:
-      ref: ${{ needs.release-please.outputs.tag_name }}
-      working-directory: fly-gog-runner
-    secrets:
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-  # Deploy the hosted connector Worker at the released tag, so what is live
-  # tracks the release instead of drifting behind main. Deliberately not
-  # `needs: publish` — the connector is independent of npm and the MCP registry,
-  # so a registry hiccup should not leave it stale.
-  deploy-connector:
-    needs: [release-please, deploy-runner]
-    if: needs.release-please.outputs.release_created == 'true'
-    # Scoped down from the workflow-level contents:write/pull-requests:write
-    # that release-please needs; deploying only reads the tree.
-    permissions:
-      contents: read
-    uses: chrischall/workflows/.github/workflows/reusable-mcp-connector-deploy.yml@main
-    with:
-      ref: ${{ needs.release-please.outputs.tag_name }}
-    secrets:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { spawn as mockedSpawn } from 'node:child_process';
-import { run, runBinary, runExecutor, RunnerTransportError, isRunnerTransportError } from '../src/runner.js';
-import type { Spawner, GogExecutor } from '../src/runner.js';
+import { run, runBinary } from '../src/runner.js';
+import type { Spawner } from '../src/runner.js';
 
 // The real spawn is dynamically imported inside runner's default executor.
 // Mock it so the no-spawner/no-executor fallback can be exercised without
@@ -533,28 +533,23 @@ describe('run', () => {
   });
 
   // The suffix list was `_TOKEN|_SECRET|_API_KEY|_PRIVATE_KEY` — four spellings
-  // of "a key", none of which is a bare `_KEY`. Two credentials this repo hands
-  // its own process sit in exactly that gap: `MCP_BLOB_SIGNING_KEY` (mints the
-  // signed blob URLs a `deliver="url"` download is uploaded to) and
-  // `GOG_RUNNER_KEY` (the bearer for the Fly backend, and for `POST /upload`,
-  // which is arbitrary-gog-argv on that box). Neither is anything `gog` reads.
-  it('strips a bare *_KEY var — the host signing key and the runner bearer', async () => {
+  // of "a key", none of which is a bare `_KEY`. `MCP_BLOB_SIGNING_KEY` (mints the
+  // signed blob URLs a `deliver="url"` download is uploaded to) sat in exactly
+  // that gap, and it is nothing `gog` reads.
+  it('strips a bare *_KEY var — the host blob signing key', async () => {
     const spawner = makeSpawner(0, '{}');
     const snapshot = {
       MCP_BLOB_SIGNING_KEY: process.env.MCP_BLOB_SIGNING_KEY,
-      GOG_RUNNER_KEY: process.env.GOG_RUNNER_KEY,
       STRIPE_KEY: process.env.STRIPE_KEY,
       AWS_CREDENTIALS: process.env.AWS_CREDENTIALS,
     };
     process.env.MCP_BLOB_SIGNING_KEY = 'blob-signing-secret';
-    process.env.GOG_RUNNER_KEY = 'runner-bearer-secret';
     process.env.STRIPE_KEY = 'sk-live-secret';
     process.env.AWS_CREDENTIALS = '/path/to/creds';
     try {
       await run(['docs', 'cat', 'id'], { spawner });
       const envPassed = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
       expect(envPassed.MCP_BLOB_SIGNING_KEY).toBeUndefined();
-      expect(envPassed.GOG_RUNNER_KEY).toBeUndefined();
       expect(envPassed.STRIPE_KEY).toBeUndefined();
       // `_CREDENTIALS`, generalising the one named GOOGLE_APPLICATION_CREDENTIALS.
       expect(envPassed.AWS_CREDENTIALS).toBeUndefined();
@@ -803,14 +798,6 @@ describe('run', () => {
     expect(callArgs).toContain('files.get');
   });
 
-  it('runBinary refuses over the hosted-connector forward executor', async () => {
-    const executor = vi.fn();
-    await expect(
-      runExecutor.run({ executor }, () => runBinary(['api', 'call', 'drive', 'v3', 'files.get'])),
-    ).rejects.toThrow('not available over the hosted connector');
-    expect(executor).not.toHaveBeenCalled();
-  });
-
   it('ignores timeout if close event already settled the promise', async () => {
     vi.useFakeTimers();
     const spawner = vi.fn(() => {
@@ -906,82 +893,8 @@ describe('run --readonly (gog 0.31)', () => {
   });
 });
 
-describe('run executor seam', () => {
-  it('routes to an injected runExecutor executor when no options.spawner is given', async () => {
-    const executor = vi.fn(async () => '{"via":"executor"}') as unknown as GogExecutor;
-    const result = await runExecutor.run({ executor }, () => run(['sheets', 'get', 'id1', 'A1']));
-    expect(result).toBe('{"via":"executor"}');
-    // The executor receives the FULLY-ASSEMBLED gog arg list plus the run opts.
-    expect(executor).toHaveBeenCalledWith(
-      ['--json', '--color=never', '--no-input', 'sheets', 'get', 'id1', 'A1'],
-      { timeout: undefined, interactive: false },
-    );
-  });
-
-  it('forwards timeout and interactive through to the injected executor', async () => {
-    const executor = vi.fn(async () => '{}') as unknown as GogExecutor;
-    await runExecutor.run({ executor }, () =>
-      run(['auth', 'add', 'u@g.com'], { interactive: true, timeout: 60_000 }),
-    );
-    expect(executor).toHaveBeenCalledWith(
-      ['--json', '--color=never', 'auth', 'add', 'u@g.com'],
-      { timeout: 60_000, interactive: true },
-    );
-  });
-
-  it('redacts Google tokens returned by an injected executor', async () => {
-    const executor = vi.fn(async () => 'token ya29.a0Ad52N3-ALS-LEAK done') as unknown as GogExecutor;
-    const result = await runExecutor.run({ executor }, () => run(['auth', 'list']));
-    expect(result).not.toContain('ya29.a0Ad52N3-ALS-LEAK');
-    expect(result).toContain('[REDACTED]');
-  });
-
-  it('redacts error text thrown by an injected executor', async () => {
-    const executor = vi.fn(async () => {
-      throw new Error('boom 1//0eALS-REFRESH-LEAK end');
-    }) as unknown as GogExecutor;
-    try {
-      await runExecutor.run({ executor }, () => run(['gmail', 'get', 'm1']));
-      throw new Error('expected rejection');
-    } catch (e) {
-      const msg = (e as Error).message;
-      expect(msg).not.toContain('1//0eALS-REFRESH-LEAK');
-      expect(msg).toContain('[REDACTED]');
-    }
-  });
-
-  // run() re-wraps every thrown error to redact secrets from its message. That
-  // rewrap must not cost a RunnerTransportError its TYPE: the type is the only
-  // thing that tells diagnose() the failure was the connector's transport and
-  // not the caller's Google credential, and a bare Error puts it straight back
-  // to guessing from prose.
-  it('preserves a RunnerTransportError through the redacting rewrap', async () => {
-    const executor = vi.fn(async () => {
-      throw new RunnerTransportError('runner key mismatch; saw 1//0eLEAKED-REFRESH end', 'transport-auth', 401);
-    }) as unknown as GogExecutor;
-    const err = await runExecutor
-      .run({ executor }, () => run(['gmail', 'get', 'm1']))
-      .catch((e: unknown) => e);
-    expect(isRunnerTransportError(err)).toBe(true);
-    expect((err as RunnerTransportError).kind).toBe('transport-auth');
-    expect((err as RunnerTransportError).status).toBe(401);
-    // and it is still redacted
-    expect((err as Error).message).not.toContain('1//0eLEAKED-REFRESH');
-    expect((err as Error).message).toContain('[REDACTED]');
-  });
-
-  it('options.spawner takes precedence over an injected ALS executor', async () => {
-    const spawner = makeSpawner(0, '{"via":"spawner"}');
-    const executor = vi.fn(async () => '{"via":"executor"}') as unknown as GogExecutor;
-    const result = await runExecutor.run({ executor }, () =>
-      run(['sheets', 'get', 'id1', 'A1'], { spawner }),
-    );
-    expect(result).toBe('{"via":"spawner"}');
-    expect(executor).not.toHaveBeenCalled();
-    expect(spawner).toHaveBeenCalledOnce();
-  });
-
-  it('falls back to the lazily-imported real spawn when neither a spawner nor an ALS executor is set', async () => {
+describe('run executor', () => {
+  it('uses the lazily-imported real spawn when no spawner is injected', async () => {
     vi.mocked(mockedSpawn).mockImplementation((() => makeProc(0, '{"real":true}')) as never);
     const result = await run(['sheets', 'get', 'id1', 'A1']);
     expect(result).toBe('{"real":true}');

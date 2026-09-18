@@ -61,7 +61,7 @@ export function registerAppScriptTools(server: McpServer): void {
     description:
       'Write a project\'s files into a local directory, for editing a script as ordinary files. '
       + 'THE DIRECTORY IS RESOLVED WHERE GOG RUNS, which is the caller\'s own machine only on a local (stdio) deployment: '
-      + 'on the hosted connector, or any GOG_RUNNER_URL backend, the files land on that server where the caller cannot '
+      + 'on a hosted deployment (e.g. mcp-host) the files land on that server where the caller cannot '
       + 'reach them. Use gog_appscript_content there instead — it returns the same source in the response. Existing files '
       + 'are left alone unless overwrite is set. Read-only as far as Google is concerned: nothing is pushed back.'
       + apiEnableNote,
