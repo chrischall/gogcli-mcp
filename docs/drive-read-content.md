@@ -19,8 +19,8 @@ Pass `ocrLanguage` (BCP-47) to hint OCR for scanned/image PDFs. Page through lar
 (`native-export` | `ocr-convert`), `totalChars`, `offset`, `returnedChars`, and `truncated`.
 
 It runs **entirely through the Drive API within the existing drive scope** — no host filesystem,
-no scope widening — so it works on the local stdio server *and* the hosted connector's
-`/mcp/drive`. (`pageCount` isn't reported: Drive exposes no PDF page count via this path, and the
+no scope widening — so it works on the local stdio server *and* a hosted connector.
+(`pageCount` isn't reported: Drive exposes no PDF page count via this path, and the
 converted Doc loses it — `offset`/`maxChars` bound the response instead.)
 
 ```
@@ -33,12 +33,10 @@ gog_gmail_attachment(...) → deliveredVia:"drive", id → gog_drive_extract_tex
 Returns the file's raw bytes base64-encoded as an MCP embedded resource, for callers that want the
 file itself rather than extracted text.
 
-**Transport limit:** this works only on the **local stdio server**. The wrapper's runner
-utf8-decodes gog's stdout (which would corrupt binary), so bytes are captured via a dedicated
-binary path (`runBinary`) that base64-encodes raw stdout. The hosted **connector**'s HTTP-forward
-transport is text-only, so over the connector this tool returns a clear error pointing you at
-`gog_drive_extract_text`. (Full connector byte support would require the Fly runner to base64 its
-output — a separate change.)
+**Binary path:** the wrapper's runner utf8-decodes gog's stdout (which would corrupt binary), so
+bytes are captured via a dedicated path (`runBinary`) that base64-encodes raw stdout. Both the
+local stdio server and a hosted mcp-host connector spawn `gog` locally, so this works on either;
+a client that cannot render a non-image resource is pointed at `gog_drive_extract_text`.
 
 ## Why not `gog drive download`?
 

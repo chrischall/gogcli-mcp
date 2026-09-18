@@ -110,7 +110,7 @@ not do) and reports, per account:
 
 The interactive `gog_auth_add` needs a browser on the same host as gog (its loopback callback),
 which the **hosted connector cannot provide**. The two-step remote flow works everywhere,
-including the Fly-backed connector, because both steps are non-interactive gog calls:
+including a hosted mcp-host connector, because both steps are non-interactive gog calls:
 
 1. **`gog_auth_add_url`** → returns a Google sign-in URL (valid 10 min). Hand it to the user.
 2. The user signs in; the browser is redirected to a `localhost` URL that **fails to load — that
