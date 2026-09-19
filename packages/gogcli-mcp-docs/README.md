@@ -8,7 +8,7 @@ Extended Google Docs [MCP](https://modelcontextprotocol.io) server via [gogcli](
 ## Requirements
 
 - [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
-- Node.js 18+
+- Node.js 22+
 
 ```bash
 brew install gogcli

@@ -10,7 +10,7 @@ For extended Sheets or Docs support, see [gogcli-mcp-sheets](https://www.npmjs.c
 ## Requirements
 
 - [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
-- Node.js 18+
+- Node.js 22+
 
 ```bash
 brew install gogcli
