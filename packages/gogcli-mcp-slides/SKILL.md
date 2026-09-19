@@ -12,7 +12,7 @@ Extended Google Slides MCP server via [gogcli](https://github.com/openclaw/gogcl
 ## Requirements
 
 - [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
-- Node.js 18 or later
+- Node.js 22 or later
 
 ## Setup
 

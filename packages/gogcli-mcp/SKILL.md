@@ -12,7 +12,7 @@ MCP server wrapping [gogcli](https://github.com/openclaw/gogcli) — provides Cl
 ## Requirements
 
 - [gogcli](https://github.com/openclaw/gogcli) installed and authenticated
-- Node.js 18 or later
+- Node.js 22 or later
 
 ## Setup
 

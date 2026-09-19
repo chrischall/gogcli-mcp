@@ -87,7 +87,7 @@ gog auth add your@gmail.com --services sheets,docs,drive
 
 ### Install Node.js
 
-Node.js 18 or later is required. Install via [nodejs.org](https://nodejs.org) or:
+Node.js 22 or later is required. Install via [nodejs.org](https://nodejs.org) or:
 
 ```bash
 brew install node        # macOS
