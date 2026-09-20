@@ -5,7 +5,7 @@ import { finalizeGmailSearch, fetchGmailPages } from '../gmail-results.js';
 import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
-import { extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, resultText } from '../gmail-dispatch-guard.js';
+import { extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText } from '../gmail-dispatch-guard.js';
 
 // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
 // only in the subcommand and default recipient set (reply → sender; reply-all
@@ -154,7 +154,7 @@ async function sendReply(
   if (metaResult.isError) return metaResult;
   const headers = parseMetadataHeaders(resultText(metaResult));
   const recipients = computeReplyRecipients(kind, headers, flags);
-  const confirmation = requireGmailDispatchConfirmation(ctx, `gmail.${kind}`, {
+  const confirmation = requireGmailDispatchConfirmation(ctx, replyDispatchOp(kind), {
     messageId,
     recipients,
     recipientCount: recipients.length,

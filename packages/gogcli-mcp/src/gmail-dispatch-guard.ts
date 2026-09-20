@@ -26,26 +26,67 @@ import { readEnvVar, requireConfirmation } from '@chrischall/mcp-utils';
 // ============================================================================
 
 /**
+ * The five dispatches this rail guards, spelled once.
+ *
+ * A UNION rather than `string`, because the staging-twin table below is keyed
+ * by these values and a key that matches no call site is silent: it costs the
+ * note, not the refusal, so nothing fails and no test that writes the op by
+ * hand can see it. `gmail.reply_all` shipped in the first cut of this file for
+ * exactly that reason — `sendReply` builds `gmail.${kind}` from
+ * `'reply' | 'reply-all'`, so the real op is HYPHENATED and the underscored key
+ * was never read. With the union in place that is a compile error at both ends.
+ */
+export type GmailDispatchOp =
+  | 'gmail.send'
+  | 'gmail.reply'
+  | 'gmail.reply-all'
+  | 'gmail.forward'
+  | 'gmail.autoreply';
+
+/** Every op, for tests that must cover the set rather than a chosen member. */
+export const GMAIL_DISPATCH_OPS: readonly GmailDispatchOp[] = [
+  'gmail.send',
+  'gmail.reply',
+  'gmail.reply-all',
+  'gmail.forward',
+  'gmail.autoreply',
+];
+
+/**
+ * The op a reply dispatch reports, derived from the same `kind` the command
+ * line is built from.
+ *
+ * Exported so the ONE place that interpolates a kind into an op is the one a
+ * test can call, rather than a template literal inside `sendReply` that a test
+ * can only imitate. Imitating it is what hid the hyphen.
+ */
+export function replyDispatchOp(kind: 'reply' | 'reply-all'): GmailDispatchOp {
+  return `gmail.${kind}`;
+}
+
+/**
  * The staging twin of each dispatch, named in the refusal above. Every one of
  * these saves without sending, and `gog_gmail_drafts_send` then dispatches it —
  * which is the rail's own sanctioned two-step (staging is visible and
  * inspectable, so the send is never the FIRST call), not a way around it.
  *
- * `gmail.autoreply` is deliberately absent: a bulk auto-reply over a search has
- * no draft twin, and naming a tool that does not exist would be worse than
- * saying nothing.
+ * `Partial<Record<…>>` and not an index signature: a key outside the union is
+ * now rejected by the compiler, which is the whole point, while `autoreply`
+ * stays deliberately absent — a bulk auto-reply over a search has no draft
+ * twin, and naming a tool that does not exist would be worse than saying
+ * nothing.
  */
-const STAGING_TWIN: Record<string, string> = {
+const STAGING_TWIN: Partial<Record<GmailDispatchOp, string>> = {
   'gmail.forward': 'gog_gmail_drafts_forward',
   'gmail.reply': 'gog_gmail_drafts_reply',
-  'gmail.reply_all': 'gog_gmail_drafts_reply_all',
+  'gmail.reply-all': 'gog_gmail_drafts_reply_all',
   'gmail.send': 'gog_gmail_drafts_create',
 };
 
 /** Apply the shared stateless confirmation flow with Gmail-specific copy. */
 export function requireGmailDispatchConfirmation(
   ctx: ServerContext,
-  op: string,
+  op: GmailDispatchOp,
   details: Record<string, unknown>,
 ): InputRequiredResult | CallToolResult | undefined {
   const twin = STAGING_TWIN[op];
