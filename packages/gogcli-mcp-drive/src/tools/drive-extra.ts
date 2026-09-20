@@ -34,7 +34,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       'No read tool surfaces the version number: fetch it immediately before uploading with ' +
       'gog_drive_run { subcommand: "raw", args: ["<fileId>", "--fields=version"] } — it comes back as a JSON string, so pass it on as a number. ' +
       'Conditional replacement refuses Google Workspace files (Docs/Sheets/Slides), which have no replaceable binary content.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       localPath: z.string().optional().describe('Path to the file to upload, resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) this path does not exist and the call fails with "no such file or directory" — use content there. Exactly one of localPath / content is required.'),
       content: z.string().optional().describe('The file\'s bytes, base64-encoded (standard alphabet, with padding) — upload a file you hold without it existing anywhere on the gog server. This is the only route that works when the caller and gog share no filesystem. Requires name (there is no path to take a filename from). Max 8 MiB; for anything larger use localPath from a local deployment. Exactly one of localPath / content is required — supplying both is an error, not a precedence rule.'),
@@ -113,6 +113,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_copy', {
     description: 'Copy a Drive file to a new file with the given name.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       fileId: z.string().describe('File ID to copy'),
       name: z.string().describe('Name for the new copy'),
@@ -219,6 +220,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_comments_add', {
     description: 'Add a new comment to a Drive file.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       content: z.string().describe('Comment text'),
@@ -230,7 +232,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_comments_update', {
     description: 'Update the text of an existing comment.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       commentId: z.string().describe('Comment ID to update'),
@@ -255,6 +257,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_comments_reply', {
     description: 'Reply to an existing comment on a Drive file. Pass `action: "resolve"` or `"reopen"` to atomically flip the parent comment\'s resolved state via the Drive API\'s Reply.action field — avoids the older workaround of deleting the comment (which destroys review-thread context).',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       commentId: z.string().describe('Comment ID to reply to'),

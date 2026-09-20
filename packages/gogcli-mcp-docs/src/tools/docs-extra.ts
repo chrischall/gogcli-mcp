@@ -6,6 +6,7 @@ import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 export function registerExtraDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_copy', {
     description: 'Copy a Google Doc to a new document with the given title.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       title: z.string().describe('Title for the new copy'),
@@ -413,6 +414,7 @@ export function registerExtraDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_comments_add', {
     description:
       'Add a comment to a Google Doc. Optionally attach quoted text that appears as the highlighted passage in the Google Docs UI.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       content: z.string().describe('Comment text'),
@@ -427,6 +429,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_comments_reply', {
     description: 'Reply to an existing comment on a Google Doc.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       commentId: z.string().describe('Comment ID to reply to'),
@@ -630,6 +633,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_row_insert', {
     description: 'Insert a row into a native Google Docs table, optionally populated from a JSON string array. Inserts before the 1-based position given by `at` (negative counts from the end; "end" appends — the default).',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       table: tableSelectorParam,
@@ -666,6 +670,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_column_insert', {
     description: 'Insert a column into a native Google Docs table. Inserts before the 1-based position given by `at` (negative counts from the end; "end" appends — the default).',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       table: tableSelectorParam,
@@ -717,6 +722,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_unmerge', {
     description: 'Unmerge (split) the merged region containing a given cell in a native Google Docs table.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       cell: z.string().describe('1-based cell r,c inside the merged region (e.g. "1,1")'),
@@ -733,6 +739,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_named_range_create', {
     description: 'Create a named range — a durable, tab-aware anchor over a span of document text that survives subsequent edits (unlike raw indices). Anchor by literal text (`at`) or explicit UTF-16 start/end indices. Pair with gog_docs_named_range_replace for repeatable templated updates.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       name: z.string().describe('Unique named range name'),

@@ -63,6 +63,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_update', {
     description: 'Update an existing Google Contact. Empty string clears a field; repeatable fields (url/address/custom/relation) take comma/semicolon-separated lists.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       resourceName: z.string().describe('Contact resource name (people/...)'),
       given: z.string().optional().describe('Given (first) name'),

@@ -95,6 +95,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_add_tab', {
     description: 'Add a new sheet tab to a spreadsheet.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       tabName: z.string().describe('Name for the new tab'),
@@ -118,7 +119,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_rename_tab', {
     description: 'Rename a sheet tab.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       oldName: z.string().describe('Current tab name'),
@@ -131,6 +132,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_copy', {
     description: 'Copy a spreadsheet to a new spreadsheet with the given title.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID to copy'),
       title: z.string().describe('Title for the new copy'),
@@ -464,7 +466,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'Set cell hyperlinks in a Google Sheet. Three modes: (1) single link — pass cell + url (+ optional text); ' +
       '(2) multi-link cell — pass cell + runsJson, a JSON array of rich-text runs (a run with an empty uri is plain text); ' +
       '(3) batch — pass cellsJson, a JSON array of {cell,url,text} or {cell,runs:[...]} objects written in one request.',
-    annotations: { destructiveHint: true },
+    annotations: { readOnlyHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       cell: z.string().optional().describe('Target cell in A1 notation (e.g. Sheet1!B2). Used by single-link and runsJson modes; omit for batch (cellsJson).'),
@@ -579,6 +581,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_named_ranges_add', {
     description: 'Create a new named range.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       name: z.string().describe('Name for the range'),
@@ -682,6 +685,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_chart_create', {
     description: 'Create an embedded chart from a JSON spec. specJson is a Sheets API ChartSpec (or full EmbeddedChart) — inline or @/path/to/file.json. Anchor the chart with sheet + anchor (A1 cell), and optionally size it with width/height pixels.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       specJson: z.string().describe('ChartSpec or EmbeddedChart JSON (inline or @file)'),
@@ -702,7 +706,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_chart_update', {
     description: 'Replace a chart spec by chart ID. specJson is a Sheets API ChartSpec (or full EmbeddedChart) — inline or @/path/to/file.json.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       chartId: z.string().describe('Numeric chart ID to update'),
@@ -994,6 +998,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     description:
       'Make a backup copy of an entire spreadsheet — a one-call safety snapshot to take BEFORE a risky or destructive edit (table delete, bulk clear, large rewrite). ' +
       'Returns the new copy\'s file ID and URL; if the edit goes wrong, restore by copying the backup back or sharing it. The copy is independent — later edits to the original do not affect it.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID to back up'),
       name: z.string().describe('Name for the backup copy, e.g. "Budget — backup before table delete"'),

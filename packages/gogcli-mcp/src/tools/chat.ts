@@ -82,6 +82,7 @@ export function registerChatTools(server: McpServer): void {
     description:
       'Create a named Chat space, optionally seeding its membership. Members are added immediately and are notified — this '
       + 'is visible to other people the moment it runs, so confirm the member list before calling it.' + workspaceOnlyNote,
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       displayName: z.string().describe('Display name for the new space'),
       members: z.array(z.string()).optional().describe('Initial members, as email addresses or "users/..." resource names'),
@@ -176,6 +177,7 @@ export function registerChatTools(server: McpServer): void {
       + 'this tool, so treat it like sending mail, not like saving a draft. Pass `thread` to reply inside an existing '
       + 'conversation (from gog_chat_threads_list or a message\'s thread field); omit it to start a new one. Text supports '
       + 'Chat\'s markdown-ish formatting (*bold*, _italic_, `code`).' + workspaceOnlyNote,
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       space: spaceParam,
       text: z.string().optional().describe('Message text. Optional only when an attachment is supplied.'),
@@ -207,6 +209,7 @@ export function registerChatTools(server: McpServer): void {
       'Send a direct message to one person by email address, creating the DM space if this is the first message. Delivered '
       + 'immediately and cannot be unsent through this tool. For a room rather than a person, use gog_chat_messages_send.'
       + workspaceOnlyNote,
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       email: z.string().describe('Recipient email address'),
       text: z.string().describe('Message text'),
@@ -223,6 +226,7 @@ export function registerChatTools(server: McpServer): void {
     description:
       'Resolve the DM space for an email address — the bridge from a person to the "spaces/..." name the message tools '
       + 'want. Creates the space if none exists yet, which is silent: it does not message the person.' + workspaceOnlyNote,
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       email: z.string().describe('The other person\'s email address'),
       account: accountParam,
@@ -254,6 +258,7 @@ export function registerChatTools(server: McpServer): void {
     description:
       'React to a message with an emoji. Visible to the space immediately. Pass the emoji itself ("👍"), not a :shortcode:.'
       + workspaceOnlyNote,
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       message: z.string().describe('Message resource name ("spaces/AAAA/messages/BBBB"), or a bare message ID together with `space`'),
       emoji: z.string().describe('The emoji character to react with, e.g. "👍"'),

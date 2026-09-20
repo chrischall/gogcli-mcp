@@ -34,6 +34,7 @@ export function registerSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_create', {
     description: 'Create a new Google Slides presentation, optionally in a folder or copying from a template.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       title: z.string().describe('Presentation title'),
       parent: z.string().optional().describe('Destination folder ID'),
@@ -49,6 +50,7 @@ export function registerSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_copy', {
     description: 'Copy a Google Slides presentation to a new presentation with the given title.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID to copy'),
       title: z.string().describe('Title for the new copy'),

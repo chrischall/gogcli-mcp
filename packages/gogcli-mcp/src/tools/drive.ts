@@ -118,7 +118,7 @@ export function registerDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_rename', {
     description: 'Rename a file or folder in Google Drive.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       fileId: z.string().describe('File or folder ID'),
       newName: z.string().describe('New name'),
@@ -130,7 +130,7 @@ export function registerDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_move', {
     description: 'Move a file to a different folder in Google Drive.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       fileId: z.string().describe('File ID to move'),
       parentId: z.string().describe('Destination folder ID'),

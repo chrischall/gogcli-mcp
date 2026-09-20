@@ -27,6 +27,7 @@ import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 export function registerExtraSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_create_from_markdown', {
     description: 'Create a new Google Slides presentation from markdown content (inline or from a file).',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       title: z.string().describe('Presentation title'),
       content: z.string().optional().describe('Inline markdown content'),
@@ -46,6 +47,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_create_from_template', {
     description: 'Create a new Google Slides presentation from a template, with optional placeholder replacements.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       templateId: z.string().describe('Template presentation ID'),
       title: z.string().describe('New presentation title'),
@@ -70,6 +72,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_add_slide', {
     description: 'Add a new slide to a presentation from a local image, with optional speaker notes.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       image: z.string().describe('Path to the local image file'),

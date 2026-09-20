@@ -2711,7 +2711,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_batch_modify', {
     description: 'Modify labels on multiple messages in one call (add and/or remove labels).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       messageIds: z.array(z.string()).min(1).describe('Message IDs to modify'),
       add: z.string().optional().describe('Labels to add (comma-separated, name or ID)'),
@@ -2756,7 +2756,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_thread_modify', {
     description: 'Modify labels on all messages in a thread (add and/or remove labels).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       threadId: z.string().describe('Gmail thread ID'),
       add: z.string().optional().describe('Labels to add (comma-separated, name or ID)'),
@@ -2825,7 +2825,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_labels_rename', {
     description: 'Rename a Gmail label.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       labelIdOrName: z.string().describe('Current label ID or name'),
       newName: z.string().describe('New label name'),
@@ -2848,7 +2848,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_labels_modify', {
     description: 'Modify labels on one or more threads (add and/or remove labels).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       threadIds: z.array(z.string()).min(1).describe('One or more thread IDs'),
       add: z.string().optional().describe('Labels to add (comma-separated, name or ID)'),
@@ -3283,7 +3283,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       'covers the mailbox: only `complete-listing` (the window came back short of 20, so it saw the whole Drafts folder) says ' +
       'the draft is gone. `capped-listing` and `listing-unavailable` say in words that they establish nothing about the draft, ' +
       'and any reply target you passed is echoed there with its explanation listed first.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       draftId: z.string().describe('Draft ID'),
       ...draftWriteSchema,
@@ -3619,7 +3619,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_labels_style', {
     description: "Change a user label's color or visibility (background/text color from Gmail's palette, label-list and message-list visibility).",
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       labelIdOrName: z.string().describe('Label ID or name to restyle'),
       backgroundColor: z.string().optional().describe("Background color from Gmail's label palette as #RRGGBB"),
