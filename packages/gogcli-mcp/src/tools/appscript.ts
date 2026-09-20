@@ -82,6 +82,7 @@ export function registerAppScriptTools(server: McpServer): void {
       'Create a new, empty Apps Script project. Pass parentId to bind it to a Drive file (a Sheet, Doc or Form), which is '
       + 'what makes the script a container-bound script with access to that document; omit it for a standalone project. '
       + 'gog cannot upload code, so the project starts empty either way.' + apiEnableNote,
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       title: z.string().describe('Project title'),
       parentId: z.string().optional().describe('Drive file ID to bind the project to (Sheet, Doc or Form). Omit for a standalone project.'),

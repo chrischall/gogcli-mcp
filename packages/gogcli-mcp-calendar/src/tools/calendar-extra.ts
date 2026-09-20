@@ -240,6 +240,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_move', {
     description: 'Move an event from one calendar to another; the destination calendar becomes the organizer.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       calendarId: z.string().describe('Source calendar ID'),
       eventId: z.string().describe('Event ID'),
@@ -255,6 +256,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_out_of_office', {
     description: 'Create an Out of Office event that auto-declines invitations during the block.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       from: z.string().describe('Start date or datetime (RFC3339 or YYYY-MM-DD)'),
       to: z.string().describe('End date or datetime (RFC3339 or YYYY-MM-DD)'),

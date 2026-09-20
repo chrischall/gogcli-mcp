@@ -120,7 +120,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_create', {
     description: 'Create a new Google Spreadsheet. Returns JSON with the new spreadsheetId and URL.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       title: z.string().describe('Title for the new spreadsheet'),
       account: accountParam,

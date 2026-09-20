@@ -55,7 +55,7 @@ export function registerTasksTools(server: McpServer): void {
 
   server.registerTool('gog_tasks_done', {
     description: 'Mark a task as completed.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       tasklistId: z.string().describe('Task list ID'),
       taskId: z.string().describe('Task ID'),
