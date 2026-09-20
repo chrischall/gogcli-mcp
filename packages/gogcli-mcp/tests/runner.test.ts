@@ -995,6 +995,23 @@ describe('cancellation', () => {
     expect(proc.killed, 'the gog child was left running').toEqual(['SIGTERM']);
   });
 
+  it('names the cancellation when the reason is not an Error', async () => {
+    // `AbortController.abort()` takes ANY value — a string, a DOMException,
+    // undefined — so the reason is not guaranteed to be throwable. Rejecting
+    // with a raw string would surface as an error with no message at the
+    // tool boundary, which is the shape this whole change exists to avoid.
+    const proc = hangingProc();
+    const controller = new AbortController();
+
+    const call = withCallSignal(controller.signal, () =>
+      run(['sheets', 'get', 'id1', 'A1'], { spawner: (() => proc) as unknown as Spawner }),
+    );
+    controller.abort('the caller went away');
+
+    await expect(call).rejects.toThrow(/cancelled/i);
+    expect(proc.killed).toEqual(['SIGTERM']);
+  });
+
   it('leaves an ordinary call alone, and stops listening when it finishes', async () => {
     const controller = new AbortController();
     const spawner = makeSpawner(0, '{"ok":true}');
