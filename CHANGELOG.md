@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.2](https://github.com/chrischall/gogcli-mcp/compare/v4.2.1...v4.2.2) (2026-09-20)
+
+
+### Bug Fixes
+
+* **tools:** make the destructive hint mean something in Gmail ([#378](https://github.com/chrischall/gogcli-mcp/issues/378)) ([00092a3](https://github.com/chrischall/gogcli-mcp/commit/00092a3651932cacd97f2040c0c8393a287a6c35))
+
 ## [4.2.1](https://github.com/chrischall/gogcli-mcp/compare/v4.2.0...v4.2.1) (2026-09-20)
 
 
