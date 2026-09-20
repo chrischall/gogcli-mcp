@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.3](https://github.com/chrischall/gogcli-mcp/compare/v4.2.2...v4.2.3) (2026-09-20)
+
+
+### Bug Fixes
+
+* **tools:** classify every tool from gogcli's own safety profiles ([#381](https://github.com/chrischall/gogcli-mcp/issues/381)) ([44d7471](https://github.com/chrischall/gogcli-mcp/commit/44d7471bd397fbedef8b0c5faaf56cd82d3ad228))
+
 ## [4.2.2](https://github.com/chrischall/gogcli-mcp/compare/v4.2.1...v4.2.2) (2026-09-20)
 
 
