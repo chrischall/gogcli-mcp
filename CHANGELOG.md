@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.1](https://github.com/chrischall/gogcli-mcp/compare/v4.2.0...v4.2.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **gmail:** name the way through when a client cannot show the confirmation ([#375](https://github.com/chrischall/gogcli-mcp/issues/375)) ([7603c04](https://github.com/chrischall/gogcli-mcp/commit/7603c040f7fb10a882c59b24f36fc5e79c9124b8))
+
 ## [4.2.0](https://github.com/chrischall/gogcli-mcp/compare/v4.1.0...v4.2.0) (2026-09-20)
 
 
