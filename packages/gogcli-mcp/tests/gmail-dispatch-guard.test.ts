@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { rawTextResult } from '@chrischall/mcp-utils';
+import type { CallToolResult, ServerContext } from '@modelcontextprotocol/server';
 import {
+  GMAIL_DISPATCH_OPS,
   extractEmails,
   logGmailDispatch,
+  replyDispatchOp,
+  requireGmailDispatchConfirmation,
   resultText,
 } from '../src/gmail-dispatch-guard.js';
+import type { GmailDispatchOp } from '../src/gmail-dispatch-guard.js';
 
 describe('extractEmails', () => {
   it('extracts a bare address', () => {
@@ -128,5 +133,93 @@ describe('logGmailDispatch', () => {
     logGmailDispatch('gog_gmail_send', ['not-an-email'], 'me@example.com');
     const event = loggedEvent();
     expect(event.externalRecipients).toEqual(['not-an-email']);
+  });
+});
+
+// ============================================================================
+// The refusal a client that cannot be asked gets. From #358 until this landed
+// it got a protocol -32021 instead, which claude.ai — which declares no MCP
+// elicitation capability — rendered as "Error occurred during tool execution".
+// ============================================================================
+/** A 2026-07-28 request whose envelope declares the CALLER's capabilities. */
+function ctxDeclaring(capabilities: unknown): ServerContext {
+  return {
+    mcpReq: {
+      envelope: {
+        'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        'io.modelcontextprotocol/clientCapabilities': capabilities,
+      },
+    },
+  } as unknown as ServerContext;
+}
+
+/** claude.ai's measured shape: extensions and nothing else. */
+const CANNOT_BE_ASKED = ctxDeclaring({ extensions: {} });
+
+function refusalNote(op: GmailDispatchOp): string {
+  const result = requireGmailDispatchConfirmation(CANNOT_BE_ASKED, op, {}) as CallToolResult;
+  return JSON.parse(resultText(result)).note as string;
+}
+
+/**
+ * The twin each op must name. Written against `GMAIL_DISPATCH_OPS` rather than
+ * as a list of its own, so a sixth dispatch added later fails here until
+ * somebody decides whether it stages — `null` being the deliberate "it does
+ * not" that `gmail.autoreply` is the only member of today.
+ */
+const EXPECTED_TWIN: Record<GmailDispatchOp, string | null> = {
+  'gmail.send': 'gog_gmail_drafts_create',
+  'gmail.reply': 'gog_gmail_drafts_reply',
+  'gmail.reply-all': 'gog_gmail_drafts_reply_all',
+  'gmail.forward': 'gog_gmail_drafts_forward',
+  'gmail.autoreply': null,
+};
+
+describe('requireGmailDispatchConfirmation on a client that cannot be asked', () => {
+  it.each(GMAIL_DISPATCH_OPS.map((op) => [op, EXPECTED_TWIN[op]] as const))(
+    'answers %s with its staging twin %s',
+    (op, twin) => {
+      const note = refusalNote(op);
+      expect(note).toContain('cannot show a confirmation prompt');
+      if (twin === null) {
+        // A bulk auto-reply over a search has no draft twin, and naming a tool
+        // that does not exist would be worse than saying nothing.
+        expect(note).not.toContain('Stage it with');
+      } else {
+        expect(note).toContain(`Stage it with ${twin} instead`);
+        expect(note).toContain('gog_gmail_drafts_send');
+      }
+    },
+  );
+
+  // THE OP COMES FROM THE CALL PATH, NOT FROM THIS FILE. `sendReply` builds it
+  // as `gmail.${kind}` off the same `'reply' | 'reply-all'` union the command
+  // line uses, so the first cut's `gmail.reply_all` key matched nothing and
+  // reply-all silently lost its note — invisible to a test that spelled the op
+  // itself. Going through the helper the call site now calls is what closes it.
+  it.each([
+    ['reply', 'gog_gmail_drafts_reply'],
+    ['reply-all', 'gog_gmail_drafts_reply_all'],
+  ] as const)('derives the %s op from the real call path', (kind, twin) => {
+    expect(refusalNote(replyDispatchOp(kind))).toContain(`Stage it with ${twin} instead`);
+  });
+
+  it('refuses rather than dispatching, and says so in the payload', () => {
+    const result = requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.forward', {
+      messageId: 'm1',
+      to: 'someone@example.com',
+    }) as CallToolResult;
+
+    expect(JSON.parse(resultText(result))).toMatchObject({
+      confirmed: false,
+      dispatched: false,
+      action: 'gmail.forward',
+      reason: 'confirmation-unsupported',
+    });
+  });
+
+  it('still asks a client that declares form elicitation', () => {
+    expect(requireGmailDispatchConfirmation(ctxDeclaring({ elicitation: { form: {} } }), 'gmail.forward', {}))
+      .toMatchObject({ resultType: 'input_required' });
   });
 });
