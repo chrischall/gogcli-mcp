@@ -2409,6 +2409,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       'nothing to your Drive and is NOT blocked by GOG_READONLY — it is the right choice when you need the bytes ' +
       'themselves and they are too large or the wrong type to come back inline. It works only where this server is ' +
       'hosted with a blob store (e.g. mcp-host); on a local stdio install it errors and tells you so.',
+    annotations: { readOnlyHint: true },
     inputSchema: z.object({
       messageId: z.string().describe('Gmail message ID'),
       attachmentId: z.string().optional().describe('The opaque attachment ID from a listing. Legacy addressing: Gmail re-issues a DIFFERENT id for the same part on every API call, so an id copied from an older listing can be stale. Prefer attachmentIndex. Exactly one of attachmentId / attachmentIndex is required.'),
@@ -2813,6 +2814,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_labels_create', {
     description: 'Create a new Gmail label.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       name: z.string().describe('Label name'),
       account: accountParam,
@@ -3249,6 +3251,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_drafts_create', {
     description: 'SAVES ONLY. DOES NOT SEND. Create a new Gmail draft. Recipients (to/cc/bcc) are optional; omit them (or set omitRecipients) to create a recipient-less draft as an accidental-send guard. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) — don\'t pass a thread id into replyToMessageId, which mis-threads silently.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object(draftWriteSchema),
   }, async ({ account, returnFull, ...flags }) => {
     const args: GogArg[] = ['gmail', 'drafts', 'create'];
@@ -3373,6 +3376,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       'belongs chronologically. Use it to restore an exported message or to file a .eml under a label; to ' +
       'actually send mail use gog_gmail_send, and to stage one use gog_gmail_drafts_create. The file is read on ' +
       'the gog SERVER, not your machine.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       file: z.string().describe('Path to an RFC822/EML file that ALREADY EXISTS on the gog server. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out.'),
       labels: z.array(z.string()).optional().describe('Labels to apply to the imported message (repeatable). Each may be a label ID or a label name — names are resolved server-side. A name containing a COMMA cannot be passed here: gog declares --label as a Kong slice with no separator override, so Kong splits each value on commas and "Clients, Inc" is looked up as two labels ("Clients" and "Inc") and fails. Use that label\'s ID instead — ids never contain a comma; gog_gmail_labels_list gives you one.'),
@@ -3452,6 +3456,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       'SAVES ONLY. DOES NOT SEND. Save a reply to a Gmail message as a draft (to the original sender only).' + draftReplyNote.replace('%s', '') +
       ' Prefer this over gog_gmail_drafts_create + replyToMessageId when the draft is a real reply: that route threads ' +
       'the draft but leaves recipients and quoting for you to reconstruct.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({ ...replySchema, returnFull: draftWriteSchema.returnFull }),
   }, async ({ messageId, account, returnFull, ...flags }) => {
     const args: GogArg[] = ['gmail', 'drafts', 'reply', messageId];
@@ -3464,6 +3469,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       'SAVES ONLY. DOES NOT SEND. Save a reply-all to a Gmail message as a draft (sender plus every To/Cc recipient).' +
       draftReplyNote.replace('%s', '_all') +
       ' Use the remove flag to drop recipients BEFORE the draft exists, rather than editing them out afterwards.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({ ...replySchema, returnFull: draftWriteSchema.returnFull }),
   }, async ({ messageId, account, returnFull, ...flags }) => {
     const args: GogArg[] = ['gmail', 'drafts', 'reply-all', messageId];
@@ -3477,6 +3483,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       'message quoted below an optional note, with its attachments carried over — but nothing is sent. ' +
       'Unlike gog_gmail_forward, `to` is OPTIONAL here: omit it to stage a recipient-less forward as an ' +
       'accidental-send guard, then add recipients with gog_gmail_drafts_update before gog_gmail_drafts_send.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       messageId: z.string().describe('Gmail message ID to forward'),
       to: z.string().optional().describe('Recipients (comma-separated). Optional for a draft — omit to stage the forward without recipients.'),
@@ -3642,6 +3649,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_vacation_update', {
     description: 'Update the vacation responder. Pass enable (with subject/body) to turn it on, or disable to turn it off; optional start/end RFC3339 times and contactsOnly/domainOnly scoping.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       enable: z.boolean().optional().describe('Enable the vacation responder'),
       disable: z.boolean().optional().describe('Disable the vacation responder'),
@@ -3691,6 +3699,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_filters_create', {
     description: 'Create a Gmail filter. Specify match criteria (from/to/subject/query/hasAttachment) and one or more actions (label, archive, mark-read, star, important, trash, forward, never-spam).',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       from: z.string().optional().describe('Match messages from this sender'),
       to: z.string().optional().describe('Match messages to this recipient'),
@@ -3761,6 +3770,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_sendas_create', {
     description: 'Create a send-as alias. Newly added aliases generally require email verification before they can be used (see gog_gmail_sendas_verify).',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       email: z.string().describe('Email address of the new send-as alias'),
       displayName: z.string().optional().describe('Name that appears in the From field'),
@@ -3813,6 +3823,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_sendas_verify', {
     description: 'Resend the verification email for a send-as alias that is pending verification.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       email: z.string().describe('Send-as alias email address to verify'),
       account: accountParam,

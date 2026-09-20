@@ -135,6 +135,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'full redirected URL (from the address bar) and you pass it to gog_auth_add_complete. The link is ' +
       'valid for 10 minutes. If you pass a custom `services` here, pass the SAME value to ' +
       'gog_auth_add_complete or the second step will not match this one.',
+    annotations: { readOnlyHint: true },
     inputSchema: z.object({
       email: z.string().describe('Google account email to authorize'),
       services: z.string().optional().default(defaultServices).describe(servicesDescribe),
