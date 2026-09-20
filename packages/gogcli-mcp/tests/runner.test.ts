@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { spawn as mockedSpawn } from 'node:child_process';
+import { withCallSignal } from '@chrischall/mcp-utils';
 import { run, runBinary } from '../src/runner.js';
 import type { Spawner } from '../src/runner.js';
 
@@ -947,5 +948,76 @@ describe('run executor', () => {
       ['--json', '--color=never', '--no-input', 'sheets', 'get', 'id1', 'A1'],
       expect.objectContaining({ env: expect.any(Object) }),
     );
+  });
+});
+
+/**
+ * The caller giving up kills the `gog` child (mcp-utils `cancel`).
+ *
+ * Until this, a cancelled tool call left a whole process running to the
+ * runner's own timeout — still talking to Google, still charged to the CPU a
+ * hosted child is metered on, for somebody who has gone. Measured on the
+ * mcp-host fleet: claude.ai sent 101 cancellations in the week to
+ * 2026-09-20, and every one of them was ignored here.
+ */
+describe('cancellation', () => {
+  /** A child that never finishes on its own — only a kill ends it. */
+  function hangingProc(): ReturnType<Spawner> & { killed: unknown[] } {
+    const proc = new EventEmitter() as ReturnType<Spawner> & { killed: unknown[] };
+    const io = proc as unknown as { stdout: EventEmitter; stderr: EventEmitter };
+    io.stdout = new EventEmitter();
+    io.stderr = new EventEmitter();
+    proc.killed = [];
+    proc.kill = vi.fn((sig?: unknown) => {
+      proc.killed.push(sig);
+      // A killed child closes with no code and no stderr, which is exactly
+      // the shape the error path has to tell apart from a gog failure.
+      setTimeout(() => proc.emit('close', null), 0);
+      return true;
+    }) as unknown as ReturnType<Spawner>['kill'];
+    return proc;
+  }
+
+  it('kills the child and rejects with the caller’s own reason', async () => {
+    const proc = hangingProc();
+    const controller = new AbortController();
+    const reason = new Error('caller went away');
+
+    const call = withCallSignal(controller.signal, () =>
+      run(['sheets', 'get', 'id1', 'A1'], { spawner: (() => proc) as unknown as Spawner }),
+    );
+    controller.abort(reason);
+
+    // Not `gog exited with code null`, which is what the ordinary close path
+    // would have said — a sentence about gogcli for something gogcli did not
+    // do.
+    await expect(call).rejects.toThrow(reason);
+    expect(proc.killed, 'the gog child was left running').toEqual(['SIGTERM']);
+  });
+
+  it('names the cancellation when the reason is not an Error', async () => {
+    // `AbortController.abort()` takes ANY value — a string, a DOMException,
+    // undefined — so the reason is not guaranteed to be throwable. Rejecting
+    // with a raw string would surface as an error with no message at the
+    // tool boundary, which is the shape this whole change exists to avoid.
+    const proc = hangingProc();
+    const controller = new AbortController();
+
+    const call = withCallSignal(controller.signal, () =>
+      run(['sheets', 'get', 'id1', 'A1'], { spawner: (() => proc) as unknown as Spawner }),
+    );
+    controller.abort('the caller went away');
+
+    await expect(call).rejects.toThrow(/cancelled/i);
+    expect(proc.killed).toEqual(['SIGTERM']);
+  });
+
+  it('leaves an ordinary call alone, and stops listening when it finishes', async () => {
+    const controller = new AbortController();
+    const spawner = makeSpawner(0, '{"ok":true}');
+    await withCallSignal(controller.signal, () => run(['sheets', 'get', 'id1', 'A1'], { spawner }));
+    // Aborting AFTER the call settled must reach nothing: a listener that
+    // outlives its call is a leak per invocation.
+    expect(() => controller.abort(new Error('too late'))).not.toThrow();
   });
 });

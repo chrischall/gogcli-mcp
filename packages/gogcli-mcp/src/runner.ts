@@ -1,6 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { delimiter, join } from 'node:path';
-import { parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
+import { currentCallSignal, killOnCancel, parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
 import { naiveSourceTimeZone } from './timestamps.js';
 
 export type Spawner = (
@@ -380,8 +380,26 @@ async function spawnGog(
     const stderrChunks: Buffer[] = [];
     let settled = false;
 
+    // THE CALLER GIVING UP KILLS THE CHILD (mcp-utils `cancel`). Until this,
+    // a cancelled tool call left a whole `gog` process running to the
+    // timeout below — still talking to Google, still charged to the CPU a
+    // hosted child is metered on, for somebody who has gone. Measured on the
+    // mcp-host fleet: claude.ai sent 101 cancellations in the week to
+    // 2026-09-20, and every one of them was ignored here.
+    //
+    // The signal is ambient rather than passed: `surfaceToolHints` puts it
+    // in scope for the whole handler, so this works for every tool in every
+    // package without one of them threading it through.
+    const cancelled = currentCallSignal();
+    const stopWatchingCancel = killOnCancel(child);
+    const stopWatching = (): void => {
+      clearTimeout(timer);
+      stopWatchingCancel();
+    };
+
     const timer = setTimeout(() => {
       settled = true;
+      stopWatchingCancel();
       child.kill();
       reject(new Error(`gog timed out after ${formatTimeout(effectiveTimeout)}`));
     }, effectiveTimeout);
@@ -390,9 +408,17 @@ async function spawnGog(
     child.stderr!.on('data', (chunk: Buffer) => { stderrChunks.push(chunk); });
 
     child.on('close', (code: number | null) => {
-      clearTimeout(timer);
+      stopWatching();
       if (settled) return;
       settled = true;
+      // A child WE killed because the caller left exits with no code and no
+      // stderr, which the branch below would report as `gog exited with code
+      // null` — a sentence about gogcli for something gogcli did not do. The
+      // caller's own reason is the honest error.
+      if (cancelled?.aborted) {
+        reject(cancelled.reason instanceof Error ? cancelled.reason : new Error('the caller cancelled this call'));
+        return;
+      }
       const stderr = Buffer.concat(stderrChunks).toString().trim();
       if (code === 0) {
         // Binary mode: return the raw stdout bytes base64-encoded, never a utf8
@@ -413,7 +439,7 @@ async function spawnGog(
     });
 
     child.on('error', (err: Error) => {
-      clearTimeout(timer);
+      stopWatching();
       if (settled) return;
       settled = true;
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
