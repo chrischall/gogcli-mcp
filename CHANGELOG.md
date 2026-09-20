@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.1.0](https://github.com/chrischall/gogcli-mcp/compare/v4.0.1...v4.1.0) (2026-09-19)
+
+
+### Features
+
+* **deps:** take mcp-utils 1.0.0 across all nine gogcli servers ([#369](https://github.com/chrischall/gogcli-mcp/issues/369)) ([9fe7524](https://github.com/chrischall/gogcli-mcp/commit/9fe752419316e6fca9fc5de5c837e3a90199f0a5))
+
+
+### Bug Fixes
+
+* **deps:** raise the manifest node floor to match mcp-utils 1.0.0 ([#371](https://github.com/chrischall/gogcli-mcp/issues/371)) ([1a600d6](https://github.com/chrischall/gogcli-mcp/commit/1a600d6565ecf9094912f9d8d02b5f4999694037))
+
 ## [4.0.1](https://github.com/chrischall/gogcli-mcp/compare/v4.0.0...v4.0.1) (2026-09-18)
 
 
