@@ -466,7 +466,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'Set cell hyperlinks in a Google Sheet. Three modes: (1) single link — pass cell + url (+ optional text); ' +
       '(2) multi-link cell — pass cell + runsJson, a JSON array of rich-text runs (a run with an empty uri is plain text); ' +
       '(3) batch — pass cellsJson, a JSON array of {cell,url,text} or {cell,runs:[...]} objects written in one request.',
-    annotations: { readOnlyHint: true },
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       cell: z.string().optional().describe('Target cell in A1 notation (e.g. Sheet1!B2). Used by single-link and runsJson modes; omit for batch (cellsJson).'),

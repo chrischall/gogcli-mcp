@@ -258,7 +258,6 @@ export function registerChatTools(server: McpServer): void {
     description:
       'React to a message with an emoji. Visible to the space immediately. Pass the emoji itself ("👍"), not a :shortcode:.'
       + workspaceOnlyNote,
-    annotations: { destructiveHint: true },
     inputSchema: z.object({
       message: z.string().describe('Message resource name ("spaces/AAAA/messages/BBBB"), or a bare message ID together with `space`'),
       emoji: z.string().describe('The emoji character to react with, e.g. "👍"'),

@@ -65,7 +65,6 @@ export function registerAppScriptTools(server: McpServer): void {
       + 'reach them. Use gog_appscript_content there instead — it returns the same source in the response. Existing files '
       + 'are left alone unless overwrite is set. Read-only as far as Google is concerned: nothing is pushed back.'
       + apiEnableNote,
-    annotations: { readOnlyHint: true },
     inputSchema: z.object({
       scriptId: scriptIdParam,
       dir: z.string().describe('Destination directory, resolved on the machine where gog runs'),
