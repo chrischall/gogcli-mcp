@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.0](https://github.com/chrischall/gogcli-mcp/compare/v4.1.0...v4.2.0) (2026-09-20)
+
+
+### Features
+
+* **runner:** kill the gog child when the caller cancels ([#373](https://github.com/chrischall/gogcli-mcp/issues/373)) ([407f4df](https://github.com/chrischall/gogcli-mcp/commit/407f4dfc66c41f348a802b518211c5683354cd2b))
+
 ## [4.1.0](https://github.com/chrischall/gogcli-mcp/compare/v4.0.1...v4.1.0) (2026-09-19)
 
 
