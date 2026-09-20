@@ -14,18 +14,52 @@ import { readEnvVar, requireConfirmation } from '@chrischall/mcp-utils';
 // result containing the preview, and only the protocol retry carrying the
 // user's accepted confirmation dispatches. The confirmation is never a tool
 // argument, so a model cannot bypass the user by setting a boolean itself.
+//
+// A CLIENT THAT CANNOT SHOW THAT PROMPT gets a sentence rather than a prompt
+// it will refuse to deliver (`unsupportedNote`, mcp-utils `requireConfirmation`).
+// Measured on the mcp-host fleet 2026-09-20: claude.ai declares no MCP
+// elicitation capability, so from the day this rail shipped every one of these
+// five tools answered it with a -32021 the surface renders as "Error occurred
+// during tool execution" — four `gog_gmail_forward` attempts in a row, 69-107ms
+// each, none of which reached `gog`. The rail is unchanged; what changes is that
+// the refusal now says what happened and names the way through.
 // ============================================================================
+
+/**
+ * The staging twin of each dispatch, named in the refusal above. Every one of
+ * these saves without sending, and `gog_gmail_drafts_send` then dispatches it —
+ * which is the rail's own sanctioned two-step (staging is visible and
+ * inspectable, so the send is never the FIRST call), not a way around it.
+ *
+ * `gmail.autoreply` is deliberately absent: a bulk auto-reply over a search has
+ * no draft twin, and naming a tool that does not exist would be worse than
+ * saying nothing.
+ */
+const STAGING_TWIN: Record<string, string> = {
+  'gmail.forward': 'gog_gmail_drafts_forward',
+  'gmail.reply': 'gog_gmail_drafts_reply',
+  'gmail.reply_all': 'gog_gmail_drafts_reply_all',
+  'gmail.send': 'gog_gmail_drafts_create',
+};
+
 /** Apply the shared stateless confirmation flow with Gmail-specific copy. */
 export function requireGmailDispatchConfirmation(
   ctx: ServerContext,
   op: string,
   details: Record<string, unknown>,
 ): InputRequiredResult | CallToolResult | undefined {
+  const twin = STAGING_TWIN[op];
   return requireConfirmation(ctx, {
     action: op,
     message: 'Review and confirm this email dispatch:',
     details,
     confirmationLabel: 'Confirm that this email should be sent now.',
+    ...(twin
+      ? {
+          unsupportedNote: `Stage it with ${twin} instead, review the draft, `
+            + 'and send it with gog_gmail_drafts_send.',
+        }
+      : {}),
   });
 }
 
