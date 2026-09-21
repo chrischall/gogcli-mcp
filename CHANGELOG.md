@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.2.4](https://github.com/chrischall/gogcli-mcp/compare/v4.2.3...v4.2.4) (2026-09-21)
+
+
+### Bug Fixes
+
+* **tools:** annotate the 51 the safety profiles do not cover ([#384](https://github.com/chrischall/gogcli-mcp/issues/384)) ([cdae5b2](https://github.com/chrischall/gogcli-mcp/commit/cdae5b2e4840e6a54cdebd82fc645b7f321d1d26))
+
+
+### Documentation
+
+* AGENTS.md pointed at a directory that does not exist ([#386](https://github.com/chrischall/gogcli-mcp/issues/386)) ([d565f48](https://github.com/chrischall/gogcli-mcp/commit/d565f48f74ea41c537646b2c54008b7dd55598ac))
+
 ## [4.2.3](https://github.com/chrischall/gogcli-mcp/compare/v4.2.2...v4.2.3) (2026-09-20)
 
 
