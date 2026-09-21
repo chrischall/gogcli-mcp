@@ -531,6 +531,7 @@ export function registerExtraDocsTools(server: McpServer): void {
   // end to submit them atomically against the locked revision.
   server.registerTool('gog_batch_begin', {
     description: 'Open a persisted, revision-locked request batch for a Google Doc. Subsequent docs mutation tools called with batch=<batchId> append their requests locally instead of applying them; gog_batch_end submits everything atomically. Returns the batchId.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Google Doc ID the batch is locked to'),
       name: z.string().optional().describe('Optional batch label'),
@@ -1131,6 +1132,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_add_tab', {
     description: 'Add a tab to a Google Doc. Tabs partition a doc into independently-addressable sections (multi-tab docs). Optionally set the title, zero-based position, parent tab (for nesting), and an emoji icon.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       title: z.string().optional().describe('User-visible tab title'),
@@ -1150,6 +1152,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_rename_tab', {
     description: 'Rename a tab in a Google Doc. Identify the existing tab by title or ID and give it a new title.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       tab: z.string().describe('Existing tab title or ID to rename'),
@@ -1317,6 +1320,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_header_create', {
     description: 'Create a header in a Google Doc and optionally populate its initial text. Returns the new header segment ID.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Initial header text'),
@@ -1374,6 +1378,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_footer_create', {
     description: 'Create a footer in a Google Doc and optionally populate its initial text. Returns the new footer segment ID.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Initial footer text'),

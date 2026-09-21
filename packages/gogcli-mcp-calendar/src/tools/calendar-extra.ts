@@ -9,6 +9,7 @@ const meetAccess = z.enum(['open', 'trusted', 'restricted']);
 export function registerExtraCalendarTools(server: McpServer): void {
   server.registerTool('gog_meet_create', {
     description: 'Create a Google Meet space and return its meeting code.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       access: meetAccess.optional().describe('Access type (default: trusted)'),
       open: z.boolean().optional().describe('Open the meeting in a browser after creation'),

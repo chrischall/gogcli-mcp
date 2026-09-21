@@ -406,6 +406,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_shortcut_create', {
     description: 'Create a Drive shortcut to a file or folder inside a destination folder. Shortcuts are classified distinctly in listing/tree output and are never followed by tree scans.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       targetId: z.string().describe('File or folder ID the shortcut points to'),
       parent: z.string().describe('Destination folder ID for the shortcut'),
@@ -483,6 +484,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_labels_file_apply', {
     description: 'Apply or update a label on a Drive file, optionally setting field values. Each field flag takes "fieldId=value" entries (repeatable). selection/integer/date/user values may be comma-separated within one entry for multi-valued fields.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       labelId: z.string().describe('Label ID to apply'),
