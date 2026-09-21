@@ -34,6 +34,7 @@ const courseworkSharedFields = {
 export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_create', {
     description: 'Create a new Google Classroom course.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       name: z.string().describe('Course name'),
       ...courseSharedFields,
@@ -95,6 +96,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_courses_unarchive', {
     description: 'Unarchive a Google Classroom course (restore to ACTIVE).',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       account: accountParam,
@@ -105,6 +107,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_students_add', {
     description: 'Add a student to a Google Classroom course.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Student user ID (or "me")'),
@@ -131,6 +134,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_teachers_add', {
     description: 'Add a teacher to a Google Classroom course.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Teacher user ID'),
@@ -154,6 +158,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_coursework_create', {
     description: 'Create a new coursework item (assignment, question, etc.) in a course.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       title: z.string().describe('Coursework title'),
@@ -244,6 +249,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_topics_create', {
     description: 'Create a topic in a Google Classroom course.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       name: z.string().describe('Topic name'),
@@ -280,6 +286,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_invitations_create', {
     description: 'Create an invitation to a Google Classroom course.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('User ID to invite'),

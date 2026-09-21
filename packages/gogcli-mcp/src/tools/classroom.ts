@@ -302,6 +302,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_announcements_create', {
     description: 'Create an announcement in a Google Classroom course.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       text: z.string().describe('Announcement text'),
@@ -384,6 +385,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_invitations_accept', {
     description: 'Accept a Google Classroom invitation.',
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       invitationId: z.string().describe('Invitation ID'),
       account: accountParam,

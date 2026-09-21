@@ -759,6 +759,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_table_create', {
     description: 'Create a Google Sheets table over a range. columnsJson is a JSON array of column definitions (each {columnName, columnType?}); valid columnType values: TEXT, DOUBLE, BOOLEAN, DATE, DROPDOWN. Inline JSON or @/path/to/file.json.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range the table covers (e.g. Sheet1!A1:D20)'),
@@ -775,6 +776,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_table_append', {
     description: 'Append data rows to a table. valuesJson is a JSON 2D array of row values.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID to append to'),
@@ -885,6 +887,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_banding_set', {
     description: 'Apply alternating colors to a range. Provide rowPropertiesJson and/or columnPropertiesJson — each a Sheets API BandingProperties JSON object ({headerColor, firstBandColor, secondBandColor, footerColor}). At least one is required.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to band (e.g. Sheet1!A1:D20)'),
@@ -922,6 +925,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_filter_set', {
     description: 'Set a basic filter on a range (the filter/sort header Sheets shows on a data range). A sheet can hold one basic filter; replacing an existing one requires replace=true — without it, gog refuses rather than silently overwriting.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to filter (A1 notation with sheet name, e.g. Sheet1!A1:C100, or a named range name)'),
@@ -952,6 +956,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_conditional_format_add', {
     description: 'Add a conditional formatting rule to a range. Boolean rules: type picks the condition, expr is its value/formula (omit for blank/not-blank), formatJson is the CellFormat to apply when the condition matches (inline or @file); use formatFields to force-send zero/false fields (e.g. backgroundColor,textFormat.bold). Gradient rules (color scales): pass gradientRuleJson instead — a GradientRule JSON with minpoint/maxpoint (and optional midpoint), each {"color":{...},"type":"MIN|MAX|NUMBER|PERCENT|PERCENTILE","value":"..."}. The two modes are mutually exclusive.',
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range the rule applies to (e.g. Sheet1!A1:A100)'),
@@ -1143,6 +1148,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'BigQuery project charged for the query; tableProject only names which project OWNS the table, and defaults to the ' +
       'billing project. Returns the new dataSourceId, which every other datasource tool takes.' +
       bigQueryChargeNote + bigQueryScopeNote,
+    annotations: { destructiveHint: false },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       billingProject: z.string().describe('Billing-enabled BigQuery project charged for this source\'s queries'),
@@ -1223,6 +1229,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'Re-run a Connected Sheets data source so its sheet and extracts pick up current BigQuery data. Google refuses to ' +
       'refresh a source whose previous execution FAILED; forceRefresh overrides that, which is what you want after fixing ' +
       'the underlying query or permissions.' + bigQueryChargeNote + bigQueryScopeNote,
+    annotations: { destructiveHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
