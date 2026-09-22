@@ -191,7 +191,7 @@ This needed mcp-utils **0.23.0**: 0.22.0's `MEDIA_KEY` was anchored to a bare no
 
 ### Required gog version
 
-`runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.40.0**. A bump must also move **the `tag:` in all nine `packages/*/mint.yaml` `dependencies` blocks** — those pin the `gog` release a hosted install provisions, so leaving them behind hands the child a binary older than the floor its tools assume. `scripts/check-runner-gog-version.mjs` checks those against the floor and fails `npm test` on any pin below it, so a missed one is a red build.
+`runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.41.0**. A bump must also move **the `tag:` in all nine `packages/*/mint.yaml` `dependencies` blocks** — those pin the `gog` release a hosted install provisions, so leaving them behind hands the child a binary older than the floor its tools assume. `scripts/check-runner-gog-version.mjs` checks those against the floor and fails `npm test` on any pin below it, so a missed one is a red build.
 
 A third pin set it **cannot** see is the `dependencies` pin stored on each live mcp-host registration. mcp-host resolves a dependency to an exact tag + asset + sha256 at registration time and keeps it; the follow cron moves only the *package* version, never a dependency pin. So a floor bump also means, on each of the six registrations below:
 
@@ -215,7 +215,7 @@ standing `unmet` manifest asks. Registering a new one mirrors the others:
 ```sh
 mcp-host register --slug gog-<service> --npm gogcli-mcp-<service> \
   --name 'gog <service>' --follow --data-dir \
-  --dep 'github:openclaw/gogcli@v0.40.0:gogcli_*_linux_amd64.tar.gz#gog' \
+  --dep 'github:openclaw/gogcli@v0.41.0:gogcli_*_linux_amd64.tar.gz#gog' \
   --env GOG_KEYRING_BACKEND=file \
   --secret-env GOG_CLIENT_ID=GOG_CLIENT_ID \
   --secret-env GOG_CLIENT_SECRET=GOG_CLIENT_SECRET \
