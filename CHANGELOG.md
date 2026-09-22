@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.5](https://github.com/chrischall/gogcli-mcp/compare/v4.2.4...v4.2.5) (2026-09-22)
+
+
+### Bug Fixes
+
+* require gog 0.41.0 so Gmail thread searches stop returning partial results silently ([#388](https://github.com/chrischall/gogcli-mcp/issues/388)) ([2838811](https://github.com/chrischall/gogcli-mcp/commit/2838811305b1911f506c3add85fd1daa276f0ccf))
+
 ## [4.2.4](https://github.com/chrischall/gogcli-mcp/compare/v4.2.3...v4.2.4) (2026-09-21)
 
 
