@@ -91,7 +91,7 @@ dependencies:
   # bumping these nine pins, and the pin stored on each mcp-host registration.
   - kind: github-release
     repo: openclaw/gogcli
-    tag: v0.40.0
+    tag: v0.41.0
     asset: "gogcli_*_linux_amd64.tar.gz"
     bin: [gog]
 state:
