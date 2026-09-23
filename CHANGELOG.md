@@ -1,5 +1,22 @@
 # Changelog
 
+## [4.3.0](https://github.com/chrischall/gogcli-mcp/compare/v4.2.5...v4.3.0) (2026-09-23)
+
+
+### Features
+
+* **security:** confine local file paths to GOG_FILE_ROOTS and close the escape-hatch holes around the read-only switch and Gmail sending and forwarding ([#390](https://github.com/chrischall/gogcli-mcp/issues/390)) ([c4458d8](https://github.com/chrischall/gogcli-mcp/commit/c4458d8c6f50fe2d7ad8f12b933ae79bc3b68662))
+
+
+### Bug Fixes
+
+* **tools:** stop suggesting run-tool subcommands the tool refuses ([#393](https://github.com/chrischall/gogcli-mcp/issues/393)) ([c023e37](https://github.com/chrischall/gogcli-mcp/commit/c023e374dbd317896a2cc58a8b6e40c903772b9a))
+
+
+### Documentation
+
+* **run-path-guard:** keep assertRunPathsConfined's docblock on its own function ([#395](https://github.com/chrischall/gogcli-mcp/issues/395)) ([9c5a710](https://github.com/chrischall/gogcli-mcp/commit/9c5a7103984bf2ce179d46bb120eef603a033a35))
+
 ## [4.2.5](https://github.com/chrischall/gogcli-mcp/compare/v4.2.4...v4.2.5) (2026-09-22)
 
 
