@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, errorText, payloadArg, pos } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, errorText, payloadArg, pos, confinePath, confineAtFile } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
@@ -148,7 +148,8 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_export', {
     description: 'Export a spreadsheet as CSV, TSV, or PDF.',
-    annotations: { readOnlyHint: true },
+    // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       format: z.string().optional().describe('Export format: csv, tsv, pdf (default: csv)'),
@@ -157,6 +158,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, format, out, overwrite, account }) => {
+    if (out) confinePath(out, 'out');
     const args: GogArg[] = ['sheets', 'export', pos(spreadsheetId)];
     if (format) args.push(`--format=${format}`);
     if (out) args.push(`--out=${out}`);
@@ -478,6 +480,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, cell, url, text, runsJson, cellsJson, account }) => {
+    if (cellsJson) confineAtFile(cellsJson, 'cellsJson');
     const args: GogArg[] = ['sheets', 'links', 'set', pos(spreadsheetId)];
     if (cell) args.push(pos(cell));
     if (url) args.push(pos(url));
@@ -635,6 +638,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, dataJson, input, includeValuesInResponse, responseRender, responseDateTimeRender, account }) => {
+    confineAtFile(dataJson, 'dataJson');
     const args: GogArg[] = ['sheets', 'batch-update', pos(spreadsheetId), `--data-json=${dataJson}`];
     if (input) args.push(`--input=${input}`);
     if (includeValuesInResponse) args.push('--include-values-in-response');

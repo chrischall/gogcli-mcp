@@ -7,6 +7,7 @@ import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
 import { attachmentNames, bodyPreview, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText } from '../gmail-dispatch-guard.js';
 import { pos } from '../argv.js';
+import { confinePath, confinePaths } from '../file-roots.js';
 
 // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
 // only in the subcommand and default recipient set (reply → sender; reply-all
@@ -25,7 +26,7 @@ export const replySchema = {
   remove: z.array(z.string()).optional().describe('Remove these recipients from all fields (repeatable) — e.g. to drop someone from a reply-all.'),
   subject: z.string().optional().describe('Override reply subject (default: "Re: <original>"). A changed subject starts a NEW Gmail thread.'),
   noQuote: z.boolean().optional().describe('Do not include the original message quoted below the reply (default: the original is quoted)'),
-  attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension.'),
+  attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
   attachInline: attachInlineParam,
   from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
   autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
@@ -54,8 +55,18 @@ export type ReplyFlags = {
   signatureFile?: string;
 };
 
+// Every server path a reply/draft names must sit inside GOG_FILE_ROOTS: each is
+// read on the gog host and mailed out, so unconfined it is a file-exfiltration
+// primitive (audit SEC-3). Checked before anything else touches gog.
+export function confineReplyPaths(f: Pick<ReplyFlags, 'attach' | 'bodyHtmlFile' | 'signatureFile'>): void {
+  confinePaths(f.attach, 'attach');
+  if (f.bodyHtmlFile) confinePath(f.bodyHtmlFile, 'bodyHtmlFile');
+  if (f.signatureFile) confinePath(f.signatureFile, 'signatureFile');
+}
+
 export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
   assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
+  confineReplyPaths(f);
   if (f.body) args.push(payloadArg('body', 'body-file', f.body));
   if (f.bodyHtml) args.push(payloadArg('body-html', 'body-html-file', f.bodyHtml, 'html'));
   else if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
@@ -276,11 +287,12 @@ export function registerGmailTools(server: McpServer): void {
       replyToMessageId: z.string().optional().describe('Message ID to thread this message against — sets In-Reply-To/References only. It does NOT quote the original (pass quote for that), inherit its recipients, or prefix the subject with "Re:". For an actual reply use gog_gmail_reply.'),
       threadId: z.string().optional().describe('Thread ID to thread this message within. Same caveat as replyToMessageId: threading only, no quote and no inherited subject or recipients.'),
       quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or threadId. gog quotes by DEFAULT on gmail reply but never on gmail send, so without this a threaded send arrives with the original nowhere in it.'),
-      attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment.'),
+      attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       attachInline: attachInlineParam,
       account: accountParam,
     }),
   }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, account }, ctx) => {
+    confinePaths(attach, 'attach');
     // Built (and validated — inlineAttachmentArgs throws on bad base64 or an
     // oversize file) BEFORE the confirmation request, on both paths: a prompt that
     // skipped this would tell a caller "looks fine, send it" about an
@@ -354,6 +366,7 @@ export function registerGmailTools(server: McpServer): void {
     inputSchema: sendReplySchema,
   }, async ({ messageId, account, ...flags }, ctx) => {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', flags.bodyHtml, flags.bodyHtmlFile);
+    confineReplyPaths(flags);
     return sendReply('reply', 'gog_gmail_reply', messageId, account, flags, ctx);
   });
 
@@ -370,6 +383,7 @@ export function registerGmailTools(server: McpServer): void {
     inputSchema: sendReplySchema,
   }, async ({ messageId, account, ...flags }, ctx) => {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', flags.bodyHtml, flags.bodyHtmlFile);
+    confineReplyPaths(flags);
     return sendReply('reply-all', 'gog_gmail_reply_all', messageId, account, flags, ctx);
   });
 

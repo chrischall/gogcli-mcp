@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, pos } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
@@ -2457,7 +2457,9 @@ export function registerExtraGmailTools(server: McpServer): void {
       'nothing to your Drive and is NOT blocked by GOG_READONLY — it is the right choice when you need the bytes ' +
       'themselves and they are too large or the wrong type to come back inline. It works only where this server is ' +
       'hosted with a blob store (e.g. mcp-host); on a local stdio install it errors and tells you so.',
-    annotations: { readOnlyHint: true },
+    // Writes the file on the gog host (a caller `out` can overwrite one) and
+    // deliver="drive" creates a Drive file: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       messageId: z.string().describe('Gmail message ID'),
       attachmentId: z.string().optional().describe('The opaque attachment ID from a listing. Legacy addressing: Gmail re-issues a DIFFERENT id for the same part on every API call, so an id copied from an older listing can be stale. Prefer attachmentIndex. Exactly one of attachmentId / attachmentIndex is required.'),
@@ -2467,7 +2469,7 @@ export function registerExtraGmailTools(server: McpServer): void {
         .enum(['auto', 'inline', 'drive', 'url', 'off'])
         .optional()
         .describe('How to return the contents: auto (image inline; else a server-side file path), inline (force bytes as image/resource blob), drive (always a Drive link), url (a signed download link you can fetch with curl — hosted deployments only), or off (server-side download only). Default: auto.'),
-      out: z.string().optional().describe('Server-side path where gog writes the file. NOTE: this resolves on the gog server\'s filesystem, not your machine — on a hosted deployment you cannot read it. deliver="url" ignores it (the server has to read the file back to upload it, and only does that from its own download directory); every other delivery mode honors it. Omit it to use an ephemeral temp path.'),
+      out: z.string().optional().describe('Server-side path where gog writes the file; must be inside the server\'s GOG_FILE_ROOTS directories. NOTE: this resolves on the gog server\'s filesystem, not your machine — on a hosted deployment you cannot read it. deliver="url" ignores it (the server has to read the file back to upload it, and only does that from its own download directory); every other delivery mode honors it. Omit it to use an ephemeral temp path.'),
       name: z.string().optional().describe('Filename override. Defaults to the attachment\'s real filename from the message metadata; pass this to skip that lookup or force a name.'),
       driveFolder: z.string().optional().describe('Destination Google Drive folder ID for the uploaded copy (deliver="drive").'),
       account: accountParam,
@@ -2484,6 +2486,9 @@ export function registerExtraGmailTools(server: McpServer): void {
         'attachmentId is not stable across API calls and a copied one may no longer resolve.',
       );
     }
+    // A caller `out` is a write to the gog host's filesystem with attacker-
+    // chosen bytes: it must sit inside GOG_FILE_ROOTS (SEC-4).
+    if (out) confinePath(out, 'out');
     const indexed = attachmentIndex !== undefined;
     const attachmentRef = indexed ? String(attachmentIndex) : attachmentId as string;
     // deliver="url" needs the host's blob store, and the answer to "is there
@@ -2529,11 +2534,21 @@ export function registerExtraGmailTools(server: McpServer): void {
         );
         outPath = undefined;
       }
+      // Our own private download root, not a caller path: made owner-only and
+      // swept of expired downloads before gog writes into it (SEC-6).
+      const ownPath = !outPath;
       if (!outPath) {
+        await prepareDownloadRoot();
         outPath = deliver === 'url'
           ? blobOutPath(messageId, attachmentRef, filename ?? 'attachment')
           : messageOutPath(messageId, filename ?? 'attachment');
       }
+      // A staging copy the caller will never be pointed at again is deleted
+      // once delivered; one returned BY PATH is left for the TTL sweep.
+      const discard = async (result: CallToolResult, file: string): Promise<CallToolResult> => {
+        if (ownPath) await removeDownload(file);
+        return result;
+      };
 
       // 3. Download. --inline returns the bytes for the image/resource cases;
       //    skip it when delivery is by path, Drive or URL (don't ship base64 only
@@ -2605,19 +2620,19 @@ export function registerExtraGmailTools(server: McpServer): void {
         return withNote(textResult({ delivery: 'file', path, cached: info.cached, bytes: info.bytes, fileName: filename, mimeType }), notes);
       }
       if (deliver === 'drive') {
-        return withNote(await deliverViaDrive(path, filename, driveFolder, account), notes);
+        return discard(withNote(await deliverViaDrive(path, filename, driveFolder, account), notes), path);
       }
       // deliver === 'url'. The minter is set for that mode and no other, and it
       // was resolved before the download — so this branch cannot be reached
       // without one, and no other mode can fall into it.
       if (blobMinter) {
-        return withNote(await deliverViaBlobUrl(blobMinter, messageId, attachmentRef, path, filename, mimeType), notes);
+        return discard(withNote(await deliverViaBlobUrl(blobMinter, messageId, attachmentRef, path, filename, mimeType), notes), path);
       }
       if (deliver === 'inline') {
         if (info.contentBase64) {
-          return withNote(isImage
+          return discard(withNote(isImage
             ? inlineImageResult(summary, info.contentBase64, mimeType)
-            : inlineResourceResult(messageId, filename, summary, info.contentBase64, mimeType), notes);
+            : inlineResourceResult(messageId, filename, summary, info.contentBase64, mimeType), notes), path);
         }
         if (inlineUnusable) {
           return errorResult(
@@ -2634,7 +2649,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       // deliver === 'auto': images render everywhere; everything else is a
       // server-side file path.
       if (isImage && info.contentBase64) {
-        return withNote(inlineImageResult(summary, info.contentBase64, mimeType), notes);
+        return discard(withNote(inlineImageResult(summary, info.contentBase64, mimeType), notes), path);
       }
       return withNote(fileResult(path, filename, mimeType, info.bytes), notes);
     } catch (err) {
@@ -2778,21 +2793,28 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       threadId: z.string().describe('Gmail thread ID'),
-      download: z.boolean().optional().describe('Download all attachments'),
+      download: z.boolean().optional().describe('No longer supported (this tool is read-only): passing true is refused. Download attachments one at a time with gog_gmail_attachment.'),
       full: z.boolean().optional().describe('Show full message bodies'),
       sanitizeContent: z.boolean().optional().describe('Strip HTML, remove URLs, omit raw payloads from JSON (largest payload-size reduction)'),
       latestN: z.number().int().positive().optional().describe('Return only the most recent N messages in the thread (wrapper-side trim; avoids overflowing context on long threads)'),
       snippetsOnly: z.boolean().optional().describe('Reduce each message to its id, labels, snippet, and key headers (From/To/Cc/Subject/Date), dropping full bodies'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` within its message instead of an opaque `attachmentId`. The index is stable across calls (a message\'s MIME structure does not change) while the id is not, so this is what you want before calling gog_gmail_attachment.'),
-      outDir: z.string().optional().describe('Directory to write attachments to (default: current directory)'),
+      outDir: z.string().optional().describe('No longer supported (this tool is read-only): passing it is refused. Use gog_gmail_attachment.'),
       account: accountParam,
     }),
   }, async ({ threadId, download, full, sanitizeContent, latestN, snippetsOnly, useIndexedAttachmentIds, outDir, account }) => {
+    if (download || outDir) {
+      // A read-only tool must not write files (audit SEC-4): gog would drop every
+      // attachment into a server directory with no confinement and no cleanup.
+      return errorResult(
+        'download/outDir are no longer supported on gog_gmail_thread_get: it is a read-only tool. Fetch each attachment with '
+        + 'gog_gmail_attachment instead (deliver="url" or "drive" on a hosted deployment, deliver="off" for a '
+        + 'server-side file), using the messageId + attachmentIndex this tool lists.',
+      );
+    }
     const args: GogArg[] = ['gmail', 'thread', 'get', pos(threadId)];
-    if (download) args.push('--download');
     if (full) args.push('--full');
     if (sanitizeContent) args.push('--sanitize-content');
-    if (outDir) args.push(`--out-dir=${outDir}`);
     // PINNED, not conditional: GOG_GMAIL_USE_INDEXED_ATTACHMENT_IDS in the host env
     // swaps `attachmentId` for `attachmentIndex` in every attachments[] entry. Only
     // an explicit flag makes the response shape the same on both transports.
@@ -2819,19 +2841,26 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_thread_attachments', {
-    description: 'List all attachments in a Gmail thread, optionally downloading them. NOTE: download/outDir write to the CONNECTOR/gog server\'s filesystem — on a hosted deployment (e.g. mcp-host) you can\'t read those files, so use gog_gmail_attachment per attachment to receive bytes (image inline, or deliver="url"/"drive"). This tool is best used just to LIST attachments (filenames, ids, sizes) and then fetch the ones you want individually.',
+    description: 'List all attachments in a Gmail thread (filenames, ids, sizes). Read-only: to receive the bytes, fetch each one with gog_gmail_attachment (image inline, or deliver="url"/"drive"/"off").',
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       threadId: z.string().describe('Gmail thread ID'),
-      download: z.boolean().optional().describe('Download all attachments to the SERVER filesystem (see the note above; on a hosted deployment the files aren\'t reachable — fetch individually with gog_gmail_attachment instead).'),
+      download: z.boolean().optional().describe('No longer supported (this tool is read-only): passing true is refused. Fetch attachments individually with gog_gmail_attachment.'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId`. Set this before calling gog_gmail_attachment: the index is stable across calls, the id is not. The index counts WITHIN each message, and this listing flattens every message\'s attachments into one array — so pair each row\'s `messageId` with its own `attachmentIndex`; a row\'s position in the flat array is NOT the index.'),
-      outDir: z.string().optional().describe('Directory to write attachments to, resolved on the gog SERVER\'s filesystem (default: current directory). Not your local machine on a hosted deployment.'),
+      outDir: z.string().optional().describe('No longer supported (this tool is read-only): passing it is refused. Use gog_gmail_attachment.'),
       account: accountParam,
     }),
   }, async ({ threadId, download, useIndexedAttachmentIds, outDir, account }) => {
+    if (download || outDir) {
+      // A read-only tool must not write files (audit SEC-4): gog would drop every
+      // attachment into a server directory with no confinement and no cleanup.
+      return errorResult(
+        'download/outDir are no longer supported on gog_gmail_thread_attachments: it is a read-only tool. Fetch each attachment with '
+        + 'gog_gmail_attachment instead (deliver="url" or "drive" on a hosted deployment, deliver="off" for a '
+        + 'server-side file), using the messageId + attachmentIndex this tool lists.',
+      );
+    }
     const args: GogArg[] = ['gmail', 'thread', 'attachments', pos(threadId)];
-    if (download) args.push('--download');
-    if (outDir) args.push(`--out-dir=${outDir}`);
     // PINNED — see gog_gmail_thread_get. This listing is the one place the index is
     // load-bearing: gog concatenates every message's attachments into a single
     // array, so array position is NOT the per-message index the download expects.
@@ -3117,13 +3146,21 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       draftId: z.string().describe('Draft ID'),
-      download: z.boolean().optional().describe('Download draft attachments'),
+      download: z.boolean().optional().describe('No longer supported (this tool is read-only): passing true is refused. Fetch attachments with gog_gmail_attachment.'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId` (stable across calls, unlike the id).'),
       account: accountParam,
     }),
   }, async ({ draftId, download, useIndexedAttachmentIds, account }) => {
+    if (download) {
+      // A read-only tool must not write files (audit SEC-4): gog would drop every
+      // attachment into a server directory with no confinement and no cleanup.
+      return errorResult(
+        'download/outDir are no longer supported on gog_gmail_drafts_get: it is a read-only tool. Fetch each attachment with '
+        + 'gog_gmail_attachment instead (deliver="url" or "drive" on a hosted deployment, deliver="off" for a '
+        + 'server-side file), using the messageId + attachmentIndex this tool lists.',
+      );
+    }
     const args: GogArg[] = ['gmail', 'drafts', 'get', pos(draftId)];
-    if (download) args.push('--download');
     args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false'); // PINNED — see gog_gmail_thread_get
     return runOrDiagnose(args, { account });
   });
@@ -3141,7 +3178,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyTo: z.string().optional().describe('Reply-To header address'),
     quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or replyToThreadId. DEFAULTS OFF: a draft created with a reply target but without this threads correctly and still reads as a brand-new message, because gog only quotes by default on its reply subcommands. For a real reply draft prefer gog_gmail_drafts_reply / gog_gmail_drafts_reply_all, which also inherit the recipients and the "Re:" subject that this tool leaves to you.'),
     replyAll: z.boolean().optional().describe('Auto-populate recipients from the original message (reply-all), inferring To/Cc from it. Requires replyToMessageId or replyToThreadId. Explicit to/cc/bcc still apply on top; omitRecipients still suppresses them.'),
-    attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all).'),
+    attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all). Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
     attachInline: attachInlineParam,
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
@@ -3172,6 +3209,9 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   function appendDraftFlags(args: GogArg[], f: DraftFlags): void {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
+    // Server paths are read on the gog host and mailed out: confined (SEC-3).
+    confinePaths(f.attach, 'attach');
+    if (f.bodyHtmlFile) confinePath(f.bodyHtmlFile, 'bodyHtmlFile');
     if (!f.omitRecipients) {
       if (f.to) args.push(`--to=${f.to}`);
       if (f.cc) args.push(`--cc=${f.cc}`);
@@ -3447,6 +3487,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ file, labels, internalDateSource, neverMarkSpam, processForCalendar, account }) => {
+    confinePath(file, 'file');
     // Not gated: gogcli's internal/cmd/gmail_import.go has no confirmDestructive /
     // dryRunAndConfirmDestructive call site (checked at upstream v0.35.0, and a live
     // `--dry-run` against a v0.35.0 build proceeds), so no --force is appended.

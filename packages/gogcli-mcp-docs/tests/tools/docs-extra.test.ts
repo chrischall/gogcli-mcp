@@ -2273,3 +2273,49 @@ describe('server-side file params never advertise stdin as usable', () => {
     expect(desc).toMatch(/hang|never writes/i);
   });
 });
+
+// SEC-3/SEC-4: every model-supplied server path must resolve inside an
+// operator-configured root (GOG_FILE_ROOTS). The suite runs with '/' so the
+// arg-shape tests can use any path; these narrow it.
+async function withFileRoots<T>(roots: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.GOG_FILE_ROOTS;
+  process.env.GOG_FILE_ROOTS = roots;
+  try {
+    return await fn();
+  } finally {
+    process.env.GOG_FILE_ROOTS = prev;
+  }
+}
+
+describe('server paths are confined to GOG_FILE_ROOTS', () => {
+  it.each([
+    ['gog_docs_export', {"docId": "d1", "out": "/Users/me/.zshrc"}, 'out'],
+    ['gog_docs_insert', {"docId": "d1", "file": "/etc/passwd"}, 'file'],
+    ['gog_docs_append', {"docId": "d1", "file": "/etc/passwd"}, 'file'],
+    ['gog_docs_sed', {"docId": "d1", "file": "/etc/passwd"}, 'file'],
+    ['gog_docs_update', {"docId": "d1", "file": "/etc/passwd"}, 'file'],
+    ['gog_docs_named_range_replace', {"docId": "d1", "nameOrId": "n", "file": "/etc/passwd"}, 'file'],
+    ['gog_docs_cell_update', {"docId": "d1", "table": 1, "row": 1, "col": 1, "contentFile": "/etc/passwd"}, 'contentFile'],
+    ['gog_docs_insert_image', {"docId": "d1", "file": "/etc/passwd"}, 'file'],
+    ['gog_docs_insert_footnote', {"docId": "d1", "file": "/etc/passwd"}, 'file'],
+    ['gog_docs_header_create', {"docId": "d1", "file": "/etc/passwd"}, 'file'],
+    ['gog_docs_footer_create', {"docId": "d1", "file": "/etc/passwd"}, 'file'],
+    ['gog_docs_replace_image', {"docId": "d1", "file": "/etc/passwd"}, 'file'],
+  ] as Array<[string, Record<string, unknown>, string]>)('%s refuses %j outside the roots', async (tool, args, param) => {
+    const h = await setupHandlers();
+    const result = await withFileRoots('/srv/gog-files', () => h.callTool(tool, args));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(new RegExp(`${param} ".*" is outside the directories`));
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  // Clients auto-approve readOnlyHint tools; these write (and can overwrite)
+  // files on the gog host, so they must not claim to be read-only.
+  it.each(["gog_docs_export"])('%s is not advertised as read-only and is marked destructive', async (name) => {
+    const h = await setupHandlers();
+    const { tools } = await h.client.listTools();
+    const tool = tools.find((t) => t.name === name)!;
+    expect(tool.annotations?.readOnlyHint).not.toBe(true);
+    expect(tool.annotations?.destructiveHint).toBe(true);
+  });
+});

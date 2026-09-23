@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken, pos} from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // People is the richer API behind Google Contacts: Workspace directory
@@ -109,7 +109,8 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_export', {
     description: 'Export contacts as vCard (.vcf). Provide a selector (resource name, email, or name), or use query / all to export multiple.',
-    annotations: { readOnlyHint: true },
+    // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       selector: z.string().optional().describe('Contact resource name (people/...), email, or name'),
       query: z.string().optional().describe('Search query to export (max 30 results)'),
@@ -121,6 +122,7 @@ export function registerExtraContactsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ selector, query, all, out, max, pageToken, page, account }) => {
+    if (out) confinePath(out, 'out', { allowDash: true });
     const args: GogArg[] = ['contacts', 'export'];
     if (selector) args.push(pos(selector));
     if (query) args.push(`--query=${query}`);

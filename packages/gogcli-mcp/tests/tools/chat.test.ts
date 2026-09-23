@@ -343,3 +343,28 @@ describe('gog_chat_run', () => {
     expect(runner.run).toHaveBeenCalledWith(['chat', 'spaces', 'list'], { account: undefined });
   });
 });
+
+// SEC-3/SEC-4: every model-supplied server path must resolve inside an
+// operator-configured root (GOG_FILE_ROOTS). The suite runs with '/' so the
+// arg-shape tests can use any path; these narrow it.
+async function withFileRoots<T>(roots: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.GOG_FILE_ROOTS;
+  process.env.GOG_FILE_ROOTS = roots;
+  try {
+    return await fn();
+  } finally {
+    process.env.GOG_FILE_ROOTS = prev;
+  }
+}
+
+describe('gog_chat_messages_send — server paths', () => {
+  it('refuses an attach path outside GOG_FILE_ROOTS', async () => {
+    const harness = await setupHandlers();
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_chat_messages_send', {
+      space: 'spaces/AAA', attach: ['/etc/passwd'],
+    }));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('attach "/etc/passwd" is outside');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+});

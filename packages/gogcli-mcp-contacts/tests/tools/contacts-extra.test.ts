@@ -257,3 +257,45 @@ describe('gog_people_raw', () => {
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'raw', pos('people/c123')], { account: undefined, lossless: true });
   });
 });
+
+// SEC-3/SEC-4: every model-supplied server path must resolve inside an
+// operator-configured root (GOG_FILE_ROOTS). The suite runs with '/' so the
+// arg-shape tests can use any path; these narrow it.
+async function withFileRoots<T>(roots: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.GOG_FILE_ROOTS;
+  process.env.GOG_FILE_ROOTS = roots;
+  try {
+    return await fn();
+  } finally {
+    process.env.GOG_FILE_ROOTS = prev;
+  }
+}
+
+describe('server paths are confined to GOG_FILE_ROOTS', () => {
+  it.each([
+    ['gog_contacts_export', {"out": "/Users/me/.zshrc"}, 'out'],
+  ] as Array<[string, Record<string, unknown>, string]>)('%s refuses %j outside the roots', async (tool, args, param) => {
+    const h = harness;
+    const result = await withFileRoots('/srv/gog-files', () => h.callTool(tool, args));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(new RegExp(`${param} ".*" is outside the directories`));
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  // Clients auto-approve readOnlyHint tools; these write (and can overwrite)
+  // files on the gog host, so they must not claim to be read-only.
+  it.each(["gog_contacts_export"])('%s is not advertised as read-only and is marked destructive', async (name) => {
+    const h = harness;
+    const { tools } = await h.client.listTools();
+    const tool = tools.find((t) => t.name === name)!;
+    expect(tool.annotations?.readOnlyHint).not.toBe(true);
+    expect(tool.annotations?.destructiveHint).toBe(true);
+  });
+});
+
+describe('gog_contacts_export — stdout', () => {
+  it('still accepts "-" (stdout) whatever the roots', async () => {
+    await withFileRoots('/srv/gog-files', () => harness.callTool('gog_contacts_export', { out: '-' }));
+    expect(lib.runOrDiagnose).toHaveBeenCalled();
+  });
+});

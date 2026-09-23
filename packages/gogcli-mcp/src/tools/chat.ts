@@ -10,6 +10,7 @@ import {
 import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import { pos } from '../argv.js';
+import { confinePaths } from '../file-roots.js';
 
 // Google Chat (gog >= 0.38.0 for the mention/reaction metadata in
 // `messages list`, >= 0.39.0 for `messages search`; the rest is older).
@@ -185,12 +186,13 @@ export function registerChatTools(server: McpServer): void {
       thread: threadParam,
       attach: z.array(z.string()).optional().describe(
         'Attachment file paths, read WHERE GOG RUNS. On a hosted or remote deployment that is not your machine — use '
-        + 'attachInline there instead.',
+        + 'attachInline there instead. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).',
       ),
       attachInline: attachInlineParam,
       account: accountParam,
     }),
   }, async ({ space, text, thread, attach, attachInline, account }) => {
+    confinePaths(attach, 'attach');
     if (text === undefined && !attach?.length && !attachInline?.length) {
       throw new Error('A Chat message needs text, an attachment, or both.');
     }

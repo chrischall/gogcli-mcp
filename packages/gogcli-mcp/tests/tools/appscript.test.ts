@@ -158,3 +158,28 @@ describe('gog_appscript_run', () => {
     expect(runner.run).toHaveBeenCalledWith(['appscript', 'get', 'S1'], { account: undefined });
   });
 });
+
+// SEC-3/SEC-4: every model-supplied server path must resolve inside an
+// operator-configured root (GOG_FILE_ROOTS). The suite runs with '/' so the
+// arg-shape tests can use any path; these narrow it.
+async function withFileRoots<T>(roots: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.GOG_FILE_ROOTS;
+  process.env.GOG_FILE_ROOTS = roots;
+  try {
+    return await fn();
+  } finally {
+    process.env.GOG_FILE_ROOTS = prev;
+  }
+}
+
+describe('gog_appscript_pull — server paths', () => {
+  it('refuses a dir outside GOG_FILE_ROOTS', async () => {
+    const harness = await setupHandlers();
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_appscript_pull', {
+      scriptId: 'S1', dir: '/Users/me/Library/LaunchAgents',
+    }));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('dir "/Users/me/Library/LaunchAgents" is outside');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+});

@@ -2,12 +2,14 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 import { pos } from '../argv.js';
+import { confinePath } from '../file-roots.js';
 import type { GogArg } from '../runner.js';
 
 export function registerSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_export', {
-    description: 'Export a Google Slides presentation to a local file (pdf or pptx).',
-    annotations: { readOnlyHint: true },
+    description: 'Export a Google Slides presentation to a local file (pdf or pptx). The out path must be inside the server\'s GOG_FILE_ROOTS directories.',
+    // Writes a file on the gog host and can overwrite one: not read-only.
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       out: z.string().optional().describe('Output file path'),
@@ -16,6 +18,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, out, format, overwrite, account }) => {
+    if (out) confinePath(out, 'out');
     const args: GogArg[] = ['slides', 'export', pos(presentationId)];
     if (out) args.push(`--out=${out}`);
     if (format) args.push(`--format=${format}`);

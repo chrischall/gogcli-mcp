@@ -75,6 +75,7 @@ GOG_READONLY=1        # block all mutating gog API requests (injects gog's --rea
 DISPLAY_TZ=<IANA>     # zone for *Display fields and for interpreting naive gog values; defaults to America/New_York
 GOG_TIMEZONE=<IANA>   # zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge
 GOG_GMAIL_TRUSTED_DOMAINS=<csv> # additional domains excluded from external-recipient audit alerts
+GOG_FILE_ROOTS=<dirs>  # ':'-separated dirs every server-side path param (attach/localPath/file/out/outDir/dir) must resolve inside; default ~/gogcli-mcp-files
 GOG_CLIENT_ID=<id>          # startup auth bootstrap: OAuth client id, imported into gog's keyring
 GOG_CLIENT_SECRET=<secret>  # startup auth bootstrap: OAuth client secret
 GOG_REFRESH_TOKEN=<token>   # startup auth bootstrap: refresh token for GOG_ACCOUNT (`gog auth tokens export`)
@@ -186,6 +187,8 @@ It is **opt-in per tool**, never applied at the seam by default, because a tool 
 This needed mcp-utils **0.23.0**: 0.22.0's `MEDIA_KEY` was anchored to a bare noun (`^photos?$`) while every Google API suffixes (`thumbnailLink`, `iconUri`, `photoUrl`), so it matched nothing here and measured 0.0%. Fixed upstream in chrischall/mcp-utils#192.
 
 **Every other read tool takes no `view`, deliberately.** Per `fleet-conventions.md`, a tool registers only rungs it can honour, and without a field mask `compact` and `full` would be byte-identical — the aliasing lie. Adding `view` to a tool whose gog subcommand has no `--fields` would advertise a saving that does not exist.
+
+**Server-side paths.** Every tool param naming a path on the gog host (`attach`, `localPath`, `file`, `contentFile`, `notesFile`, `image`, `bodyHtmlFile`, `signatureFile`, `out`, `dir`, an `@file` JSON input) goes through `confinePath` (`src/file-roots.ts`, mcp-utils `assertPathWithinRoots`, symlink-resolved) against `GOG_FILE_ROOTS` plus the private attachment download root — a new path param must too. Attachment downloads default to `ATTACHMENT_DOWNLOAD_ROOT` (`src/attachment-root.ts`): per-user under the OS temp dir, verified 0700/owned/not-a-symlink before each use, staging copies deleted after inline/Drive/URL delivery, the rest swept after 24 h. A tool that writes a file is never `readOnlyHint: true` (this overrides the "never downgrade" rule below); the read tools that used to `--download` (`thread_get`, `thread_attachments`, `drafts_get`) now refuse it and point at `gog_gmail_attachment`.
 
 **Escape hatches and safety flags.** `gog_<service>_run` and `gog_api_call` forward model-supplied args, and gog takes the LAST value of a repeated flag, so `src/arg-guard.ts` refuses any forwarded arg that is `--` or starts with `--readonly`, `--enable-commands`, `--disable-commands`, `--access-token`, `--home`, `--account`/`--acct`/`-a`, `--client`, `--gmail-no-send` or `--no-input`; the runner refuses the same flags anywhere before `--` as a backstop. `gog_auth_run` only runs `list`/`status`/`services`/`remove`/`alias`. `gog_gmail_run` and `gog_api_call` always run with gog's `--gmail-no-send` and refuse forwarding, filter, delegate and `*.send` paths — sending goes through the confirmed tools.
 

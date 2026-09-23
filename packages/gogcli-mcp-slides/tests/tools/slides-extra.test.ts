@@ -788,3 +788,46 @@ describe('gog_slides_unskip_slide', () => {
     );
   });
 });
+
+// SEC-3/SEC-4: every model-supplied server path must resolve inside an
+// operator-configured root (GOG_FILE_ROOTS). The suite runs with '/' so the
+// arg-shape tests can use any path; these narrow it.
+async function withFileRoots<T>(roots: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.GOG_FILE_ROOTS;
+  process.env.GOG_FILE_ROOTS = roots;
+  try {
+    return await fn();
+  } finally {
+    process.env.GOG_FILE_ROOTS = prev;
+  }
+}
+
+describe('server paths are confined to GOG_FILE_ROOTS', () => {
+  it.each([
+    ['gog_slides_create_from_markdown', {"title": "t", "contentFile": "/etc/passwd"}, 'contentFile'],
+    ['gog_slides_create_from_template', {"templateId": "t", "title": "x", "replacementsFile": "/etc/passwd"}, 'replacementsFile'],
+    ['gog_slides_add_slide', {"presentationId": "p", "image": "/etc/passwd"}, 'image'],
+    ['gog_slides_add_slide', {"presentationId": "p", "image": "/srv/gog-files/a.png", "notesFile": "/etc/passwd"}, 'notesFile'],
+    ['gog_slides_insert_image', {"presentationId": "p", "slideId": "s", "image": "/etc/passwd", "width": 10}, 'image'],
+    ['gog_slides_update_notes', {"presentationId": "p", "slideId": "s", "notesFile": "/etc/passwd"}, 'notesFile'],
+    ['gog_slides_replace_slide', {"presentationId": "p", "slideId": "s", "image": "/etc/passwd"}, 'image'],
+    ['gog_slides_replace_slide', {"presentationId": "p", "slideId": "s", "notesFile": "/etc/passwd"}, 'notesFile'],
+    ['gog_slides_thumbnail', {"presentationId": "p", "slideId": "s", "out": "/Users/me/.zshrc"}, 'out'],
+  ] as Array<[string, Record<string, unknown>, string]>)('%s refuses %j outside the roots', async (tool, args, param) => {
+    const h = harness;
+    const result = await withFileRoots('/srv/gog-files', () => h.callTool(tool, args));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(new RegExp(`${param} ".*" is outside the directories`));
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  // Clients auto-approve readOnlyHint tools; these write (and can overwrite)
+  // files on the gog host, so they must not claim to be read-only.
+  it.each(["gog_slides_thumbnail"])('%s is not advertised as read-only and is marked destructive', async (name) => {
+    const h = harness;
+    const { tools } = await h.client.listTools();
+    const tool = tools.find((t) => t.name === name)!;
+    expect(tool.annotations?.readOnlyHint).not.toBe(true);
+    expect(tool.annotations?.destructiveHint).toBe(true);
+  });
+});

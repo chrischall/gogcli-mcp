@@ -1,12 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, pageTokenParam, pageAliasParam, resolvePageToken, inlineFileArg, pos} from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, pageTokenParam, pageAliasParam, resolvePageToken, inlineFileArg, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_download', {
     description: 'Download a Drive file to the local filesystem. For Google Docs formats, specify an export format (pdf, csv, xlsx, pptx, txt, png, docx, md).',
-    annotations: { readOnlyHint: true },
+    // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID to download'),
       out: z.string().optional().describe('Output file path (default: gogcli config dir)'),
@@ -15,6 +16,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, out, format, overwrite, account }) => {
+    if (out) confinePath(out, 'out');
     const args: GogArg[] = ['drive', 'download', pos(fileId)];
     if (out) args.push(`--out=${out}`);
     if (format) args.push(`--format=${format}`);
@@ -36,7 +38,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       'Conditional replacement refuses Google Workspace files (Docs/Sheets/Slides), which have no replaceable binary content.',
     annotations: { destructiveHint: false },
     inputSchema: z.object({
-      localPath: z.string().optional().describe('Path to the file to upload, resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) this path does not exist and the call fails with "no such file or directory" — use content there. Exactly one of localPath / content is required.'),
+      localPath: z.string().optional().describe('Path to the file to upload, resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) this path does not exist and the call fails with "no such file or directory" — use content there. Exactly one of localPath / content is required. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       content: z.string().optional().describe('The file\'s bytes, base64-encoded (standard alphabet, with padding) — upload a file you hold without it existing anywhere on the gog server. This is the only route that works when the caller and gog share no filesystem. Requires name (there is no path to take a filename from). Max 8 MiB; for anything larger use localPath from a local deployment. Exactly one of localPath / content is required — supplying both is an error, not a precedence rule.'),
       name: z.string().optional().describe('Override filename (create) or rename target (replace)'),
       parent: z.string().optional().describe('Destination folder ID (create only)'),
@@ -71,7 +73,7 @@ export function registerExtraDriveTools(server: McpServer): void {
     // they sent. gog cannot tell the two apart, which is the point.
     let pathArg: GogArg;
     if (localPath !== undefined) {
-      pathArg = localPath;
+      pathArg = confinePath(localPath, 'localPath');
     } else {
       if (!name) {
         throw new Error('content requires name: there is no path to derive the Drive filename from.');
@@ -98,13 +100,14 @@ export function registerExtraDriveTools(server: McpServer): void {
     description: 'Recursively push a local directory\'s contents into an existing Drive folder — uploads new files, updates changed ones (matched by name + MD5), and creates missing subfolders. One-way and additive: it never deletes anything on Drive. Use dryRun to preview the planned actions first.',
     annotations: { destructiveHint: true },
     inputSchema: z.object({
-      localPath: z.string().describe('Local directory to push (its contents are mirrored into the parent folder)'),
+      localPath: z.string().describe('Local directory to push (its contents are mirrored into the parent folder). Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       parent: z.string().describe('Existing destination Drive folder ID'),
       dryRun: z.boolean().optional().describe('Preview the planned actions without making any changes'),
       allDrives: z.boolean().optional().describe('Include shared drives (default: true; set false for My Drive only)'),
       account: accountParam,
     }),
   }, async ({ localPath, parent, dryRun, allDrives, account }) => {
+    confinePath(localPath, 'localPath');
     const args: GogArg[] = ['drive', 'sync', 'push', pos(localPath), `--parent=${parent}`];
     if (dryRun) args.push('--dry-run');
     if (allDrives === false) args.push('--no-all-drives');

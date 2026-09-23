@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, payloadArg, pos } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, payloadArg, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDocsTools(server: McpServer): void {
@@ -233,7 +233,8 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_export', {
     description: 'Export a Google Doc as PDF, plain text, HTML, DOCX, or other format.',
-    annotations: { readOnlyHint: true },
+    // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       format: z.string().optional().describe('Export format: pdf, txt, html, docx, rtf, odt, epub (default: pdf)'),
@@ -242,6 +243,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, format, out, overwrite, account }) => {
+    if (out) confinePath(out, 'out');
     const args: GogArg[] = ['docs', 'export', pos(docId)];
     if (format) args.push(`--format=${format}`);
     if (out) args.push(`--out=${out}`);
@@ -266,6 +268,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, content, index, file, at, occurrence, matchCase, tabId, segment, batch, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'insert', pos(docId)];
     if (content) args.push(pos(content));
     if (index !== undefined) args.push(`--index=${index}`);
@@ -291,6 +294,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, markdown, tab, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'write', pos(docId), '--append'];
     if (text) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
@@ -322,6 +326,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, expression, expressions, file, tab, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'sed', pos(docId)];
     if (expression) args.push(pos(expression));
     if (expressions) {
@@ -354,6 +359,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, index, replaceRange, markdown, at, occurrence, matchCase, tabId, segment, pageless, batch, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'update', pos(docId)];
     if (text) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
@@ -806,6 +812,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, nameOrId, text, file, tab, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'named-range', 'replace', pos(docId), pos(nameOrId)];
     if (text !== undefined) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
@@ -965,6 +972,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, row, col, content, contentFile, append, format, tableIndex, tab, account }) => {
+    if (contentFile) confinePath(contentFile, 'contentFile');
     // gog HARD-ERRORS on both forms ("cannot use both --content and
     // --content-file"), so reject here with a clearer message before gog runs.
     // (The slides commands are the opposite: they accept both and the file
@@ -1063,6 +1071,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, file, url, at, before, after, width, height, name, parent, onRestricted, tab, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'insert-image', pos(docId)];
     if (file) args.push(`--file=${file}`);
     if (url) args.push(`--url=${url}`);
@@ -1206,6 +1215,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, index, atEnd, at, occurrence, matchCase, tab, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'insert-footnote', pos(docId)];
     if (text !== undefined) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
@@ -1334,6 +1344,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, index, atEnd, at, occurrence, matchCase, tab, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'header', 'create', pos(docId)];
     if (text !== undefined) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
@@ -1392,6 +1403,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, index, atEnd, at, occurrence, matchCase, tab, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'footer', 'create', pos(docId)];
     if (text !== undefined) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
@@ -1437,6 +1449,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, file, url, objectId, matchAlt, name, parent, tab, account }) => {
+    if (file) confinePath(file, 'file');
     const args: GogArg[] = ['docs', 'replace-image', pos(docId)];
     if (file) args.push(`--file=${file}`);
     if (url) args.push(`--url=${url}`);

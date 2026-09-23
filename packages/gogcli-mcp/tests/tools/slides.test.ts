@@ -177,3 +177,38 @@ describe('gog_slides_run', () => {
     expect(result.content[0].text).toBe('Error: Run failed');
   });
 });
+
+// SEC-3/SEC-4: every model-supplied server path must resolve inside an
+// operator-configured root (GOG_FILE_ROOTS). The suite runs with '/' so the
+// arg-shape tests can use any path; these narrow it.
+async function withFileRoots<T>(roots: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.GOG_FILE_ROOTS;
+  process.env.GOG_FILE_ROOTS = roots;
+  try {
+    return await fn();
+  } finally {
+    process.env.GOG_FILE_ROOTS = prev;
+  }
+}
+
+describe('gog_slides_export — writes to disk', () => {
+  it('refuses an out path outside GOG_FILE_ROOTS', async () => {
+    const harness = await setupHandlers();
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_slides_export', {
+      presentationId: 'p1', out: '/Users/me/.zshrc', overwrite: true,
+    }));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('out "/Users/me/.zshrc" is outside');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  // SEC-4: clients auto-approve readOnlyHint tools; this one writes a file and
+  // can overwrite one, so the client must be allowed to ask.
+  it('is not advertised as read-only, and is marked destructive', async () => {
+    const harness = await setupHandlers();
+    const { tools } = await harness.client.listTools();
+    const tool = tools.find((t) => t.name === 'gog_slides_export')!;
+    expect(tool.annotations?.readOnlyHint).not.toBe(true);
+    expect(tool.annotations?.destructiveHint).toBe(true);
+  });
+});

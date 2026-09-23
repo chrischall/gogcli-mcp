@@ -8,6 +8,7 @@ import {
   pushPaginationFlags,
 } from './utils.js';
 import { pos } from '../argv.js';
+import { confinePath } from '../file-roots.js';
 import type { GogArg } from '../runner.js';
 
 // Google Apps Script (gog >= 0.38.0 for pull/deployments/versions).
@@ -70,11 +71,12 @@ export function registerAppScriptTools(server: McpServer): void {
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       scriptId: scriptIdParam,
-      dir: z.string().describe('Destination directory, resolved on the machine where gog runs'),
+      dir: z.string().describe('Destination directory, resolved on the machine where gog runs; must be inside the server\'s GOG_FILE_ROOTS directories'),
       overwrite: z.boolean().optional().describe('Overwrite files that already exist in dir'),
       account: accountParam,
     }),
   }, async ({ scriptId, dir, overwrite, account }) => {
+    confinePath(dir, 'dir');
     const args: GogArg[] = ['appscript', 'pull', pos(scriptId), pos(dir)];
     if (overwrite) args.push('--overwrite');
     return runOrDiagnose(args, { account });

@@ -1083,3 +1083,51 @@ describe('reply file params never advertise stdin as usable', () => {
     expect(properties).not.toHaveProperty('confirmed');
   });
 });
+
+// SEC-3/SEC-4: every model-supplied server path must resolve inside an
+// operator-configured root (GOG_FILE_ROOTS). The suite runs with '/' so the
+// arg-shape tests can use any path; these narrow it.
+async function withFileRoots<T>(roots: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.GOG_FILE_ROOTS;
+  process.env.GOG_FILE_ROOTS = roots;
+  try {
+    return await fn();
+  } finally {
+    process.env.GOG_FILE_ROOTS = prev;
+  }
+}
+
+describe('server paths are confined to GOG_FILE_ROOTS', () => {
+  it('gog_gmail_send refuses an attach path outside the roots, before asking or sending', async () => {
+    let asked = false;
+    const harness = await setupHandlers(async () => { asked = true; return { action: 'accept', content: { confirmed: true } }; });
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_gmail_send', {
+      to: 'x@example.com', subject: 's', body: 'b', attach: ['/home/me/.ssh/id_rsa'],
+    }));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/attach "\/home\/me\/.ssh\/id_rsa" is outside/);
+    expect(asked).toBe(false);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('gog_gmail_send accepts an attach path inside the roots', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_gmail_send', {
+      to: 'x@example.com', subject: 's', body: 'b', attach: ['/srv/gog-files/report.pdf'],
+    }));
+    expect(result.isError).toBeFalsy();
+  });
+
+  it.each([
+    [{ attach: ['/etc/passwd'] }, 'attach'],
+    [{ bodyHtmlFile: '/etc/passwd' }, 'bodyHtmlFile'],
+    [{ signatureFile: '/etc/passwd' }, 'signatureFile'],
+  ])('gog_gmail_reply refuses %j before reading the original', async (extra, param) => {
+    const harness = await setupHandlers();
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_gmail_reply', { messageId: 'm1', ...extra }));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain(`${param} "/etc/passwd" is outside`);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+});

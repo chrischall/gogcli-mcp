@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdtemp, mkdir, writeFile, symlink, truncate, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import {
   uploadToBlobStore,
@@ -147,11 +147,12 @@ describe('uploadToBlobStore', () => {
     });
 
     it('confines to the real attachment root when no root is given', async () => {
-      expect(ATTACHMENT_DOWNLOAD_ROOT).toBe('/tmp/gog-attachments');
+      // Per-user and private now (SEC-6), not the shared /tmp/gog-attachments.
+      expect(ATTACHMENT_DOWNLOAD_ROOT).toBe(join(tmpdir(), `gogcli-mcp-attachments-${userInfo().uid}`));
 
       const err = await failure(uploadToBlobStore(request({ path: '/etc/passwd' })));
 
-      expect(err.message).toContain('must be inside /tmp/gog-attachments');
+      expect(err.message).toContain(`must be inside ${ATTACHMENT_DOWNLOAD_ROOT}`);
       expect(received).toHaveLength(0);
     });
   });

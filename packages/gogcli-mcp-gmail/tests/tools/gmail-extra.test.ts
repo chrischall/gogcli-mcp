@@ -9,6 +9,9 @@ import { pos, isGogPositional } from '../../../gogcli-mcp/src/argv.js';
 
 // The argv as gog would read it, positional markers unwrapped — for stubs that
 // dispatch on an ID. Assertions about marking use pos() directly instead.
+// The per-user private download root (was a shared /tmp/gog-attachments).
+const ROOT = lib.ATTACHMENT_DOWNLOAD_ROOT;
+
 const plain = (args: unknown): string[] =>
   (args as unknown[]).map((a) => (isGogPositional(a) ? a.value : a)) as string[];
 
@@ -23,6 +26,11 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
     // `createBlobUrlMinter` are deliberately NOT mocked: the signing is the part
     // the gateway judges, so these tests assert the real minter's URLs.
     uploadToBlobStore: vi.fn(),
+    // Real filesystem effects on the download root (create 0700, sweep,
+    // delete-after-delivery) are covered in gogcli-mcp's attachment-root tests;
+    // here they are observed, not performed.
+    prepareDownloadRoot: vi.fn(),
+    removeDownload: vi.fn(),
   };
 });
 
@@ -128,21 +136,21 @@ describe('gog_gmail_attachment', () => {
 
   it('the repro: a no-name PDF on stdio comes back as a readable file path, named correctly', async () => {
     // download writes to a provisional temp path; the real name resolves by size.
-    stubGog({ meta: PDF_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 99723, contentBase64: PDF_B64 } });
+    stubGog({ meta: PDF_LIST, download: { path: `${ROOT}/m1/attachment`, bytes: 99723, contentBase64: PDF_B64 } });
     const res = await call({});
     // download to the temp path first, then the metadata read to resolve the name.
-    expect(dlArgs()).toEqual(['gmail', 'attachment', pos('m1'), pos('a1'), '--use-indexed-attachment-ids=false', '--inline', '--inline-max-bytes=3145728', '--out=/tmp/gog-attachments/m1/attachment', '--name=attachment']);
+    expect(dlArgs()).toEqual(['gmail', 'attachment', pos('m1'), pos('a1'), '--use-indexed-attachment-ids=false', '--inline', '--inline-max-bytes=3145728', `--out=${ROOT}/m1/attachment`, '--name=attachment']);
     expect(gotGet()).toBe(true);
     const payload = JSON.parse(textOf(res));
     expect(payload).toMatchObject({
-      delivery: 'file', path: '/tmp/gog-attachments/m1/attachment', fileName: 'Guest_Copy.pdf', mimeType: 'application/pdf', bytes: 99723,
+      delivery: 'file', path: `${ROOT}/m1/attachment`, fileName: 'Guest_Copy.pdf', mimeType: 'application/pdf', bytes: 99723,
     });
     // never an embedded-resource blob on auto (the claude.ai host rejects those for PDF).
     expect(res.content.some((c) => c.type === 'resource')).toBe(false);
   });
 
   it('an image renders inline (image block)', async () => {
-    stubGog({ meta: PNG_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 24, contentBase64: PNG_B64 } });
+    stubGog({ meta: PNG_LIST, download: { path: `${ROOT}/m1/attachment`, bytes: 24, contentBase64: PNG_B64 } });
     const local = await call({});
     expect(local.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
     expect(textOf(local)).toContain('photo.png');
@@ -150,16 +158,16 @@ describe('gog_gmail_attachment', () => {
   });
 
   it('a caller-supplied name skips the metadata lookup and names the file directly', async () => {
-    stubGog({ download: { path: '/tmp/gog-attachments/m1/report.pdf', bytes: 12, contentBase64: PDF_B64 } });
+    stubGog({ download: { path: `${ROOT}/m1/report.pdf`, bytes: 12, contentBase64: PDF_B64 } });
     await call({ name: 'report.pdf' });
     expect(gotGet()).toBe(false);
-    expect(dlArgs()).toEqual(['gmail', 'attachment', pos('m1'), pos('a1'), '--use-indexed-attachment-ids=false', '--inline', '--inline-max-bytes=3145728', '--out=/tmp/gog-attachments/m1/report.pdf', '--name=report.pdf']);
+    expect(dlArgs()).toEqual(['gmail', 'attachment', pos('m1'), pos('a1'), '--use-indexed-attachment-ids=false', '--inline', '--inline-max-bytes=3145728', `--out=${ROOT}/m1/report.pdf`, '--name=report.pdf']);
   });
 
   it('resolves the real filename by size and sanitizes path separators (no traversal)', async () => {
     stubGog({
       meta: { attachments: [{ filename: '../../etc/evil.pdf', mimeType: 'application/pdf', size: 10 }] },
-      download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 10, contentBase64: PDF_B64 },
+      download: { path: `${ROOT}/m1/attachment`, bytes: 10, contentBase64: PDF_B64 },
     });
     const res = await call({});
     const fileName = JSON.parse(textOf(res)).fileName as string;
@@ -170,7 +178,7 @@ describe('gog_gmail_attachment', () => {
   it('derives an extension from the MIME type when the part has no filename (never *.bin)', async () => {
     stubGog({
       meta: { attachments: [{ mimeType: 'application/pdf', size: 10 }] },
-      download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 10, contentBase64: PDF_B64 },
+      download: { path: `${ROOT}/m1/attachment`, bytes: 10, contentBase64: PDF_B64 },
     });
     const res = await call({});
     expect(JSON.parse(textOf(res)).fileName).toBe('attachment.pdf');
@@ -182,7 +190,7 @@ describe('gog_gmail_attachment', () => {
         { filename: 'a.pdf', mimeType: 'application/pdf', size: 10 },
         { filename: 'b.pdf', mimeType: 'application/pdf', size: 10 },
       ] },
-      download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 10, contentBase64: PDF_B64 },
+      download: { path: `${ROOT}/m1/attachment`, bytes: 10, contentBase64: PDF_B64 },
     });
     const res = await call({});
     // two parts share the size → no unique match → sniff + derived name.
@@ -190,14 +198,14 @@ describe('gog_gmail_attachment', () => {
   });
 
   it('survives a metadata-lookup failure and still delivers, sniffing the MIME', async () => {
-    stubGog({ metaError: new Error('get failed'), download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 24, contentBase64: PNG_B64 } });
+    stubGog({ metaError: new Error('get failed'), download: { path: `${ROOT}/m1/attachment`, bytes: 24, contentBase64: PNG_B64 } });
     const res = await call({});
     // resolveBySize catches the failure → sniff → image/png.
     expect(res.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
   });
 
   it('summarizes with "? bytes" when the download reports no size (skips the size lookup)', async () => {
-    stubGog({ download: { path: '/tmp/gog-attachments/m1/x.png', contentBase64: PNG_B64 }, meta: PNG_LIST });
+    stubGog({ download: { path: `${ROOT}/m1/x.png`, contentBase64: PNG_B64 }, meta: PNG_LIST });
     const res = await call({ name: 'x.png' });
     expect(gotGet()).toBe(false); // no bytes → no size match needed; name given anyway
     expect(res.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
@@ -205,7 +213,7 @@ describe('gog_gmail_attachment', () => {
   });
 
   it('skips the size lookup entirely when the download reports no bytes and no name', async () => {
-    stubGog({ download: { path: '/tmp/gog-attachments/m1/attachment', contentBase64: OCTET_B64 } });
+    stubGog({ download: { path: `${ROOT}/m1/attachment`, contentBase64: OCTET_B64 } });
     const res = await call({});
     // info.bytes undefined → resolveBySize short-circuits (no `gmail get`).
     expect(gotGet()).toBe(false);
@@ -214,19 +222,19 @@ describe('gog_gmail_attachment', () => {
 
   it('falls back to application/octet-stream when the message has no attachments array', async () => {
     // meta with no `attachments` key exercises the `?? []` guard in resolveBySize.
-    stubGog({ meta: {}, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 12, contentBase64: OCTET_B64 } });
+    stubGog({ meta: {}, download: { path: `${ROOT}/m1/attachment`, bytes: 12, contentBase64: OCTET_B64 } });
     const res = await call({});
     expect(JSON.parse(textOf(res))).toMatchObject({ delivery: 'file', fileName: 'attachment', mimeType: 'application/octet-stream' });
   });
 
   it('deliver=inline returns a native image block for an image', async () => {
-    stubGog({ meta: PNG_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 24, contentBase64: PNG_B64 } });
+    stubGog({ meta: PNG_LIST, download: { path: `${ROOT}/m1/attachment`, bytes: 24, contentBase64: PNG_B64 } });
     const res = await call({ deliver: 'inline' });
     expect(res.content[1]).toEqual({ type: 'image', data: PNG_B64, mimeType: 'image/png' });
   });
 
   it('deliver=inline forces an embedded resource blob for a non-image', async () => {
-    stubGog({ download: { path: '/tmp/gog-attachments/m1/doc.pdf', bytes: 12, contentBase64: PDF_B64 } });
+    stubGog({ download: { path: `${ROOT}/m1/doc.pdf`, bytes: 12, contentBase64: PDF_B64 } });
     const res = await call({ deliver: 'inline', name: 'doc.pdf' });
     expect(res.content[1]).toEqual({
       type: 'resource',
@@ -244,24 +252,24 @@ describe('gog_gmail_attachment', () => {
   });
 
   it('deliver=drive skips --inline and uploads, honoring driveFolder and name', async () => {
-    stubGog({ download: { path: '/tmp/gog-attachments/m1/renamed.png', bytes: 24 }, drive: { file: { id: 'F2', webViewLink: 'https://drive.google.com/file/d/F2/view' } } });
+    stubGog({ download: { path: `${ROOT}/m1/renamed.png`, bytes: 24 }, drive: { file: { id: 'F2', webViewLink: 'https://drive.google.com/file/d/F2/view' } } });
     const res = await call({ deliver: 'drive', driveFolder: 'DIR9', name: 'renamed.png', account: 'me@x.com' });
-    expect(dlArgs()).toEqual(['gmail', 'attachment', pos('m1'), pos('a1'), '--use-indexed-attachment-ids=false', '--inline-max-bytes=3145728', '--out=/tmp/gog-attachments/m1/renamed.png', '--name=renamed.png']);
+    expect(dlArgs()).toEqual(['gmail', 'attachment', pos('m1'), pos('a1'), '--use-indexed-attachment-ids=false', '--inline-max-bytes=3145728', `--out=${ROOT}/m1/renamed.png`, '--name=renamed.png']);
     expect(lib.run).toHaveBeenCalledWith(
-      ['drive', 'upload', pos('/tmp/gog-attachments/m1/renamed.png'), '--json', '--parent=DIR9', '--name=renamed.png'], { account: 'me@x.com' });
+      ['drive', 'upload', pos(`${ROOT}/m1/renamed.png`), '--json', '--parent=DIR9', '--name=renamed.png'], { account: 'me@x.com' });
     expect(JSON.parse(textOf(res))).toMatchObject({ deliveredVia: 'drive', id: 'F2' });
   });
 
   it('deliver=off returns a structured record with the size-resolved filename + mime', async () => {
-    stubGog({ meta: PDF_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 99723, cached: true } });
+    stubGog({ meta: PDF_LIST, download: { path: `${ROOT}/m1/attachment`, bytes: 99723, cached: true } });
     const res = await call({ deliver: 'off' });
     expect(JSON.parse(textOf(res))).toMatchObject({
-      delivery: 'file', path: '/tmp/gog-attachments/m1/attachment', fileName: 'Guest_Copy.pdf', mimeType: 'application/pdf', bytes: 99723, cached: true,
+      delivery: 'file', path: `${ROOT}/m1/attachment`, fileName: 'Guest_Copy.pdf', mimeType: 'application/pdf', bytes: 99723, cached: true,
     });
   });
 
   it('still reports drive delivery when the upload output lacks a file envelope', async () => {
-    stubGog({ meta: PDF_LIST, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 99723 }, drive: {} });
+    stubGog({ meta: PDF_LIST, download: { path: `${ROOT}/m1/attachment`, bytes: 99723 }, drive: {} });
     const res = await call({ deliver: 'drive' });
     const payload = JSON.parse(textOf(res));
     expect(payload).toMatchObject({ deliveredVia: 'drive' });
@@ -275,9 +283,9 @@ describe('gog_gmail_attachment', () => {
   });
 
   it('a caller name that sanitizes to empty falls back to "attachment"', async () => {
-    stubGog({ download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 10 } });
+    stubGog({ download: { path: `${ROOT}/m1/attachment`, bytes: 10 } });
     await call({ name: '...' }); // only dots → sanitizes to '' → 'attachment'
-    expect(dlArgs()).toEqual(expect.arrayContaining(['--name=attachment', '--out=/tmp/gog-attachments/m1/attachment']));
+    expect(dlArgs()).toEqual(expect.arrayContaining(['--name=attachment', `--out=${ROOT}/m1/attachment`]));
   });
 
   it('wraps a download failure without leaking the command line or the attachment token', async () => {
@@ -329,7 +337,7 @@ describe('gog_gmail_attachment', () => {
         // is what gets handed to gog — the strongest form of this assertion.
         stubGog({
           meta: { attachments: [{ filename, mimeType: 'image/png', size: 24, attachmentIndex: 0 }] },
-          download: { path: `/tmp/gog-attachments/m1/${filename}`, bytes: 24, contentBase64: PNG_B64, filename, mimeType: 'image/png' },
+          download: { path: `${ROOT}/m1/${filename}`, bytes: 24, contentBase64: PNG_B64, filename, mimeType: 'image/png' },
         });
         const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0 });
         const image = res.content.find((c) => c.type === 'image') as { data: string; mimeType: string };
@@ -337,7 +345,7 @@ describe('gog_gmail_attachment', () => {
         expect(image.data).toBe(PNG_B64);
         // The name reaches gog as a SINGLE argv element, spaces and all.
         expect(dlArgs()).toContain(`--name=${filename}`);
-        expect(dlArgs()).toContain(`--out=/tmp/gog-attachments/m1/${filename}`);
+        expect(dlArgs()).toContain(`--out=${ROOT}/m1/${filename}`);
         expect((res.content[0] as { text: string }).text).toContain(filename);
       });
     }
@@ -347,7 +355,7 @@ describe('gog_gmail_attachment', () => {
       stubGog({ download: { bytes: 24, contentBase64: PNG_B64, filename, mimeType: 'image/png' } });
       await call({ name: filename });
       const args = dlArgs();
-      expect(args).toContain(`--out=/tmp/gog-attachments/m1/${filename}`);
+      expect(args).toContain(`--out=${ROOT}/m1/${filename}`);
       // If anything had split on spaces these would appear as separate elements.
       expect(args).not.toContain('2026-06-13');
       expect(args).not.toContain('152500.png');
@@ -369,12 +377,12 @@ describe('gog_gmail_attachment', () => {
   it('degrades to the file path when the returned bytes are not valid base64', async () => {
     stubGog({
       meta: PNG_LIST,
-      download: { path: '/tmp/gog-attachments/m1/photo.png', bytes: 24, contentBase64: 'not!valid!base64!', filename: 'photo.png', mimeType: 'image/png' },
+      download: { path: `${ROOT}/m1/photo.png`, bytes: 24, contentBase64: 'not!valid!base64!', filename: 'photo.png', mimeType: 'image/png' },
     });
     const res = await call({});
     expect(res.content.some((c) => c.type === 'image')).toBe(false);
     expect(textOf(res)).toContain('not valid base64');
-    expect(JSON.stringify(res)).toContain('/tmp/gog-attachments/m1/photo.png');
+    expect(JSON.stringify(res)).toContain(`${ROOT}/m1/photo.png`);
   });
 
   // The MIME sniff decodes the leading bytes. On an unusable payload that decode
@@ -383,7 +391,7 @@ describe('gog_gmail_attachment', () => {
   it('survives a MIME sniff of unusable bytes instead of throwing out of the sniff', async () => {
     stubGog({
       meta: { attachments: [] }, // nothing to resolve a MIME type from
-      download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 4, contentBase64: '!!!!' },
+      download: { path: `${ROOT}/m1/attachment`, bytes: 4, contentBase64: '!!!!' },
     });
     const res = await call({});
     expect(res.isError).toBeUndefined();
@@ -396,12 +404,12 @@ describe('gog_gmail_attachment', () => {
   it('explains itself rather than throwing when deliver=inline gets unusable bytes', async () => {
     stubGog({
       meta: PNG_LIST,
-      download: { path: '/tmp/gog-attachments/m1/photo.png', bytes: 24, contentBase64: '!!!!', filename: 'photo.png', mimeType: 'image/png' },
+      download: { path: `${ROOT}/m1/photo.png`, bytes: 24, contentBase64: '!!!!', filename: 'photo.png', mimeType: 'image/png' },
     });
     const res = await call({ deliver: 'inline' });
     expect(res.isError).toBe(true);
     expect(textOf(res)).toContain('not valid base64');
-    expect(textOf(res)).toContain('/tmp/gog-attachments/m1/photo.png');
+    expect(textOf(res)).toContain(`${ROOT}/m1/photo.png`);
   });
 
   // The messageId is the CALLER's string and it is interpolated into gog's
@@ -440,7 +448,7 @@ describe('gog_gmail_attachment', () => {
             messageId, attachmentId: 'a1', deliver, name: 'photo.png',
           });
 
-          expect(outOf(dlArgs())).toBe(`/tmp/gog-attachments/${segment}/photo.png`);
+          expect(outOf(dlArgs())).toBe(`${ROOT}/${segment}/photo.png`);
         });
       }
     }
@@ -509,7 +517,7 @@ describe('gog_gmail_attachment', () => {
       // under the content type that signature commits to — byte for byte, or
       // the gateway answers the PUT as an object that does not exist.
       expect(uploaded().path).toBe(outOf(dlArgs()));
-      expect(uploaded().path).toBe('/tmp/gog-attachments/m1/a1/attachment');
+      expect(uploaded().path).toBe(`${ROOT}/m1/a1/attachment`);
       expect(uploaded().contentType).toBe('application/pdf');
       expect(uploaded().url).toContain(KEY_PATH);
       expect(uploaded().url).toMatch(/&sig=[\w-]+$/);
@@ -568,7 +576,7 @@ describe('gog_gmail_attachment', () => {
 
       const res = await call({ deliver: 'url', out: '/home/claude/mine.pdf' });
 
-      expect(outOf(dlArgs())).toBe('/tmp/gog-attachments/m1/a1/attachment');
+      expect(outOf(dlArgs())).toBe(`${ROOT}/m1/a1/attachment`);
       expect(uploaded().path).toBe(outOf(dlArgs()));
       expect(textOf(res)).toContain('`out` was ignored');
       expect(payloadOf(res)).toMatchObject({ deliveredVia: 'url' });
@@ -700,10 +708,10 @@ describe('gog_gmail_attachment', () => {
 
       expect(new URL(uploaded().url).pathname).toBe('/b/reg_7/gmail/_.._x/_b/Guest_Copy.pdf');
       // The SAME segments on disk. The string signed and the string read have to
-      // be one string: `/tmp/gog-attachments/../../x/attachment` is outside the
+      // be one string: `${ROOT}/../../x/attachment` is outside the
       // only root the upload will read from, so a raw id here is a refusal rather
       // than a link even though the key itself was minted correctly.
-      expect(outOf(dlArgs())).toBe('/tmp/gog-attachments/_.._x/_b/attachment');
+      expect(outOf(dlArgs())).toBe(`${ROOT}/_.._x/_b/attachment`);
       expect(uploaded().path).toBe(outOf(dlArgs()));
 
       // A LEADING SPACE is the shape that got through: the dot strip ran before
@@ -718,7 +726,7 @@ describe('gog_gmail_attachment', () => {
       });
 
       expect(new URL(uploaded().url).pathname).toBe('/b/reg_7/gmail/attachment/attachment/Guest_Copy.pdf');
-      expect(outOf(dlArgs())).toBe('/tmp/gog-attachments/attachment/attachment/attachment');
+      expect(outOf(dlArgs())).toBe(`${ROOT}/attachment/attachment/attachment`);
     });
 
     // THE OPERATOR'S DECISION, pinned rather than remembered: the blob store
@@ -910,13 +918,11 @@ describe('gog_gmail_thread_get', () => {
   it('passes all flags', async () => {
     await harness.callTool('gog_gmail_thread_get', {
       threadId: 't1',
-      download: true,
       full: true,
       sanitizeContent: true,
-      outDir: '/tmp/atts',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'thread', 'get', pos('t1'), '--download', '--full', '--sanitize-content', '--out-dir=/tmp/atts', '--use-indexed-attachment-ids=false'],
+      ['gmail', 'thread', 'get', pos('t1'), '--full', '--sanitize-content', '--use-indexed-attachment-ids=false'],
       { account: undefined },
     );
   });
@@ -1032,16 +1038,16 @@ describe('gog_gmail_thread_attachments', () => {
     );
   });
 
-  it('passes --download and --out-dir when provided', async () => {
-    await harness.callTool('gog_gmail_thread_attachments', {
-      threadId: 't1',
-      download: true,
-      outDir: '/tmp/atts',
-    });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'thread', 'attachments', pos('t1'), '--download', '--out-dir=/tmp/atts', '--use-indexed-attachment-ids=false'],
-      { account: undefined },
-    );
+  // SEC-4: a read-only listing used to write every attachment in the thread to
+  // a caller-chosen server directory. Downloads go through gog_gmail_attachment,
+  // which is confined and honestly annotated; the listing stays read-only.
+  it('refuses download/outDir instead of writing files from a read-only tool', async () => {
+    for (const args of [{ download: true }, { outDir: '/tmp/atts' }]) {
+      const result = await harness.callTool('gog_gmail_thread_attachments', { threadId: 't1', ...args });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('gog_gmail_attachment');
+    }
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
   });
 });
 
@@ -1650,12 +1656,11 @@ describe('gog_gmail_drafts_get', () => {
     );
   });
 
-  it('passes --download when true', async () => {
-    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', download: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'get', pos('d1'), '--download', '--use-indexed-attachment-ids=false'],
-      { account: undefined },
-    );
+  it('refuses download instead of writing files from a read-only tool', async () => {
+    const result = await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', download: true });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('gog_gmail_attachment');
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
   });
 });
 
@@ -3196,7 +3201,7 @@ describe('gog 0.35.0 — indexed attachment ids (gog_gmail_attachment)', () => {
   const textOf = (res: { content: unknown[] }) => (res.content[0] as { text: string }).text;
 
   it('resolves the real filename BEFORE the download and never runs the size heuristic', async () => {
-    stub({ meta: INDEXED_LIST, download: { path: '/tmp/gog-attachments/m1/Guest_Copy.pdf', bytes: 99723, contentBase64: PDF_B64 } });
+    stub({ meta: INDEXED_LIST, download: { path: `${ROOT}/m1/Guest_Copy.pdf`, bytes: 99723, contentBase64: PDF_B64 } });
     const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 1 });
     // exactly one metadata read, and it happens BEFORE the download.
     expect(runArgs().map((a) => a.slice(0, 2))).toEqual([['gmail', 'get'], ['gmail', 'attachment']]);
@@ -3204,17 +3209,17 @@ describe('gog 0.35.0 — indexed attachment ids (gog_gmail_attachment)', () => {
     // the index rides in the positional slot, and gog is told to read it as one.
     expect(dlArgs()).toEqual([
       'gmail', 'attachment', pos('m1'), pos('1'), '--use-indexed-attachment-ids', '--inline', '--inline-max-bytes=3145728',
-      '--out=/tmp/gog-attachments/m1/Guest_Copy.pdf', '--name=Guest_Copy.pdf',
+      `--out=${ROOT}/m1/Guest_Copy.pdf`, '--name=Guest_Copy.pdf',
     ]);
     expect(JSON.parse(textOf(res))).toMatchObject({ fileName: 'Guest_Copy.pdf', mimeType: 'application/pdf' });
   });
 
   it('pins the mode OFF on the legacy attachmentId path', async () => {
-    stub({ download: { path: '/tmp/gog-attachments/m1/x.pdf', bytes: 12, contentBase64: PDF_B64 } });
+    stub({ download: { path: `${ROOT}/m1/x.pdf`, bytes: 12, contentBase64: PDF_B64 } });
     await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'OPAQUE1', name: 'x.pdf' });
     expect(dlArgs()).toEqual([
       'gmail', 'attachment', pos('m1'), pos('OPAQUE1'), '--use-indexed-attachment-ids=false', '--inline', '--inline-max-bytes=3145728',
-      '--out=/tmp/gog-attachments/m1/x.pdf', '--name=x.pdf',
+      `--out=${ROOT}/m1/x.pdf`, '--name=x.pdf',
     ]);
   });
 
@@ -3233,13 +3238,13 @@ describe('gog 0.35.0 — indexed attachment ids (gog_gmail_attachment)', () => {
   });
 
   it('a caller-supplied name skips the index lookup', async () => {
-    stub({ meta: INDEXED_LIST, download: { path: '/tmp/gog-attachments/m1/mine.pdf', bytes: 5, contentBase64: PDF_B64 } });
+    stub({ meta: INDEXED_LIST, download: { path: `${ROOT}/m1/mine.pdf`, bytes: 5, contentBase64: PDF_B64 } });
     await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 1, name: 'mine.pdf' });
     expect(runArgs().some((a) => a[1] === 'get')).toBe(false);
   });
 
   it('survives an index lookup failure without falling back to the size heuristic', async () => {
-    stub({ metaError: new Error('get failed'), download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 12, contentBase64: PDF_B64 } });
+    stub({ metaError: new Error('get failed'), download: { path: `${ROOT}/m1/attachment`, bytes: 12, contentBase64: PDF_B64 } });
     const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0 });
     // only the (failed) pre-download lookup — resolveBySize must not run after it.
     expect(runArgs().filter((a) => a[1] === 'get')).toHaveLength(1);
@@ -3247,7 +3252,7 @@ describe('gog 0.35.0 — indexed attachment ids (gog_gmail_attachment)', () => {
   });
 
   it('tolerates a message whose listing carries no attachments array', async () => {
-    stub({ meta: {}, download: { path: '/tmp/gog-attachments/m1/attachment', bytes: 12, contentBase64: PDF_B64 } });
+    stub({ meta: {}, download: { path: `${ROOT}/m1/attachment`, bytes: 12, contentBase64: PDF_B64 } });
     const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 3 });
     expect(JSON.parse(textOf(res))).toMatchObject({ fileName: 'attachment.pdf' });
   });
@@ -3256,7 +3261,7 @@ describe('gog 0.35.0 — indexed attachment ids (gog_gmail_attachment)', () => {
     // gog >= 0.34 returns the part metadata alongside the bytes; prefer it over
     // any wrapper-side guess.
     stub({ meta: { attachments: [{}] }, download: {
-      path: '/tmp/gog-attachments/m1/attachment', bytes: 12, contentBase64: PDF_B64,
+      path: `${ROOT}/m1/attachment`, bytes: 12, contentBase64: PDF_B64,
       filename: 'From_Gog.pdf', mimeType: 'application/pdf',
     } });
     const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0 });
@@ -3265,7 +3270,7 @@ describe('gog 0.35.0 — indexed attachment ids (gog_gmail_attachment)', () => {
 
   it('prefers a caller name over the one gog reports', async () => {
     stub({ download: {
-      path: '/tmp/gog-attachments/m1/mine.pdf', bytes: 12, contentBase64: PDF_B64,
+      path: `${ROOT}/m1/mine.pdf`, bytes: 12, contentBase64: PDF_B64,
       filename: 'From_Gog.pdf', mimeType: 'application/pdf',
     } });
     const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0, name: 'mine.pdf' });
@@ -3273,11 +3278,11 @@ describe('gog 0.35.0 — indexed attachment ids (gog_gmail_attachment)', () => {
   });
 
   it('passes inlineMaxBytes through as --inline-max-bytes', async () => {
-    stub({ meta: INDEXED_LIST, download: { path: '/tmp/gog-attachments/m1/cover.png', bytes: 11 } });
+    stub({ meta: INDEXED_LIST, download: { path: `${ROOT}/m1/cover.png`, bytes: 11 } });
     await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0, inlineMaxBytes: 1048576 });
     expect(dlArgs()).toEqual([
       'gmail', 'attachment', pos('m1'), pos('0'), '--use-indexed-attachment-ids', '--inline', '--inline-max-bytes=1048576',
-      '--out=/tmp/gog-attachments/m1/cover.png', '--name=cover.png',
+      `--out=${ROOT}/m1/cover.png`, '--name=cover.png',
     ]);
   });
 
@@ -3306,8 +3311,8 @@ describe('gog 0.35.0 — indexed ids are pinned on every listing that emits atta
     expect(args()).toEqual(['gmail', 'thread', 'attachments', pos('t1'), '--use-indexed-attachment-ids=false']);
     vi.clearAllMocks();
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
-    await harness.callTool('gog_gmail_thread_attachments', { threadId: 't1', useIndexedAttachmentIds: true, download: true });
-    expect(args()).toEqual(['gmail', 'thread', 'attachments', pos('t1'), '--download', '--use-indexed-attachment-ids']);
+    await harness.callTool('gog_gmail_thread_attachments', { threadId: 't1', useIndexedAttachmentIds: true });
+    expect(args()).toEqual(['gmail', 'thread', 'attachments', pos('t1'), '--use-indexed-attachment-ids']);
   });
 
   it('gog_gmail_drafts_get pins the mode', async () => {
@@ -3315,8 +3320,8 @@ describe('gog 0.35.0 — indexed ids are pinned on every listing that emits atta
     expect(args()).toEqual(['gmail', 'drafts', 'get', pos('d1'), '--use-indexed-attachment-ids=false']);
     vi.clearAllMocks();
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
-    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', useIndexedAttachmentIds: true, download: true });
-    expect(args()).toEqual(['gmail', 'drafts', 'get', pos('d1'), '--download', '--use-indexed-attachment-ids']);
+    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', useIndexedAttachmentIds: true });
+    expect(args()).toEqual(['gmail', 'drafts', 'get', pos('d1'), '--use-indexed-attachment-ids']);
   });
 
   it('gog_gmail_messages_search pins BOTH attachment-shaping flags', async () => {
@@ -4239,5 +4244,103 @@ describe('gog_gmail_drafts_update — DRAFT_FORKED states what its listing can a
     const { parsed } = parse(await harness.callTool('gog_gmail_drafts_send', { draftId: 'rGONE' }));
     expect(parsed.replyTarget).toBeNull();
     expect(parsed.otherExplanations.join(' ')).not.toMatch(/reply target/i);
+  });
+});
+
+// SEC-3/SEC-4: every model-supplied server path must resolve inside an
+// operator-configured root (GOG_FILE_ROOTS). The suite runs with '/' so the
+// arg-shape tests can use any path; these narrow it.
+async function withFileRoots<T>(roots: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.GOG_FILE_ROOTS;
+  process.env.GOG_FILE_ROOTS = roots;
+  try {
+    return await fn();
+  } finally {
+    process.env.GOG_FILE_ROOTS = prev;
+  }
+}
+
+describe('server paths and disk writes (SEC-3/SEC-4/SEC-6)', () => {
+  it.each([
+    ['gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0, name: 'a.pdf', deliver: 'off', out: '/Users/me/Library/LaunchAgents/x.plist' }, 'out'],
+    ['gog_gmail_drafts_create', { subject: 's', body: 'b', attach: ['/Users/me/.config/gogcli/credentials.json'] }, 'attach'],
+    ['gog_gmail_drafts_create', { subject: 's', body: 'b', bodyHtmlFile: '/etc/passwd' }, 'bodyHtmlFile'],
+    ['gog_gmail_drafts_reply', { messageId: 'm1', body: 'b', attach: ['/etc/passwd'] }, 'attach'],
+    ['gog_gmail_import', { file: '/etc/passwd' }, 'file'],
+  ] as Array<[string, Record<string, unknown>, string]>)('%s refuses %j outside the roots', async (tool, args, param) => {
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool(tool, args));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(new RegExp(`${param} ".*" is outside the directories`));
+    expect(lib.run).not.toHaveBeenCalled();
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('gog_gmail_attachment is not advertised as read-only, and is marked destructive', async () => {
+    const { tools } = await harness.client.listTools();
+    const tool = tools.find((t) => t.name === 'gog_gmail_attachment')!;
+    expect(tool.annotations?.readOnlyHint).not.toBe(true);
+    expect(tool.annotations?.destructiveHint).toBe(true);
+  });
+
+  it.each(['gog_gmail_thread_get', 'gog_gmail_thread_attachments', 'gog_gmail_drafts_get'])(
+    '%s stays read-only now that it no longer downloads',
+    async (name) => {
+      const { tools } = await harness.client.listTools();
+      expect(tools.find((t) => t.name === name)!.annotations?.readOnlyHint).toBe(true);
+    },
+  );
+
+  it('gog_gmail_thread_get refuses download/outDir', async () => {
+    for (const args of [{ download: true }, { outDir: '/tmp/x' }]) {
+      const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1', ...args });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('gog_gmail_attachment');
+    }
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  // SEC-6: the default download directory is private and swept, and a staging
+  // copy nobody will read again is deleted once delivered.
+  describe('download root hygiene', () => {
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64');
+    const stubDownload = (download: Record<string, unknown>) => {
+      vi.mocked(lib.run).mockImplementation(async (args) => {
+        if (plain(args)[1] === 'attachment') return JSON.stringify(download);
+        if (plain(args)[1] === 'upload') return JSON.stringify({ file: { id: 'F', webViewLink: 'https://drive/x' } });
+        return JSON.stringify({ attachments: [{ filename: 'p.png', mimeType: 'image/png', size: 8 }] });
+      });
+    };
+    const defaultPath = `${lib.ATTACHMENT_DOWNLOAD_ROOT}/m1/p.png`;
+
+    it('prepares (0700 + sweep) the private root before a default-path download', async () => {
+      stubDownload({ path: defaultPath, bytes: 8, contentBase64: PNG });
+      await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0, deliver: 'off' });
+      expect(lib.prepareDownloadRoot).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['inline', 'drive'] as const)('deletes the staging copy after deliver="%s"', async (deliver) => {
+      stubDownload({ path: defaultPath, bytes: 8, contentBase64: PNG });
+      await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0, deliver });
+      expect(lib.removeDownload).toHaveBeenCalledWith(defaultPath);
+    });
+
+    it('deletes an inline-rendered image under deliver="auto"', async () => {
+      stubDownload({ path: defaultPath, bytes: 8, contentBase64: PNG });
+      await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0 });
+      expect(lib.removeDownload).toHaveBeenCalledWith(defaultPath);
+    });
+
+    it('keeps a file it returns BY PATH (deliver="off"), leaving it to the TTL sweep', async () => {
+      stubDownload({ path: defaultPath, bytes: 8 });
+      await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0, deliver: 'off' });
+      expect(lib.removeDownload).not.toHaveBeenCalled();
+    });
+
+    it('never deletes or prepares anything for a caller-chosen out path', async () => {
+      stubDownload({ path: '/srv/gog-files/p.png', bytes: 8, contentBase64: PNG });
+      await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentIndex: 0, deliver: 'inline', out: '/srv/gog-files/p.png' });
+      expect(lib.removeDownload).not.toHaveBeenCalled();
+      expect(lib.prepareDownloadRoot).not.toHaveBeenCalled();
+    });
   });
 });

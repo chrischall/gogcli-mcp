@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, payloadArg, pos } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, payloadArg, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // Payload routing note — slides differs from gmail/docs.
@@ -37,6 +37,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ title, content, contentFile, parent, debug, account }) => {
+    if (contentFile) confinePath(contentFile, 'contentFile');
     const args: GogArg[] = ['slides', 'create-from-markdown', pos(title)];
     if (content) args.push(payloadArg('content', 'content-file', content, 'md'));
     if (contentFile) args.push(`--content-file=${contentFile}`);
@@ -58,6 +59,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ templateId, title, replacements, replacementsFile, parent, exact, account }) => {
+    if (replacementsFile) confinePath(replacementsFile, 'replacementsFile');
     const args: GogArg[] = ['slides', 'create-from-template', pos(templateId), pos(title)];
     if (replacements) {
       for (const [k, v] of Object.entries(replacements)) {
@@ -82,6 +84,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, image, notes, notesFile, before, account }) => {
+    confinePath(image, 'image');
+    if (notesFile) confinePath(notesFile, 'notesFile');
     const args: GogArg[] = ['slides', 'add-slide', pos(presentationId), pos(image)];
     if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
@@ -105,6 +109,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, image, url, width, height, x, y, unit, account }) => {
+    if (image) confinePath(image, 'image');
     const args: GogArg[] = ['slides', 'insert-image', pos(presentationId), pos(slideId)];
     if (image) args.push(pos(image));
     args.push(`--width=${width}`);
@@ -176,6 +181,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, notes, notesFile, account }) => {
+    if (notesFile) confinePath(notesFile, 'notesFile');
     const args: GogArg[] = ['slides', 'update-notes', pos(presentationId), pos(slideId)];
     if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
@@ -195,6 +201,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, image, url, notes, notesFile, account }) => {
+    if (image) confinePath(image, 'image');
+    if (notesFile) confinePath(notesFile, 'notesFile');
     const args: GogArg[] = ['slides', 'replace-slide', pos(presentationId), pos(slideId)];
     if (image) args.push(pos(image));
     if (url) args.push(`--url=${url}`);
@@ -245,7 +253,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_thumbnail', {
     description: 'Get or download a rendered thumbnail image for a single slide.',
-    annotations: { readOnlyHint: true },
+    // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide object ID'),
@@ -256,6 +265,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, format, size, out, overwrite, account }) => {
+    if (out) confinePath(out, 'out');
     const args: GogArg[] = ['slides', 'thumbnail', pos(presentationId), pos(slideId)];
     if (format) args.push(`--format=${format}`);
     if (size) args.push(`--size=${size}`);

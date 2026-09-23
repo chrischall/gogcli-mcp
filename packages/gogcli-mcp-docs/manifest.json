@@ -36,7 +36,8 @@
       ],
       "env": {
         "GOG_ACCOUNT": "${user_config.gog_account}",
-        "GOG_PATH": "${user_config.gog_path}"
+        "GOG_PATH": "${user_config.gog_path}",
+        "GOG_FILE_ROOTS": "${user_config.gog_file_roots}"
       }
     }
   },
@@ -51,6 +52,12 @@
       "type": "string",
       "title": "gog Executable Path",
       "description": "Path to the gog executable (optional — defaults to 'gog' on your PATH)",
+      "required": false
+    },
+    "gog_file_roots": {
+      "type": "string",
+      "title": "Allowed file directories",
+      "description": "Directories tools may read files from (attachments, uploads) or write files to (exports, downloads), separated by ':' (';' on Windows). Optional — defaults to ~/gogcli-mcp-files",
       "required": false
     }
   },
