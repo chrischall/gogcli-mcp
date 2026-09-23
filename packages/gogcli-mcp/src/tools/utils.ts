@@ -6,7 +6,7 @@ import type { GogArg } from '../runner.js';
 import { normalizeTimestamps } from '../timestamps.js';
 import { stripConsumedPageToken } from '../pagination.js';
 import { assertSafeForwardedArgs, assertSafeSubcommand } from '../arg-guard.js';
-import { assertRunPathsConfined } from '../run-path-guard.js';
+import { assertRunPathsConfined, positionalPathTool } from '../run-path-guard.js';
 
 // Byte size at or below which a payload stays on the plain inline flag.
 //
@@ -149,6 +149,17 @@ export function registerRunTool(
   },
 ): void {
   const { service, examples, omitAccount = false, note, allowedSubcommands, vet, gmailNoSend = false } = options;
+  // The examples go straight into the schema the model reads, so every one must
+  // be a subcommand this tool actually runs. A stale example (#391: drive
+  // "upload" after #390 refused it) fails here, at registration, not in use.
+  for (const [, example] of examples.matchAll(/"([^"]+)"/g)) {
+    const refused = (allowedSubcommands && !allowedSubcommands.includes(example))
+      || vet?.(example, [])
+      || positionalPathTool(service, example);
+    if (refused) {
+      throw new Error(`gog_${service}_run example "${example}" is refused by the tool itself; list a subcommand it runs.`);
+    }
+  }
   const baseDescription = `Run any gog ${service} subcommand not covered by the other tools. Run \`gog ${service} --help\` for the full list of subcommands, or \`gog ${service} <subcommand> --help\` for flags on a specific subcommand.`;
   const restriction = allowedSubcommands
     ? ` Only these subcommands are available: ${allowedSubcommands.join(', ')}.`

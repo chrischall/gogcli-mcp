@@ -75,8 +75,13 @@ function confineFlagValue(flag: string, value: string): void {
  * <subcommand> ...args`) lies inside GOG_FILE_ROOTS (or the private attachment
  * download root), and nothing in it would run a local program.
  */
+/** The dedicated tool to use when `gog <service> <subcommand>` is refused for a positional path, else undefined. */
+export function positionalPathTool(service: string, subcommand: string): string | undefined {
+  return POSITIONAL_PATH_SUBCOMMANDS[service]?.[subcommand];
+}
+
 export function assertRunPathsConfined(service: string, subcommand: string, args: readonly string[]): void {
-  const dedicated = POSITIONAL_PATH_SUBCOMMANDS[service]?.[subcommand];
+  const dedicated = positionalPathTool(service, subcommand);
   if (dedicated) {
     throw new Error(
       `gog ${service} ${subcommand} reads or writes a local path given as a positional argument, so it is not available through gog_${service}_run. Use ${dedicated}, which confines the path to GOG_FILE_ROOTS.`,

@@ -94,5 +94,5 @@ export function registerSlidesTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  registerRunTool(server, { service: 'slides', examples: '"add-slide", "delete-slide", "update-notes"' });
+  registerRunTool(server, { service: 'slides', examples: '"delete-slide", "update-notes"' });
 }
