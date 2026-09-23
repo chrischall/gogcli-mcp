@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerApiTools } from '../../src/tools/api.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
@@ -142,5 +142,32 @@ describe('gog_api_call', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/not allowed/);
     expect(runner.run).not.toHaveBeenCalled();
+  });
+});
+
+// SEC-3/SEC-4: gog reads `--body=@path` from the host, so an unconfined body
+// is a read primitive (gog's credentials.json is itself valid JSON).
+describe('gog_api_call @file confinement', () => {
+  let prevRoots: string | undefined;
+  beforeEach(() => { prevRoots = process.env.GOG_FILE_ROOTS; process.env.GOG_FILE_ROOTS = '/nonexistent-gog-file-root'; });
+  afterEach(() => { process.env.GOG_FILE_ROOTS = prevRoots; });
+
+  it.each([
+    [{ body: '@/Users/x/Library/Application Support/gogcli/credentials.json' }, /body/],
+    [{ params: '@/etc/passwd' }, /params/],
+  ])('refuses %j outside GOG_FILE_ROOTS', async (extra, param) => {
+    const harness = await createTestHarness(registerApiTools);
+    const result = await harness.callTool('gog_api_call', { api: 'drive', version: 'v3', method: 'files.create', allowWrite: true, ...extra });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/outside the directories/);
+    expect(result.content[0].text).toMatch(param);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('passes an inline JSON body through', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await createTestHarness(registerApiTools);
+    await harness.callTool('gog_api_call', { api: 'drive', version: 'v3', method: 'files.list', body: '{"a":1}' });
+    expect(runner.run).toHaveBeenCalled();
   });
 });

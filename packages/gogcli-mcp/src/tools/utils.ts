@@ -6,6 +6,7 @@ import type { GogArg } from '../runner.js';
 import { normalizeTimestamps } from '../timestamps.js';
 import { stripConsumedPageToken } from '../pagination.js';
 import { assertSafeForwardedArgs, assertSafeSubcommand } from '../arg-guard.js';
+import { assertRunPathsConfined } from '../run-path-guard.js';
 
 // Byte size at or below which a payload stays on the plain inline flag.
 //
@@ -152,7 +153,8 @@ export function registerRunTool(
   const restriction = allowedSubcommands
     ? ` Only these subcommands are available: ${allowedSubcommands.join(', ')}.`
     : '';
-  const safety = ' Flags that override server safety controls (--readonly, --enable-commands, --disable-commands, --account, --access-token, --home, --client, --gmail-no-send, --no-input) and a bare "--" are refused.';
+  const safety = ' Flags that override server safety controls (--readonly, --enable-commands, --disable-commands, --account, --access-token, --home, --client, --gmail-no-send, --no-input) and a bare "--" are refused.'
+    + ' Local file paths (--out, --out-dir, --attach, --file, --*-file, @file JSON) must be inside GOG_FILE_ROOTS; subcommands that take a local path positionally (e.g. drive upload) are refused in favour of their dedicated tools.';
   const description = `${baseDescription}${restriction}${safety}${note ? ` ${note}` : ''}`;
   const inputSchema: Record<string, z.ZodTypeAny> = {
     subcommand: z.string().describe(`The gog ${service} subcommand to run, e.g. ${examples}`),
@@ -177,6 +179,7 @@ export function registerRunTool(
       }
       const refusal = vet?.(subcommand, args);
       if (refusal) throw new Error(refusal);
+      assertRunPathsConfined(service, subcommand, args);
     } catch (err) {
       return errorResult(errorText(err));
     }

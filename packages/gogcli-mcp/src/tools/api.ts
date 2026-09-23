@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { errorResult } from '@chrischall/mcp-utils';
 import { accountParam, errorText, runOrDiagnose } from './utils.js';
 import { assertSafeForwardedArgs } from '../arg-guard.js';
+import { confineAtFile } from '../file-roots.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
 
@@ -74,6 +75,10 @@ export function registerApiTools(server: McpServer): void {
       assertSafeForwardedArgs([api, version, method]);
       const refusal = refusedApiCall(api, method);
       if (refusal) throw new Error(refusal);
+      // gog reads `@path` from the host for --body (and --params): confine it
+      // like every other server-side path (SEC-3/SEC-4).
+      if (body) confineAtFile(body, 'body');
+      if (params) confineAtFile(params, 'params');
     } catch (err) {
       return errorResult(errorText(err));
     }

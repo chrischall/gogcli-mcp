@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerDriveTools, DRIVE_LS_COMPACT_FIELDS } from '../../src/tools/drive.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
@@ -305,6 +305,48 @@ describe('gog_drive_run', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/--readonly=false is not allowed/);
     expect(runner.run).not.toHaveBeenCalled();
+  });
+});
+
+// SEC-3/SEC-4 through the escape hatch: GOG_FILE_ROOTS must bind gog_drive_run
+// too, or `upload <gog's credentials.json>` exfiltrates what the roots protect.
+describe('gog_drive_run path confinement', () => {
+  // The suite runs with GOG_FILE_ROOTS='/'; narrow it so confinement bites.
+  let prevRoots: string | undefined;
+  beforeEach(() => { prevRoots = process.env.GOG_FILE_ROOTS; process.env.GOG_FILE_ROOTS = '/nonexistent-gog-file-root'; });
+  afterEach(() => { process.env.GOG_FILE_ROOTS = prevRoots; });
+
+  it('refuses upload, whose local path is positional, pointing at gog_drive_upload', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_run', {
+      subcommand: 'upload',
+      args: ['/Users/x/Library/Application Support/gogcli/credentials.json'],
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/gog_drive_upload/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('refuses a download --out outside GOG_FILE_ROOTS', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_run', { subcommand: 'download', args: ['f1', '--out=~/.zshrc'] });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/--out "~\/.zshrc" is outside/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('refuses a --on-change hook, which runs a local command', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_run', { subcommand: 'changes', args: ['poll', '--on-change=sh -c id'] });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('still forwards a --file Drive ID, which is not a local path', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_run', { subcommand: 'audit', args: ['sharing', '--file=1AbC'] });
+    expect(runner.run).toHaveBeenCalledWith(['drive', 'audit', 'sharing', '--file=1AbC'], { account: undefined });
   });
 });
 

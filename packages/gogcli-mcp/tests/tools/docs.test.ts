@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerDocsTools } from '../../src/tools/docs.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
@@ -208,6 +208,34 @@ describe('gog_docs_structure', () => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_docs_structure', { docId: 'bad' });
     expect(result.content[0].text).toBe('Error: Structure failed');
+  });
+});
+
+// SEC-3/SEC-4 through the escape hatch: `export --out=~/.zshrc` writes
+// attacker-shaped bytes over a shell profile. GOG_FILE_ROOTS binds it too.
+describe('gog_docs_run path confinement', () => {
+  // The suite runs with GOG_FILE_ROOTS='/'; narrow it so confinement bites.
+  let prevRoots: string | undefined;
+  beforeEach(() => { prevRoots = process.env.GOG_FILE_ROOTS; process.env.GOG_FILE_ROOTS = '/nonexistent-gog-file-root'; });
+  afterEach(() => { process.env.GOG_FILE_ROOTS = prevRoots; });
+
+  it.each([
+    ['export', ['d1', '--out=~/.zshrc']],
+    ['export', ['d1', '--output', '~/.zshrc']],
+    ['insert', ['d1', '--file=/etc/passwd']],
+  ])('refuses docs %s %j', async (subcommand, args) => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_docs_run', { subcommand, args });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/outside the directories/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('refuses the -f short form, which would hide the path', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_docs_run', { subcommand: 'insert', args: ['d1', '-f', '/etc/passwd'] });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
   });
 });
 
