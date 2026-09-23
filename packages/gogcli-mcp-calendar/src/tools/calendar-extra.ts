@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken} from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken, pos} from '../../../gogcli-mcp/src/lib.js';
+import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 const meetAccess = z.enum(['open', 'trusted', 'restricted']);
 
@@ -16,7 +17,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ access, open, account }) => {
-    const args = ['meet', 'create'];
+    const args: GogArg[] = ['meet', 'create'];
     if (access) args.push(`--access=${access}`);
     if (open) args.push('--open');
     return runOrDiagnose(args, { account });
@@ -30,7 +31,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ meetingCode, account }) => {
-    return runOrDiagnose(['meet', 'get', meetingCode], { account });
+    return runOrDiagnose(['meet', 'get', pos(meetingCode)], { account });
   });
 
   server.registerTool('gog_meet_update', {
@@ -42,7 +43,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ meetingCode, access, account }) => {
-    const args = ['meet', 'update', meetingCode];
+    const args: GogArg[] = ['meet', 'update', pos(meetingCode)];
     if (access) args.push(`--access=${access}`);
     return runOrDiagnose(args, { account });
   });
@@ -55,7 +56,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ meetingCode, account }) => {
-    return runOrDiagnose(['meet', 'end', meetingCode, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['meet', 'end', pos(meetingCode), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_meet_history', {
@@ -70,7 +71,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ meetingCode, max, pageToken, page, all, account }) => {
-    const args = ['meet', 'history', meetingCode];
+    const args: GogArg[] = ['meet', 'history', pos(meetingCode)];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -92,7 +93,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       skipValidate: z.boolean().optional().describe('Store credentials without calling Zoom /users/me to validate'),
     }),
   }, async ({ accountId, clientId, clientSecret, alias, skipValidate }) => {
-    const args = ['zoom', 'auth', 'setup'];
+    const args: GogArg[] = ['zoom', 'auth', 'setup'];
     if (alias) args.push(`--alias=${alias}`);
     args.push(`--account-id=${accountId}`);
     args.push(`--client-id=${clientId}`);
@@ -108,7 +109,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       alias: z.string().optional().describe('Zoom credential alias to check (default: "default")'),
     }),
   }, async ({ alias }) => {
-    const args = ['zoom', 'auth', 'doctor'];
+    const args: GogArg[] = ['zoom', 'auth', 'doctor'];
     if (alias) args.push(`--alias=${alias}`);
     return runOrDiagnose(args, {});
   });
@@ -126,7 +127,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ max, pageToken, page, all, account }) => {
-    const args = ['calendar', 'calendars'];
+    const args: GogArg[] = ['calendar', 'calendars'];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -156,7 +157,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ query, from, to, today, tomorrow, week, days, weekStart, calendar, max, account }) => {
-    const args = ['calendar', 'search', query];
+    const args: GogArg[] = ['calendar', 'search', pos(query)];
     if (from) args.push(`--from=${from}`);
     if (to) args.push(`--to=${to}`);
     if (today) args.push('--today');
@@ -181,8 +182,8 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, calendarIds, since, max, all, account }) => {
-    const args = ['calendar', 'changed'];
-    if (calendarId) args.push(calendarId);
+    const args: GogArg[] = ['calendar', 'changed'];
+    if (calendarId) args.push(pos(calendarId));
     if (calendarIds) args.push(`--calendars=${calendarIds}`);
     if (since) args.push(`--since=${since}`);
     if (max !== undefined) args.push(`--max=${max}`);
@@ -201,8 +202,8 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ from, to, calendarIds, all, account }) => {
-    const args = ['calendar', 'freebusy'];
-    if (calendarIds) args.push(calendarIds);
+    const args: GogArg[] = ['calendar', 'freebusy'];
+    if (calendarIds) args.push(pos(calendarIds));
     args.push(`--from=${from}`);
     args.push(`--to=${to}`);
     if (all) args.push('--all');
@@ -231,7 +232,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, max, pageToken, page, all, account }) => {
-    const args = ['calendar', 'acl', calendarId];
+    const args: GogArg[] = ['calendar', 'acl', pos(calendarId)];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -250,7 +251,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, eventId, destinationCalendarId, sendUpdates, account }) => {
-    const args = ['calendar', 'move', calendarId, eventId, destinationCalendarId];
+    const args: GogArg[] = ['calendar', 'move', pos(calendarId), pos(eventId), pos(destinationCalendarId)];
     if (sendUpdates) args.push(`--send-updates=${sendUpdates}`);
     return runOrDiagnose(args, { account });
   });
@@ -269,8 +270,8 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ from, to, calendarId, summary, autoDecline, declineMessage, allDay, account }) => {
-    const args = ['calendar', 'out-of-office'];
-    if (calendarId) args.push(calendarId);
+    const args: GogArg[] = ['calendar', 'out-of-office'];
+    if (calendarId) args.push(pos(calendarId));
     args.push(`--from=${from}`);
     args.push(`--to=${to}`);
     if (summary) args.push(`--summary=${summary}`);
@@ -288,7 +289,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, account }) => {
-    return runOrDiagnose(['calendar', 'unsubscribe', calendarId], { account });
+    return runOrDiagnose(['calendar', 'unsubscribe', pos(calendarId)], { account });
   });
 
   server.registerTool('gog_calendar_delete_calendar', {
@@ -299,7 +300,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, account }) => {
-    return runOrDiagnose(['calendar', 'delete-calendar', calendarId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['calendar', 'delete-calendar', pos(calendarId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_meet_participants', {
@@ -315,7 +316,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ meetingCode, conference, max, pageToken, page, all, account }) => {
-    const args = ['meet', 'participants', meetingCode];
+    const args: GogArg[] = ['meet', 'participants', pos(meetingCode)];
     if (conference) args.push(`--conference=${conference}`);
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { rawTextResult, errorResult } from '@chrischall/mcp-utils';
 import * as runner from '../src/runner.js';
 import { finalizeGmailSearch, fetchGmailPages } from '../src/gmail-results.js';
+import { pos } from '../src/argv.js';
 
 vi.mock('../src/runner.js');
 
@@ -145,7 +146,7 @@ describe('finalizeGmailSearch — truncation metadata', () => {
       itemsKey: 'messages', method: 'users.messages.list', query: 'invoice', account: 'me@x.com',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['api', 'call', 'gmail', 'v1', 'users.messages.list',
+      ['api', 'call', 'gmail', 'v1', pos('users.messages.list'),
         `--params=${JSON.stringify({ userId: 'me', q: 'invoice', maxResults: 500, fields: 'messages/id,nextPageToken' })}`],
       { account: 'me@x.com' },
     );
@@ -321,6 +322,39 @@ describe('fetchGmailPages', () => {
     const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 3, undefined)).content[0].text as string);
     expect(out.threads.map((t: { id: string }) => t.id)).toEqual(['a']);
     expect(out.nextPageToken).toBe('T1');
+  });
+
+  // QUAL-1: the failing page's own error (auth expiry, 429, timeout) used to be
+  // dropped, so a caller saw "more exist", retried the same failing page, and
+  // never learned it needed to re-authenticate.
+  it('carries a later page\'s error text as pageError, hints included', async () => {
+    const runPage = vi.fn()
+      .mockResolvedValueOnce(page(['a'], 'T1'))
+      .mockResolvedValueOnce(errorResult('Error: invalid_grant\n\nRe-authorize with gog_auth_add.'));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 3, undefined)).content[0].text as string);
+    expect(out.pageError).toContain('page 2');
+    expect(out.pageError).toContain('invalid_grant');
+    expect(out.pageError).toContain('gog_auth_add');
+  });
+
+  it('describes a later page it could not parse, and names no error for a clean walk', async () => {
+    const runPage = vi.fn()
+      .mockResolvedValueOnce(page(['a'], 'T1'))
+      .mockResolvedValueOnce(rawTextResult('not json'));
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 3, undefined)).content[0].text as string);
+    expect(out.pageError).toMatch(/page 2 .*not a threads list/);
+
+    const clean = vi.fn().mockResolvedValue(page(['a']));
+    const ok = JSON.parse((await fetchGmailPages(clean, 'threads', 3, undefined)).content[0].text as string);
+    expect(ok).not.toHaveProperty('pageError');
+  });
+
+  it('describes a later page that returned no text at all', async () => {
+    const runPage = vi.fn()
+      .mockResolvedValueOnce(page(['a'], 'T1'))
+      .mockResolvedValueOnce({ content: [], isError: true });
+    const out = JSON.parse((await fetchGmailPages(runPage, 'threads', 3, undefined)).content[0].text as string);
+    expect(out.pageError).toMatch(/page 2 failed/);
   });
 
   it('bails on output it cannot parse or that has no items array', async () => {

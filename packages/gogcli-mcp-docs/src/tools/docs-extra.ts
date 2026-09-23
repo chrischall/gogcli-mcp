@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, payloadArg } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, payloadArg, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDocsTools(server: McpServer): void {
@@ -14,7 +14,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, title, parent, account }) => {
-    const args = ['docs', 'copy', docId, title];
+    const args: GogArg[] = ['docs', 'copy', pos(docId), pos(title)];
     if (parent) args.push(`--parent=${parent}`);
     return runOrDiagnose(args, { account });
   });
@@ -35,10 +35,10 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, start, end, at, occurrence, matchCase, tabId, segment, batch, account }) => {
-    const args = ['docs', 'delete'];
+    const args: GogArg[] = ['docs', 'delete'];
     if (start !== undefined) args.push(`--start=${start}`);
     if (end !== undefined) args.push(`--end=${end}`);
-    args.push(docId);
+    args.push(pos(docId));
     if (at) args.push(`--at=${at}`);
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
@@ -56,7 +56,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, account }) => {
-    return runOrDiagnose(['drive', 'delete', docId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['drive', 'delete', pos(docId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_docs_edit', {
@@ -70,7 +70,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, find, replace, matchCase, account }) => {
-    const args = ['docs', 'edit', docId, find, replace];
+    const args: GogArg[] = ['docs', 'edit', pos(docId), pos(find), pos(replace)];
     if (matchCase) args.push('--match-case');
     return runOrDiagnose(args, { account });
   });
@@ -89,13 +89,13 @@ export function registerExtraDocsTools(server: McpServer): void {
     }),
   }, async ({ docId, format, tab, allTabs, maxBytes, chips, account }) => {
     if (format === 'json') {
-      const args = ['docs', 'raw', docId, '--pretty'];
+      const args: GogArg[] = ['docs', 'raw', pos(docId), '--pretty'];
       if (tab) args.push(`--tab=${tab}`);
       if (allTabs) args.push('--all-tabs');
       // Verbatim by contract: see the `lossless` note on runOrDiagnose.
       return runOrDiagnose(args, { account, lossless: true });
     }
-    const args = ['docs', 'cat', docId];
+    const args: GogArg[] = ['docs', 'cat', pos(docId)];
     if (tab) args.push(`--tab=${tab}`);
     if (allTabs) args.push('--all-tabs');
     if (maxBytes !== undefined) args.push(`--max-bytes=${maxBytes}`);
@@ -176,7 +176,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       segment?: string;
       account?: string;
     };
-    const argv = ['docs', 'format', a.docId];
+    const argv: GogArg[] = ['docs', 'format', pos(a.docId)];
     if (a.match) argv.push(`--match=${a.match}`);
     if (a.matchAll) argv.push('--match-all');
     if (a.matchCase) argv.push('--match-case');
@@ -226,14 +226,15 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, tab, account }) => {
-    const args = ['docs', 'suggestions', 'list', docId];
+    const args: GogArg[] = ['docs', 'suggestions', 'list', pos(docId)];
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_docs_export', {
     description: 'Export a Google Doc as PDF, plain text, HTML, DOCX, or other format.',
-    annotations: { readOnlyHint: true },
+    // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       format: z.string().optional().describe('Export format: pdf, txt, html, docx, rtf, odt, epub (default: pdf)'),
@@ -242,7 +243,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, format, out, overwrite, account }) => {
-    const args = ['docs', 'export', docId];
+    if (out) confinePath(out, 'out');
+    const args: GogArg[] = ['docs', 'export', pos(docId)];
     if (format) args.push(`--format=${format}`);
     if (out) args.push(`--out=${out}`);
     if (overwrite) args.push('--overwrite');
@@ -266,8 +268,9 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, content, index, file, at, occurrence, matchCase, tabId, segment, batch, account }) => {
-    const args = ['docs', 'insert', docId];
-    if (content) args.push(content);
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'insert', pos(docId)];
+    if (content) args.push(pos(content));
     if (index !== undefined) args.push(`--index=${index}`);
     if (file) args.push(`--file=${file}`);
     if (at) args.push(`--at=${at}`);
@@ -291,7 +294,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, markdown, tab, account }) => {
-    const args = ['docs', 'write', docId, '--append'];
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'write', pos(docId), '--append'];
     if (text) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
     if (markdown) args.push('--markdown');
@@ -307,7 +311,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, account }) => {
-    return runOrDiagnose(['docs', 'list-tabs', docId], { account });
+    return runOrDiagnose(['docs', 'list-tabs', pos(docId)], { account });
   });
 
   server.registerTool('gog_docs_sed', {
@@ -322,8 +326,9 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, expression, expressions, file, tab, account }) => {
-    const args = ['docs', 'sed', docId];
-    if (expression) args.push(expression);
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'sed', pos(docId)];
+    if (expression) args.push(pos(expression));
     if (expressions) {
       for (const expr of expressions) {
         args.push(`--expressions=${expr}`);
@@ -354,7 +359,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, index, replaceRange, markdown, at, occurrence, matchCase, tabId, segment, pageless, batch, account }) => {
-    const args = ['docs', 'update', docId];
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'update', pos(docId)];
     if (text) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
     if (index !== undefined) args.push(`--index=${index}`);
@@ -390,7 +396,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, includeResolved, since, locate, tab, max, page, all, account }) => {
-    const args = ['docs', 'comments', 'list', docId];
+    const args: GogArg[] = ['docs', 'comments', 'list', pos(docId)];
     if (includeResolved) args.push('--include-resolved');
     if (since) args.push(`--since=${since}`);
     if (locate) args.push('--locate');
@@ -408,7 +414,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, commentId, account }) => {
-    return runOrDiagnose(['docs', 'comments', 'get', docId, commentId], { account });
+    return runOrDiagnose(['docs', 'comments', 'get', pos(docId), pos(commentId)], { account });
   });
 
   server.registerTool('gog_docs_comments_add', {
@@ -422,7 +428,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, content, quoted, account }) => {
-    const args = ['docs', 'comments', 'add', docId, content];
+    const args: GogArg[] = ['docs', 'comments', 'add', pos(docId), pos(content)];
     if (quoted) args.push(`--quoted=${quoted}`);
     return runOrDiagnose(args, { account });
   });
@@ -437,7 +443,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, commentId, content, account }) => {
-    return runOrDiagnose(['docs', 'comments', 'reply', docId, commentId, content], { account });
+    return runOrDiagnose(['docs', 'comments', 'reply', pos(docId), pos(commentId), pos(content)], { account });
   });
 
   server.registerTool('gog_docs_comments_resolve', {
@@ -450,7 +456,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, commentId, message, account }) => {
-    const args = ['docs', 'comments', 'resolve', docId, commentId];
+    const args: GogArg[] = ['docs', 'comments', 'resolve', pos(docId), pos(commentId)];
     if (message) args.push(`--message=${message}`);
     return runOrDiagnose(args, { account });
   });
@@ -465,7 +471,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     }),
   }, async ({ docId, commentId, account }) => {
     // --force: gog refuses this delete under the runner's --no-input without it.
-    return runOrDiagnose(['docs', 'comments', 'delete', docId, commentId, '--force'], { account });
+    return runOrDiagnose(['docs', 'comments', 'delete', pos(docId), pos(commentId), '--force'], { account });
   });
 
   server.registerTool('gog_docs_comments_reopen', {
@@ -477,7 +483,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, commentId, account }) => {
-    return runOrDiagnose(['docs', 'comments', 'reopen', docId, commentId], { account });
+    return runOrDiagnose(['docs', 'comments', 'reopen', pos(docId), pos(commentId)], { account });
   });
 
   server.registerTool('gog_docs_comments_locate', {
@@ -492,7 +498,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, commentId, matchCase, normalizeWhitespace, tab, account }) => {
-    const args = ['docs', 'comments', 'locate', docId, commentId];
+    const args: GogArg[] = ['docs', 'comments', 'locate', pos(docId), pos(commentId)];
     if (matchCase) args.push('--match-case');
     if (normalizeWhitespace) args.push('--normalize-whitespace');
     if (tab) args.push(`--tab=${tab}`);
@@ -515,7 +521,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, occurrence, matchCase, normalizeWhitespace, all, failEmpty, tab, segment, account }) => {
-    const args = ['docs', 'find-range', docId, text];
+    const args: GogArg[] = ['docs', 'find-range', pos(docId), pos(text)];
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
     if (normalizeWhitespace) args.push('--normalize-whitespace');
@@ -538,7 +544,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, name, account }) => {
-    const args = ['batch', 'begin', `--doc=${docId}`];
+    const args: GogArg[] = ['batch', 'begin', `--doc=${docId}`];
     if (name) args.push(`--name=${name}`);
     return runOrDiagnose(args, { account });
   });
@@ -553,7 +559,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ batchId, autoSplit, continueOnError, account }) => {
-    const args = ['batch', 'end', batchId];
+    const args: GogArg[] = ['batch', 'end', pos(batchId)];
     if (autoSplit) args.push('--auto-split');
     if (continueOnError) args.push('--continue-on-error');
     return runOrDiagnose(args, { account });
@@ -567,7 +573,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ batchId, account }) => {
-    return runOrDiagnose(['batch', 'abort', batchId], { account });
+    return runOrDiagnose(['batch', 'abort', pos(batchId)], { account });
   });
 
   server.registerTool('gog_batch_list', {
@@ -588,7 +594,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ batchId, account }) => {
-    return runOrDiagnose(['batch', 'show', batchId], { account });
+    return runOrDiagnose(['batch', 'show', pos(batchId)], { account });
   });
 
   server.registerTool('gog_batch_prune', {
@@ -599,7 +605,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ olderThan, account }) => {
-    const args = ['batch', 'prune'];
+    const args: GogArg[] = ['batch', 'prune'];
     if (olderThan) args.push(`--older-than=${olderThan}`);
     return runOrDiagnose(args, { account });
   });
@@ -618,7 +624,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, col, width, evenlyDistributed, tableIndex, tab, batch, account }) => {
-    const args = ['docs', 'table-column-width', docId];
+    const args: GogArg[] = ['docs', 'table-column-width', pos(docId)];
     if (col !== undefined) args.push(`--col=${col}`);
     if (width !== undefined) args.push(`--width=${width}`);
     if (evenlyDistributed) args.push('--evenly-distributed');
@@ -644,7 +650,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, table, at, valuesJson, tab, account }) => {
-    const args = ['docs', 'table-row', 'insert', docId];
+    const args: GogArg[] = ['docs', 'table-row', 'insert', pos(docId)];
     if (table) args.push(`--table=${table}`);
     if (at) args.push(`--at=${at}`);
     if (valuesJson) args.push(`--values-json=${valuesJson}`);
@@ -663,7 +669,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, row, table, tab, account }) => {
-    const args = ['docs', 'table-row', 'delete', docId, `--row=${row}`];
+    const args: GogArg[] = ['docs', 'table-row', 'delete', pos(docId), `--row=${row}`];
     if (table) args.push(`--table=${table}`);
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
@@ -680,7 +686,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, table, at, tab, account }) => {
-    const args = ['docs', 'table-column', 'insert', docId];
+    const args: GogArg[] = ['docs', 'table-column', 'insert', pos(docId)];
     if (at) args.push(`--at=${at}`);
     if (table) args.push(`--table=${table}`);
     if (tab) args.push(`--tab=${tab}`);
@@ -698,7 +704,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, col, table, tab, account }) => {
-    const args = ['docs', 'table-column', 'delete', docId, `--col=${col}`];
+    const args: GogArg[] = ['docs', 'table-column', 'delete', pos(docId), `--col=${col}`];
     if (table) args.push(`--table=${table}`);
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
@@ -715,7 +721,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, range, table, tab, account }) => {
-    const args = ['docs', 'table-merge', docId, `--range=${range}`];
+    const args: GogArg[] = ['docs', 'table-merge', pos(docId), `--range=${range}`];
     if (table) args.push(`--table=${table}`);
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
@@ -732,7 +738,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, cell, table, tab, account }) => {
-    const args = ['docs', 'table-unmerge', docId, `--cell=${cell}`];
+    const args: GogArg[] = ['docs', 'table-unmerge', pos(docId), `--cell=${cell}`];
     if (table) args.push(`--table=${table}`);
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
@@ -753,7 +759,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, name, at, occurrence, matchCase, start, end, tab, account }) => {
-    const args = ['docs', 'named-range', 'create', docId, `--name=${name}`];
+    const args: GogArg[] = ['docs', 'named-range', 'create', pos(docId), `--name=${name}`];
     if (at) args.push(`--at=${at}`);
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
@@ -773,7 +779,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, name, tab, account }) => {
-    const args = ['docs', 'named-range', 'list', docId];
+    const args: GogArg[] = ['docs', 'named-range', 'list', pos(docId)];
     if (name) args.push(`--name=${name}`);
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
@@ -789,7 +795,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, nameOrId, tab, account }) => {
-    const args = ['docs', 'named-range', 'delete', docId, nameOrId];
+    const args: GogArg[] = ['docs', 'named-range', 'delete', pos(docId), pos(nameOrId)];
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
@@ -806,7 +812,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, nameOrId, text, file, tab, account }) => {
-    const args = ['docs', 'named-range', 'replace', docId, nameOrId];
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'named-range', 'replace', pos(docId), pos(nameOrId)];
     if (text !== undefined) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
     if (tab) args.push(`--tab=${tab}`);
@@ -822,7 +829,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, tab, account }) => {
-    const args = ['docs', 'tables', 'list', docId];
+    const args: GogArg[] = ['docs', 'tables', 'list', pos(docId)];
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
@@ -836,7 +843,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, tab, account }) => {
-    const args = ['docs', 'images', 'list', docId];
+    const args: GogArg[] = ['docs', 'images', 'list', pos(docId)];
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
@@ -851,7 +858,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, level, tab, account }) => {
-    const args = ['docs', 'headings', 'list', docId];
+    const args: GogArg[] = ['docs', 'headings', 'list', pos(docId)];
     if (level !== undefined) args.push(`--level=${level}`);
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
@@ -867,7 +874,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, style, tab, account }) => {
-    const args = ['docs', 'paragraphs', 'list', docId];
+    const args: GogArg[] = ['docs', 'paragraphs', 'list', pos(docId)];
     if (style) args.push(`--style=${style}`);
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
@@ -888,7 +895,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
-    const args = ['docs', 'insert-page-break', docId];
+    const args: GogArg[] = ['docs', 'insert-page-break', pos(docId)];
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
     if (at) args.push(`--at=${at}`);
@@ -915,7 +922,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, layout, pageSize, pageWidth, pageHeight, marginTop, marginBottom, marginLeft, marginRight, account }) => {
-    const args = ['docs', 'page-layout', docId];
+    const args: GogArg[] = ['docs', 'page-layout', pos(docId)];
     if (layout) args.push(`--layout=${layout}`);
     if (pageSize) args.push(`--page-size=${pageSize}`);
     if (pageWidth) args.push(`--page-width=${pageWidth}`);
@@ -941,7 +948,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, rows, cols, index, atEnd, valuesJson, tab, account }) => {
-    const args = ['docs', 'insert-table', docId, `--rows=${rows}`, `--cols=${cols}`];
+    const args: GogArg[] = ['docs', 'insert-table', pos(docId), `--rows=${rows}`, `--cols=${cols}`];
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
     if (valuesJson !== undefined) args.push(`--values-json=${valuesJson}`);
@@ -965,6 +972,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, row, col, content, contentFile, append, format, tableIndex, tab, account }) => {
+    if (contentFile) confinePath(contentFile, 'contentFile');
     // gog HARD-ERRORS on both forms ("cannot use both --content and
     // --content-file"), so reject here with a clearer message before gog runs.
     // (The slides commands are the opposite: they accept both and the file
@@ -975,7 +983,7 @@ export function registerExtraDocsTools(server: McpServer): void {
         '("cannot use both --content and --content-file"). Drop one of them.',
       );
     }
-    const args: GogArg[] = ['docs', 'cell-update', docId, `--row=${row}`, `--col=${col}`];
+    const args: GogArg[] = ['docs', 'cell-update', pos(docId), `--row=${row}`, `--col=${col}`];
     // `content !== undefined` (not truthiness) is deliberate: an empty string is
     // a meaningful value that clears the cell, so it must reach gog as
     // `--content=`. contentFile stays on truthiness — an empty path is nothing.
@@ -1019,7 +1027,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, row, col, rowSpan, colSpan, backgroundColor, textColor, bold, italic, underline, borderAll, borderTop, borderBottom, borderLeft, borderRight, paddingAll, paddingTop, paddingBottom, paddingLeft, paddingRight, contentAlign, tableIndex, tab, batch, account }) => {
-    const args = ['docs', 'cell-style', docId, `--row=${row}`, `--col=${col}`];
+    const args: GogArg[] = ['docs', 'cell-style', pos(docId), `--row=${row}`, `--col=${col}`];
     if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
     if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
     if (backgroundColor) args.push(`--background-color=${backgroundColor}`);
@@ -1063,7 +1071,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, file, url, at, before, after, width, height, name, parent, onRestricted, tab, account }) => {
-    const args = ['docs', 'insert-image', docId];
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'insert-image', pos(docId)];
     if (file) args.push(`--file=${file}`);
     if (url) args.push(`--url=${url}`);
     if (at) args.push(`--at=${at}`);
@@ -1095,7 +1104,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, email, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
-    const args = ['docs', 'insert-person', docId, `--email=${email}`];
+    const args: GogArg[] = ['docs', 'insert-person', pos(docId), `--email=${email}`];
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
     if (at) args.push(`--at=${at}`);
@@ -1120,7 +1129,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, date, format, index, atEnd, tab, batch, account }) => {
-    const args = ['docs', 'insert-date-chip', docId];
+    const args: GogArg[] = ['docs', 'insert-date-chip', pos(docId)];
     if (date) args.push(`--date=${date}`);
     if (format) args.push(`--format=${format}`);
     if (index !== undefined) args.push(`--index=${index}`);
@@ -1142,7 +1151,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, title, index, parentTab, iconEmoji, account }) => {
-    const args = ['docs', 'add-tab', docId];
+    const args: GogArg[] = ['docs', 'add-tab', pos(docId)];
     if (title) args.push(`--title=${title}`);
     if (index !== undefined) args.push(`--index=${index}`);
     if (parentTab) args.push(`--parent-tab=${parentTab}`);
@@ -1160,7 +1169,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, tab, title, account }) => {
-    const args = ['docs', 'rename-tab', docId, `--tab=${tab}`, `--title=${title}`];
+    const args: GogArg[] = ['docs', 'rename-tab', pos(docId), `--tab=${tab}`, `--title=${title}`];
     return runOrDiagnose(args, { account });
   });
 
@@ -1173,7 +1182,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, tab, account }) => {
-    const args = ['docs', 'delete-tab', docId, `--tab=${tab}`, '--force']; // gog gates this op; without --force the runner's --no-input makes it refuse
+    const args: GogArg[] = ['docs', 'delete-tab', pos(docId), `--tab=${tab}`, '--force']; // gog gates this op; without --force the runner's --no-input makes it refuse
     return runOrDiagnose(args, { account });
   });
 
@@ -1185,7 +1194,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, account }) => {
-    return runOrDiagnose(['docs', 'clear', docId], { account });
+    return runOrDiagnose(['docs', 'clear', pos(docId)], { account });
   });
 
   // --- gog 0.30 structural authoring: footnotes, section breaks, rules, columns ---
@@ -1206,7 +1215,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, index, atEnd, at, occurrence, matchCase, tab, account }) => {
-    const args = ['docs', 'insert-footnote', docId];
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'insert-footnote', pos(docId)];
     if (text !== undefined) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
     if (index !== undefined) args.push(`--index=${index}`);
@@ -1234,7 +1244,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, type, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
-    const args = ['docs', 'insert-section-break', docId];
+    const args: GogArg[] = ['docs', 'insert-section-break', pos(docId)];
     if (type) args.push(`--type=${type}`);
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
@@ -1261,7 +1271,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
-    const args = ['docs', 'insert-horizontal-rule', docId];
+    const args: GogArg[] = ['docs', 'insert-horizontal-rule', pos(docId)];
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
     if (at) args.push(`--at=${at}`);
@@ -1289,7 +1299,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, count, separator, index, atEnd, at, occurrence, matchCase, tab, batch, account }) => {
-    const args = ['docs', 'section-columns', docId, `--count=${count}`];
+    const args: GogArg[] = ['docs', 'section-columns', pos(docId), `--count=${count}`];
     if (separator) args.push(`--separator=${separator}`);
     if (index !== undefined) args.push(`--index=${index}`);
     if (atEnd) args.push('--at-end');
@@ -1313,7 +1323,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, tab, account }) => {
-    const args = ['docs', 'header', 'list', docId];
+    const args: GogArg[] = ['docs', 'header', 'list', pos(docId)];
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
@@ -1334,7 +1344,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, index, atEnd, at, occurrence, matchCase, tab, account }) => {
-    const args = ['docs', 'header', 'create', docId];
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'header', 'create', pos(docId)];
     if (text !== undefined) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
     if (index !== undefined) args.push(`--index=${index}`);
@@ -1356,7 +1367,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, headerId, tab, account }) => {
-    const args = ['docs', 'header', 'delete', docId, headerId];
+    const args: GogArg[] = ['docs', 'header', 'delete', pos(docId), pos(headerId)];
     if (tab) args.push(`--tab=${tab}`);
     args.push('--force'); // gog refuses this delete under the runner's --no-input without it
     return runOrDiagnose(args, { account });
@@ -1371,7 +1382,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, tab, account }) => {
-    const args = ['docs', 'footer', 'list', docId];
+    const args: GogArg[] = ['docs', 'footer', 'list', pos(docId)];
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
   });
@@ -1392,7 +1403,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, file, index, atEnd, at, occurrence, matchCase, tab, account }) => {
-    const args = ['docs', 'footer', 'create', docId];
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'footer', 'create', pos(docId)];
     if (text !== undefined) args.push(`--text=${text}`);
     if (file) args.push(`--file=${file}`);
     if (index !== undefined) args.push(`--index=${index}`);
@@ -1414,7 +1426,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, footerId, tab, account }) => {
-    const args = ['docs', 'footer', 'delete', docId, footerId];
+    const args: GogArg[] = ['docs', 'footer', 'delete', pos(docId), pos(footerId)];
     if (tab) args.push(`--tab=${tab}`);
     args.push('--force'); // gog refuses this delete under the runner's --no-input without it
     return runOrDiagnose(args, { account });
@@ -1437,7 +1449,8 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, file, url, objectId, matchAlt, name, parent, tab, account }) => {
-    const args = ['docs', 'replace-image', docId];
+    if (file) confinePath(file, 'file');
+    const args: GogArg[] = ['docs', 'replace-image', pos(docId)];
     if (file) args.push(`--file=${file}`);
     if (url) args.push(`--url=${url}`);
     if (objectId) args.push(`--object-id=${objectId}`);
@@ -1460,7 +1473,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, rows, table, tab, account }) => {
-    const args = ['docs', 'table-row', 'pin-header', docId, `--rows=${rows}`];
+    const args: GogArg[] = ['docs', 'table-row', 'pin-header', pos(docId), `--rows=${rows}`];
     if (table) args.push(`--table=${table}`);
     if (tab) args.push(`--tab=${tab}`);
     return runOrDiagnose(args, { account });
@@ -1479,7 +1492,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, row, minHeight, preventOverflow, table, tab, account }) => {
-    const args = ['docs', 'table-row', 'style', docId];
+    const args: GogArg[] = ['docs', 'table-row', 'style', pos(docId)];
     if (row !== undefined) args.push(`--row=${row}`);
     if (minHeight) args.push(`--min-height=${minHeight}`);
     if (preventOverflow !== undefined) args.push(preventOverflow ? '--prevent-overflow' : '--no-prevent-overflow');

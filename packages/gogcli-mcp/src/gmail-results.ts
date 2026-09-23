@@ -3,6 +3,7 @@ import { rawTextResult } from '@chrischall/mcp-utils';
 import { run } from './runner.js';
 import { annotateTruncation, hasMorePages } from './pagination.js';
 import type { MatchCount } from './pagination.js';
+import { pos } from './argv.js';
 
 // Post-processing for Gmail search output, on the seam between gog's JSON and
 // the model client. Two guarantees live here, both of which exist because a
@@ -102,7 +103,7 @@ async function countMatches(
       maxResults: COUNT_PROBE_PAGE_SIZE,
       fields: `${itemsKey}/id,nextPageToken`,
     });
-    const raw = await run(['api', 'call', 'gmail', 'v1', method, `--params=${params}`], { account });
+    const raw = await run(['api', 'call', 'gmail', 'v1', pos(method), `--params=${params}`], { account });
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const items = parsed[itemsKey];
     if (!Array.isArray(items)) return {};
@@ -208,8 +209,13 @@ export async function fetchGmailPages(
     // Nothing collected yet means the caller should just see that result; once
     // pages ARE collected, return them WITH the cursor that was about to be
     // consumed, so the set still reads as truncated rather than complete.
+    // The failing page's own text rides along as `pageError` (audit QUAL-1):
+    // without it the caller sees only "more exist", retries the same failing
+    // page, and never learns WHY — e.g. that the account needs re-auth.
     if (parsed === undefined) {
-      return base === undefined ? result : finish(base, itemsKey, merged, token);
+      return base === undefined
+        ? result
+        : finish(base, itemsKey, merged, token, pageErrorText(result, itemsKey, pages + 1));
     }
     base = parsed;
     merged.push(...(parsed[itemsKey] as unknown[]));
@@ -253,14 +259,27 @@ function parsePage(
   return Array.isArray(obj[itemsKey]) ? obj : undefined;
 }
 
+// What went wrong on page `n` of a walk, bounded so a stray HTML page cannot
+// become the payload. An error result is already diagnosed text (hints and
+// all); anything else is output this walk could not read as a list.
+const PAGE_ERROR_MAX = 2000;
+function pageErrorText(result: CallToolResult, itemsKey: string, n: number): string {
+  const first = result.content[0];
+  const text = first?.type === 'text' ? first.text.slice(0, PAGE_ERROR_MAX) : '';
+  if (result.isError) return `page ${n} failed${text ? `: ${text}` : ''}`;
+  return `page ${n} returned output that is not a ${itemsKey} list`;
+}
+
 function finish(
   base: Record<string, unknown>,
   itemsKey: string,
   merged: unknown[],
   token: string | undefined,
+  pageError?: string,
 ): CallToolResult {
   const out: Record<string, unknown> = { ...base, [itemsKey]: merged };
   if (token === undefined) delete out.nextPageToken;
   else out.nextPageToken = token;
+  if (pageError !== undefined) out.pageError = pageError;
   return rawTextResult(JSON.stringify(out));
 }

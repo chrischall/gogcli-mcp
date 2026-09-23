@@ -20,6 +20,11 @@ export default defineConfig({
       GOG_ACCOUNT: '',
       GOG_PATH: '',
       GOG_READONLY: '',
+      // The arg-shape tests pass arbitrary server paths (/tmp/shot.png,
+      // /path/to/file); confinement is exercised explicitly by the tests that
+      // narrow GOG_FILE_ROOTS themselves (tests/file-roots.test.ts and the
+      // per-tool "refuses a path outside" cases).
+      GOG_FILE_ROOTS: '/',
     },
     coverage: {
       provider: 'v8',

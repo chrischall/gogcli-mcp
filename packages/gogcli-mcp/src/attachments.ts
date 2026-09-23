@@ -80,6 +80,7 @@ export const MAX_INLINE_ATTACHMENT_TOTAL_BYTES = Math.floor((MAX_REQUEST_PAYLOAD
  */
 function wireBytesOf(arg: GogArg): number {
   if (typeof arg === 'string') return Buffer.byteLength(arg, 'utf8');
+  if (arg.kind === 'positional') return Buffer.byteLength(arg.value, 'utf8');
   return arg.encoding === 'base64' ? arg.contents.length : Buffer.byteLength(arg.contents, 'utf8');
 }
 

@@ -146,6 +146,25 @@ All tools accept an optional `account` parameter:
 Read Sheet1!A1:D10 from spreadsheet abc123 using my work account work@company.com
 ```
 
+## Local files
+
+Tools that read or write files on the machine gog runs on (`attach`, `localPath`, `file`, `out`, export and
+download paths) only accept paths inside the directories listed in `GOG_FILE_ROOTS` — a `:`-separated list
+(`;` on Windows). Unset, it defaults to `~/gogcli-mcp-files`: put files you want to attach or upload there, and
+point exports and downloads there. Widen it deliberately (for example to your home directory) if you need to:
+
+```json
+"env": { "GOG_ACCOUNT": "you@gmail.com", "GOG_FILE_ROOTS": "/Users/you/Documents:/Users/you/Downloads" }
+```
+
+`attachInline` / `content` carry file bytes with the request and are not affected.
+
+The escape hatches are bound by the same roots: a path flag passed through `gog_<service>_run` (`--out`,
+`--out-dir`, `--attach`, `--file`, any `--*-file`, an `@file` JSON input) must be inside `GOG_FILE_ROOTS`, and
+`gog_api_call`'s `@file` body likewise. Subcommands that take a local path positionally (`drive upload`,
+`drive sync`, `gmail import`, `appscript pull`, `slides add-slide` / `insert-image` / `replace-slide`) are refused
+there — use their dedicated tools.
+
 ## Development
 
 ```bash
@@ -161,6 +180,10 @@ npm run typecheck  # typecheck all packages
 - All gogcli invocations use `--no-input` to prevent interactive prompts
 - All arguments are passed as arrays to `child_process.spawn` — no shell injection risk
 - `GOG_ACCESS_TOKEN` is stripped from the child process environment to prevent stale token auth
+- Server-side paths are confined to `GOG_FILE_ROOTS` (resolved through symlinks), in the structured tools and the escape hatches alike, so a prompt-injected agent cannot attach `~/.ssh` or gog's own credentials to an email, or write attachment bytes over `~/.zshrc`; escape-hatch flags that make gog run a local command (`--on-change`, `--on-new`, `--mmdc`) are refused
+- Escape-hatch tools (`gog_<service>_run`, `gog_api_call`) refuse args that would override safety flags (`--readonly=false`, `--disable-commands=`, `--account`, a bare `--`, …); `gog_auth_run` cannot export tokens
+- Every Gmail send path — send, reply, forward, autoreply, sending a draft, and a forwarding filter — asks the user to confirm a preview showing recipients, subject, the body and attachment names
+- Attachment downloads land in a private per-user temp directory (mode 0700) and are deleted after delivery or swept after 24 hours
 
 ## License
 

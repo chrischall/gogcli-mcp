@@ -26,6 +26,8 @@ export type { ReplyFlags } from './tools/gmail.js';
 // gmail sub-package's send-side forward/autoreply tools reuse these directly
 // rather than re-declaring the gate; the draft-side twins never import them.
 export {
+  attachmentNames,
+  bodyPreview,
   extractEmails,
   logGmailDispatch,
   requireGmailDispatchConfirmation,
@@ -45,6 +47,10 @@ export type { FinalizeOptions, GmailListMethod } from './gmail-results.js';
 export { bootstrapGogAuth, AUTH_BOOTSTRAP_MARKER } from './bootstrap-auth.js';
 export type { AuthBootstrapStatus, AuthBootstrapOptions } from './bootstrap-auth.js';
 export type { RunOptions, Spawner, GogArg, GogFileArg } from './runner.js';
+export { pos } from './argv.js';
+export { confinePath, confinePaths, confineAtFile, fileRoots, defaultFileRoot, FILE_ROOTS_ENV } from './file-roots.js';
+export { prepareDownloadRoot, removeDownload, ATTACHMENT_TTL_MS } from './attachment-root.js';
+export type { GogPositional } from './argv.js';
 // Caller-supplied attachment bytes — the only outbound attachment path that
 // works when the caller and gog share no filesystem (a hosted deployment such
 // as mcp-host). See src/attachments.ts.

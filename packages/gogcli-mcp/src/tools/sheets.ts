@@ -4,6 +4,8 @@ import { run } from '../runner.js';
 import { rawTextResult } from '@chrischall/mcp-utils';
 import { accountParam, runOrDiagnose, registerRunTool, diagnose } from './utils.js';
 import { expandAnchorRange, countNonEmptyCells } from './sheets-a1.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 // Cell value type: matches what gog sheets --values-json accepts (passed
 // straight to the Sheets API as userEnteredValue). Strings starting with
@@ -31,7 +33,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, account }) => {
-    return runOrDiagnose(['sheets', 'get', spreadsheetId, range], { account });
+    return runOrDiagnose(['sheets', 'get', pos(spreadsheetId), pos(range)], { account });
   });
 
   server.registerTool('gog_sheets_update', {
@@ -52,7 +54,7 @@ export function registerSheetsTools(server: McpServer): void {
       const readRange = expandAnchorRange(range, values.length, cols);
       let existing: string;
       try {
-        existing = await run(['sheets', 'get', spreadsheetId, readRange], { account });
+        existing = await run(['sheets', 'get', pos(spreadsheetId), pos(readRange)], { account });
       } catch (err) {
         // Couldn't read the target — refuse to write rather than risk an
         // overwrite, and diagnose the read failure (auth/transient/etc.) the
@@ -70,7 +72,7 @@ export function registerSheetsTools(server: McpServer): void {
         );
       }
     }
-    const args = ['sheets', 'update', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`];
+    const args: GogArg[] = ['sheets', 'update', pos(spreadsheetId), pos(range), `--values-json=${JSON.stringify(values)}`];
     if (dry_run) args.push('--dry-run');
     if (fail_on_formula_error) args.push('--fail-on-formula-error');
     return runOrDiagnose(args, { account });
@@ -87,7 +89,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, values, account, dry_run }) => {
-    const args = ['sheets', 'append', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`];
+    const args: GogArg[] = ['sheets', 'append', pos(spreadsheetId), pos(range), `--values-json=${JSON.stringify(values)}`];
     if (dry_run) args.push('--dry-run');
     return runOrDiagnose(args, { account });
   });
@@ -102,7 +104,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, account, dry_run }) => {
-    const args = ['sheets', 'clear', spreadsheetId, range];
+    const args: GogArg[] = ['sheets', 'clear', pos(spreadsheetId), pos(range)];
     if (dry_run) args.push('--dry-run');
     return runOrDiagnose(args, { account });
   });
@@ -115,7 +117,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, account }) => {
-    return runOrDiagnose(['sheets', 'metadata', spreadsheetId], { account });
+    return runOrDiagnose(['sheets', 'metadata', pos(spreadsheetId)], { account });
   });
 
   server.registerTool('gog_sheets_create', {
@@ -126,7 +128,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ title, account }) => {
-    return runOrDiagnose(['sheets', 'create', title], { account });
+    return runOrDiagnose(['sheets', 'create', pos(title)], { account });
   });
 
   server.registerTool('gog_sheets_find_replace', {
@@ -139,7 +141,7 @@ export function registerSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, find, replace, account }) => {
-    return runOrDiagnose(['sheets', 'find-replace', spreadsheetId, find, replace], { account });
+    return runOrDiagnose(['sheets', 'find-replace', pos(spreadsheetId), pos(find), pos(replace)], { account });
   });
 
   registerRunTool(server, { service: 'sheets', examples: '"freeze", "add-tab", "rename-tab"' });

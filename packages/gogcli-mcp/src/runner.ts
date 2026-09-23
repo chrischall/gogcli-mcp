@@ -2,6 +2,10 @@ import type { ChildProcess } from 'node:child_process';
 import { delimiter, join } from 'node:path';
 import { currentCallSignal, killOnCancel, parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
 import { naiveSourceTimeZone } from './timestamps.js';
+import { forbiddenArgReason } from './arg-guard.js';
+import { isGogPositional, type GogPositional } from './argv.js';
+
+export type { GogPositional } from './argv.js';
 
 export type Spawner = (
   command: string,
@@ -55,10 +59,10 @@ export interface GogFileArg {
   positional?: boolean;
 }
 
-export type GogArg = string | GogFileArg;
+export type GogArg = string | GogFileArg | GogPositional;
 
 export function isGogFileArg(arg: GogArg): arg is GogFileArg {
-  return typeof arg !== 'string';
+  return typeof arg !== 'string' && arg.kind === 'file';
 }
 
 export interface RunOptions {
@@ -97,6 +101,15 @@ export interface RunOptions {
   // (see OPAQUE_FIELD_VALUE) — so a field carrying real prose, which is where a
   // real leaked token would live, still gets redacted normally.
   opaqueFields?: readonly string[];
+  // Inject gog's global --gmail-no-send, which blocks every Gmail send
+  // (send, reply, forward, drafts send, users.messages.send via api call) at
+  // runtime. Set by the escape hatches so none of them can dispatch mail
+  // around the confirmation rail.
+  gmailNoSend?: boolean;
+  // Ceiling on the bytes gog may write to stdout. Past it the child is killed
+  // and the call rejects, so one oversized download (a multi-GB Drive file read
+  // through runBinary) cannot exhaust this process's memory.
+  maxOutputBytes?: number;
 }
 
 const TIMEOUT_MS = 30_000;
@@ -300,8 +313,8 @@ function formatTimeout(ms: number): string {
 // plain argv, and remove the temp dir afterwards — on success, on a non-zero
 // exit, and on timeout alike. A leaked temp file holds user email content.
 async function spawnWithTempFiles(
-  args: GogArg[],
-  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
+  args: Array<string | GogFileArg>,
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean; maxOutputBytes?: number },
 ): Promise<string> {
   const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
@@ -350,8 +363,8 @@ async function spawnWithTempFiles(
 // to happen synchronously within the `run()` call, which the fake-timer tests
 // in tests/runner.test.ts depend on.
 function spawnExecutor(
-  args: GogArg[],
-  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
+  args: Array<string | GogFileArg>,
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean; maxOutputBytes?: number },
 ): Promise<string> {
   if (args.some(isGogFileArg)) {
     return spawnWithTempFiles(args, opts);
@@ -365,9 +378,9 @@ function spawnExecutor(
 // injected `spawner` bypasses the real child_process spawn.
 async function spawnGog(
   fullArgs: string[],
-  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean; maxOutputBytes?: number },
 ): Promise<string> {
-  const { timeout, interactive = false, spawner, binary = false } = opts;
+  const { timeout, interactive = false, spawner, binary = false, maxOutputBytes } = opts;
   const spawn = spawner ?? (await import('node:child_process')).spawn as unknown as Spawner;
   const effectiveTimeout = timeout ?? TIMEOUT_MS;
 
@@ -404,7 +417,19 @@ async function spawnGog(
       reject(new Error(`gog timed out after ${formatTimeout(effectiveTimeout)}`));
     }, effectiveTimeout);
 
-    child.stdout!.on('data', (chunk: Buffer) => { stdoutChunks.push(chunk); });
+    let stdoutBytes = 0;
+    child.stdout!.on('data', (chunk: Buffer) => {
+      if (settled) return;
+      stdoutBytes += chunk.length;
+      if (maxOutputBytes !== undefined && stdoutBytes > maxOutputBytes) {
+        settled = true;
+        stopWatching();
+        child.kill();
+        reject(new Error(`gog output exceeded the limit: more than ${maxOutputBytes} bytes`));
+        return;
+      }
+      stdoutChunks.push(chunk);
+    });
     child.stderr!.on('data', (chunk: Buffer) => { stderrChunks.push(chunk); });
 
     child.on('close', (code: number | null) => {
@@ -458,12 +483,51 @@ async function spawnGog(
 // Assemble the full gog argv: the always-injected flags (--json/--color=never,
 // --no-input unless interactive, --readonly when opted in), --account, then the
 // caller's args. Shared by run() and runBinary() so both get identical flags.
+// Split the caller's argv into flag position and positional position.
+// pos()-marked values, positional file args, and anything after an explicit
+// `--` are positionals; they go after ONE `--` at the very end, in their
+// original order, so a value that starts with '-' is data, never a flag
+// (audit BUG-1). Commands and flags keep their relative order. With nothing
+// positional the argv is returned unchanged — no `--` at all.
+function placePositionals(args: GogArg[]): { flags: Array<string | GogFileArg>; positionals: Array<string | GogFileArg> } {
+  const flags: Array<string | GogFileArg> = [];
+  const positionals: Array<string | GogFileArg> = [];
+  let afterSeparator = false;
+  for (const arg of args) {
+    if (arg === '--') {
+      afterSeparator = true;
+    } else if (isGogPositional(arg)) {
+      positionals.push(arg.value);
+    } else if (afterSeparator || (isGogFileArg(arg) && arg.positional)) {
+      positionals.push(arg);
+    } else {
+      flags.push(arg);
+    }
+  }
+  return { flags, positionals };
+}
+
+// Refuse a safety-control override sitting in FLAG position. The tool layer
+// already vets model-supplied escape-hatch args (arg-guard.ts); this is the
+// backstop for every other path, so no tool can hand gog a `--readonly=false`
+// that would override the `--readonly` injected below (gog takes the LAST
+// value of a repeated flag). Positionals are exempt: after `--` they are data.
+function assertNoSafetyOverrides(flags: Array<string | GogFileArg>): void {
+  for (const arg of flags) {
+    if (typeof arg !== 'string') continue;
+    const reason = forbiddenArgReason(arg);
+    if (reason) throw new Error(reason);
+  }
+}
+
 function assembleArgs(
   args: GogArg[],
-  opts: { account?: string; interactive: boolean; readonly: boolean },
-): GogArg[] {
+  opts: { account?: string; interactive: boolean; readonly: boolean; gmailNoSend: boolean },
+): Array<string | GogFileArg> {
+  const { flags, positionals } = placePositionals(args);
+  assertNoSafetyOverrides(flags);
   const effectiveAccount = opts.account ?? readEnvVar('GOG_ACCOUNT');
-  const fullArgs: GogArg[] = ['--json', '--color=never'];
+  const fullArgs: Array<string | GogFileArg> = ['--json', '--color=never'];
   if (!opts.interactive) {
     fullArgs.push('--no-input');
   }
@@ -473,15 +537,19 @@ function assembleArgs(
   if (opts.readonly || readonlyEnvEnabled()) {
     fullArgs.push('--readonly');
   }
+  if (opts.gmailNoSend) {
+    fullArgs.push('--gmail-no-send');
+  }
   if (effectiveAccount) {
     fullArgs.push('--account', effectiveAccount);
   }
-  fullArgs.push(...args);
+  fullArgs.push(...flags);
+  if (positionals.length > 0) fullArgs.push('--', ...positionals);
   return fullArgs;
 }
 
 export async function run(args: GogArg[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner, interactive = false, timeout, readonly = false, redactMode = 'full', opaqueFields } = options;
+  const { account, spawner, interactive = false, timeout, readonly = false, redactMode = 'full', opaqueFields, gmailNoSend = false } = options;
   const base = redactMode === 'tokens' ? redactGoogleTokens : redactSecrets;
   // Only OUTPUT carries opaque payloads. An error message is prose by
   // definition, so it always takes the plain redactor — exempting a field there
@@ -490,7 +558,7 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
     ? (text: string): string => redactPreservingOpaqueFields(text, opaqueFields, base)
     : base;
 
-  const fullArgs = assembleArgs(args, { account, interactive, readonly });
+  const fullArgs = assembleArgs(args, { account, interactive, readonly, gmailNoSend });
 
   // Redaction wraps the spawn: a successful `gog auth tokens` (or any command
   // echoing a credential) would otherwise return raw Google tokens (ya29.…/1//…)
@@ -511,7 +579,7 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
 // would corrupt. No redaction: the base64 of a user's own binary file is opaque
 // and has no token shapes to leak.
 export async function runBinary(args: GogArg[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner, timeout, readonly = false } = options;
-  const fullArgs = assembleArgs(args, { account, interactive: false, readonly });
-  return spawnExecutor(fullArgs, { timeout, interactive: false, spawner, binary: true });
+  const { account, spawner, timeout, readonly = false, gmailNoSend = false, maxOutputBytes } = options;
+  const fullArgs = assembleArgs(args, { account, interactive: false, readonly, gmailNoSend });
+  return spawnExecutor(fullArgs, { timeout, interactive: false, spawner, binary: true, maxOutputBytes });
 }

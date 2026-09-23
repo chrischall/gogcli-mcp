@@ -1,12 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, pageTokenParam, pageAliasParam, resolvePageToken, inlineFileArg} from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, pageTokenParam, pageAliasParam, resolvePageToken, inlineFileArg, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_download', {
     description: 'Download a Drive file to the local filesystem. For Google Docs formats, specify an export format (pdf, csv, xlsx, pptx, txt, png, docx, md).',
-    annotations: { readOnlyHint: true },
+    // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID to download'),
       out: z.string().optional().describe('Output file path (default: gogcli config dir)'),
@@ -15,7 +16,8 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, out, format, overwrite, account }) => {
-    const args = ['drive', 'download', fileId];
+    if (out) confinePath(out, 'out');
+    const args: GogArg[] = ['drive', 'download', pos(fileId)];
     if (out) args.push(`--out=${out}`);
     if (format) args.push(`--format=${format}`);
     if (overwrite) args.push('--overwrite');
@@ -36,7 +38,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       'Conditional replacement refuses Google Workspace files (Docs/Sheets/Slides), which have no replaceable binary content.',
     annotations: { destructiveHint: false },
     inputSchema: z.object({
-      localPath: z.string().optional().describe('Path to the file to upload, resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) this path does not exist and the call fails with "no such file or directory" — use content there. Exactly one of localPath / content is required.'),
+      localPath: z.string().optional().describe('Path to the file to upload, resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) this path does not exist and the call fails with "no such file or directory" — use content there. Exactly one of localPath / content is required. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       content: z.string().optional().describe('The file\'s bytes, base64-encoded (standard alphabet, with padding) — upload a file you hold without it existing anywhere on the gog server. This is the only route that works when the caller and gog share no filesystem. Requires name (there is no path to take a filename from). Max 8 MiB; for anything larger use localPath from a local deployment. Exactly one of localPath / content is required — supplying both is an error, not a precedence rule.'),
       name: z.string().optional().describe('Override filename (create) or rename target (replace)'),
       parent: z.string().optional().describe('Destination folder ID (create only)'),
@@ -71,7 +73,7 @@ export function registerExtraDriveTools(server: McpServer): void {
     // they sent. gog cannot tell the two apart, which is the point.
     let pathArg: GogArg;
     if (localPath !== undefined) {
-      pathArg = localPath;
+      pathArg = confinePath(localPath, 'localPath');
     } else {
       if (!name) {
         throw new Error('content requires name: there is no path to derive the Drive filename from.');
@@ -82,7 +84,7 @@ export function registerExtraDriveTools(server: McpServer): void {
         { positional: true, where: 'content' },
       ).arg;
     }
-    const args: GogArg[] = ['drive', 'upload', pathArg];
+    const args: GogArg[] = ['drive', 'upload', typeof pathArg === 'string' ? pos(pathArg) : pathArg];
     if (name) args.push(`--name=${name}`);
     if (parent) args.push(`--parent=${parent}`);
     if (replace) args.push(`--replace=${replace}`);
@@ -98,14 +100,15 @@ export function registerExtraDriveTools(server: McpServer): void {
     description: 'Recursively push a local directory\'s contents into an existing Drive folder — uploads new files, updates changed ones (matched by name + MD5), and creates missing subfolders. One-way and additive: it never deletes anything on Drive. Use dryRun to preview the planned actions first.',
     annotations: { destructiveHint: true },
     inputSchema: z.object({
-      localPath: z.string().describe('Local directory to push (its contents are mirrored into the parent folder)'),
+      localPath: z.string().describe('Local directory to push (its contents are mirrored into the parent folder). Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       parent: z.string().describe('Existing destination Drive folder ID'),
       dryRun: z.boolean().optional().describe('Preview the planned actions without making any changes'),
       allDrives: z.boolean().optional().describe('Include shared drives (default: true; set false for My Drive only)'),
       account: accountParam,
     }),
   }, async ({ localPath, parent, dryRun, allDrives, account }) => {
-    const args = ['drive', 'sync', 'push', localPath, `--parent=${parent}`];
+    confinePath(localPath, 'localPath');
+    const args: GogArg[] = ['drive', 'sync', 'push', pos(localPath), `--parent=${parent}`];
     if (dryRun) args.push('--dry-run');
     if (allDrives === false) args.push('--no-all-drives');
     return runOrDiagnose(args, { account });
@@ -121,7 +124,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, name, parent, account }) => {
-    const args = ['drive', 'copy', fileId, name];
+    const args: GogArg[] = ['drive', 'copy', pos(fileId), pos(name)];
     if (parent) args.push(`--parent=${parent}`);
     return runOrDiagnose(args, { account });
   });
@@ -134,7 +137,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileIds, account }) => {
-    return runOrDiagnose(['drive', 'url', ...fileIds], { account });
+    return runOrDiagnose(['drive', 'url', ...fileIds.map(pos)], { account });
   });
 
   server.registerTool('gog_drive_permissions', {
@@ -148,7 +151,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, max, pageToken, page, account }) => {
-    const args = ['drive', 'permissions', fileId];
+    const args: GogArg[] = ['drive', 'permissions', pos(fileId)];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -164,7 +167,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, permissionId, account }) => {
-    return runOrDiagnose(['drive', 'unshare', fileId, permissionId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['drive', 'unshare', pos(fileId), pos(permissionId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_drive_drives_list', {
@@ -179,7 +182,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ max, pageToken, page, all, query, account }) => {
-    const args = ['drive', 'drives'];
+    const args: GogArg[] = ['drive', 'drives'];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -199,7 +202,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, since, includeQuoted, max, page, all, account }) => {
-    const args = ['drive', 'comments', 'list', fileId];
+    const args: GogArg[] = ['drive', 'comments', 'list', pos(fileId)];
     if (since) args.push(`--since=${since}`);
     if (includeQuoted) args.push('--include-quoted');
     pushPaginationFlags(args, { max, page, all });
@@ -215,7 +218,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, commentId, account }) => {
-    return runOrDiagnose(['drive', 'comments', 'get', fileId, commentId], { account });
+    return runOrDiagnose(['drive', 'comments', 'get', pos(fileId), pos(commentId)], { account });
   });
 
   server.registerTool('gog_drive_comments_add', {
@@ -227,7 +230,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, content, account }) => {
-    return runOrDiagnose(['drive', 'comments', 'create', fileId, content], { account });
+    return runOrDiagnose(['drive', 'comments', 'create', pos(fileId), pos(content)], { account });
   });
 
   server.registerTool('gog_drive_comments_update', {
@@ -240,7 +243,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, commentId, content, account }) => {
-    return runOrDiagnose(['drive', 'comments', 'update', fileId, commentId, content], { account });
+    return runOrDiagnose(['drive', 'comments', 'update', pos(fileId), pos(commentId), pos(content)], { account });
   });
 
   server.registerTool('gog_drive_comments_delete', {
@@ -252,7 +255,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, commentId, account }) => {
-    return runOrDiagnose(['drive', 'comments', 'delete', fileId, commentId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['drive', 'comments', 'delete', pos(fileId), pos(commentId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_drive_comments_reply', {
@@ -266,7 +269,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, commentId, content, action, account }) => {
-    const args = ['drive', 'comments', 'reply', fileId, commentId, content];
+    const args: GogArg[] = ['drive', 'comments', 'reply', pos(fileId), pos(commentId), pos(content)];
     if (action) args.push(`--action=${action}`);
     return runOrDiagnose(args, { account });
   });
@@ -280,7 +283,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, commentId, account }) => {
-    return runOrDiagnose(['drive', 'comments', 'resolve', fileId, commentId], { account });
+    return runOrDiagnose(['drive', 'comments', 'resolve', pos(fileId), pos(commentId)], { account });
   });
 
   server.registerTool('gog_drive_comments_reopen', {
@@ -292,7 +295,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, commentId, account }) => {
-    return runOrDiagnose(['drive', 'comments', 'reopen', fileId, commentId], { account });
+    return runOrDiagnose(['drive', 'comments', 'reopen', pos(fileId), pos(commentId)], { account });
   });
 
   // --- gog 0.19.0 ---
@@ -310,7 +313,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ parent, depth, max, sort, order, noAllDrives, account }) => {
-    const args = ['drive', 'du'];
+    const args: GogArg[] = ['drive', 'du'];
     if (parent) args.push(`--parent=${parent}`);
     if (depth !== undefined) args.push(`--depth=${depth}`);
     if (max !== undefined) args.push(`--max=${max}`);
@@ -331,7 +334,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ parent, depth, max, noAllDrives, account }) => {
-    const args = ['drive', 'tree'];
+    const args: GogArg[] = ['drive', 'tree'];
     if (parent) args.push(`--parent=${parent}`);
     if (depth !== undefined) args.push(`--depth=${depth}`);
     if (max !== undefined) args.push(`--max=${max}`);
@@ -347,7 +350,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ drive, account }) => {
-    const args = ['drive', 'changes', 'start-token'];
+    const args: GogArg[] = ['drive', 'changes', 'start-token'];
     if (drive) args.push(`--drive=${drive}`);
     return runOrDiagnose(args, { account });
   });
@@ -366,7 +369,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ token, max, pageToken, page, all, includeRemoved, drive, account }) => {
-    const args = ['drive', 'changes', 'list', `--token=${token}`];
+    const args: GogArg[] = ['drive', 'changes', 'list', `--token=${token}`];
     if (max !== undefined) args.push(`--max=${max}`);
     // NOT `token` — this tool already binds that name to the start-page token
     // it takes as a required arg, which is a different value entirely.
@@ -387,7 +390,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, max, page, all, account }) => {
-    const args = ['drive', 'revisions', 'list', fileId];
+    const args: GogArg[] = ['drive', 'revisions', 'list', pos(fileId)];
     pushPaginationFlags(args, { max, page, all });
     return runOrDiagnose(args, { account });
   });
@@ -401,7 +404,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, revisionId, account }) => {
-    return runOrDiagnose(['drive', 'revisions', 'get', fileId, revisionId], { account });
+    return runOrDiagnose(['drive', 'revisions', 'get', pos(fileId), pos(revisionId)], { account });
   });
 
   server.registerTool('gog_drive_shortcut_create', {
@@ -414,7 +417,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ targetId, parent, name, account }) => {
-    const args = ['drive', 'shortcut', 'create', targetId, `--parent=${parent}`];
+    const args: GogArg[] = ['drive', 'shortcut', 'create', pos(targetId), `--parent=${parent}`];
     if (name) args.push(`--name=${name}`);
     return runOrDiagnose(args, { account });
   });
@@ -434,7 +437,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ language, view, minimumRole, publishedOnly, adminAccess, max, pageToken, page, account }) => {
-    const args = ['drive', 'labels', 'list'];
+    const args: GogArg[] = ['drive', 'labels', 'list'];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -457,7 +460,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ name, language, view, adminAccess, account }) => {
-    const args = ['drive', 'labels', 'get', name];
+    const args: GogArg[] = ['drive', 'labels', 'get', pos(name)];
     if (language) args.push(`--language=${language}`);
     if (view) args.push(`--view=${view}`);
     if (adminAccess) args.push('--admin-access');
@@ -475,7 +478,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, max, pageToken, page, account }) => {
-    const args = ['drive', 'labels', 'file', 'list', fileId];
+    const args: GogArg[] = ['drive', 'labels', 'file', 'list', pos(fileId)];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -498,7 +501,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, labelId, text, selection, integer, date, user, unset, fieldsJson, account }) => {
-    const args = ['drive', 'labels', 'file', 'apply', fileId, labelId];
+    const args: GogArg[] = ['drive', 'labels', 'file', 'apply', pos(fileId), pos(labelId)];
     if (text) for (const t of text) args.push(`--text=${t}`);
     if (selection) for (const s of selection) args.push(`--selection=${s}`);
     if (integer) for (const i of integer) args.push(`--integer=${i}`);
@@ -518,7 +521,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, labelId, account }) => {
-    return runOrDiagnose(['drive', 'labels', 'file', 'remove', fileId, labelId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['drive', 'labels', 'file', 'remove', pos(fileId), pos(labelId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_drive_activity', {
@@ -539,7 +542,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ file, folder, actions, from, to, filter, max, pageToken, page, all, consolidate, account }) => {
-    const args = ['drive', 'activity', 'query'];
+    const args: GogArg[] = ['drive', 'activity', 'query'];
     if (file) args.push(`--file=${file}`);
     if (folder) args.push(`--folder=${folder}`);
     if (actions) args.push(`--actions=${actions}`);
@@ -569,7 +572,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ file, parent, depth, max, internalDomain, publicOnly, externalOnly, noAllDrives, account }) => {
-    const args = ['drive', 'audit', 'sharing'];
+    const args: GogArg[] = ['drive', 'audit', 'sharing'];
     if (file) args.push(`--file=${file}`);
     if (parent) args.push(`--parent=${parent}`);
     if (depth !== undefined) args.push(`--depth=${depth}`);
@@ -594,7 +597,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ user, file, parent, depth, max, noAllDrives, account }) => {
-    const args = ['drive', 'audit', 'user', user];
+    const args: GogArg[] = ['drive', 'audit', 'user', pos(user)];
     if (file) args.push(`--file=${file}`);
     if (parent) args.push(`--parent=${parent}`);
     if (depth !== undefined) args.push(`--depth=${depth}`);

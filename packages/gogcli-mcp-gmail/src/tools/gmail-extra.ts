@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
@@ -230,7 +230,7 @@ async function resolveBySize(
 ): Promise<AttachmentMeta | undefined> {
   if (sizeBytes === undefined) return undefined;
   try {
-    const parsed = JSON.parse(await run(['gmail', 'get', messageId], { account })) as {
+    const parsed = JSON.parse(await run(['gmail', 'get', pos(messageId)], { account })) as {
       attachments?: AttachmentMeta[];
     };
     const matches = (parsed.attachments ?? []).filter((a) => a.size === sizeBytes);
@@ -258,7 +258,7 @@ async function resolveByIndex(
 ): Promise<AttachmentMeta | undefined> {
   try {
     const parsed = JSON.parse(
-      await run(['gmail', 'get', messageId, '--use-indexed-attachment-ids'], { account }),
+      await run(['gmail', 'get', pos(messageId), '--use-indexed-attachment-ids'], { account }),
     ) as { attachments?: AttachmentMeta[] };
     const attachments = parsed.attachments;
     if (!attachments) return undefined;
@@ -400,7 +400,7 @@ async function deliverViaDrive(
   driveFolder: string | undefined,
   account: string | undefined,
 ): Promise<CallToolResult> {
-  const args = ['drive', 'upload', path, '--json'];
+  const args: GogArg[] = ['drive', 'upload', pos(path), '--json'];
   if (driveFolder) args.push(`--parent=${driveFolder}`);
   args.push(`--name=${name}`); // callers always resolve a filename first
   // `gog drive upload --json` wraps the created file under a `file` key.
@@ -1943,7 +1943,7 @@ async function checkSiblingContentLoss(
 ): Promise<ContentLossCheck> {
   let raw: string;
   try {
-    raw = await runNormalized(['gmail', 'drafts', 'get', siblingDraftId, '--use-indexed-attachment-ids=false'], { account });
+    raw = await runNormalized(['gmail', 'drafts', 'get', pos(siblingDraftId), '--use-indexed-attachment-ids=false'], { account });
   } catch (err) {
     return unreadableSiblingCheck(siblingDraftId, String(err));
   }
@@ -2371,6 +2371,54 @@ function parseAutoReplyRecipients(raw: string): string[] {
   }
 }
 
+/** Every named attachment part of a stored message, in order. */
+function attachmentFilenames(payload: GmailPayloadPart | undefined): string[] {
+  const names: string[] = [];
+  const walk = (part: GmailPayloadPart | undefined): void => {
+    if (!part) return;
+    if (part.filename) names.push(part.filename);
+    for (const child of part.parts ?? []) walk(child);
+  };
+  walk(payload);
+  return names;
+}
+
+/**
+ * The confirmation preview for sending a stored draft: who it goes to, its
+ * subject, a bounded body preview and every attachment name — read off the
+ * draft itself. Unreadable output degrades to an empty preview rather than
+ * skipping the prompt: the user is still asked, just with less to go on.
+ */
+export function previewStoredDraft(raw: string): {
+  recipients: string[];
+  to?: string;
+  cc?: string;
+  bcc?: string;
+  subject?: string;
+  bodyPreview?: string;
+  attachments: string[];
+} {
+  let message: GmailDraftMessage | undefined;
+  try {
+    message = (JSON.parse(raw) as { draft?: { message?: GmailDraftMessage } }).draft?.message;
+  } catch {
+    message = undefined;
+  }
+  const headers = parseHeaders(message?.payload);
+  const to = headerValue(headers, 'To');
+  const cc = headerValue(headers, 'Cc');
+  const bcc = headerValue(headers, 'Bcc');
+  return {
+    recipients: extractEmails(to, cc, bcc),
+    to,
+    cc,
+    bcc,
+    subject: headerValue(headers, 'Subject'),
+    bodyPreview: bodyPreview(bestBodyText(message?.payload)),
+    attachments: attachmentFilenames(message?.payload),
+  };
+}
+
 export function registerExtraGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_raw', {
     description: 'Dump the raw Gmail API response as JSON (lossless; for scripting and LLM consumption).',
@@ -2382,7 +2430,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ messageId, format, pretty, account }) => {
-    const args = ['gmail', 'raw', messageId];
+    const args: GogArg[] = ['gmail', 'raw', pos(messageId)];
     if (format) args.push(`--format=${format}`);
     if (pretty) args.push('--pretty');
     // Verbatim by contract: see the `lossless` note on runOrDiagnose.
@@ -2409,7 +2457,9 @@ export function registerExtraGmailTools(server: McpServer): void {
       'nothing to your Drive and is NOT blocked by GOG_READONLY — it is the right choice when you need the bytes ' +
       'themselves and they are too large or the wrong type to come back inline. It works only where this server is ' +
       'hosted with a blob store (e.g. mcp-host); on a local stdio install it errors and tells you so.',
-    annotations: { readOnlyHint: true },
+    // Writes the file on the gog host (a caller `out` can overwrite one) and
+    // deliver="drive" creates a Drive file: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       messageId: z.string().describe('Gmail message ID'),
       attachmentId: z.string().optional().describe('The opaque attachment ID from a listing. Legacy addressing: Gmail re-issues a DIFFERENT id for the same part on every API call, so an id copied from an older listing can be stale. Prefer attachmentIndex. Exactly one of attachmentId / attachmentIndex is required.'),
@@ -2419,7 +2469,7 @@ export function registerExtraGmailTools(server: McpServer): void {
         .enum(['auto', 'inline', 'drive', 'url', 'off'])
         .optional()
         .describe('How to return the contents: auto (image inline; else a server-side file path), inline (force bytes as image/resource blob), drive (always a Drive link), url (a signed download link you can fetch with curl — hosted deployments only), or off (server-side download only). Default: auto.'),
-      out: z.string().optional().describe('Server-side path where gog writes the file. NOTE: this resolves on the gog server\'s filesystem, not your machine — on a hosted deployment you cannot read it. deliver="url" ignores it (the server has to read the file back to upload it, and only does that from its own download directory); every other delivery mode honors it. Omit it to use an ephemeral temp path.'),
+      out: z.string().optional().describe('Server-side path where gog writes the file; must be inside the server\'s GOG_FILE_ROOTS directories. NOTE: this resolves on the gog server\'s filesystem, not your machine — on a hosted deployment you cannot read it. deliver="url" ignores it (the server has to read the file back to upload it, and only does that from its own download directory); every other delivery mode honors it. Omit it to use an ephemeral temp path.'),
       name: z.string().optional().describe('Filename override. Defaults to the attachment\'s real filename from the message metadata; pass this to skip that lookup or force a name.'),
       driveFolder: z.string().optional().describe('Destination Google Drive folder ID for the uploaded copy (deliver="drive").'),
       account: accountParam,
@@ -2436,6 +2486,9 @@ export function registerExtraGmailTools(server: McpServer): void {
         'attachmentId is not stable across API calls and a copied one may no longer resolve.',
       );
     }
+    // A caller `out` is a write to the gog host's filesystem with attacker-
+    // chosen bytes: it must sit inside GOG_FILE_ROOTS (SEC-4).
+    if (out) confinePath(out, 'out');
     const indexed = attachmentIndex !== undefined;
     const attachmentRef = indexed ? String(attachmentIndex) : attachmentId as string;
     // deliver="url" needs the host's blob store, and the answer to "is there
@@ -2481,17 +2534,27 @@ export function registerExtraGmailTools(server: McpServer): void {
         );
         outPath = undefined;
       }
+      // Our own private download root, not a caller path: made owner-only and
+      // swept of expired downloads before gog writes into it (SEC-6).
+      const ownPath = !outPath;
       if (!outPath) {
+        await prepareDownloadRoot();
         outPath = deliver === 'url'
           ? blobOutPath(messageId, attachmentRef, filename ?? 'attachment')
           : messageOutPath(messageId, filename ?? 'attachment');
       }
+      // A staging copy the caller will never be pointed at again is deleted
+      // once delivered; one returned BY PATH is left for the TTL sweep.
+      const discard = async (result: CallToolResult, file: string): Promise<CallToolResult> => {
+        if (ownPath) await removeDownload(file);
+        return result;
+      };
 
       // 3. Download. --inline returns the bytes for the image/resource cases;
       //    skip it when delivery is by path, Drive or URL (don't ship base64 only
       //    to discard it).
       const needInline = deliver === 'auto' || deliver === 'inline';
-      const args = ['gmail', 'attachment', messageId, attachmentRef];
+      const args: GogArg[] = ['gmail', 'attachment', pos(messageId), pos(attachmentRef)];
       // PIN the id-vs-index mode on every call. GOG_GMAIL_USE_INDEXED_ATTACHMENT_IDS
       // in the host env would otherwise make gog parse an opaque attachmentId as an
       // integer and hard-fail ("the attachment argument must be a 0-based index",
@@ -2557,19 +2620,19 @@ export function registerExtraGmailTools(server: McpServer): void {
         return withNote(textResult({ delivery: 'file', path, cached: info.cached, bytes: info.bytes, fileName: filename, mimeType }), notes);
       }
       if (deliver === 'drive') {
-        return withNote(await deliverViaDrive(path, filename, driveFolder, account), notes);
+        return discard(withNote(await deliverViaDrive(path, filename, driveFolder, account), notes), path);
       }
       // deliver === 'url'. The minter is set for that mode and no other, and it
       // was resolved before the download — so this branch cannot be reached
       // without one, and no other mode can fall into it.
       if (blobMinter) {
-        return withNote(await deliverViaBlobUrl(blobMinter, messageId, attachmentRef, path, filename, mimeType), notes);
+        return discard(withNote(await deliverViaBlobUrl(blobMinter, messageId, attachmentRef, path, filename, mimeType), notes), path);
       }
       if (deliver === 'inline') {
         if (info.contentBase64) {
-          return withNote(isImage
+          return discard(withNote(isImage
             ? inlineImageResult(summary, info.contentBase64, mimeType)
-            : inlineResourceResult(messageId, filename, summary, info.contentBase64, mimeType), notes);
+            : inlineResourceResult(messageId, filename, summary, info.contentBase64, mimeType), notes), path);
         }
         if (inlineUnusable) {
           return errorResult(
@@ -2586,7 +2649,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       // deliver === 'auto': images render everywhere; everything else is a
       // server-side file path.
       if (isImage && info.contentBase64) {
-        return withNote(inlineImageResult(summary, info.contentBase64, mimeType), notes);
+        return discard(withNote(inlineImageResult(summary, info.contentBase64, mimeType), notes), path);
       }
       return withNote(fileResult(path, filename, mimeType, info.bytes), notes);
     } catch (err) {
@@ -2604,7 +2667,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ threadIds, account }) => {
-    return runOrDiagnose(['gmail', 'url', ...threadIds], { account });
+    return runOrDiagnose(['gmail', 'url', ...threadIds.map(pos)], { account });
   });
 
   server.registerTool('gog_gmail_history', {
@@ -2619,7 +2682,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ since, max, pageToken, page, all, account }) => {
-    const args = ['gmail', 'history'];
+    const args: GogArg[] = ['gmail', 'history'];
     if (since) args.push(`--since=${since}`);
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
@@ -2670,8 +2733,8 @@ export function registerExtraGmailTools(server: McpServer): void {
       const { messageIds, query, max, thread, account } = rawArgs as {
         messageIds?: string[]; query?: string; max?: number; thread?: boolean; account?: string;
       };
-      const args = ['gmail', cmd];
-      if (messageIds) args.push(...messageIds);
+      const args: GogArg[] = ['gmail', cmd];
+      if (messageIds) args.push(...messageIds.map(pos));
       if (query) args.push(`--query=${query}`);
       if (max !== undefined) args.push(`--max=${max}`);
       if (supportsThread && thread) args.push('--thread');
@@ -2689,7 +2752,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ messageId, add, remove, account }) => {
-    const args = ['gmail', 'messages', 'modify', messageId];
+    const args: GogArg[] = ['gmail', 'messages', 'modify', pos(messageId)];
     if (add) args.push(`--add=${add}`);
     if (remove) args.push(`--remove=${remove}`);
     return runOrDiagnose(args, { account });
@@ -2704,7 +2767,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ messageIds, force, account }) => {
-    const args = ['gmail', 'batch', 'delete', ...messageIds];
+    const args: GogArg[] = ['gmail', 'batch', 'delete', ...messageIds.map(pos)];
     if (force) args.push('--force');
     return runOrDiagnose(args, { account });
   });
@@ -2719,7 +2782,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ messageIds, add, remove, account }) => {
-    const args = ['gmail', 'batch', 'modify', ...messageIds];
+    const args: GogArg[] = ['gmail', 'batch', 'modify', ...messageIds.map(pos)];
     if (add) args.push(`--add=${add}`);
     if (remove) args.push(`--remove=${remove}`);
     return runOrDiagnose(args, { account });
@@ -2730,21 +2793,28 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       threadId: z.string().describe('Gmail thread ID'),
-      download: z.boolean().optional().describe('Download all attachments'),
+      download: z.boolean().optional().describe('No longer supported (this tool is read-only): passing true is refused. Download attachments one at a time with gog_gmail_attachment.'),
       full: z.boolean().optional().describe('Show full message bodies'),
       sanitizeContent: z.boolean().optional().describe('Strip HTML, remove URLs, omit raw payloads from JSON (largest payload-size reduction)'),
       latestN: z.number().int().positive().optional().describe('Return only the most recent N messages in the thread (wrapper-side trim; avoids overflowing context on long threads)'),
       snippetsOnly: z.boolean().optional().describe('Reduce each message to its id, labels, snippet, and key headers (From/To/Cc/Subject/Date), dropping full bodies'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` within its message instead of an opaque `attachmentId`. The index is stable across calls (a message\'s MIME structure does not change) while the id is not, so this is what you want before calling gog_gmail_attachment.'),
-      outDir: z.string().optional().describe('Directory to write attachments to (default: current directory)'),
+      outDir: z.string().optional().describe('No longer supported (this tool is read-only): passing it is refused. Use gog_gmail_attachment.'),
       account: accountParam,
     }),
   }, async ({ threadId, download, full, sanitizeContent, latestN, snippetsOnly, useIndexedAttachmentIds, outDir, account }) => {
-    const args = ['gmail', 'thread', 'get', threadId];
-    if (download) args.push('--download');
+    if (download || outDir) {
+      // A read-only tool must not write files (audit SEC-4): gog would drop every
+      // attachment into a server directory with no confinement and no cleanup.
+      return errorResult(
+        'download/outDir are no longer supported on gog_gmail_thread_get: it is a read-only tool. Fetch each attachment with '
+        + 'gog_gmail_attachment instead (deliver="url" or "drive" on a hosted deployment, deliver="off" for a '
+        + 'server-side file), using the messageId + attachmentIndex this tool lists.',
+      );
+    }
+    const args: GogArg[] = ['gmail', 'thread', 'get', pos(threadId)];
     if (full) args.push('--full');
     if (sanitizeContent) args.push('--sanitize-content');
-    if (outDir) args.push(`--out-dir=${outDir}`);
     // PINNED, not conditional: GOG_GMAIL_USE_INDEXED_ATTACHMENT_IDS in the host env
     // swaps `attachmentId` for `attachmentIndex` in every attachments[] entry. Only
     // an explicit flag makes the response shape the same on both transports.
@@ -2764,26 +2834,33 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ threadId, add, remove, account }) => {
-    const args = ['gmail', 'thread', 'modify', threadId];
+    const args: GogArg[] = ['gmail', 'thread', 'modify', pos(threadId)];
     if (add) args.push(`--add=${add}`);
     if (remove) args.push(`--remove=${remove}`);
     return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_gmail_thread_attachments', {
-    description: 'List all attachments in a Gmail thread, optionally downloading them. NOTE: download/outDir write to the CONNECTOR/gog server\'s filesystem — on a hosted deployment (e.g. mcp-host) you can\'t read those files, so use gog_gmail_attachment per attachment to receive bytes (image inline, or deliver="url"/"drive"). This tool is best used just to LIST attachments (filenames, ids, sizes) and then fetch the ones you want individually.',
+    description: 'List all attachments in a Gmail thread (filenames, ids, sizes). Read-only: to receive the bytes, fetch each one with gog_gmail_attachment (image inline, or deliver="url"/"drive"/"off").',
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       threadId: z.string().describe('Gmail thread ID'),
-      download: z.boolean().optional().describe('Download all attachments to the SERVER filesystem (see the note above; on a hosted deployment the files aren\'t reachable — fetch individually with gog_gmail_attachment instead).'),
+      download: z.boolean().optional().describe('No longer supported (this tool is read-only): passing true is refused. Fetch attachments individually with gog_gmail_attachment.'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId`. Set this before calling gog_gmail_attachment: the index is stable across calls, the id is not. The index counts WITHIN each message, and this listing flattens every message\'s attachments into one array — so pair each row\'s `messageId` with its own `attachmentIndex`; a row\'s position in the flat array is NOT the index.'),
-      outDir: z.string().optional().describe('Directory to write attachments to, resolved on the gog SERVER\'s filesystem (default: current directory). Not your local machine on a hosted deployment.'),
+      outDir: z.string().optional().describe('No longer supported (this tool is read-only): passing it is refused. Use gog_gmail_attachment.'),
       account: accountParam,
     }),
   }, async ({ threadId, download, useIndexedAttachmentIds, outDir, account }) => {
-    const args = ['gmail', 'thread', 'attachments', threadId];
-    if (download) args.push('--download');
-    if (outDir) args.push(`--out-dir=${outDir}`);
+    if (download || outDir) {
+      // A read-only tool must not write files (audit SEC-4): gog would drop every
+      // attachment into a server directory with no confinement and no cleanup.
+      return errorResult(
+        'download/outDir are no longer supported on gog_gmail_thread_attachments: it is a read-only tool. Fetch each attachment with '
+        + 'gog_gmail_attachment instead (deliver="url" or "drive" on a hosted deployment, deliver="off" for a '
+        + 'server-side file), using the messageId + attachmentIndex this tool lists.',
+      );
+    }
+    const args: GogArg[] = ['gmail', 'thread', 'attachments', pos(threadId)];
     // PINNED — see gog_gmail_thread_get. This listing is the one place the index is
     // load-bearing: gog concatenates every message's attachments into a single
     // array, so array position is NOT the per-message index the download expects.
@@ -2809,7 +2886,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ labelIdOrName, account }) => {
-    return runOrDiagnose(['gmail', 'labels', 'get', labelIdOrName], { account });
+    return runOrDiagnose(['gmail', 'labels', 'get', pos(labelIdOrName)], { account });
   });
 
   server.registerTool('gog_gmail_labels_create', {
@@ -2820,7 +2897,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ name, account }) => {
-    return runOrDiagnose(['gmail', 'labels', 'create', name], { account });
+    return runOrDiagnose(['gmail', 'labels', 'create', pos(name)], { account });
   });
 
   server.registerTool('gog_gmail_labels_rename', {
@@ -2832,7 +2909,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ labelIdOrName, newName, account }) => {
-    return runOrDiagnose(['gmail', 'labels', 'rename', labelIdOrName, newName], { account });
+    return runOrDiagnose(['gmail', 'labels', 'rename', pos(labelIdOrName), pos(newName)], { account });
   });
 
   server.registerTool('gog_gmail_labels_delete', {
@@ -2843,7 +2920,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ labelIdOrName, account }) => {
-    return runOrDiagnose(['gmail', 'labels', 'delete', labelIdOrName, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['gmail', 'labels', 'delete', pos(labelIdOrName), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_gmail_labels_modify', {
@@ -2856,7 +2933,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ threadIds, add, remove, account }) => {
-    const args = ['gmail', 'labels', 'modify', ...threadIds];
+    const args: GogArg[] = ['gmail', 'labels', 'modify', ...threadIds.map(pos)];
     if (add) args.push(`--add=${add}`);
     if (remove) args.push(`--remove=${remove}`);
     return runOrDiagnose(args, { account });
@@ -2887,7 +2964,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ max, pageToken, page, all, enrich, account }) => {
-    const args = ['gmail', 'drafts', 'list'];
+    const args: GogArg[] = ['gmail', 'drafts', 'list'];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -3003,7 +3080,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ draftIdA, draftIdB, maxDiffLines, account }) => {
-    const fetchArgs = (id: string): string[] => ['gmail', 'drafts', 'get', id, '--use-indexed-attachment-ids=false'];
+    const fetchArgs = (id: string): GogArg[] => ['gmail', 'drafts', 'get', pos(id), '--use-indexed-attachment-ids=false'];
     let rawA: string;
     let rawB: string;
     try {
@@ -3069,13 +3146,21 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       draftId: z.string().describe('Draft ID'),
-      download: z.boolean().optional().describe('Download draft attachments'),
+      download: z.boolean().optional().describe('No longer supported (this tool is read-only): passing true is refused. Fetch attachments with gog_gmail_attachment.'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId` (stable across calls, unlike the id).'),
       account: accountParam,
     }),
   }, async ({ draftId, download, useIndexedAttachmentIds, account }) => {
-    const args = ['gmail', 'drafts', 'get', draftId];
-    if (download) args.push('--download');
+    if (download) {
+      // A read-only tool must not write files (audit SEC-4): gog would drop every
+      // attachment into a server directory with no confinement and no cleanup.
+      return errorResult(
+        'download/outDir are no longer supported on gog_gmail_drafts_get: it is a read-only tool. Fetch each attachment with '
+        + 'gog_gmail_attachment instead (deliver="url" or "drive" on a hosted deployment, deliver="off" for a '
+        + 'server-side file), using the messageId + attachmentIndex this tool lists.',
+      );
+    }
+    const args: GogArg[] = ['gmail', 'drafts', 'get', pos(draftId)];
     args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false'); // PINNED — see gog_gmail_thread_get
     return runOrDiagnose(args, { account });
   });
@@ -3093,7 +3178,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyTo: z.string().optional().describe('Reply-To header address'),
     quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or replyToThreadId. DEFAULTS OFF: a draft created with a reply target but without this threads correctly and still reads as a brand-new message, because gog only quotes by default on its reply subcommands. For a real reply draft prefer gog_gmail_drafts_reply / gog_gmail_drafts_reply_all, which also inherit the recipients and the "Re:" subject that this tool leaves to you.'),
     replyAll: z.boolean().optional().describe('Auto-populate recipients from the original message (reply-all), inferring To/Cc from it. Requires replyToMessageId or replyToThreadId. Explicit to/cc/bcc still apply on top; omitRecipients still suppresses them.'),
-    attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all).'),
+    attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all). Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
     attachInline: attachInlineParam,
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
@@ -3124,6 +3209,9 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   function appendDraftFlags(args: GogArg[], f: DraftFlags): void {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
+    // Server paths are read on the gog host and mailed out: confined (SEC-3).
+    confinePaths(f.attach, 'attach');
+    if (f.bodyHtmlFile) confinePath(f.bodyHtmlFile, 'bodyHtmlFile');
     if (!f.omitRecipients) {
       if (f.to) args.push(`--to=${f.to}`);
       if (f.cc) args.push(`--cc=${f.cc}`);
@@ -3229,7 +3317,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       // Same PIN as gog_gmail_drafts_get — this re-fetch is handed to the caller
       // verbatim, so its attachments[] shape must not depend on the host env.
       if (draftId) {
-        const refetched = await runOrDiagnose(['gmail', 'drafts', 'get', draftId, '--use-indexed-attachment-ids=false'], { account });
+        const refetched = await runOrDiagnose(['gmail', 'drafts', 'get', pos(draftId), '--use-indexed-attachment-ids=false'], { account });
         // ONLY adopt the re-fetch when it worked. `returnFull` is a convenience
         // read AFTER an acknowledged write; a 404 here means the draft moved (an
         // Apple Mail fork between write and read is exactly the case this file
@@ -3303,7 +3391,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       if (check.status !== 'clean' && !acceptContentLoss) return contentLossRefusal(draftId, check);
       overridden = check.status !== 'clean';
     }
-    const args: GogArg[] = ['gmail', 'drafts', 'update', draftId];
+    const args: GogArg[] = ['gmail', 'drafts', 'update', pos(draftId)];
     appendDraftFlags(args, flags);
     if (clearAttachments) args.push('--clear-attachments');
     if (clearReplyContext) args.push('--clear-reply-context');
@@ -3348,13 +3436,14 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ draftId, account, force }) => {
-    const args = ['gmail', 'drafts', 'delete', draftId];
+    const args: GogArg[] = ['gmail', 'drafts', 'delete', pos(draftId)];
     if (force) args.push('--force');
     return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_gmail_drafts_send', {
     description:
+      'SENDS MAIL — reads the stored draft and asks the MCP host to show a confirmation prompt with its recipients, subject, a preview of the body and the attachment names; the draft is sent only after the user accepts. ' +
       'Send an existing Gmail draft. If the id no longer resolves, the 404 comes back as a DRAFT_FORKED report — what happened, ' +
       'the drafts that do exist (with their free origin/rootsOwnThread fields) and what to do next — rather than a bare ' +
       'notFound. It names no replacement: that judgement needs a named pair and gog_gmail_drafts_diff. If the draft turns out ' +
@@ -3364,8 +3453,20 @@ export function registerExtraGmailTools(server: McpServer): void {
       draftId: z.string().describe('Draft ID to send'),
       account: accountParam,
     }),
-  }, async ({ draftId, account }) => {
-    const result = await runOrDiagnose(['gmail', 'drafts', 'send', draftId], { account });
+  }, async ({ draftId, account }, ctx) => {
+    // Sending a staged draft dispatches mail as irreversibly as gog_gmail_send,
+    // so it goes through the same confirmation rail (audit SEC-2) — otherwise
+    // drafts_create + drafts_send is an unconfirmed route around it. The prompt
+    // is built from the STORED draft, since that, not anything the caller says,
+    // is what will go out. A draft that no longer resolves takes the same
+    // fork-aware path a failed send always has.
+    const got = await runOrDiagnose(['gmail', 'drafts', 'get', pos(draftId)], { account });
+    if (got.isError) return forkAwareDraftFailure(got, 'gog_gmail_drafts_send', draftId, account);
+    const preview = previewStoredDraft(resultText(got) ?? '');
+    const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.drafts-send', { draftId, ...preview });
+    if (confirmation) return confirmation;
+    const result = await runOrDiagnose(['gmail', 'drafts', 'send', pos(draftId)], { account });
+    if (!result.isError) logGmailDispatch('gog_gmail_drafts_send', preview.recipients, account);
     return forkAwareDraftFailure(result, 'gog_gmail_drafts_send', draftId, account);
   });
 
@@ -3386,10 +3487,11 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ file, labels, internalDateSource, neverMarkSpam, processForCalendar, account }) => {
+    confinePath(file, 'file');
     // Not gated: gogcli's internal/cmd/gmail_import.go has no confirmDestructive /
     // dryRunAndConfirmDestructive call site (checked at upstream v0.35.0, and a live
     // `--dry-run` against a v0.35.0 build proceeds), so no --force is appended.
-    const args = ['gmail', 'import', file];
+    const args: GogArg[] = ['gmail', 'import', pos(file)];
     if (labels) for (const label of labels) args.push(`--label=${label}`);
     if (internalDateSource) args.push(`--internal-date-source=${internalDateSource}`);
     if (neverMarkSpam) args.push('--never-mark-spam');
@@ -3399,7 +3501,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_forward', {
     description:
-      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, note size, and attachment handling. '
+      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, the note text, and attachment handling. '
       + 'Mail is sent only after the user accepts that prompt. To STAGE a forward instead of sending it, use '
       + 'gog_gmail_drafts_forward, which never needs confirmation. '
       + 'Forward an existing Gmail message to new recipients.',
@@ -3419,10 +3521,12 @@ export function registerExtraGmailTools(server: McpServer): void {
     const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.forward', {
       messageId, to, cc, bcc, recipients, recipientCount: recipients.length,
       noteLength: note?.length ?? 0,
+      notePreview: bodyPreview(note),
       skipAttachments: Boolean(skipAttachments),
+      attachmentsIncluded: !skipAttachments,
     });
     if (confirmation) return confirmation;
-    const args: GogArg[] = ['gmail', 'forward', messageId, `--to=${to}`];
+    const args: GogArg[] = ['gmail', 'forward', pos(messageId), `--to=${to}`];
     if (cc) args.push(`--cc=${cc}`);
     if (bcc) args.push(`--bcc=${bcc}`);
     if (note) args.push(payloadArg('note', 'note-file', note));
@@ -3459,7 +3563,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { destructiveHint: false },
     inputSchema: z.object({ ...replySchema, returnFull: draftWriteSchema.returnFull }),
   }, async ({ messageId, account, returnFull, ...flags }) => {
-    const args: GogArg[] = ['gmail', 'drafts', 'reply', messageId];
+    const args: GogArg[] = ['gmail', 'drafts', 'reply', pos(messageId)];
     appendReplyFlags(args, flags);
     return writeDraft(args, account, returnFull);
   });
@@ -3472,7 +3576,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { destructiveHint: false },
     inputSchema: z.object({ ...replySchema, returnFull: draftWriteSchema.returnFull }),
   }, async ({ messageId, account, returnFull, ...flags }) => {
-    const args: GogArg[] = ['gmail', 'drafts', 'reply-all', messageId];
+    const args: GogArg[] = ['gmail', 'drafts', 'reply-all', pos(messageId)];
     appendReplyFlags(args, flags);
     return writeDraft(args, account, returnFull);
   });
@@ -3496,7 +3600,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, returnFull, account }) => {
-    const args: GogArg[] = ['gmail', 'drafts', 'forward', messageId];
+    const args: GogArg[] = ['gmail', 'drafts', 'forward', pos(messageId)];
     if (to) args.push(`--to=${to}`);
     if (cc) args.push(`--cc=${cc}`);
     if (bcc) args.push(`--bcc=${bcc}`);
@@ -3531,7 +3635,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ query, max, subject, body, bodyHtml, from, replyTo, label, archive, markRead, skipBulk, allowSelf, account }, ctx) => {
-    const searchResult = await runOrDiagnose(['gmail', 'search', query, `--max=${max ?? 20}`], { account });
+    const searchResult = await runOrDiagnose(['gmail', 'search', pos(query), `--max=${max ?? 20}`], { account });
     if (searchResult.isError) return searchResult;
     const senders = parseSearchSenders(resultText(searchResult) ?? '{}');
     const sampleSenders = extractEmails(...senders);
@@ -3541,13 +3645,14 @@ export function registerExtraGmailTools(server: McpServer): void {
       sampleSenders,
       subject: subject || undefined,
       bodyLength: (body ?? bodyHtml ?? '').length,
+      bodyPreview: bodyPreview(body ?? bodyHtml),
       max: max ?? 20,
       label: label || 'AutoReplied',
       archive: Boolean(archive),
       markRead: Boolean(markRead),
     });
     if (confirmation) return confirmation;
-    const args: GogArg[] = ['gmail', 'autoreply', query];
+    const args: GogArg[] = ['gmail', 'autoreply', pos(query)];
     if (max !== undefined) args.push(`--max=${max}`);
     if (subject) args.push(`--subject=${subject}`);
     if (body) args.push(payloadArg('body', 'body-file', body));
@@ -3591,7 +3696,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ query, max, pageToken, page, maxPages, all, includeBody, full, bodyFormat, includeAttachments, useIndexedAttachmentIds, account }) => {
-    const args = ['gmail', 'messages', 'search', query];
+    const args: GogArg[] = ['gmail', 'messages', 'search', pos(query)];
     if (max !== undefined) args.push(`--max=${max}`);
     if (all) args.push('--all');
     if (includeBody) args.push('--include-body');
@@ -3629,7 +3734,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ labelIdOrName, backgroundColor, textColor, labelListVisibility, messageListVisibility, account }) => {
-    const args = ['gmail', 'labels', 'style', labelIdOrName];
+    const args: GogArg[] = ['gmail', 'labels', 'style', pos(labelIdOrName)];
     if (backgroundColor) args.push(`--background-color=${backgroundColor}`);
     if (textColor) args.push(`--text-color=${textColor}`);
     if (labelListVisibility) args.push(`--label-list-visibility=${labelListVisibility}`);
@@ -3662,7 +3767,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ enable, disable, subject, body, start, end, contactsOnly, domainOnly, account }) => {
-    const args = ['gmail', 'settings', 'vacation', 'update'];
+    const args: GogArg[] = ['gmail', 'settings', 'vacation', 'update'];
     if (enable) args.push('--enable');
     if (disable) args.push('--disable');
     if (subject) args.push(`--subject=${subject}`);
@@ -3694,11 +3799,11 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ filterId, account }) => {
-    return runOrDiagnose(['gmail', 'settings', 'filters', 'get', filterId], { account });
+    return runOrDiagnose(['gmail', 'settings', 'filters', 'get', pos(filterId)], { account });
   });
 
   server.registerTool('gog_gmail_filters_create', {
-    description: 'Create a Gmail filter. Specify match criteria (from/to/subject/query/hasAttachment) and one or more actions (label, archive, mark-read, star, important, trash, forward, never-spam).',
+    description: 'Create a Gmail filter. Specify match criteria (from/to/subject/query/hasAttachment) and one or more actions (label, archive, mark-read, star, important, trash, forward, never-spam). A filter with forward asks the MCP host to show a confirmation prompt first, since it sends every future matching message to that address.',
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       from: z.string().optional().describe('Match messages from this sender'),
@@ -3717,8 +3822,24 @@ export function registerExtraGmailTools(server: McpServer): void {
       forward: z.string().optional().describe('Forward to this email address (must be a verified forwarding address)'),
       account: accountParam,
     }),
-  }, async ({ from, to, subject, query, hasAttachment, addLabel, removeLabel, archive, markRead, star, important, trash, neverSpam, forward, account }) => {
-    const args = ['gmail', 'settings', 'filters', 'create'];
+  }, async ({ from, to, subject, query, hasAttachment, addLabel, removeLabel, archive, markRead, star, important, trash, neverSpam, forward, account }, ctx) => {
+    // A forward action routes every FUTURE matching message to another
+    // address — persistent exfiltration if a prompt-injected agent sets it up —
+    // so it needs the user's confirmation like any other send (audit SEC-2).
+    if (forward) {
+      const criteria = Object.fromEntries(
+        Object.entries({ from, to, subject, query, hasAttachment }).filter(([, v]) => v !== undefined),
+      );
+      const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.filter-forward', {
+        forwardTo: forward,
+        criteria,
+        alsoArchive: Boolean(archive),
+        alsoTrash: Boolean(trash),
+        alsoMarkRead: Boolean(markRead),
+      });
+      if (confirmation) return confirmation;
+    }
+    const args: GogArg[] = ['gmail', 'settings', 'filters', 'create'];
     if (from) args.push(`--from=${from}`);
     if (to) args.push(`--to=${to}`);
     if (subject) args.push(`--subject=${subject}`);
@@ -3733,7 +3854,9 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (trash) args.push('--trash');
     if (neverSpam) args.push('--never-spam');
     if (forward) args.push(`--forward=${forward}`, '--force'); // gog gates this op; without --force the runner's --no-input makes it refuse (forwarding filters only)
-    return runOrDiagnose(args, { account });
+    const result = await runOrDiagnose(args, { account });
+    if (forward && !result.isError) logGmailDispatch('gog_gmail_filters_create', extractEmails(forward), account);
+    return result;
   });
 
   server.registerTool('gog_gmail_filters_delete', {
@@ -3744,7 +3867,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ filterId, account }) => {
-    return runOrDiagnose(['gmail', 'settings', 'filters', 'delete', filterId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['gmail', 'settings', 'filters', 'delete', pos(filterId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_gmail_sendas_list', {
@@ -3765,7 +3888,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ email, account }) => {
-    return runOrDiagnose(['gmail', 'settings', 'sendas', 'get', email], { account });
+    return runOrDiagnose(['gmail', 'settings', 'sendas', 'get', pos(email)], { account });
   });
 
   server.registerTool('gog_gmail_sendas_create', {
@@ -3780,7 +3903,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ email, displayName, replyTo, signature, treatAsAlias, account }) => {
-    const args = ['gmail', 'settings', 'sendas', 'create', email];
+    const args: GogArg[] = ['gmail', 'settings', 'sendas', 'create', pos(email)];
     if (displayName) args.push(`--display-name=${displayName}`);
     if (replyTo) args.push(`--reply-to=${replyTo}`);
     if (signature) args.push(`--signature=${signature}`);
@@ -3801,7 +3924,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ email, displayName, replyTo, signature, treatAsAlias, makeDefault, account }) => {
-    const args = ['gmail', 'settings', 'sendas', 'update', email];
+    const args: GogArg[] = ['gmail', 'settings', 'sendas', 'update', pos(email)];
     if (displayName) args.push(`--display-name=${displayName}`);
     if (replyTo) args.push(`--reply-to=${replyTo}`);
     if (signature) args.push(`--signature=${signature}`);
@@ -3818,7 +3941,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ email, account }) => {
-    return runOrDiagnose(['gmail', 'settings', 'sendas', 'delete', email, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['gmail', 'settings', 'sendas', 'delete', pos(email), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_gmail_sendas_verify', {
@@ -3829,6 +3952,6 @@ export function registerExtraGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ email, account }) => {
-    return runOrDiagnose(['gmail', 'settings', 'sendas', 'verify', email], { account });
+    return runOrDiagnose(['gmail', 'settings', 'sendas', 'verify', pos(email)], { account });
   });
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerContactsTools } from '../../src/tools/contacts.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -14,7 +15,7 @@ describe('gog_contacts_search', () => {
     vi.mocked(runner.run).mockResolvedValue('{"connections":[]}');
     const harness = await setupHandlers();
     await harness.callTool('gog_contacts_search', { query: 'alice' });
-    expect(runner.run).toHaveBeenCalledWith(['contacts', 'search', 'alice'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['contacts', 'search', pos('alice')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -46,7 +47,7 @@ describe('gog_contacts_get', () => {
     vi.mocked(runner.run).mockResolvedValue('{"resourceName":"people/c123"}');
     const harness = await setupHandlers();
     await harness.callTool('gog_contacts_get', { resourceName: 'people/c123' });
-    expect(runner.run).toHaveBeenCalledWith(['contacts', 'get', 'people/c123'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['contacts', 'get', pos('people/c123')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {

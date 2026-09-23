@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerDocsTools } from '../../src/tools/docs.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -14,7 +15,7 @@ describe('gog_docs_info', () => {
     vi.mocked(runner.run).mockResolvedValue('{"title":"My Doc","docId":"abc"}');
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_docs_info', { docId: 'abc' });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'info', 'abc'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'info', pos('abc')], { account: undefined });
     expect(result.content[0].text).toContain('My Doc');
   });
 
@@ -49,7 +50,7 @@ describe('gog_docs_cat', () => {
     vi.mocked(runner.run).mockResolvedValue('Hello world');
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_docs_cat', { docId: 'abc' });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'cat', 'abc'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'cat', pos('abc')], { account: undefined });
     expect(result.content[0].text).toBe('Hello world');
   });
 
@@ -57,14 +58,14 @@ describe('gog_docs_cat', () => {
     vi.mocked(runner.run).mockResolvedValue('text');
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_cat', { docId: 'abc', account: 'other@gmail.com' });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'cat', 'abc'], { account: 'other@gmail.com' });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'cat', pos('abc')], { account: 'other@gmail.com' });
   });
 
   it('appends --chips when requested', async () => {
     vi.mocked(runner.run).mockResolvedValue('Hello @person');
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_cat', { docId: 'abc', chips: true });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'cat', 'abc', '--chips'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'cat', pos('abc'), '--chips'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -80,7 +81,7 @@ describe('gog_docs_create', () => {
     vi.mocked(runner.run).mockResolvedValue('{"docId":"newid","title":"Meeting Notes"}');
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_create', { title: 'Meeting Notes' });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'create', 'Meeting Notes'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'create', pos('Meeting Notes')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -96,7 +97,7 @@ describe('gog_docs_write', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_write', { docId: 'abc', text: 'Hello world' });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'write', 'abc', '--text=Hello world'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'write', pos('abc'), '--text=Hello world'], { account: undefined });
   });
 
   it('adds --append flag when append is true', async () => {
@@ -104,7 +105,7 @@ describe('gog_docs_write', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_write', { docId: 'abc', text: 'More text', append: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'write', 'abc', '--text=More text', '--append'],
+      ['docs', 'write', pos('abc'), '--text=More text', '--append'],
       { account: undefined },
     );
   });
@@ -115,7 +116,7 @@ describe('gog_docs_write', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_write', { docId: 'abc', text: 'T', batch: 'b1' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'write', 'abc', '--text=T', '--batch=b1'],
+      ['docs', 'write', pos('abc'), '--text=T', '--batch=b1'],
       { account: undefined },
     );
   });
@@ -126,7 +127,7 @@ describe('gog_docs_write', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_write', { docId: 'abc', text: 'Rewrite', checkOrphans: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'write', 'abc', '--text=Rewrite', '--check-orphans'],
+      ['docs', 'write', pos('abc'), '--text=Rewrite', '--check-orphans'],
       { account: undefined },
     );
   });
@@ -135,7 +136,7 @@ describe('gog_docs_write', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_write', { docId: 'abc', text: 'text', append: false });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'write', 'abc', '--text=text'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'write', pos('abc'), '--text=text'], { account: undefined });
   });
 
   // gog 0.30.0 paragraph list / indentation / spacing / keep controls
@@ -148,7 +149,7 @@ describe('gog_docs_write', () => {
       keepLinesTogether: true, keepWithNext: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'write', 'abc', '--text=List', '--bullets', '--bullet-preset=BULLET_DISC_CIRCLE_SQUARE',
+      ['docs', 'write', pos('abc'), '--text=List', '--bullets', '--bullet-preset=BULLET_DISC_CIRCLE_SQUARE',
         '--indent-start=18', '--indent-end=6', '--indent-first-line=36', '--space-above=4', '--space-below=8',
         '--keep-lines-together', '--keep-with-next'],
       { account: undefined },
@@ -163,7 +164,7 @@ describe('gog_docs_write', () => {
       keepLinesTogether: false, keepWithNext: false,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['docs', 'write', 'abc', '--text=Steps', '--ordered', '--no-bullets',
+      ['docs', 'write', pos('abc'), '--text=Steps', '--ordered', '--no-bullets',
         '--no-keep-lines-together', '--no-keep-with-next'],
       { account: undefined },
     );
@@ -182,7 +183,7 @@ describe('gog_docs_find_replace', () => {
     vi.mocked(runner.run).mockResolvedValue('{"occurrencesChanged":2}');
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_find_replace', { docId: 'abc', find: 'foo', replace: 'bar' });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'find-replace', 'abc', 'foo', 'bar'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'find-replace', pos('abc'), pos('foo'), pos('bar')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -198,7 +199,7 @@ describe('gog_docs_structure', () => {
     vi.mocked(runner.run).mockResolvedValue('[1] Heading\n[2] Paragraph');
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_docs_structure', { docId: 'abc' });
-    expect(runner.run).toHaveBeenCalledWith(['docs', 'structure', 'abc'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['docs', 'structure', pos('abc')], { account: undefined });
     expect(result.content[0].text).toContain('Heading');
   });
 
@@ -207,6 +208,34 @@ describe('gog_docs_structure', () => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_docs_structure', { docId: 'bad' });
     expect(result.content[0].text).toBe('Error: Structure failed');
+  });
+});
+
+// SEC-3/SEC-4 through the escape hatch: `export --out=~/.zshrc` writes
+// attacker-shaped bytes over a shell profile. GOG_FILE_ROOTS binds it too.
+describe('gog_docs_run path confinement', () => {
+  // The suite runs with GOG_FILE_ROOTS='/'; narrow it so confinement bites.
+  let prevRoots: string | undefined;
+  beforeEach(() => { prevRoots = process.env.GOG_FILE_ROOTS; process.env.GOG_FILE_ROOTS = '/nonexistent-gog-file-root'; });
+  afterEach(() => { process.env.GOG_FILE_ROOTS = prevRoots; });
+
+  it.each([
+    ['export', ['d1', '--out=~/.zshrc']],
+    ['export', ['d1', '--output', '~/.zshrc']],
+    ['insert', ['d1', '--file=/etc/passwd']],
+  ])('refuses docs %s %j', async (subcommand, args) => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_docs_run', { subcommand, args });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/outside the directories/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('refuses the -f short form, which would hide the path', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_docs_run', { subcommand: 'insert', args: ['d1', '-f', '/etc/passwd'] });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
   });
 });
 

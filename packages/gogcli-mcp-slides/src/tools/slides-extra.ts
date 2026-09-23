@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, payloadArg } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, payloadArg, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // Payload routing note — slides differs from gmail/docs.
@@ -37,7 +37,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ title, content, contentFile, parent, debug, account }) => {
-    const args: GogArg[] = ['slides', 'create-from-markdown', title];
+    if (contentFile) confinePath(contentFile, 'contentFile');
+    const args: GogArg[] = ['slides', 'create-from-markdown', pos(title)];
     if (content) args.push(payloadArg('content', 'content-file', content, 'md'));
     if (contentFile) args.push(`--content-file=${contentFile}`);
     if (parent) args.push(`--parent=${parent}`);
@@ -58,7 +59,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ templateId, title, replacements, replacementsFile, parent, exact, account }) => {
-    const args = ['slides', 'create-from-template', templateId, title];
+    if (replacementsFile) confinePath(replacementsFile, 'replacementsFile');
+    const args: GogArg[] = ['slides', 'create-from-template', pos(templateId), pos(title)];
     if (replacements) {
       for (const [k, v] of Object.entries(replacements)) {
         args.push(`--replace=${k}=${v}`);
@@ -82,7 +84,9 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, image, notes, notesFile, before, account }) => {
-    const args: GogArg[] = ['slides', 'add-slide', presentationId, image];
+    confinePath(image, 'image');
+    if (notesFile) confinePath(notesFile, 'notesFile');
+    const args: GogArg[] = ['slides', 'add-slide', pos(presentationId), pos(image)];
     if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
     if (before) args.push(`--before=${before}`);
@@ -105,8 +109,9 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, image, url, width, height, x, y, unit, account }) => {
-    const args = ['slides', 'insert-image', presentationId, slideId];
-    if (image) args.push(image);
+    if (image) confinePath(image, 'image');
+    const args: GogArg[] = ['slides', 'insert-image', pos(presentationId), pos(slideId)];
+    if (image) args.push(pos(image));
     args.push(`--width=${width}`);
     if (url) args.push(`--url=${url}`);
     if (height !== undefined) args.push(`--height=${height}`);
@@ -126,7 +131,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
     }),
   }, async ({ presentationId, slideId, account }) => {
     // --force: gog refuses this delete under the runner's --no-input without it.
-    return runOrDiagnose(['slides', 'delete-slide', presentationId, slideId, '--force'], { account });
+    return runOrDiagnose(['slides', 'delete-slide', pos(presentationId), pos(slideId), '--force'], { account });
   });
 
   // Slide visibility (gog >= 0.38.0, openclaw/gogcli#1009). Skipping is NOT
@@ -149,7 +154,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, account }) => {
-    return runOrDiagnose(['slides', 'skip-slide', presentationId, slideId], { account });
+    return runOrDiagnose(['slides', 'skip-slide', pos(presentationId), pos(slideId)], { account });
   });
 
   server.registerTool('gog_slides_unskip_slide', {
@@ -162,7 +167,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, account }) => {
-    return runOrDiagnose(['slides', 'unskip-slide', presentationId, slideId], { account });
+    return runOrDiagnose(['slides', 'unskip-slide', pos(presentationId), pos(slideId)], { account });
   });
 
   server.registerTool('gog_slides_update_notes', {
@@ -176,7 +181,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, notes, notesFile, account }) => {
-    const args: GogArg[] = ['slides', 'update-notes', presentationId, slideId];
+    if (notesFile) confinePath(notesFile, 'notesFile');
+    const args: GogArg[] = ['slides', 'update-notes', pos(presentationId), pos(slideId)];
     if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
     return runOrDiagnose(args, { account });
@@ -195,8 +201,10 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, image, url, notes, notesFile, account }) => {
-    const args: GogArg[] = ['slides', 'replace-slide', presentationId, slideId];
-    if (image) args.push(image);
+    if (image) confinePath(image, 'image');
+    if (notesFile) confinePath(notesFile, 'notesFile');
+    const args: GogArg[] = ['slides', 'replace-slide', pos(presentationId), pos(slideId)];
+    if (image) args.push(pos(image));
     if (url) args.push(`--url=${url}`);
     if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
@@ -214,7 +222,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, pretty, account }) => {
-    const args = ['slides', 'raw', presentationId];
+    const args: GogArg[] = ['slides', 'raw', pos(presentationId)];
     if (pretty) args.push('--pretty');
     // Verbatim by contract: see the `lossless` note on runOrDiagnose.
     return runOrDiagnose(args, { account, lossless: true });
@@ -234,7 +242,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, text, page, occurrence, all, matchCase, failEmpty, account }) => {
-    const args = ['slides', 'locate', presentationId, text];
+    const args: GogArg[] = ['slides', 'locate', pos(presentationId), pos(text)];
     if (page) args.push(`--page=${page}`);
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (all) args.push('--all');
@@ -245,7 +253,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_thumbnail', {
     description: 'Get or download a rendered thumbnail image for a single slide.',
-    annotations: { readOnlyHint: true },
+    // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide object ID'),
@@ -256,7 +265,8 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, format, size, out, overwrite, account }) => {
-    const args = ['slides', 'thumbnail', presentationId, slideId];
+    if (out) confinePath(out, 'out');
+    const args: GogArg[] = ['slides', 'thumbnail', pos(presentationId), pos(slideId)];
     if (format) args.push(`--format=${format}`);
     if (size) args.push(`--size=${size}`);
     if (out) args.push(`--out=${out}`);
@@ -277,7 +287,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, layout, layoutId, index, account }) => {
-    const args = ['slides', 'new-slide', presentationId];
+    const args: GogArg[] = ['slides', 'new-slide', pos(presentationId)];
     if (layout) args.push(`--layout=${layout}`);
     if (layoutId) args.push(`--layout-id=${layoutId}`);
     if (index !== undefined) args.push(`--index=${index}`);
@@ -294,7 +304,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, toIndex, account }) => {
-    const args = ['slides', 'duplicate-slide', presentationId, slideId];
+    const args: GogArg[] = ['slides', 'duplicate-slide', pos(presentationId), pos(slideId)];
     if (toIndex !== undefined) args.push(`--to-index=${toIndex}`);
     return runOrDiagnose(args, { account });
   });
@@ -309,7 +319,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, toIndex, account }) => {
-    return runOrDiagnose(['slides', 'move-slide', presentationId, slideId, `--to-index=${toIndex}`], { account });
+    return runOrDiagnose(['slides', 'move-slide', pos(presentationId), pos(slideId), `--to-index=${toIndex}`], { account });
   });
 
   // --- gog 0.29 text authoring ---
@@ -328,7 +338,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, objectId, text, row, col, insertionIndex, replace, account }) => {
-    const args = ['slides', 'insert-text', presentationId, objectId, text];
+    const args: GogArg[] = ['slides', 'insert-text', pos(presentationId), pos(objectId), pos(text)];
     if (row !== undefined) args.push(`--row=${row}`);
     if (col !== undefined) args.push(`--col=${col}`);
     if (insertionIndex !== undefined) args.push(`--insertion-index=${insertionIndex}`);
@@ -355,7 +365,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, objectId, range, font, size, textColor, bold, noBold, italic, noItalic, underline, noUnderline, account }) => {
-    const args = ['slides', 'style-text', presentationId, objectId, `--range=${range}`];
+    const args: GogArg[] = ['slides', 'style-text', pos(presentationId), pos(objectId), `--range=${range}`];
     if (font) args.push(`--font=${font}`);
     if (size !== undefined) args.push(`--size=${size}`);
     if (textColor) args.push(`--text-color=${textColor}`);
@@ -380,7 +390,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, objectId, range, url, clear, account }) => {
-    const args = ['slides', 'link', presentationId, objectId, `--range=${range}`];
+    const args: GogArg[] = ['slides', 'link', pos(presentationId), pos(objectId), `--range=${range}`];
     if (url) args.push(`--url=${url}`);
     if (clear) args.push('--clear');
     return runOrDiagnose(args, { account });
@@ -399,7 +409,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, objectId, range, on, off, preset, account }) => {
-    const args = ['slides', 'bullets', presentationId, objectId, `--range=${range}`];
+    const args: GogArg[] = ['slides', 'bullets', pos(presentationId), pos(objectId), `--range=${range}`];
     if (on) args.push('--on');
     if (off) args.push('--off');
     if (preset) args.push(`--preset=${preset}`);
@@ -420,7 +430,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, find, replacement, object, pages, all, matchCase, account }) => {
-    const args = ['slides', 'replace-text', presentationId, find, replacement];
+    const args: GogArg[] = ['slides', 'replace-text', pos(presentationId), pos(find), pos(replacement)];
     if (object) args.push(`--object=${object}`);
     if (pages) for (const p of pages) args.push(`--page=${p}`);
     if (all) args.push('--all');
@@ -446,7 +456,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, type, x, y, width, height, unit, objectId, account }) => {
-    const args = ['slides', 'element', 'create-shape', presentationId, slideId];
+    const args: GogArg[] = ['slides', 'element', 'create-shape', pos(presentationId), pos(slideId)];
     if (type) args.push(`--type=${type}`);
     if (x !== undefined) args.push(`--x=${x}`);
     if (y !== undefined) args.push(`--y=${y}`);
@@ -473,7 +483,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, category, x, y, width, height, unit, objectId, account }) => {
-    const args = ['slides', 'element', 'create-line', presentationId, slideId];
+    const args: GogArg[] = ['slides', 'element', 'create-line', pos(presentationId), pos(slideId)];
     if (category) args.push(`--category=${category}`);
     if (x !== undefined) args.push(`--x=${x}`);
     if (y !== undefined) args.push(`--y=${y}`);
@@ -500,7 +510,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, objectId, kind, fillColor, fillTransparent, outlineColor, outlineWeight, outlineDash, outlineTransparent, account }) => {
-    const args = ['slides', 'element', 'style', presentationId, objectId];
+    const args: GogArg[] = ['slides', 'element', 'style', pos(presentationId), pos(objectId)];
     if (kind) args.push(`--kind=${kind}`);
     if (fillColor) args.push(`--fill-color=${fillColor}`);
     if (fillTransparent) args.push('--fill-transparent');
@@ -529,7 +539,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, objectId, translateX, translateY, scaleX, scaleY, shearX, shearY, rotate, applyMode, unit, account }) => {
-    const args = ['slides', 'element', 'transform', presentationId, objectId];
+    const args: GogArg[] = ['slides', 'element', 'transform', pos(presentationId), pos(objectId)];
     if (translateX !== undefined) args.push(`--translate-x=${translateX}`);
     if (translateY !== undefined) args.push(`--translate-y=${translateY}`);
     if (scaleX !== undefined) args.push(`--scale-x=${scaleX}`);
@@ -552,7 +562,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, objectId, operation, account }) => {
-    return runOrDiagnose(['slides', 'element', 'z-order', presentationId, objectId, `--operation=${operation}`], { account });
+    return runOrDiagnose(['slides', 'element', 'z-order', pos(presentationId), pos(objectId), `--operation=${operation}`], { account });
   });
 
   server.registerTool('gog_slides_element_group', {
@@ -565,7 +575,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, objectIds, groupId, account }) => {
-    const args = ['slides', 'element', 'group', presentationId, ...objectIds];
+    const args: GogArg[] = ['slides', 'element', 'group', pos(presentationId), ...objectIds.map(pos)];
     if (groupId) args.push(`--group-id=${groupId}`);
     return runOrDiagnose(args, { account });
   });
@@ -579,7 +589,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, groupIds, account }) => {
-    return runOrDiagnose(['slides', 'element', 'ungroup', presentationId, ...groupIds], { account });
+    return runOrDiagnose(['slides', 'element', 'ungroup', pos(presentationId), ...groupIds.map(pos)], { account });
   });
 
   server.registerTool('gog_slides_element_alt_text', {
@@ -593,7 +603,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, objectId, title, description, account }) => {
-    const args = ['slides', 'element', 'alt-text', presentationId, objectId];
+    const args: GogArg[] = ['slides', 'element', 'alt-text', pos(presentationId), pos(objectId)];
     if (title !== undefined) args.push(`--title=${title}`);
     if (description !== undefined) args.push(`--description=${description}`);
     return runOrDiagnose(args, { account });
@@ -609,7 +619,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
     }),
   }, async ({ presentationId, objectId, account }) => {
     // --force: gog refuses this delete under the runner's --no-input without it.
-    return runOrDiagnose(['slides', 'element', 'delete', presentationId, objectId, '--force'], { account });
+    return runOrDiagnose(['slides', 'element', 'delete', pos(presentationId), pos(objectId), '--force'], { account });
   });
 
   // --- gog 0.29 native tables (table subtree). Cell addressing is zero-based. ---
@@ -626,7 +636,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, rows, cols, objectId, account }) => {
-    const args = ['slides', 'table', 'create', presentationId, slideId, `--rows=${rows}`, `--cols=${cols}`];
+    const args: GogArg[] = ['slides', 'table', 'create', pos(presentationId), pos(slideId), `--rows=${rows}`, `--cols=${cols}`];
     if (objectId) args.push(`--object-id=${objectId}`);
     return runOrDiagnose(args, { account });
   });
@@ -655,7 +665,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, row, col, range, fillColor, fillTransparent, contentAlign, font, size, textColor, bold, noBold, italic, noItalic, underline, noUnderline, account }) => {
-    const args = ['slides', 'table', 'cell', 'style', presentationId, tableObjectId, `--row=${row}`, `--col=${col}`];
+    const args: GogArg[] = ['slides', 'table', 'cell', 'style', pos(presentationId), pos(tableObjectId), `--row=${row}`, `--col=${col}`];
     if (range) args.push(`--range=${range}`);
     if (fillColor) args.push(`--fill-color=${fillColor}`);
     if (fillTransparent) args.push('--fill-transparent');
@@ -690,7 +700,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, row, col, rowSpan, colSpan, position, borderColor, weight, dash, transparent, account }) => {
-    const args = ['slides', 'table', 'border', 'style', presentationId, tableObjectId, `--row=${row}`, `--col=${col}`];
+    const args: GogArg[] = ['slides', 'table', 'border', 'style', pos(presentationId), pos(tableObjectId), `--row=${row}`, `--col=${col}`];
     if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
     if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
     if (position) args.push(`--position=${position}`);
@@ -713,7 +723,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, col, count, right, account }) => {
-    const args = ['slides', 'table', 'column', 'insert', presentationId, tableObjectId, `--col=${col}`];
+    const args: GogArg[] = ['slides', 'table', 'column', 'insert', pos(presentationId), pos(tableObjectId), `--col=${col}`];
     if (count !== undefined) args.push(`--count=${count}`);
     if (right) args.push('--right');
     return runOrDiagnose(args, { account });
@@ -729,7 +739,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, col, account }) => {
-    return runOrDiagnose(['slides', 'table', 'column', 'delete', presentationId, tableObjectId, `--col=${col}`, '--force'], { account });
+    return runOrDiagnose(['slides', 'table', 'column', 'delete', pos(presentationId), pos(tableObjectId), `--col=${col}`, '--force'], { account });
   });
 
   server.registerTool('gog_slides_table_column_size', {
@@ -743,7 +753,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, col, width, account }) => {
-    return runOrDiagnose(['slides', 'table', 'column', 'size', presentationId, tableObjectId, `--col=${col}`, `--width=${width}`], { account });
+    return runOrDiagnose(['slides', 'table', 'column', 'size', pos(presentationId), pos(tableObjectId), `--col=${col}`, `--width=${width}`], { account });
   });
 
   server.registerTool('gog_slides_table_row_insert', {
@@ -758,7 +768,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, row, count, below, account }) => {
-    const args = ['slides', 'table', 'row', 'insert', presentationId, tableObjectId, `--row=${row}`];
+    const args: GogArg[] = ['slides', 'table', 'row', 'insert', pos(presentationId), pos(tableObjectId), `--row=${row}`];
     if (count !== undefined) args.push(`--count=${count}`);
     if (below) args.push('--below');
     return runOrDiagnose(args, { account });
@@ -774,7 +784,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, row, account }) => {
-    return runOrDiagnose(['slides', 'table', 'row', 'delete', presentationId, tableObjectId, `--row=${row}`, '--force'], { account });
+    return runOrDiagnose(['slides', 'table', 'row', 'delete', pos(presentationId), pos(tableObjectId), `--row=${row}`, '--force'], { account });
   });
 
   server.registerTool('gog_slides_table_row_size', {
@@ -788,7 +798,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, row, height, account }) => {
-    return runOrDiagnose(['slides', 'table', 'row', 'size', presentationId, tableObjectId, `--row=${row}`, `--height=${height}`], { account });
+    return runOrDiagnose(['slides', 'table', 'row', 'size', pos(presentationId), pos(tableObjectId), `--row=${row}`, `--height=${height}`], { account });
   });
 
   server.registerTool('gog_slides_table_merge', {
@@ -804,7 +814,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, row, col, rowSpan, colSpan, account }) => {
-    const args = ['slides', 'table', 'merge', presentationId, tableObjectId, `--row=${row}`, `--col=${col}`];
+    const args: GogArg[] = ['slides', 'table', 'merge', pos(presentationId), pos(tableObjectId), `--row=${row}`, `--col=${col}`];
     if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
     if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
     return runOrDiagnose(args, { account });
@@ -823,7 +833,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, tableObjectId, row, col, rowSpan, colSpan, account }) => {
-    const args = ['slides', 'table', 'unmerge', presentationId, tableObjectId, `--row=${row}`, `--col=${col}`];
+    const args: GogArg[] = ['slides', 'table', 'unmerge', pos(presentationId), pos(tableObjectId), `--row=${row}`, `--col=${col}`];
     if (rowSpan !== undefined) args.push(`--row-span=${rowSpan}`);
     if (colSpan !== undefined) args.push(`--col-span=${colSpan}`);
     return runOrDiagnose(args, { account });

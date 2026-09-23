@@ -5,7 +5,9 @@ import { finalizeGmailSearch, fetchGmailPages } from '../gmail-results.js';
 import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
-import { extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText } from '../gmail-dispatch-guard.js';
+import { attachmentNames, bodyPreview, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText } from '../gmail-dispatch-guard.js';
+import { pos } from '../argv.js';
+import { confinePath, confinePaths } from '../file-roots.js';
 
 // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
 // only in the subcommand and default recipient set (reply → sender; reply-all
@@ -24,7 +26,7 @@ export const replySchema = {
   remove: z.array(z.string()).optional().describe('Remove these recipients from all fields (repeatable) — e.g. to drop someone from a reply-all.'),
   subject: z.string().optional().describe('Override reply subject (default: "Re: <original>"). A changed subject starts a NEW Gmail thread.'),
   noQuote: z.boolean().optional().describe('Do not include the original message quoted below the reply (default: the original is quoted)'),
-  attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension.'),
+  attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
   attachInline: attachInlineParam,
   from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
   autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
@@ -53,8 +55,18 @@ export type ReplyFlags = {
   signatureFile?: string;
 };
 
+// Every server path a reply/draft names must sit inside GOG_FILE_ROOTS: each is
+// read on the gog host and mailed out, so unconfined it is a file-exfiltration
+// primitive (audit SEC-3). Checked before anything else touches gog.
+export function confineReplyPaths(f: Pick<ReplyFlags, 'attach' | 'bodyHtmlFile' | 'signatureFile'>): void {
+  confinePaths(f.attach, 'attach');
+  if (f.bodyHtmlFile) confinePath(f.bodyHtmlFile, 'bodyHtmlFile');
+  if (f.signatureFile) confinePath(f.signatureFile, 'signatureFile');
+}
+
 export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
   assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
+  confineReplyPaths(f);
   if (f.body) args.push(payloadArg('body', 'body-file', f.body));
   if (f.bodyHtml) args.push(payloadArg('body-html', 'body-html-file', f.bodyHtml, 'html'));
   else if (f.bodyHtmlFile) args.push(`--body-html-file=${f.bodyHtmlFile}`);
@@ -150,7 +162,7 @@ async function sendReply(
   flags: ReplyFlags,
   ctx: ServerContext,
 ) {
-  const metaResult = await runOrDiagnose(['gmail', 'get', messageId, '--format=metadata'], { account });
+  const metaResult = await runOrDiagnose(['gmail', 'get', pos(messageId), '--format=metadata'], { account });
   if (metaResult.isError) return metaResult;
   const headers = parseMetadataHeaders(resultText(metaResult));
   const recipients = computeReplyRecipients(kind, headers, flags);
@@ -161,14 +173,49 @@ async function sendReply(
     subject: flags.subject || (headers.subject ? `Re: ${headers.subject}` : undefined),
     quoting: !flags.noQuote,
     bodyLength: (flags.body ?? flags.bodyHtml ?? '').length,
+    bodyPreview: bodyPreview(flags.body ?? flags.bodyHtml),
+    bodyHtmlFile: flags.bodyHtmlFile,
     attachmentCount: (flags.attach?.length ?? 0) + (flags.attachInline?.length ?? 0),
+    attachments: attachmentNames(flags.attach, flags.attachInline),
   });
   if (confirmation) return confirmation;
-  const args: GogArg[] = ['gmail', kind, messageId];
+  const args: GogArg[] = ['gmail', kind, pos(messageId)];
   appendReplyFlags(args, flags);
   const result = await runOrDiagnose(args, { account });
   if (!result.isError) logGmailDispatch(toolName, recipients, account);
   return result;
+}
+
+// What --gmail-no-send does NOT cover (verified on gog 0.41.0): a bulk
+// auto-reply, and the settings that route future mail to someone else —
+// forwarding addresses, auto-forwarding, filters (which can forward) and
+// delegates (which grant another account the mailbox). Each has a dedicated,
+// reviewable tool; none may ride the escape hatch.
+//
+// gog accepts these both under `settings` AND one level up, as
+// `gog gmail filters|forwarding|autoforward|delegates ...` (left out of
+// `gog schema`, but they reach Google), so both spellings are refused.
+const GMAIL_RUN_BLOCKED_SETTINGS = new Set(['forwarding', 'autoforward', 'filters', 'delegates']);
+
+export function vetGmailRun(subcommand: string, args: readonly string[]): string | undefined {
+  if (subcommand === 'autoreply') {
+    return 'gog gmail autoreply sends mail and is not available through gog_gmail_run. Use gog_gmail_autoreply, which asks the user to confirm.';
+  }
+  if (GMAIL_RUN_BLOCKED_SETTINGS.has(subcommand)) {
+    return `gog gmail ${subcommand} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;
+  }
+  if (subcommand === 'settings') {
+    // kong lets flags precede the command word, and a global flag can take its
+    // value as the next token (`settings --color never filters ...`), so the
+    // word is not necessarily args[0]. Refuse it wherever it appears; a
+    // legitimate settings call carrying one of these words as a value is rare
+    // and has a dedicated tool anyway.
+    const blocked = args.find((a) => GMAIL_RUN_BLOCKED_SETTINGS.has(a.toLowerCase()));
+    if (blocked) {
+      return `gog gmail settings ${blocked} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;
+    }
+  }
+  return undefined;
 }
 
 export function registerGmailTools(server: McpServer): void {
@@ -189,7 +236,7 @@ export function registerGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ query, max, pageToken, page, maxPages, all, fromContact, account }) => {
-    const args = ['gmail', 'search', query];
+    const args: GogArg[] = ['gmail', 'search', pos(query)];
     if (max !== undefined) args.push(`--max=${max}`);
     if (all) args.push('--all');
     if (fromContact) args.push(`--from-contact=${fromContact}`);
@@ -226,7 +273,7 @@ export function registerGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ messageId, format, sanitizeContent, account }) => {
-    const args = ['gmail', 'get', messageId];
+    const args: GogArg[] = ['gmail', 'get', pos(messageId)];
     if (format) args.push(`--format=${format}`);
     if (sanitizeContent) args.push('--sanitize-content');
     return runOrDiagnose(args, { account });
@@ -234,7 +281,7 @@ export function registerGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_send', {
     description:
-      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, subject, and body size. '
+      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, subject, a preview of the body and the attachment names. '
       + 'Mail is sent only after the user accepts that prompt. '
       + 'Two ways to attach a file: `attach` takes paths READ ON THE GOG SERVER, and '
       + '`attachInline` takes the bytes themselves. Use attachInline unless you know the file exists on '
@@ -255,11 +302,12 @@ export function registerGmailTools(server: McpServer): void {
       replyToMessageId: z.string().optional().describe('Message ID to thread this message against — sets In-Reply-To/References only. It does NOT quote the original (pass quote for that), inherit its recipients, or prefix the subject with "Re:". For an actual reply use gog_gmail_reply.'),
       threadId: z.string().optional().describe('Thread ID to thread this message within. Same caveat as replyToMessageId: threading only, no quote and no inherited subject or recipients.'),
       quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or threadId. gog quotes by DEFAULT on gmail reply but never on gmail send, so without this a threaded send arrives with the original nowhere in it.'),
-      attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment.'),
+      attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       attachInline: attachInlineParam,
       account: accountParam,
     }),
   }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, account }, ctx) => {
+    confinePaths(attach, 'attach');
     // Built (and validated — inlineAttachmentArgs throws on bad base64 or an
     // oversize file) BEFORE the confirmation request, on both paths: a prompt that
     // skipped this would tell a caller "looks fine, send it" about an
@@ -289,9 +337,11 @@ export function registerGmailTools(server: McpServer): void {
     const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.send', {
       to, cc, bcc, recipients, recipientCount: recipients.length, subject,
       bodyLength: body.length,
+      bodyPreview: bodyPreview(body),
       threaded: Boolean(replyToMessageId || threadId),
       quoting: Boolean(quote),
       attachmentCount: (attach?.length ?? 0) + (attachInline?.length ?? 0),
+      attachments: attachmentNames(attach, attachInline),
     });
     if (confirmation) return confirmation;
     const result = await runOrDiagnose(args, { account });
@@ -317,7 +367,7 @@ export function registerGmailTools(server: McpServer): void {
   // ==========================================================================
   server.registerTool('gog_gmail_reply', {
     description:
-      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the resolved recipient, subject, and body size. '
+      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the resolved recipient, subject, a preview of the body and the attachment names. '
       + 'Mail is sent only after the user accepts that prompt. To STAGE a reply instead '
       + 'of sending it, use gog_gmail_drafts_reply (gogcli-mcp-gmail only), which never needs confirmation. '
       + 'Reply to a Gmail message (goes to the original sender only). USE THIS, not gog_gmail_send, whenever you are '
@@ -331,12 +381,13 @@ export function registerGmailTools(server: McpServer): void {
     inputSchema: sendReplySchema,
   }, async ({ messageId, account, ...flags }, ctx) => {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', flags.bodyHtml, flags.bodyHtmlFile);
+    confineReplyPaths(flags);
     return sendReply('reply', 'gog_gmail_reply', messageId, account, flags, ctx);
   });
 
   server.registerTool('gog_gmail_reply_all', {
     description:
-      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the resolved recipients, subject, and body size. '
+      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the resolved recipients, subject, a preview of the body and the attachment names. '
       + 'Mail is sent only after the user accepts that prompt. To STAGE a '
       + 'reply-all instead of sending it, use gog_gmail_drafts_reply_all (gogcli-mcp-gmail only), which never needs '
       + 'confirmation. '
@@ -347,8 +398,17 @@ export function registerGmailTools(server: McpServer): void {
     inputSchema: sendReplySchema,
   }, async ({ messageId, account, ...flags }, ctx) => {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', flags.bodyHtml, flags.bodyHtmlFile);
+    confineReplyPaths(flags);
     return sendReply('reply-all', 'gog_gmail_reply_all', messageId, account, flags, ctx);
   });
 
-  registerRunTool(server, { service: 'gmail', examples: '"archive", "mark-read", "labels"' });
+  registerRunTool(server, {
+    service: 'gmail',
+    examples: '"archive", "mark-read", "labels"',
+    // gog's --gmail-no-send blocks send/reply/forward/drafts send and all of
+    // their aliases at runtime (verified on gog 0.41.0). Sending goes through the
+    // confirmed tools, never this escape hatch.
+    gmailNoSend: true,
+    vet: vetGmailRun,
+  });
 }

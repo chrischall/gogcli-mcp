@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { registerSheetsTools } from '../../src/tools/sheets.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -15,7 +16,7 @@ describe('gog_sheets_get', () => {
     vi.mocked(runner.run).mockResolvedValue('{"values":[["a","b"]]}');
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_sheets_get', { spreadsheetId: 'sid', range: 'Sheet1!A1:B2' });
-    expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', 'sid', 'Sheet1!A1:B2'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', pos('sid'), pos('Sheet1!A1:B2')], { account: undefined });
     expect(result.content[0].text).toBe('{"values":[["a","b"]]}');
   });
 
@@ -23,7 +24,7 @@ describe('gog_sheets_get', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_get', { spreadsheetId: 'sid', range: 'A1', account: 'other@gmail.com' });
-    expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', 'sid', 'A1'], { account: 'other@gmail.com' });
+    expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', pos('sid'), pos('A1')], { account: 'other@gmail.com' });
   });
 
   it('appends auth list on failure when auth list succeeds', async () => {
@@ -59,7 +60,7 @@ describe('gog_sheets_update', () => {
     const values = [['hello', 'world']];
     await harness.callTool('gog_sheets_update', { spreadsheetId: 'sid', range: 'A1:B1', values });
     expect(runner.run).toHaveBeenCalledWith(
-      ['sheets', 'update', 'sid', 'A1:B1', `--values-json=${JSON.stringify(values)}`],
+      ['sheets', 'update', pos('sid'), pos('A1:B1'), `--values-json=${JSON.stringify(values)}`],
       { account: undefined },
     );
   });
@@ -92,7 +93,7 @@ describe('gog_sheets_update', () => {
     const values = [['x']];
     await harness.callTool('gog_sheets_update', { spreadsheetId: 'sid', range: 'A1', values, dry_run: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['sheets', 'update', 'sid', 'A1', `--values-json=${JSON.stringify(values)}`, '--dry-run'],
+      ['sheets', 'update', pos('sid'), pos('A1'), `--values-json=${JSON.stringify(values)}`, '--dry-run'],
       { account: undefined },
     );
   });
@@ -110,7 +111,7 @@ describe('gog_sheets_update', () => {
     const values = [['=1+1']];
     await harness.callTool('gog_sheets_update', { spreadsheetId: 'sid', range: 'A1', values, fail_on_formula_error: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['sheets', 'update', 'sid', 'A1', `--values-json=${JSON.stringify(values)}`, '--fail-on-formula-error'],
+      ['sheets', 'update', pos('sid'), pos('A1'), `--values-json=${JSON.stringify(values)}`, '--fail-on-formula-error'],
       { account: undefined },
     );
   });
@@ -125,7 +126,7 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
     });
     // Only the read happened — no update call.
     expect(runner.run).toHaveBeenCalledTimes(1);
-    expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', 'sid', 'A1:A1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', pos('sid'), pos('A1:A1')], { account: undefined });
     expect(result.content[0].text).toContain('Write aborted');
     expect(result.content[0].text).toContain('A1:A1');
     expect(result.content[0].text).toContain('1 cell');
@@ -142,7 +143,7 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
     });
     expect(runner.run).toHaveBeenCalledTimes(2);
     expect(vi.mocked(runner.run).mock.calls[1]![0]).toEqual(
-      ['sheets', 'update', 'sid', 'A1', `--values-json=${JSON.stringify(values)}`],
+      ['sheets', 'update', pos('sid'), pos('A1'), `--values-json=${JSON.stringify(values)}`],
     );
     expect(result.content[0].text).toBe('{"updatedCells":1}');
   });
@@ -156,7 +157,7 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
       spreadsheetId: 'sid', range: 'Sheet1!A1',
       values: [['a', 'b'], ['c', 'd'], ['e', 'f']], fail_if_not_empty: true,
     });
-    expect(vi.mocked(runner.run).mock.calls[0]![0]).toEqual(['sheets', 'get', 'sid', 'Sheet1!A1:B3']);
+    expect(vi.mocked(runner.run).mock.calls[0]![0]).toEqual(['sheets', 'get', pos('sid'), pos('Sheet1!A1:B3')]);
   });
 
   it('aborts without writing and diagnoses the error when the verification read fails', async () => {
@@ -234,7 +235,7 @@ describe('gog_sheets_append', () => {
     const values = [['r1c1', 'r1c2'], ['r2c1', 'r2c2']];
     await harness.callTool('gog_sheets_append', { spreadsheetId: 'sid', range: 'Sheet1!A:B', values });
     expect(runner.run).toHaveBeenCalledWith(
-      ['sheets', 'append', 'sid', 'Sheet1!A:B', `--values-json=${JSON.stringify(values)}`],
+      ['sheets', 'append', pos('sid'), pos('Sheet1!A:B'), `--values-json=${JSON.stringify(values)}`],
       { account: undefined },
     );
   });
@@ -252,7 +253,7 @@ describe('gog_sheets_append', () => {
     const values = [['x']];
     await harness.callTool('gog_sheets_append', { spreadsheetId: 'sid', range: 'Sheet1!A:A', values, dry_run: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['sheets', 'append', 'sid', 'Sheet1!A:A', `--values-json=${JSON.stringify(values)}`, '--dry-run'],
+      ['sheets', 'append', pos('sid'), pos('Sheet1!A:A'), `--values-json=${JSON.stringify(values)}`, '--dry-run'],
       { account: undefined },
     );
   });
@@ -263,7 +264,7 @@ describe('gog_sheets_clear', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_clear', { spreadsheetId: 'sid', range: 'Sheet1!A1:Z100' });
-    expect(runner.run).toHaveBeenCalledWith(['sheets', 'clear', 'sid', 'Sheet1!A1:Z100'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['sheets', 'clear', pos('sid'), pos('Sheet1!A1:Z100')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -278,7 +279,7 @@ describe('gog_sheets_clear', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_clear', { spreadsheetId: 'sid', range: 'Sheet1!A1:Z100', dry_run: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['sheets', 'clear', 'sid', 'Sheet1!A1:Z100', '--dry-run'],
+      ['sheets', 'clear', pos('sid'), pos('Sheet1!A1:Z100'), '--dry-run'],
       { account: undefined },
     );
   });
@@ -300,7 +301,7 @@ describe('gog_sheets_metadata', () => {
     vi.mocked(runner.run).mockResolvedValue('{"title":"My Sheet","sheets":[{"title":"Sheet1"}]}');
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_sheets_metadata', { spreadsheetId: 'sid' });
-    expect(runner.run).toHaveBeenCalledWith(['sheets', 'metadata', 'sid'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['sheets', 'metadata', pos('sid')], { account: undefined });
     expect(result.content[0].text).toContain('My Sheet');
   });
 
@@ -317,7 +318,7 @@ describe('gog_sheets_create', () => {
     vi.mocked(runner.run).mockResolvedValue('{"spreadsheetId":"newid","title":"Budget 2026"}');
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_create', { title: 'Budget 2026' });
-    expect(runner.run).toHaveBeenCalledWith(['sheets', 'create', 'Budget 2026'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['sheets', 'create', pos('Budget 2026')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -333,7 +334,7 @@ describe('gog_sheets_find_replace', () => {
     vi.mocked(runner.run).mockResolvedValue('{"occurrencesChanged":3}');
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_find_replace', { spreadsheetId: 'sid', find: 'foo', replace: 'bar' });
-    expect(runner.run).toHaveBeenCalledWith(['sheets', 'find-replace', 'sid', 'foo', 'bar'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['sheets', 'find-replace', pos('sid'), pos('foo'), pos('bar')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {

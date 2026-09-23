@@ -4,6 +4,7 @@ import { spawn as mockedSpawn } from 'node:child_process';
 import { withCallSignal } from '@chrischall/mcp-utils';
 import { run, runBinary } from '../src/runner.js';
 import type { Spawner } from '../src/runner.js';
+import { pos } from '../src/argv.js';
 
 // The real spawn is dynamically imported inside runner's default executor.
 // Mock it so the no-spawner/no-executor fallback can be exercised without
@@ -935,6 +936,141 @@ describe('run --readonly (gog 0.31)', () => {
     await withReadonlyEnv('${user_config.gog_readonly}', () => run(['drive', 'list'], { spawner }));
     const call = (spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]!;
     expect(call[1]).not.toContain('--readonly');
+  });
+});
+
+describe('run safety flags', () => {
+  it('injects --gmail-no-send when options.gmailNoSend is true', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['gmail', 'archive', 'm1'], { gmailNoSend: true, spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', '--gmail-no-send', 'gmail', 'archive', 'm1'],
+      expect.any(Object),
+    );
+  });
+
+  // Defence in depth behind the tool-level guard (audit SEC-1): whatever tool
+  // built the argv, a safety-control override in flag position never reaches
+  // gog, where the LAST value of a repeated flag would win.
+  it.each([
+    ['--readonly=false'],
+    ['--disable-commands='],
+    ['--enable-commands=gmail.send'],
+    ['--gmail-no-send=false'],
+    ['--access-token=ya29.x'],
+    ['--home=/tmp/x'],
+    ['--client=other'],
+    ['-a'],
+  ])('refuses a caller-supplied %j in flag position without spawning', async (bad) => {
+    const spawner = makeSpawner(0, '{}');
+    await expect(run(['drive', 'mkdir', 'x', bad], { readonly: true, spawner })).rejects.toThrow(/not allowed/);
+    await expect(runBinary(['drive', 'mkdir', 'x', bad], { spawner })).rejects.toThrow(/not allowed/);
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  // The backstop runs on every tool's argv, so it must match exact control
+  // names only: gog_zoom_auth_setup builds --account-id/--client-id/
+  // --client-secret, which a prefix match refused before spawning.
+  it('lets zoom auth setup credentials flags through to gog', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['zoom', 'auth', 'setup', '--alias=work', '--account-id=abc', '--client-id=x', '--client-secret=y'], { spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', 'zoom', 'auth', 'setup', '--alias=work', '--account-id=abc', '--client-id=x', '--client-secret=y'],
+      expect.any(Object),
+    );
+  });
+
+  it('lets the same text through as a positional after --', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['gmail', 'search', '--', '--readonly=false'], { spawner });
+    expect(spawner).toHaveBeenCalledTimes(1);
+  });
+});
+
+// BUG-1: a positional value that starts with '-' (a Gmail negation query such
+// as "-in:spam", an ID or a name the model chose) must never be parsed as a
+// gog flag. Values marked with pos() go after a single `--`, after every flag,
+// in their original order — the pattern upstream gogcli's own MCP tools use.
+describe('run positionals', () => {
+  it('moves pos() values after -- at the end, keeping their order', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['sheets', 'get', pos('id1'), pos('-A1'), '--render=FORMULA'], { spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', 'sheets', 'get', '--render=FORMULA', '--', 'id1', '-A1'],
+      expect.any(Object),
+    );
+  });
+
+  it('passes a flag-shaped positional through as data, not a flag', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['gmail', 'search', pos('--readonly=false')], { readonly: true, spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', '--readonly', 'gmail', 'search', '--', '--readonly=false'],
+      expect.any(Object),
+    );
+  });
+
+  it('adds no -- when nothing is marked positional', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['gmail', 'labels', 'list'], { spawner });
+    expect((spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]![1]).not.toContain('--');
+  });
+
+  it('treats a positional file arg as a positional', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(
+      ['drive', 'upload', { kind: 'file', flag: 'upload', contents: 'aGk=', encoding: 'base64', filename: 'a.txt', positional: true }, '--parent=p'],
+      { spawner },
+    );
+    const argv = (spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]![1] as string[];
+    expect(argv.slice(0, 7)).toEqual(['--json', '--color=never', '--no-input', 'drive', 'upload', '--parent=p', '--']);
+    expect(argv[7]).toMatch(/a\.txt$/);
+  });
+
+  it('keeps everything after an explicit -- positional', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await runBinary(['api', 'call', '--', 'drive', pos('v3')], { spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', 'api', 'call', '--', 'drive', 'v3'],
+      expect.any(Object),
+    );
+  });
+});
+
+// BUG-2: binary mode buffered a whole Drive file (plus a base64 copy) with no
+// ceiling, so one multi-GB read could exhaust the server process.
+describe('runBinary maxOutputBytes', () => {
+  function streamingSpawner(chunks: Buffer[]): { spawner: Spawner; kill: ReturnType<typeof vi.fn> } {
+    const kill = vi.fn();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = kill;
+      setTimeout(() => {
+        for (const c of chunks) (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', c);
+        proc.emit('close', 0);
+      }, 0);
+      return proc;
+    }) as unknown as Spawner;
+    return { spawner, kill };
+  }
+
+  it('kills gog and rejects once the output passes the cap', async () => {
+    const { spawner, kill } = streamingSpawner([Buffer.alloc(6), Buffer.alloc(6), Buffer.alloc(6)]);
+    await expect(runBinary(['api', 'call'], { spawner, maxOutputBytes: 10 }))
+      .rejects.toThrow(/more than 10 bytes/);
+    expect(kill).toHaveBeenCalled();
+  });
+
+  it('returns output at or under the cap', async () => {
+    const { spawner } = streamingSpawner([Buffer.from('hello')]);
+    expect(await runBinary(['api', 'call'], { spawner, maxOutputBytes: 5 })).toBe(Buffer.from('hello').toString('base64'));
   });
 });
 

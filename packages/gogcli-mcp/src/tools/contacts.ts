@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 export function registerContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_search', {
@@ -11,7 +13,7 @@ export function registerContactsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ query, account }) => {
-    return runOrDiagnose(['contacts', 'search', query], { account });
+    return runOrDiagnose(['contacts', 'search', pos(query)], { account });
   });
 
   server.registerTool('gog_contacts_list', {
@@ -32,7 +34,7 @@ export function registerContactsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ resourceName, account }) => {
-    return runOrDiagnose(['contacts', 'get', resourceName], { account });
+    return runOrDiagnose(['contacts', 'get', pos(resourceName)], { account });
   });
 
   server.registerTool('gog_contacts_create', {
@@ -48,7 +50,7 @@ export function registerContactsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ givenName, familyName, email, phone, org, title, account }) => {
-    const args = ['contacts', 'create', `--given=${givenName}`];
+    const args: GogArg[] = ['contacts', 'create', `--given=${givenName}`];
     if (familyName) args.push(`--family=${familyName}`);
     if (email) args.push(`--email=${email}`);
     if (phone) args.push(`--phone=${phone}`);

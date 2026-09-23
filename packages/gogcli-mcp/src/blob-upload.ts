@@ -25,9 +25,11 @@
 /**
  * Where gmail's attachment download writes (`defaultOutPath` in
  * packages/gogcli-mcp-gmail/src/tools/gmail-extra.ts) and the only tree this
- * module will read back from.
+ * module will read back from. Per-user and private — see attachment-root.ts.
  */
-export const ATTACHMENT_DOWNLOAD_ROOT = '/tmp/gog-attachments';
+import { ATTACHMENT_DOWNLOAD_ROOT } from './attachment-root.js';
+
+export { ATTACHMENT_DOWNLOAD_ROOT };
 
 /** mcp-host's blob store caps one object at 100 MiB and answers 413 past it. */
 export const MAX_BLOB_UPLOAD_BYTES = 100 * 1024 * 1024;

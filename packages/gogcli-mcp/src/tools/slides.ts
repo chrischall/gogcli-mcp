@@ -1,11 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
+import { pos } from '../argv.js';
+import { confinePath } from '../file-roots.js';
+import type { GogArg } from '../runner.js';
 
 export function registerSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_export', {
-    description: 'Export a Google Slides presentation to a local file (pdf or pptx).',
-    annotations: { readOnlyHint: true },
+    description: 'Export a Google Slides presentation to a local file (pdf or pptx). The out path must be inside the server\'s GOG_FILE_ROOTS directories.',
+    // Writes a file on the gog host and can overwrite one: not read-only.
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       out: z.string().optional().describe('Output file path'),
@@ -14,7 +18,8 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, out, format, overwrite, account }) => {
-    const args = ['slides', 'export', presentationId];
+    if (out) confinePath(out, 'out');
+    const args: GogArg[] = ['slides', 'export', pos(presentationId)];
     if (out) args.push(`--out=${out}`);
     if (format) args.push(`--format=${format}`);
     if (overwrite) args.push('--overwrite');
@@ -29,7 +34,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, account }) => {
-    return runOrDiagnose(['slides', 'info', presentationId], { account });
+    return runOrDiagnose(['slides', 'info', pos(presentationId)], { account });
   });
 
   server.registerTool('gog_slides_create', {
@@ -42,7 +47,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ title, parent, template, account }) => {
-    const args = ['slides', 'create', title];
+    const args: GogArg[] = ['slides', 'create', pos(title)];
     if (parent) args.push(`--parent=${parent}`);
     if (template) args.push(`--template=${template}`);
     return runOrDiagnose(args, { account });
@@ -58,7 +63,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, title, parent, account }) => {
-    const args = ['slides', 'copy', presentationId, title];
+    const args: GogArg[] = ['slides', 'copy', pos(presentationId), pos(title)];
     if (parent) args.push(`--parent=${parent}`);
     return runOrDiagnose(args, { account });
   });
@@ -71,7 +76,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, account }) => {
-    return runOrDiagnose(['slides', 'list-slides', presentationId], { account });
+    return runOrDiagnose(['slides', 'list-slides', pos(presentationId)], { account });
   });
 
   server.registerTool('gog_slides_read_slide', {
@@ -84,7 +89,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, detail, account }) => {
-    const args = ['slides', 'read-slide', presentationId, slideId];
+    const args: GogArg[] = ['slides', 'read-slide', pos(presentationId), pos(slideId)];
     if (detail) args.push('--detail');
     return runOrDiagnose(args, { account });
   });

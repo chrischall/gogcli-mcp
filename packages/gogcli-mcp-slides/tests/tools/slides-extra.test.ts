@@ -3,6 +3,7 @@ import { registerExtraSlidesTools } from '../../src/tools/slides-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
 import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
 import { rawTextResult } from '@chrischall/mcp-utils';
+import { pos } from '../../../gogcli-mcp/src/argv.js';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -24,7 +25,7 @@ describe('gog_slides_create_from_markdown', () => {
   it('calls runOrDiagnose with title only', async () => {
     await harness.callTool('gog_slides_create_from_markdown', { title: 'Deck' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'create-from-markdown', 'Deck'],
+      ['slides', 'create-from-markdown', pos('Deck')],
       { account: undefined },
     );
   });
@@ -39,7 +40,7 @@ describe('gog_slides_create_from_markdown', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'slides', 'create-from-markdown', 'Deck',
+        'slides', 'create-from-markdown', pos('Deck'),
         '--content=# Slide 1',
         '--content-file=/tmp/deck.md',
         '--parent=folder1',
@@ -52,7 +53,7 @@ describe('gog_slides_create_from_markdown', () => {
   it('omits --debug when false', async () => {
     await harness.callTool('gog_slides_create_from_markdown', { title: 'Deck', debug: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'create-from-markdown', 'Deck'],
+      ['slides', 'create-from-markdown', pos('Deck')],
       { account: undefined },
     );
   });
@@ -62,7 +63,7 @@ describe('gog_slides_create_from_template', () => {
   it('calls runOrDiagnose with templateId and title only', async () => {
     await harness.callTool('gog_slides_create_from_template', { templateId: 'tpl1', title: 'Deck' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'create-from-template', 'tpl1', 'Deck'],
+      ['slides', 'create-from-template', pos('tpl1'), pos('Deck')],
       { account: undefined },
     );
   });
@@ -74,7 +75,7 @@ describe('gog_slides_create_from_template', () => {
       replacements: { name: 'Alice' },
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'create-from-template', 'tpl1', 'Deck', '--replace=name=Alice'],
+      ['slides', 'create-from-template', pos('tpl1'), pos('Deck'), '--replace=name=Alice'],
       { account: undefined },
     );
   });
@@ -100,7 +101,7 @@ describe('gog_slides_create_from_template', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'slides', 'create-from-template', 'tpl1', 'Deck',
+        'slides', 'create-from-template', pos('tpl1'), pos('Deck'),
         '--replacements=/tmp/r.json',
         '--parent=folder1',
         '--exact',
@@ -116,7 +117,7 @@ describe('gog_slides_create_from_template', () => {
       exact: false,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'create-from-template', 'tpl1', 'Deck'],
+      ['slides', 'create-from-template', pos('tpl1'), pos('Deck')],
       { account: undefined },
     );
   });
@@ -131,7 +132,7 @@ describe('slides payload routing', () => {
   it('routes a large create-from-markdown content to --content-file', async () => {
     await harness.callTool('gog_slides_create_from_markdown', { title: 'Deck', content: big });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'create-from-markdown', 'Deck',
+      ['slides', 'create-from-markdown', pos('Deck'),
         { kind: 'file', flag: 'content-file', contents: big, ext: 'md' }],
       { account: undefined },
     );
@@ -140,7 +141,7 @@ describe('slides payload routing', () => {
   it('routes large add-slide notes to --notes-file', async () => {
     await harness.callTool('gog_slides_add_slide', { presentationId: 'p1', image: '/tmp/i.png', notes: big });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'add-slide', 'p1', '/tmp/i.png',
+      ['slides', 'add-slide', pos('p1'), pos('/tmp/i.png'),
         { kind: 'file', flag: 'notes-file', contents: big, ext: undefined }],
       { account: undefined },
     );
@@ -149,7 +150,7 @@ describe('slides payload routing', () => {
   it('routes large update-notes notes to --notes-file', async () => {
     await harness.callTool('gog_slides_update_notes', { presentationId: 'p1', slideId: 's1', notes: big });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'update-notes', 'p1', 's1',
+      ['slides', 'update-notes', pos('p1'), pos('s1'),
         { kind: 'file', flag: 'notes-file', contents: big, ext: undefined }],
       { account: undefined },
     );
@@ -160,7 +161,7 @@ describe('slides payload routing', () => {
       presentationId: 'p1', slideId: 's1', image: '/tmp/i.png', notes: big,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'replace-slide', 'p1', 's1', '/tmp/i.png',
+      ['slides', 'replace-slide', pos('p1'), pos('s1'), pos('/tmp/i.png'),
         { kind: 'file', flag: 'notes-file', contents: big, ext: undefined }],
       { account: undefined },
     );
@@ -173,7 +174,7 @@ describe('slides payload routing', () => {
       presentationId: 'p1', slideId: 's1', notes: big, notesFile: '/tmp/mine.txt',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'update-notes', 'p1', 's1',
+      ['slides', 'update-notes', pos('p1'), pos('s1'),
         { kind: 'file', flag: 'notes-file', contents: big, ext: undefined },
         '--notes-file=/tmp/mine.txt'],
       { account: undefined },
@@ -194,7 +195,7 @@ describe('gog_slides_add_slide', () => {
   it('calls runOrDiagnose with presentationId and image', async () => {
     await harness.callTool('gog_slides_add_slide', { presentationId: 'p1', image: '/tmp/img.png' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'add-slide', 'p1', '/tmp/img.png'],
+      ['slides', 'add-slide', pos('p1'), pos('/tmp/img.png')],
       { account: undefined },
     );
   });
@@ -209,7 +210,7 @@ describe('gog_slides_add_slide', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'slides', 'add-slide', 'p1', '/tmp/img.png',
+        'slides', 'add-slide', pos('p1'), pos('/tmp/img.png'),
         '--notes=Speaker note',
         '--notes-file=/tmp/notes.txt',
         '--before=slide5',
@@ -223,7 +224,7 @@ describe('gog_slides_delete_slide', () => {
   it('calls runOrDiagnose with presentationId and slideId', async () => {
     await harness.callTool('gog_slides_delete_slide', { presentationId: 'p1', slideId: 's1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'delete-slide', 'p1', 's1', '--force'],
+      ['slides', 'delete-slide', pos('p1'), pos('s1'), '--force'],
       { account: undefined },
     );
   });
@@ -233,7 +234,7 @@ describe('gog_slides_update_notes', () => {
   it('calls runOrDiagnose with presentationId and slideId', async () => {
     await harness.callTool('gog_slides_update_notes', { presentationId: 'p1', slideId: 's1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'update-notes', 'p1', 's1'],
+      ['slides', 'update-notes', pos('p1'), pos('s1')],
       { account: undefined },
     );
   });
@@ -247,7 +248,7 @@ describe('gog_slides_update_notes', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'slides', 'update-notes', 'p1', 's1',
+        'slides', 'update-notes', pos('p1'), pos('s1'),
         '--notes=speak clearly',
         '--notes-file=/tmp/n.txt',
       ],
@@ -264,7 +265,7 @@ describe('gog_slides_replace_slide', () => {
       image: '/tmp/img.png',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'replace-slide', 'p1', 's1', '/tmp/img.png'],
+      ['slides', 'replace-slide', pos('p1'), pos('s1'), pos('/tmp/img.png')],
       { account: undefined },
     );
   });
@@ -279,7 +280,7 @@ describe('gog_slides_replace_slide', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'slides', 'replace-slide', 'p1', 's1', '/tmp/img.png',
+        'slides', 'replace-slide', pos('p1'), pos('s1'), pos('/tmp/img.png'),
         '--notes=updated',
         '--notes-file=/tmp/n.txt',
       ],
@@ -295,7 +296,7 @@ describe('gog_slides_insert_image', () => {
       presentationId: 'p1', slideId: 's1', image: '/tmp/i.png', width: 200,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'insert-image', 'p1', 's1', '/tmp/i.png', '--width=200'],
+      ['slides', 'insert-image', pos('p1'), pos('s1'), pos('/tmp/i.png'), '--width=200'],
       { account: undefined },
     );
   });
@@ -305,7 +306,7 @@ describe('gog_slides_insert_image', () => {
       presentationId: 'p1', slideId: 's1', image: '/tmp/i.png', width: 200, height: 100, x: 50, y: 60, unit: 'PT', account: 'a@b.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'insert-image', 'p1', 's1', '/tmp/i.png', '--width=200', '--height=100', '--x=50', '--y=60', '--unit=PT'],
+      ['slides', 'insert-image', pos('p1'), pos('s1'), pos('/tmp/i.png'), '--width=200', '--height=100', '--x=50', '--y=60', '--unit=PT'],
       { account: 'a@b.com' },
     );
   });
@@ -321,7 +322,7 @@ describe('gog_slides_insert_image url mode', () => {
       presentationId: 'p1', slideId: 's1', url: 'https://x.test/i.png', width: 200, height: 100,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'insert-image', 'p1', 's1', '--width=200', '--url=https://x.test/i.png', '--height=100'],
+      ['slides', 'insert-image', pos('p1'), pos('s1'), '--width=200', '--url=https://x.test/i.png', '--height=100'],
       { account: undefined },
     );
   });
@@ -333,7 +334,7 @@ describe('gog_slides_replace_slide url mode', () => {
       presentationId: 'p1', slideId: 's1', url: 'https://x.test/i.png', notes: 'n',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'replace-slide', 'p1', 's1', '--url=https://x.test/i.png', '--notes=n'],
+      ['slides', 'replace-slide', pos('p1'), pos('s1'), '--url=https://x.test/i.png', '--notes=n'],
       { account: undefined },
     );
   });
@@ -342,11 +343,11 @@ describe('gog_slides_replace_slide url mode', () => {
 describe('gog_slides_raw', () => {
   it('passes --pretty', async () => {
     await harness.callTool('gog_slides_raw', { presentationId: 'p1', pretty: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'raw', 'p1', '--pretty'], { account: undefined, lossless: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'raw', pos('p1'), '--pretty'], { account: undefined, lossless: true });
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_raw', { presentationId: 'p1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'raw', 'p1'], { account: undefined, lossless: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'raw', pos('p1')], { account: undefined, lossless: true });
   });
 });
 
@@ -356,13 +357,13 @@ describe('gog_slides_locate', () => {
       presentationId: 'p1', text: 'hi', page: 'sl1', occurrence: 2, all: true, matchCase: true, failEmpty: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'locate', 'p1', 'hi', '--page=sl1', '--occurrence=2', '--all', '--match-case', '--fail-empty'],
+      ['slides', 'locate', pos('p1'), pos('hi'), '--page=sl1', '--occurrence=2', '--all', '--match-case', '--fail-empty'],
       { account: undefined },
     );
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_locate', { presentationId: 'p1', text: 'hi' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'locate', 'p1', 'hi'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'locate', pos('p1'), pos('hi')], { account: undefined });
   });
 });
 
@@ -372,13 +373,13 @@ describe('gog_slides_thumbnail', () => {
       presentationId: 'p1', slideId: 's1', format: 'png', size: 'large', out: '/tmp/t.png', overwrite: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'thumbnail', 'p1', 's1', '--format=png', '--size=large', '--out=/tmp/t.png', '--overwrite'],
+      ['slides', 'thumbnail', pos('p1'), pos('s1'), '--format=png', '--size=large', '--out=/tmp/t.png', '--overwrite'],
       { account: undefined },
     );
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_thumbnail', { presentationId: 'p1', slideId: 's1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'thumbnail', 'p1', 's1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'thumbnail', pos('p1'), pos('s1')], { account: undefined });
   });
 });
 
@@ -386,17 +387,17 @@ describe('gog_slides_new_slide', () => {
   it('passes layout and index', async () => {
     await harness.callTool('gog_slides_new_slide', { presentationId: 'p1', layout: 'TITLE_AND_BODY', index: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'new-slide', 'p1', '--layout=TITLE_AND_BODY', '--index=2'],
+      ['slides', 'new-slide', pos('p1'), '--layout=TITLE_AND_BODY', '--index=2'],
       { account: undefined },
     );
   });
   it('passes layoutId', async () => {
     await harness.callTool('gog_slides_new_slide', { presentationId: 'p1', layoutId: 'LAY1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'new-slide', 'p1', '--layout-id=LAY1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'new-slide', pos('p1'), '--layout-id=LAY1'], { account: undefined });
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_new_slide', { presentationId: 'p1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'new-slide', 'p1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'new-slide', pos('p1')], { account: undefined });
   });
 });
 
@@ -404,11 +405,11 @@ describe('gog_slides_duplicate_slide', () => {
   it('passes --to-index', async () => {
     await harness.callTool('gog_slides_duplicate_slide', { presentationId: 'p1', slideId: 's1', toIndex: 3 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'duplicate-slide', 'p1', 's1', '--to-index=3'], { account: undefined });
+      ['slides', 'duplicate-slide', pos('p1'), pos('s1'), '--to-index=3'], { account: undefined });
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_duplicate_slide', { presentationId: 'p1', slideId: 's1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'duplicate-slide', 'p1', 's1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'duplicate-slide', pos('p1'), pos('s1')], { account: undefined });
   });
 });
 
@@ -416,7 +417,7 @@ describe('gog_slides_move_slide', () => {
   it('passes required --to-index', async () => {
     await harness.callTool('gog_slides_move_slide', { presentationId: 'p1', slideId: 's1', toIndex: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'move-slide', 'p1', 's1', '--to-index=0'], { account: undefined });
+      ['slides', 'move-slide', pos('p1'), pos('s1'), '--to-index=0'], { account: undefined });
   });
 });
 
@@ -426,13 +427,13 @@ describe('gog_slides_insert_text', () => {
       presentationId: 'p1', objectId: 'o1', text: 'hi', row: 0, col: 1, insertionIndex: 2, replace: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'insert-text', 'p1', 'o1', 'hi', '--row=0', '--col=1', '--insertion-index=2', '--replace'],
+      ['slides', 'insert-text', pos('p1'), pos('o1'), pos('hi'), '--row=0', '--col=1', '--insertion-index=2', '--replace'],
       { account: undefined },
     );
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_insert_text', { presentationId: 'p1', objectId: 'o1', text: 'hi' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'insert-text', 'p1', 'o1', 'hi'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'insert-text', pos('p1'), pos('o1'), pos('hi')], { account: undefined });
   });
 });
 
@@ -443,14 +444,14 @@ describe('gog_slides_style_text', () => {
       bold: true, noBold: true, italic: true, noItalic: true, underline: true, noUnderline: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'style-text', 'p1', 'o1', '--range=0:5', '--font=Arial', '--size=18', '--text-color=#ff0000',
+      ['slides', 'style-text', pos('p1'), pos('o1'), '--range=0:5', '--font=Arial', '--size=18', '--text-color=#ff0000',
         '--bold', '--no-bold', '--italic', '--no-italic', '--underline', '--no-underline'],
       { account: undefined },
     );
   });
   it('minimal (range only)', async () => {
     await harness.callTool('gog_slides_style_text', { presentationId: 'p1', objectId: 'o1', range: '0:5' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'style-text', 'p1', 'o1', '--range=0:5'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'style-text', pos('p1'), pos('o1'), '--range=0:5'], { account: undefined });
   });
 });
 
@@ -458,12 +459,12 @@ describe('gog_slides_link', () => {
   it('applies a url', async () => {
     await harness.callTool('gog_slides_link', { presentationId: 'p1', objectId: 'o1', range: '0:5', url: 'https://x.test' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'link', 'p1', 'o1', '--range=0:5', '--url=https://x.test'], { account: undefined });
+      ['slides', 'link', pos('p1'), pos('o1'), '--range=0:5', '--url=https://x.test'], { account: undefined });
   });
   it('clears the link', async () => {
     await harness.callTool('gog_slides_link', { presentationId: 'p1', objectId: 'o1', range: '0:5', clear: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'link', 'p1', 'o1', '--range=0:5', '--clear'], { account: undefined });
+      ['slides', 'link', pos('p1'), pos('o1'), '--range=0:5', '--clear'], { account: undefined });
   });
 });
 
@@ -471,12 +472,12 @@ describe('gog_slides_bullets', () => {
   it('turns bullets on with a preset', async () => {
     await harness.callTool('gog_slides_bullets', { presentationId: 'p1', objectId: 'o1', range: '0:5', on: true, preset: 'BULLET_DISC_CIRCLE_SQUARE' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'bullets', 'p1', 'o1', '--range=0:5', '--on', '--preset=BULLET_DISC_CIRCLE_SQUARE'], { account: undefined });
+      ['slides', 'bullets', pos('p1'), pos('o1'), '--range=0:5', '--on', '--preset=BULLET_DISC_CIRCLE_SQUARE'], { account: undefined });
   });
   it('turns bullets off', async () => {
     await harness.callTool('gog_slides_bullets', { presentationId: 'p1', objectId: 'o1', range: '0:5', off: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'bullets', 'p1', 'o1', '--range=0:5', '--off'], { account: undefined });
+      ['slides', 'bullets', pos('p1'), pos('o1'), '--range=0:5', '--off'], { account: undefined });
   });
 });
 
@@ -484,17 +485,17 @@ describe('gog_slides_replace_text', () => {
   it('scopes to a single object', async () => {
     await harness.callTool('gog_slides_replace_text', { presentationId: 'p1', find: 'a', replacement: 'b', object: 'o1', matchCase: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'replace-text', 'p1', 'a', 'b', '--object=o1', '--match-case'], { account: undefined });
+      ['slides', 'replace-text', pos('p1'), pos('a'), pos('b'), '--object=o1', '--match-case'], { account: undefined });
   });
   it('scopes to specific pages (repeatable)', async () => {
     await harness.callTool('gog_slides_replace_text', { presentationId: 'p1', find: 'a', replacement: 'b', pages: ['s1', 's2'] });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'replace-text', 'p1', 'a', 'b', '--page=s1', '--page=s2'], { account: undefined });
+      ['slides', 'replace-text', pos('p1'), pos('a'), pos('b'), '--page=s1', '--page=s2'], { account: undefined });
   });
   it('scopes to the whole presentation', async () => {
     await harness.callTool('gog_slides_replace_text', { presentationId: 'p1', find: 'a', replacement: 'b', all: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'replace-text', 'p1', 'a', 'b', '--all'], { account: undefined });
+      ['slides', 'replace-text', pos('p1'), pos('a'), pos('b'), '--all'], { account: undefined });
   });
 });
 
@@ -504,13 +505,13 @@ describe('gog_slides_element_create_shape', () => {
       presentationId: 'p1', slideId: 's1', type: 'RECTANGLE', x: 10, y: 20, width: 100, height: 50, unit: 'PT', objectId: 'shape1',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'create-shape', 'p1', 's1', '--type=RECTANGLE', '--x=10', '--y=20', '--width=100', '--height=50', '--unit=PT', '--object-id=shape1'],
+      ['slides', 'element', 'create-shape', pos('p1'), pos('s1'), '--type=RECTANGLE', '--x=10', '--y=20', '--width=100', '--height=50', '--unit=PT', '--object-id=shape1'],
       { account: undefined },
     );
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_element_create_shape', { presentationId: 'p1', slideId: 's1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'create-shape', 'p1', 's1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'create-shape', pos('p1'), pos('s1')], { account: undefined });
   });
 });
 
@@ -520,13 +521,13 @@ describe('gog_slides_element_create_line', () => {
       presentationId: 'p1', slideId: 's1', category: 'BENT', x: 10, y: 20, width: 100, height: 50, unit: 'EMU', objectId: 'line1',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'create-line', 'p1', 's1', '--category=BENT', '--x=10', '--y=20', '--width=100', '--height=50', '--unit=EMU', '--object-id=line1'],
+      ['slides', 'element', 'create-line', pos('p1'), pos('s1'), '--category=BENT', '--x=10', '--y=20', '--width=100', '--height=50', '--unit=EMU', '--object-id=line1'],
       { account: undefined },
     );
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_element_create_line', { presentationId: 'p1', slideId: 's1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'create-line', 'p1', 's1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'create-line', pos('p1'), pos('s1')], { account: undefined });
   });
 });
 
@@ -537,14 +538,14 @@ describe('gog_slides_element_style', () => {
       outlineColor: '#000', outlineWeight: 2, outlineDash: 'DASH', outlineTransparent: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'style', 'p1', 'o1', '--kind=shape', '--fill-color=#fff', '--fill-transparent',
+      ['slides', 'element', 'style', pos('p1'), pos('o1'), '--kind=shape', '--fill-color=#fff', '--fill-transparent',
         '--outline-color=#000', '--outline-weight=2', '--outline-dash=DASH', '--outline-transparent'],
       { account: undefined },
     );
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_element_style', { presentationId: 'p1', objectId: 'o1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'style', 'p1', 'o1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'style', pos('p1'), pos('o1')], { account: undefined });
   });
 });
 
@@ -555,14 +556,14 @@ describe('gog_slides_element_transform', () => {
       shearX: 0.1, shearY: 0.2, rotate: 45, applyMode: 'ABSOLUTE', unit: 'PT',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'transform', 'p1', 'o1', '--translate-x=10', '--translate-y=20', '--scale-x=1.5', '--scale-y=2',
+      ['slides', 'element', 'transform', pos('p1'), pos('o1'), '--translate-x=10', '--translate-y=20', '--scale-x=1.5', '--scale-y=2',
         '--shear-x=0.1', '--shear-y=0.2', '--rotate=45', '--apply-mode=ABSOLUTE', '--unit=PT'],
       { account: undefined },
     );
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_element_transform', { presentationId: 'p1', objectId: 'o1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'transform', 'p1', 'o1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'transform', pos('p1'), pos('o1')], { account: undefined });
   });
 });
 
@@ -570,7 +571,7 @@ describe('gog_slides_element_z_order', () => {
   it('passes the operation', async () => {
     await harness.callTool('gog_slides_element_z_order', { presentationId: 'p1', objectId: 'o1', operation: 'BRING_TO_FRONT' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'z-order', 'p1', 'o1', '--operation=BRING_TO_FRONT'], { account: undefined });
+      ['slides', 'element', 'z-order', pos('p1'), pos('o1'), '--operation=BRING_TO_FRONT'], { account: undefined });
   });
 });
 
@@ -578,12 +579,12 @@ describe('gog_slides_element_group', () => {
   it('groups elements with a group id', async () => {
     await harness.callTool('gog_slides_element_group', { presentationId: 'p1', objectIds: ['o1', 'o2', 'o3'], groupId: 'g1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'group', 'p1', 'o1', 'o2', 'o3', '--group-id=g1'], { account: undefined });
+      ['slides', 'element', 'group', pos('p1'), pos('o1'), pos('o2'), pos('o3'), '--group-id=g1'], { account: undefined });
   });
   it('groups elements without a group id', async () => {
     await harness.callTool('gog_slides_element_group', { presentationId: 'p1', objectIds: ['o1', 'o2'] });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'group', 'p1', 'o1', 'o2'], { account: undefined });
+      ['slides', 'element', 'group', pos('p1'), pos('o1'), pos('o2')], { account: undefined });
   });
 });
 
@@ -591,7 +592,7 @@ describe('gog_slides_element_ungroup', () => {
   it('ungroups groups', async () => {
     await harness.callTool('gog_slides_element_ungroup', { presentationId: 'p1', groupIds: ['g1', 'g2'] });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'ungroup', 'p1', 'g1', 'g2'], { account: undefined });
+      ['slides', 'element', 'ungroup', pos('p1'), pos('g1'), pos('g2')], { account: undefined });
   });
 });
 
@@ -599,23 +600,23 @@ describe('gog_slides_element_alt_text', () => {
   it('sets title and description', async () => {
     await harness.callTool('gog_slides_element_alt_text', { presentationId: 'p1', objectId: 'o1', title: 'T', description: 'D' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'alt-text', 'p1', 'o1', '--title=T', '--description=D'], { account: undefined });
+      ['slides', 'element', 'alt-text', pos('p1'), pos('o1'), '--title=T', '--description=D'], { account: undefined });
   });
   it('clears both fields with empty strings', async () => {
     await harness.callTool('gog_slides_element_alt_text', { presentationId: 'p1', objectId: 'o1', title: '', description: '' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'element', 'alt-text', 'p1', 'o1', '--title=', '--description='], { account: undefined });
+      ['slides', 'element', 'alt-text', pos('p1'), pos('o1'), '--title=', '--description='], { account: undefined });
   });
   it('bare leaves both untouched', async () => {
     await harness.callTool('gog_slides_element_alt_text', { presentationId: 'p1', objectId: 'o1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'alt-text', 'p1', 'o1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'alt-text', pos('p1'), pos('o1')], { account: undefined });
   });
 });
 
 describe('gog_slides_element_delete', () => {
   it('deletes an element', async () => {
     await harness.callTool('gog_slides_element_delete', { presentationId: 'p1', objectId: 'o1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'delete', 'p1', 'o1', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['slides', 'element', 'delete', pos('p1'), pos('o1'), '--force'], { account: undefined });
   });
 });
 
@@ -627,12 +628,12 @@ describe('gog_slides_table_create', () => {
   it('passes rows, cols and object id', async () => {
     await harness.callTool('gog_slides_table_create', { presentationId: 'p1', slideId: 's1', rows: 3, cols: 4, objectId: 'tbl1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'create', 'p1', 's1', '--rows=3', '--cols=4', '--object-id=tbl1'], { account: undefined });
+      ['slides', 'table', 'create', pos('p1'), pos('s1'), '--rows=3', '--cols=4', '--object-id=tbl1'], { account: undefined });
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_table_create', { presentationId: 'p1', slideId: 's1', rows: 2, cols: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'create', 'p1', 's1', '--rows=2', '--cols=2'], { account: undefined });
+      ['slides', 'table', 'create', pos('p1'), pos('s1'), '--rows=2', '--cols=2'], { account: undefined });
   });
 });
 
@@ -644,7 +645,7 @@ describe('gog_slides_table_cell_style', () => {
       bold: true, noBold: true, italic: true, noItalic: true, underline: true, noUnderline: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'cell', 'style', 'p1', 't1', '--row=0', '--col=1', '--range=0:3', '--fill-color=#eee', '--fill-transparent',
+      ['slides', 'table', 'cell', 'style', pos('p1'), pos('t1'), '--row=0', '--col=1', '--range=0:3', '--fill-color=#eee', '--fill-transparent',
         '--content-align=MIDDLE', '--font=Arial', '--size=12', '--text-color=#111',
         '--bold', '--no-bold', '--italic', '--no-italic', '--underline', '--no-underline'],
       { account: undefined },
@@ -653,7 +654,7 @@ describe('gog_slides_table_cell_style', () => {
   it('minimal (row/col only)', async () => {
     await harness.callTool('gog_slides_table_cell_style', { presentationId: 'p1', tableObjectId: 't1', row: 0, col: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'cell', 'style', 'p1', 't1', '--row=0', '--col=0'], { account: undefined });
+      ['slides', 'table', 'cell', 'style', pos('p1'), pos('t1'), '--row=0', '--col=0'], { account: undefined });
   });
 });
 
@@ -664,7 +665,7 @@ describe('gog_slides_table_border_style', () => {
       position: 'OUTER', borderColor: '#000', weight: 2, dash: 'DASH', transparent: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'border', 'style', 'p1', 't1', '--row=0', '--col=0', '--row-span=2', '--col-span=2',
+      ['slides', 'table', 'border', 'style', pos('p1'), pos('t1'), '--row=0', '--col=0', '--row-span=2', '--col-span=2',
         '--position=OUTER', '--border-color=#000', '--weight=2', '--dash=DASH', '--transparent'],
       { account: undefined },
     );
@@ -672,7 +673,7 @@ describe('gog_slides_table_border_style', () => {
   it('minimal (row/col only)', async () => {
     await harness.callTool('gog_slides_table_border_style', { presentationId: 'p1', tableObjectId: 't1', row: 1, col: 1 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'border', 'style', 'p1', 't1', '--row=1', '--col=1'], { account: undefined });
+      ['slides', 'table', 'border', 'style', pos('p1'), pos('t1'), '--row=1', '--col=1'], { account: undefined });
   });
 });
 
@@ -680,12 +681,12 @@ describe('gog_slides_table_column_insert', () => {
   it('passes count and --right', async () => {
     await harness.callTool('gog_slides_table_column_insert', { presentationId: 'p1', tableObjectId: 't1', col: 1, count: 2, right: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'column', 'insert', 'p1', 't1', '--col=1', '--count=2', '--right'], { account: undefined });
+      ['slides', 'table', 'column', 'insert', pos('p1'), pos('t1'), '--col=1', '--count=2', '--right'], { account: undefined });
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_table_column_insert', { presentationId: 'p1', tableObjectId: 't1', col: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'column', 'insert', 'p1', 't1', '--col=0'], { account: undefined });
+      ['slides', 'table', 'column', 'insert', pos('p1'), pos('t1'), '--col=0'], { account: undefined });
   });
 });
 
@@ -693,7 +694,7 @@ describe('gog_slides_table_column_delete', () => {
   it('deletes by column index', async () => {
     await harness.callTool('gog_slides_table_column_delete', { presentationId: 'p1', tableObjectId: 't1', col: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'column', 'delete', 'p1', 't1', '--col=2', '--force'], { account: undefined });
+      ['slides', 'table', 'column', 'delete', pos('p1'), pos('t1'), '--col=2', '--force'], { account: undefined });
   });
 });
 
@@ -701,7 +702,7 @@ describe('gog_slides_table_column_size', () => {
   it('sets column width', async () => {
     await harness.callTool('gog_slides_table_column_size', { presentationId: 'p1', tableObjectId: 't1', col: 1, width: 120 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'column', 'size', 'p1', 't1', '--col=1', '--width=120'], { account: undefined });
+      ['slides', 'table', 'column', 'size', pos('p1'), pos('t1'), '--col=1', '--width=120'], { account: undefined });
   });
 });
 
@@ -709,12 +710,12 @@ describe('gog_slides_table_row_insert', () => {
   it('passes count and --below', async () => {
     await harness.callTool('gog_slides_table_row_insert', { presentationId: 'p1', tableObjectId: 't1', row: 0, count: 1, below: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'row', 'insert', 'p1', 't1', '--row=0', '--count=1', '--below'], { account: undefined });
+      ['slides', 'table', 'row', 'insert', pos('p1'), pos('t1'), '--row=0', '--count=1', '--below'], { account: undefined });
   });
   it('bare', async () => {
     await harness.callTool('gog_slides_table_row_insert', { presentationId: 'p1', tableObjectId: 't1', row: 1 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'row', 'insert', 'p1', 't1', '--row=1'], { account: undefined });
+      ['slides', 'table', 'row', 'insert', pos('p1'), pos('t1'), '--row=1'], { account: undefined });
   });
 });
 
@@ -722,7 +723,7 @@ describe('gog_slides_table_row_delete', () => {
   it('deletes by row index', async () => {
     await harness.callTool('gog_slides_table_row_delete', { presentationId: 'p1', tableObjectId: 't1', row: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'row', 'delete', 'p1', 't1', '--row=2', '--force'], { account: undefined });
+      ['slides', 'table', 'row', 'delete', pos('p1'), pos('t1'), '--row=2', '--force'], { account: undefined });
   });
 });
 
@@ -730,7 +731,7 @@ describe('gog_slides_table_row_size', () => {
   it('sets row min height', async () => {
     await harness.callTool('gog_slides_table_row_size', { presentationId: 'p1', tableObjectId: 't1', row: 0, height: 40 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'row', 'size', 'p1', 't1', '--row=0', '--height=40'], { account: undefined });
+      ['slides', 'table', 'row', 'size', pos('p1'), pos('t1'), '--row=0', '--height=40'], { account: undefined });
   });
 });
 
@@ -738,12 +739,12 @@ describe('gog_slides_table_merge', () => {
   it('passes span', async () => {
     await harness.callTool('gog_slides_table_merge', { presentationId: 'p1', tableObjectId: 't1', row: 0, col: 0, rowSpan: 2, colSpan: 3 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'merge', 'p1', 't1', '--row=0', '--col=0', '--row-span=2', '--col-span=3'], { account: undefined });
+      ['slides', 'table', 'merge', pos('p1'), pos('t1'), '--row=0', '--col=0', '--row-span=2', '--col-span=3'], { account: undefined });
   });
   it('minimal', async () => {
     await harness.callTool('gog_slides_table_merge', { presentationId: 'p1', tableObjectId: 't1', row: 0, col: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'merge', 'p1', 't1', '--row=0', '--col=0'], { account: undefined });
+      ['slides', 'table', 'merge', pos('p1'), pos('t1'), '--row=0', '--col=0'], { account: undefined });
   });
 });
 
@@ -751,12 +752,12 @@ describe('gog_slides_table_unmerge', () => {
   it('passes span', async () => {
     await harness.callTool('gog_slides_table_unmerge', { presentationId: 'p1', tableObjectId: 't1', row: 0, col: 0, rowSpan: 2, colSpan: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'unmerge', 'p1', 't1', '--row=0', '--col=0', '--row-span=2', '--col-span=2'], { account: undefined });
+      ['slides', 'table', 'unmerge', pos('p1'), pos('t1'), '--row=0', '--col=0', '--row-span=2', '--col-span=2'], { account: undefined });
   });
   it('minimal', async () => {
     await harness.callTool('gog_slides_table_unmerge', { presentationId: 'p1', tableObjectId: 't1', row: 1, col: 1 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'table', 'unmerge', 'p1', 't1', '--row=1', '--col=1'], { account: undefined });
+      ['slides', 'table', 'unmerge', pos('p1'), pos('t1'), '--row=1', '--col=1'], { account: undefined });
   });
 });
 
@@ -764,7 +765,7 @@ describe('gog_slides_skip_slide', () => {
   it('calls runOrDiagnose with presentationId and slideId', async () => {
     await harness.callTool('gog_slides_skip_slide', { presentationId: 'p1', slideId: 's1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'skip-slide', 'p1', 's1'],
+      ['slides', 'skip-slide', pos('p1'), pos('s1')],
       { account: undefined },
     );
   });
@@ -772,7 +773,7 @@ describe('gog_slides_skip_slide', () => {
   it('passes the account through', async () => {
     await harness.callTool('gog_slides_skip_slide', { presentationId: 'p1', slideId: 's1', account: 'me@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'skip-slide', 'p1', 's1'],
+      ['slides', 'skip-slide', pos('p1'), pos('s1')],
       { account: 'me@x.com' },
     );
   });
@@ -782,8 +783,51 @@ describe('gog_slides_unskip_slide', () => {
   it('calls runOrDiagnose with presentationId and slideId', async () => {
     await harness.callTool('gog_slides_unskip_slide', { presentationId: 'p1', slideId: 's1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['slides', 'unskip-slide', 'p1', 's1'],
+      ['slides', 'unskip-slide', pos('p1'), pos('s1')],
       { account: undefined },
     );
+  });
+});
+
+// SEC-3/SEC-4: every model-supplied server path must resolve inside an
+// operator-configured root (GOG_FILE_ROOTS). The suite runs with '/' so the
+// arg-shape tests can use any path; these narrow it.
+async function withFileRoots<T>(roots: string, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.GOG_FILE_ROOTS;
+  process.env.GOG_FILE_ROOTS = roots;
+  try {
+    return await fn();
+  } finally {
+    process.env.GOG_FILE_ROOTS = prev;
+  }
+}
+
+describe('server paths are confined to GOG_FILE_ROOTS', () => {
+  it.each([
+    ['gog_slides_create_from_markdown', {"title": "t", "contentFile": "/etc/passwd"}, 'contentFile'],
+    ['gog_slides_create_from_template', {"templateId": "t", "title": "x", "replacementsFile": "/etc/passwd"}, 'replacementsFile'],
+    ['gog_slides_add_slide', {"presentationId": "p", "image": "/etc/passwd"}, 'image'],
+    ['gog_slides_add_slide', {"presentationId": "p", "image": "/srv/gog-files/a.png", "notesFile": "/etc/passwd"}, 'notesFile'],
+    ['gog_slides_insert_image', {"presentationId": "p", "slideId": "s", "image": "/etc/passwd", "width": 10}, 'image'],
+    ['gog_slides_update_notes', {"presentationId": "p", "slideId": "s", "notesFile": "/etc/passwd"}, 'notesFile'],
+    ['gog_slides_replace_slide', {"presentationId": "p", "slideId": "s", "image": "/etc/passwd"}, 'image'],
+    ['gog_slides_replace_slide', {"presentationId": "p", "slideId": "s", "notesFile": "/etc/passwd"}, 'notesFile'],
+    ['gog_slides_thumbnail', {"presentationId": "p", "slideId": "s", "out": "/Users/me/.zshrc"}, 'out'],
+  ] as Array<[string, Record<string, unknown>, string]>)('%s refuses %j outside the roots', async (tool, args, param) => {
+    const h = harness;
+    const result = await withFileRoots('/srv/gog-files', () => h.callTool(tool, args));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(new RegExp(`${param} ".*" is outside the directories`));
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  // Clients auto-approve readOnlyHint tools; these write (and can overwrite)
+  // files on the gog host, so they must not claim to be read-only.
+  it.each(["gog_slides_thumbnail"])('%s is not advertised as read-only and is marked destructive', async (name) => {
+    const h = harness;
+    const { tools } = await h.client.listTools();
+    const tool = tools.find((t) => t.name === name)!;
+    expect(tool.annotations?.readOnlyHint).not.toBe(true);
+    expect(tool.annotations?.destructiveHint).toBe(true);
   });
 });

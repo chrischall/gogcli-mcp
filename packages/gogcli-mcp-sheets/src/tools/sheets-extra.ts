@@ -2,7 +2,8 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, errorText, payloadArg } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, errorText, payloadArg, pos, confinePath, confineAtFile } from '../../../gogcli-mcp/src/lib.js';
+import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
 // other shape (error results are still text blocks, so they parse below).
@@ -44,7 +45,7 @@ async function checkDateFormatTarget(
   account: string | undefined,
 ): Promise<string | null> {
   const peek = await runOrDiagnose(
-    ['sheets', 'get', spreadsheetId, range, '--render=UNFORMATTED_VALUE'],
+    ['sheets', 'get', pos(spreadsheetId), pos(range), '--render=UNFORMATTED_VALUE'],
     { account },
   );
   let parsed: { values?: unknown[][] };
@@ -88,7 +89,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
   }, async ({ spreadsheetId, account }) => {
     // jq projection keeps the response compact: sheetId, title, index, gridProperties only.
     return runOrDiagnose(
-      ['sheets', 'metadata', spreadsheetId, '--select=sheets.properties.sheetId,sheets.properties.title,sheets.properties.index,sheets.properties.gridProperties'],
+      ['sheets', 'metadata', pos(spreadsheetId), '--select=sheets.properties.sheetId,sheets.properties.title,sheets.properties.index,sheets.properties.gridProperties'],
       { account },
     );
   });
@@ -102,7 +103,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, tabName, account }) => {
-    return runOrDiagnose(['sheets', 'add-tab', spreadsheetId, tabName], { account });
+    return runOrDiagnose(['sheets', 'add-tab', pos(spreadsheetId), pos(tabName)], { account });
   });
 
   server.registerTool('gog_sheets_delete_tab', {
@@ -114,7 +115,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, tabName, account }) => {
-    return runOrDiagnose(['sheets', 'delete-tab', spreadsheetId, tabName, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['sheets', 'delete-tab', pos(spreadsheetId), pos(tabName), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_sheets_rename_tab', {
@@ -127,7 +128,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, oldName, newName, account }) => {
-    return runOrDiagnose(['sheets', 'rename-tab', spreadsheetId, oldName, newName], { account });
+    return runOrDiagnose(['sheets', 'rename-tab', pos(spreadsheetId), pos(oldName), pos(newName)], { account });
   });
 
   server.registerTool('gog_sheets_copy', {
@@ -140,14 +141,15 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, title, parent, account }) => {
-    const args = ['sheets', 'copy', spreadsheetId, title];
+    const args: GogArg[] = ['sheets', 'copy', pos(spreadsheetId), pos(title)];
     if (parent) args.push(`--parent=${parent}`);
     return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_sheets_export', {
     description: 'Export a spreadsheet as CSV, TSV, or PDF.',
-    annotations: { readOnlyHint: true },
+    // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       format: z.string().optional().describe('Export format: csv, tsv, pdf (default: csv)'),
@@ -156,7 +158,8 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, format, out, overwrite, account }) => {
-    const args = ['sheets', 'export', spreadsheetId];
+    if (out) confinePath(out, 'out');
+    const args: GogArg[] = ['sheets', 'export', pos(spreadsheetId)];
     if (format) args.push(`--format=${format}`);
     if (out) args.push(`--out=${out}`);
     if (overwrite) args.push('--overwrite');
@@ -174,7 +177,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, rows, cols, sheet, account }) => {
-    const args = ['sheets', 'freeze', spreadsheetId];
+    const args: GogArg[] = ['sheets', 'freeze', pos(spreadsheetId)];
     if (rows !== undefined) args.push(`--rows=${rows}`);
     if (cols !== undefined) args.push(`--cols=${cols}`);
     if (sheet) args.push(`--sheet=${sheet}`);
@@ -201,7 +204,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     // and the contract is: after:false lands at start_index=start, after:true at start_index=start+1.
     // Both cases reduce to sending positional = start + 1 (issue #42 + the off-by-one this fixes).
     const effectiveStart = start + 1;
-    const args = ['sheets', 'insert', spreadsheetId, sheet, dimension, String(effectiveStart)];
+    const args: GogArg[] = ['sheets', 'insert', pos(spreadsheetId), pos(sheet), pos(dimension), pos(String(effectiveStart))];
     if (count !== undefined) args.push(`--count=${count}`);
     if (after) args.push('--after');
     if (inheritFromBefore !== undefined) args.push(`--inherit-from-before=${inheritFromBefore}`);
@@ -220,7 +223,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, source, dest, type, transpose, account }) => {
-    const args = ['sheets', 'copy-paste', spreadsheetId, source, dest];
+    const args: GogArg[] = ['sheets', 'copy-paste', pos(spreadsheetId), pos(source), pos(dest)];
     if (type) args.push(`--type=${type}`);
     if (transpose) args.push('--transpose');
     return runOrDiagnose(args, { account });
@@ -236,7 +239,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, type, account }) => {
-    const args = ['sheets', 'merge', spreadsheetId, range];
+    const args: GogArg[] = ['sheets', 'merge', pos(spreadsheetId), pos(range)];
     if (type) args.push(`--type=${type}`);
     return runOrDiagnose(args, { account });
   });
@@ -250,7 +253,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, account }) => {
-    return runOrDiagnose(['sheets', 'unmerge', spreadsheetId, range], { account });
+    return runOrDiagnose(['sheets', 'unmerge', pos(spreadsheetId), pos(range)], { account });
   });
 
   server.registerTool('gog_sheets_format', {
@@ -337,7 +340,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       formatJson = JSON.stringify(cellFormat);
       if (!formatFields) formatFields = fields.join(',');
     }
-    const args = ['sheets', 'format', a.spreadsheetId, a.range, `--format-json=${formatJson}`];
+    const args: GogArg[] = ['sheets', 'format', pos(a.spreadsheetId), pos(a.range), `--format-json=${formatJson}`];
     if (formatFields) args.push(`--format-fields=${formatFields}`);
     return runOrDiagnose(args, { account: a.account });
   });
@@ -358,7 +361,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     const warning = isDateType && !force
       ? await checkDateFormatTarget(spreadsheetId, range, account)
       : null;
-    const args = ['sheets', 'number-format', spreadsheetId, range];
+    const args: GogArg[] = ['sheets', 'number-format', pos(spreadsheetId), pos(range)];
     if (type) args.push(`--type=${type}`);
     if (pattern) args.push(`--pattern=${pattern}`);
     const result = await runOrDiagnose(args, { account });
@@ -378,7 +381,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, effective, account }) => {
-    const args = ['sheets', 'read-format', spreadsheetId, range];
+    const args: GogArg[] = ['sheets', 'read-format', pos(spreadsheetId), pos(range)];
     if (effective) args.push('--effective');
     return runOrDiagnose(args, { account });
   });
@@ -394,7 +397,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, columns, width, auto, account }) => {
-    const args = ['sheets', 'resize-columns', spreadsheetId, columns];
+    const args: GogArg[] = ['sheets', 'resize-columns', pos(spreadsheetId), pos(columns)];
     if (width !== undefined) args.push(`--width=${width}`);
     if (auto) args.push('--auto');
     return runOrDiagnose(args, { account });
@@ -411,7 +414,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, rows, height, auto, account }) => {
-    const args = ['sheets', 'resize-rows', spreadsheetId, rows];
+    const args: GogArg[] = ['sheets', 'resize-rows', pos(spreadsheetId), pos(rows)];
     if (height !== undefined) args.push(`--height=${height}`);
     if (auto) args.push('--auto');
     return runOrDiagnose(args, { account });
@@ -426,7 +429,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, account }) => {
-    return runOrDiagnose(['sheets', 'notes', spreadsheetId, range], { account });
+    return runOrDiagnose(['sheets', 'notes', pos(spreadsheetId), pos(range)], { account });
   });
 
   server.registerTool('gog_sheets_update_note', {
@@ -444,7 +447,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     // The wrapper exposes no noteFile param, so there is no both-flags case to
     // guard here (gog would accept both anyway, letting the file win).
     return runOrDiagnose(
-      ['sheets', 'update-note', spreadsheetId, range, payloadArg('note', 'note-file', note)],
+      ['sheets', 'update-note', pos(spreadsheetId), pos(range), payloadArg('note', 'note-file', note)],
       { account },
     );
   });
@@ -458,7 +461,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, account }) => {
-    return runOrDiagnose(['sheets', 'links', spreadsheetId, range], { account });
+    return runOrDiagnose(['sheets', 'links', pos(spreadsheetId), pos(range)], { account });
   });
 
   server.registerTool('gog_sheets_links_set', {
@@ -477,10 +480,11 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, cell, url, text, runsJson, cellsJson, account }) => {
-    const args = ['sheets', 'links', 'set', spreadsheetId];
-    if (cell) args.push(cell);
-    if (url) args.push(url);
-    if (text) args.push(text);
+    if (cellsJson) confineAtFile(cellsJson, 'cellsJson');
+    const args: GogArg[] = ['sheets', 'links', 'set', pos(spreadsheetId)];
+    if (cell) args.push(pos(cell));
+    if (url) args.push(pos(url));
+    if (text) args.push(pos(text));
     if (runsJson) args.push(`--runs-json=${runsJson}`);
     if (cellsJson) args.push(`--cells-json=${cellsJson}`);
     return runOrDiagnose(args, { account });
@@ -495,7 +499,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, account }) => {
-    return runOrDiagnose(['sheets', 'validation', 'get', spreadsheetId, range], { account });
+    return runOrDiagnose(['sheets', 'validation', 'get', pos(spreadsheetId), pos(range)], { account });
   });
 
   server.registerTool('gog_sheets_validation_set', {
@@ -513,7 +517,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, type, values, strict, inputMessage, showCustomUi, filteredRowsIncluded, account }) => {
-    const args = ['sheets', 'validation', 'set', spreadsheetId, range, `--type=${type}`];
+    const args: GogArg[] = ['sheets', 'validation', 'set', pos(spreadsheetId), pos(range), `--type=${type}`];
     if (values) for (const v of values) args.push(`--value=${v}`);
     if (strict) args.push('--strict');
     if (inputMessage) args.push(`--input-message=${inputMessage}`);
@@ -532,7 +536,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, filteredRowsIncluded, account }) => {
-    const args = ['sheets', 'validation', 'clear', spreadsheetId, range];
+    const args: GogArg[] = ['sheets', 'validation', 'clear', pos(spreadsheetId), pos(range)];
     if (filteredRowsIncluded) args.push('--filtered-rows-included');
     return runOrDiagnose(args, { account });
   });
@@ -549,7 +553,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, rangeOrSheet, dimension, start, end, account }) => {
-    const args = ['sheets', 'delete-dimension', spreadsheetId, rangeOrSheet, `--dimension=${dimension}`];
+    const args: GogArg[] = ['sheets', 'delete-dimension', pos(spreadsheetId), pos(rangeOrSheet), `--dimension=${dimension}`];
     if (start !== undefined) args.push(`--start=${start}`);
     if (end !== undefined) args.push(`--end=${end}`);
     args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse
@@ -564,7 +568,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, account }) => {
-    return runOrDiagnose(['sheets', 'named-ranges', 'list', spreadsheetId], { account });
+    return runOrDiagnose(['sheets', 'named-ranges', 'list', pos(spreadsheetId)], { account });
   });
 
   server.registerTool('gog_sheets_named_ranges_get', {
@@ -576,7 +580,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, nameOrId, account }) => {
-    return runOrDiagnose(['sheets', 'named-ranges', 'get', spreadsheetId, nameOrId], { account });
+    return runOrDiagnose(['sheets', 'named-ranges', 'get', pos(spreadsheetId), pos(nameOrId)], { account });
   });
 
   server.registerTool('gog_sheets_named_ranges_add', {
@@ -589,7 +593,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, name, range, account }) => {
-    return runOrDiagnose(['sheets', 'named-ranges', 'add', spreadsheetId, name, range], { account });
+    return runOrDiagnose(['sheets', 'named-ranges', 'add', pos(spreadsheetId), pos(name), pos(range)], { account });
   });
 
   server.registerTool('gog_sheets_named_ranges_update', {
@@ -603,7 +607,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, nameOrId, name, range, account }) => {
-    const args = ['sheets', 'named-ranges', 'update', spreadsheetId, nameOrId];
+    const args: GogArg[] = ['sheets', 'named-ranges', 'update', pos(spreadsheetId), pos(nameOrId)];
     if (name) args.push(`--name=${name}`);
     if (range) args.push(`--range=${range}`);
     return runOrDiagnose(args, { account });
@@ -618,7 +622,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, nameOrId, account }) => {
-    return runOrDiagnose(['sheets', 'named-ranges', 'delete', spreadsheetId, nameOrId], { account });
+    return runOrDiagnose(['sheets', 'named-ranges', 'delete', pos(spreadsheetId), pos(nameOrId)], { account });
   });
 
   server.registerTool('gog_sheets_batch_update', {
@@ -634,7 +638,8 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, dataJson, input, includeValuesInResponse, responseRender, responseDateTimeRender, account }) => {
-    const args = ['sheets', 'batch-update', spreadsheetId, `--data-json=${dataJson}`];
+    confineAtFile(dataJson, 'dataJson');
+    const args: GogArg[] = ['sheets', 'batch-update', pos(spreadsheetId), `--data-json=${dataJson}`];
     if (input) args.push(`--input=${input}`);
     if (includeValuesInResponse) args.push('--include-values-in-response');
     if (responseRender) args.push(`--response-render=${responseRender}`);
@@ -653,7 +658,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     }),
   }, async ({ spreadsheetId, tab, to, account }) => {
     return runOrDiagnose(
-      ['sheets', 'reorder-tab', spreadsheetId, `--tab=${tab}`, `--to=${to}`],
+      ['sheets', 'reorder-tab', pos(spreadsheetId), `--tab=${tab}`, `--to=${to}`],
       { account },
     );
   });
@@ -668,7 +673,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, account }) => {
-    return runOrDiagnose(['sheets', 'chart', 'list', spreadsheetId], { account });
+    return runOrDiagnose(['sheets', 'chart', 'list', pos(spreadsheetId)], { account });
   });
 
   server.registerTool('gog_sheets_chart_get', {
@@ -680,7 +685,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, chartId, account }) => {
-    return runOrDiagnose(['sheets', 'chart', 'get', spreadsheetId, chartId], { account });
+    return runOrDiagnose(['sheets', 'chart', 'get', pos(spreadsheetId), pos(chartId)], { account });
   });
 
   server.registerTool('gog_sheets_chart_create', {
@@ -696,7 +701,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, specJson, sheet, anchor, width, height, account }) => {
-    const args = ['sheets', 'chart', 'create', spreadsheetId, `--spec-json=${specJson}`];
+    const args: GogArg[] = ['sheets', 'chart', 'create', pos(spreadsheetId), `--spec-json=${specJson}`];
     if (sheet) args.push(`--sheet=${sheet}`);
     if (anchor) args.push(`--anchor=${anchor}`);
     if (width !== undefined) args.push(`--width=${width}`);
@@ -715,7 +720,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     }),
   }, async ({ spreadsheetId, chartId, specJson, account }) => {
     return runOrDiagnose(
-      ['sheets', 'chart', 'update', spreadsheetId, chartId, `--spec-json=${specJson}`],
+      ['sheets', 'chart', 'update', pos(spreadsheetId), pos(chartId), `--spec-json=${specJson}`],
       { account },
     );
   });
@@ -729,7 +734,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, chartId, account }) => {
-    return runOrDiagnose(['sheets', 'chart', 'delete', spreadsheetId, chartId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['sheets', 'chart', 'delete', pos(spreadsheetId), pos(chartId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   // ---- Tables (gog 0.19.0) ----
@@ -742,7 +747,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, account }) => {
-    return runOrDiagnose(['sheets', 'table', 'list', spreadsheetId], { account });
+    return runOrDiagnose(['sheets', 'table', 'list', pos(spreadsheetId)], { account });
   });
 
   server.registerTool('gog_sheets_table_get', {
@@ -754,7 +759,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, tableId, account }) => {
-    return runOrDiagnose(['sheets', 'table', 'get', spreadsheetId, tableId], { account });
+    return runOrDiagnose(['sheets', 'table', 'get', pos(spreadsheetId), pos(tableId)], { account });
   });
 
   server.registerTool('gog_sheets_table_create', {
@@ -769,7 +774,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     }),
   }, async ({ spreadsheetId, range, name, columnsJson, account }) => {
     return runOrDiagnose(
-      ['sheets', 'table', 'create', spreadsheetId, range, `--name=${name}`, `--columns-json=${columnsJson}`],
+      ['sheets', 'table', 'create', pos(spreadsheetId), pos(range), `--name=${name}`, `--columns-json=${columnsJson}`],
       { account },
     );
   });
@@ -785,7 +790,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, tableId, valuesJson, input, account }) => {
-    const args = ['sheets', 'table', 'append', spreadsheetId, tableId, `--values-json=${valuesJson}`];
+    const args: GogArg[] = ['sheets', 'table', 'append', pos(spreadsheetId), pos(tableId), `--values-json=${valuesJson}`];
     if (input) args.push(`--input=${input}`);
     return runOrDiagnose(args, { account });
   });
@@ -799,7 +804,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, tableId, account }) => {
-    return runOrDiagnose(['sheets', 'table', 'clear', spreadsheetId, tableId, '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
+    return runOrDiagnose(['sheets', 'table', 'clear', pos(spreadsheetId), pos(tableId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
   server.registerTool('gog_sheets_table_delete', {
@@ -822,7 +827,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       // Raw destructive delete: removes the table and its cell data. gog ≥ 0.23
       // requires --discard-data to confirm the cell wipe (--force only skips the
       // interactive confirmation; it does not authorize the data loss).
-      return runOrDiagnose(['sheets', 'table', 'delete', spreadsheetId, tableId, '--discard-data', '--force'], { account });
+      return runOrDiagnose(['sheets', 'table', 'delete', pos(spreadsheetId), pos(tableId), '--discard-data', '--force'], { account });
     }
 
     // keep_data: emulate "Convert to range". Read the full table range with
@@ -832,10 +837,10 @@ export function registerExtraSheetsTools(server: McpServer): void {
     let values: unknown[][];
     try {
       // `gog sheets table get` wraps the table under a top-level "table" key.
-      const parsed = JSON.parse(await run(['sheets', 'table', 'get', spreadsheetId, tableId], { account }));
+      const parsed = JSON.parse(await run(['sheets', 'table', 'get', pos(spreadsheetId), pos(tableId)], { account }));
       range = parsed.table?.a1;
       if (!range) throw new Error(`could not determine the table's range (no "a1" in table get output) for table ${tableId}`);
-      const read = JSON.parse(await run(['sheets', 'get', spreadsheetId, range, '--render=FORMULA'], { account }));
+      const read = JSON.parse(await run(['sheets', 'get', pos(spreadsheetId), pos(range), '--render=FORMULA'], { account }));
       values = read.values ?? [];
     } catch (err) {
       return diagnose(err);
@@ -845,7 +850,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       // We have already backed up the cells above, so --discard-data (required
       // by gog ≥ 0.23) is the intended path here — we re-write the data right
       // after.
-      await run(['sheets', 'table', 'delete', spreadsheetId, tableId, '--discard-data', '--force'], { account });
+      await run(['sheets', 'table', 'delete', pos(spreadsheetId), pos(tableId), '--discard-data', '--force'], { account });
     } catch (err) {
       // Table not deleted; cell data is untouched.
       return diagnose(err);
@@ -853,7 +858,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
     if (values.length > 0) {
       try {
-        await run(['sheets', 'update', spreadsheetId, range, `--values-json=${JSON.stringify(values)}`], { account });
+        await run(['sheets', 'update', pos(spreadsheetId), pos(range), `--values-json=${JSON.stringify(values)}`], { account });
       } catch (err) {
         // The table is already gone but the restore write failed. Hand the
         // read-back data straight back so it can be re-applied manually rather
@@ -880,7 +885,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, sheet, account }) => {
-    const args = ['sheets', 'banding', 'list', spreadsheetId];
+    const args: GogArg[] = ['sheets', 'banding', 'list', pos(spreadsheetId)];
     if (sheet) args.push(`--sheet=${sheet}`);
     return runOrDiagnose(args, { account });
   });
@@ -896,7 +901,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, rowPropertiesJson, columnPropertiesJson, account }) => {
-    const args = ['sheets', 'banding', 'set', spreadsheetId, range];
+    const args: GogArg[] = ['sheets', 'banding', 'set', pos(spreadsheetId), pos(range)];
     if (rowPropertiesJson) args.push(`--row-properties-json=${rowPropertiesJson}`);
     if (columnPropertiesJson) args.push(`--column-properties-json=${columnPropertiesJson}`);
     return runOrDiagnose(args, { account });
@@ -913,7 +918,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, id, all, sheet, account }) => {
-    const args = ['sheets', 'banding', 'clear', spreadsheetId];
+    const args: GogArg[] = ['sheets', 'banding', 'clear', pos(spreadsheetId)];
     if (id !== undefined) args.push(`--id=${id}`);
     if (all) args.push('--all');
     if (sheet) args.push(`--sheet=${sheet}`);
@@ -933,7 +938,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, replace, account }) => {
-    const args = ['sheets', 'filter', 'set', spreadsheetId, range];
+    const args: GogArg[] = ['sheets', 'filter', 'set', pos(spreadsheetId), pos(range)];
     if (replace) args.push('--force');
     return runOrDiagnose(args, { account });
   });
@@ -949,7 +954,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, sheet, account }) => {
-    const args = ['sheets', 'conditional-format', 'list', spreadsheetId];
+    const args: GogArg[] = ['sheets', 'conditional-format', 'list', pos(spreadsheetId)];
     if (sheet) args.push(`--sheet=${sheet}`);
     return runOrDiagnose(args, { account });
   });
@@ -972,7 +977,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, range, type, formatJson, expr, formatFields, gradientRuleJson, account }) => {
-    const args = ['sheets', 'conditional-format', 'add', spreadsheetId, range];
+    const args: GogArg[] = ['sheets', 'conditional-format', 'add', pos(spreadsheetId), pos(range)];
     if (type) args.push(`--type=${type}`);
     if (formatJson !== undefined) args.push(`--format-json=${formatJson}`);
     if (expr !== undefined) args.push(`--expr=${expr}`);
@@ -992,7 +997,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, sheet, index, all, account }) => {
-    const args = ['sheets', 'conditional-format', 'clear', spreadsheetId, `--sheet=${sheet}`];
+    const args: GogArg[] = ['sheets', 'conditional-format', 'clear', pos(spreadsheetId), `--sheet=${sheet}`];
     if (index !== undefined) args.push(`--index=${index}`);
     if (all) args.push('--all');
     args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse
@@ -1011,7 +1016,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, name, parent, account }) => {
-    const args = ['drive', 'copy', spreadsheetId, name];
+    const args: GogArg[] = ['drive', 'copy', pos(spreadsheetId), pos(name)];
     if (parent) args.push(`--parent=${parent}`);
     return runOrDiagnose(args, { account });
   });
@@ -1047,7 +1052,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, account }) => {
-    return runOrDiagnose(['sheets', 'datasource', 'list', spreadsheetId], { account });
+    return runOrDiagnose(['sheets', 'datasource', 'list', pos(spreadsheetId)], { account });
   });
 
   server.registerTool('gog_sheets_datasource_describe', {
@@ -1063,7 +1068,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, dataSourceId, account }) => {
-    return runOrDiagnose(['sheets', 'datasource', 'describe', spreadsheetId, dataSourceId], { account });
+    return runOrDiagnose(['sheets', 'datasource', 'describe', pos(spreadsheetId), pos(dataSourceId)], { account });
   });
 
   server.registerTool('gog_sheets_datasource_table_list', {
@@ -1079,7 +1084,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, dataSourceId, account }) => {
-    const args = ['sheets', 'datasource', 'table', 'list', spreadsheetId];
+    const args: GogArg[] = ['sheets', 'datasource', 'table', 'list', pos(spreadsheetId)];
     if (dataSourceId) args.push(`--data-source-id=${dataSourceId}`);
     return runOrDiagnose(args, { account });
   });
@@ -1096,7 +1101,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, anchor, account }) => {
-    return runOrDiagnose(['sheets', 'datasource', 'table', 'describe', spreadsheetId, anchor], { account });
+    return runOrDiagnose(['sheets', 'datasource', 'table', 'describe', pos(spreadsheetId), pos(anchor)], { account });
   });
 
   server.registerTool('gog_sheets_datasource_table_read', {
@@ -1115,7 +1120,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, anchor, maxRows, render, account }) => {
-    const args = ['sheets', 'datasource', 'table', 'read', spreadsheetId, anchor];
+    const args: GogArg[] = ['sheets', 'datasource', 'table', 'read', pos(spreadsheetId), pos(anchor)];
     if (maxRows !== undefined) args.push(`--max-rows=${maxRows}`);
     if (render) args.push(`--render=${render}`);
     return runOrDiagnose(args, { account });
@@ -1166,7 +1171,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (query === undefined && !(dataset && table)) {
       throw new Error('Pass query, or both --dataset and --table (tableProject alone is not a table).');
     }
-    const args = ['sheets', 'datasource', 'add', spreadsheetId, `--billing-project=${billingProject}`];
+    const args: GogArg[] = ['sheets', 'datasource', 'add', pos(spreadsheetId), `--billing-project=${billingProject}`];
     if (query !== undefined) args.push(`--query=${query}`);
     if (tableProject) args.push(`--table-project=${tableProject}`);
     if (dataset) args.push(`--dataset=${dataset}`);
@@ -1200,7 +1205,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (billingProject === undefined && query === undefined && !tableFlags) {
       throw new Error('nothing to update: pass billingProject, query, dataset, table or tableProject.');
     }
-    const args = ['sheets', 'datasource', 'update', spreadsheetId, dataSourceId];
+    const args: GogArg[] = ['sheets', 'datasource', 'update', pos(spreadsheetId), pos(dataSourceId)];
     if (billingProject !== undefined) args.push(`--billing-project=${billingProject}`);
     if (query !== undefined) args.push(`--query=${query}`);
     if (tableProject !== undefined) args.push(`--table-project=${tableProject}`);
@@ -1237,7 +1242,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ spreadsheetId, dataSourceId, forceRefresh, account }) => {
-    const args = ['sheets', 'datasource', 'refresh', spreadsheetId, dataSourceId];
+    const args: GogArg[] = ['sheets', 'datasource', 'refresh', pos(spreadsheetId), pos(dataSourceId)];
     if (forceRefresh) args.push('--force-refresh');
     return runOrDiagnose(args, { account });
   });
@@ -1259,7 +1264,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     // --no-input, so without --force it refuses at runtime. Verified live
     // against gog 0.38.0: without --force it answers "refusing to delete
     // Connected Sheets data source … without --force (non-interactive)".
-    return runOrDiagnose(['sheets', 'datasource', 'delete', spreadsheetId, dataSourceId, '--force'], { account });
+    return runOrDiagnose(['sheets', 'datasource', 'delete', pos(spreadsheetId), pos(dataSourceId), '--force'], { account });
   });
 
 }

@@ -9,6 +9,7 @@ import {
   INLINE_ATTACHMENT_LIMITS_TEXT,
 } from '../src/attachments.js';
 import type { GogFileArg } from '../src/runner.js';
+import { pos } from '../src/argv.js';
 
 const b64 = (s: string): string => Buffer.from(s, 'utf8').toString('base64');
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -164,6 +165,13 @@ describe('inlineAttachmentArgs', () => {
     const attachments = Array.from({ length: 3 }, (_, i) => ({ filename: `f${i}.bin`, contentBase64: each }));
     expect(() => inlineAttachmentArgs('attach', attachments, ['gmail', 'send', sibling]))
       .toThrow(/too large to send/);
+  });
+
+  it('counts a pos()-marked sibling at its UTF-8 length', () => {
+    const each = Buffer.alloc(Math.floor((MAX_INLINE_ATTACHMENT_TOTAL_BYTES - 4096) / 3)).toString('base64');
+    const attachments = Array.from({ length: 3 }, (_, i) => ({ filename: `f${i}.bin`, contentBase64: each }));
+    expect(() => inlineAttachmentArgs('attach', attachments, ['chat', 'messages', 'send', pos('x'.repeat(4 * 1024 * 1024))]))
+      .toThrow(/would fit on their own/);
   });
 
   it('ignores small sibling args, which the JSON reserve already covers', () => {
