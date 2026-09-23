@@ -78,7 +78,7 @@ Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 6
 | `gog_gmail_drafts_create` | Create a draft |
 | `gog_gmail_drafts_update` | Update a draft; `replyToThreadId` re-threads it in place (same id) + `threadingVerification`; `forkSiblingDraftId` blocks a body overwrite that would drop the other copy's text |
 | `gog_gmail_drafts_delete` | Delete a draft |
-| `gog_gmail_drafts_send` | Send a draft (404 → `DRAFT_FORKED`, or `GOOGLE_404_NOT_THE_DRAFT` if the draft is still listed) |
+| `gog_gmail_drafts_send` | Send a draft after the user confirms a preview of it (404 → `DRAFT_FORKED`, or `GOOGLE_404_NOT_THE_DRAFT` if the draft is still listed) |
 | `gog_gmail_drafts_diff` | Diff two drafts (body divergence, threading loss, fork verdict) |
 | `gog_gmail_drafts_reply` | Save a reply as a draft — inherited recipients, subject and quote; never sends |
 | `gog_gmail_drafts_reply_all` | Save a reply-all as a draft; never sends |

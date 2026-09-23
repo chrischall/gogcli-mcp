@@ -464,6 +464,26 @@ describe('gog_gmail_send', () => {
       expect(runner.run).toHaveBeenCalledTimes(1);
     });
 
+    // SEC-5: the user must see WHAT is being sent, not just how long it is.
+    it('shows the body text and every attachment name in the prompt', async () => {
+      let request: ElicitRequest | undefined;
+      const harness = await setupHandlers(async (value) => {
+        request = value;
+        return { action: 'decline' };
+      });
+      await harness.callTool('gog_gmail_send', {
+        to: 'bob@example.com', subject: 'Hi', body: 'Here are the numbers you asked for',
+        attach: ['/home/me/.ssh/id_rsa'],
+        attachInline: [{ filename: 'report.pdf', contentBase64: Buffer.from('x').toString('base64') }],
+      });
+      const details = (JSON.parse(request!.params.message.split('\n').slice(1).join('\n')) as { details: Record<string, unknown> }).details;
+      expect(details.bodyPreview).toBe('Here are the numbers you asked for');
+      expect(details.attachments).toEqual(['/home/me/.ssh/id_rsa', 'report.pdf']);
+      expect(details.subject).toBe('Hi');
+      expect(details.recipients).toEqual(['bob@example.com']);
+      expect(runner.run).not.toHaveBeenCalled();
+    });
+
     it('sends nothing when the user declines the elicitation', async () => {
       const harness = await setupHandlers(async () => ({ action: 'decline' }));
       const result = await harness.callTool('gog_gmail_send', {
@@ -943,6 +963,23 @@ describe.each([
     const result = await harness.callTool(tool, { messageId: 'bad', body: 'x' });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('message not found');
+  });
+
+  it('shows the reply body and attachment names in the prompt', async () => {
+    const { details } = await promptedDetails({
+      body: 'See the attached statement',
+      attach: ['/srv/statements/2026-08.pdf'],
+      attachInline: [{ filename: 'notes.txt', contentBase64: Buffer.from('n').toString('base64') }],
+    });
+    expect(details.bodyPreview).toBe('See the attached statement');
+    expect(details.attachments).toEqual(['/srv/statements/2026-08.pdf', 'notes.txt']);
+  });
+
+  it('previews bodyHtml when there is no plain body, and names a bodyHtmlFile', async () => {
+    expect((await promptedDetails({ bodyHtml: '<p>Hi</p>' })).details.bodyPreview).toBe('<p>Hi</p>');
+    const { details } = await promptedDetails({ bodyHtmlFile: '/srv/body.html' });
+    expect(details.bodyPreview).toBeUndefined();
+    expect(details.bodyHtmlFile).toBe('/srv/body.html');
   });
 
   it('measures bodyLength from bodyHtml when no plain body is given', async () => {

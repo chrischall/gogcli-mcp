@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, pos } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, pos } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
@@ -2371,6 +2371,54 @@ function parseAutoReplyRecipients(raw: string): string[] {
   }
 }
 
+/** Every named attachment part of a stored message, in order. */
+function attachmentFilenames(payload: GmailPayloadPart | undefined): string[] {
+  const names: string[] = [];
+  const walk = (part: GmailPayloadPart | undefined): void => {
+    if (!part) return;
+    if (part.filename) names.push(part.filename);
+    for (const child of part.parts ?? []) walk(child);
+  };
+  walk(payload);
+  return names;
+}
+
+/**
+ * The confirmation preview for sending a stored draft: who it goes to, its
+ * subject, a bounded body preview and every attachment name — read off the
+ * draft itself. Unreadable output degrades to an empty preview rather than
+ * skipping the prompt: the user is still asked, just with less to go on.
+ */
+export function previewStoredDraft(raw: string): {
+  recipients: string[];
+  to?: string;
+  cc?: string;
+  bcc?: string;
+  subject?: string;
+  bodyPreview?: string;
+  attachments: string[];
+} {
+  let message: GmailDraftMessage | undefined;
+  try {
+    message = (JSON.parse(raw) as { draft?: { message?: GmailDraftMessage } }).draft?.message;
+  } catch {
+    message = undefined;
+  }
+  const headers = parseHeaders(message?.payload);
+  const to = headerValue(headers, 'To');
+  const cc = headerValue(headers, 'Cc');
+  const bcc = headerValue(headers, 'Bcc');
+  return {
+    recipients: extractEmails(to, cc, bcc),
+    to,
+    cc,
+    bcc,
+    subject: headerValue(headers, 'Subject'),
+    bodyPreview: bodyPreview(bestBodyText(message?.payload)),
+    attachments: attachmentFilenames(message?.payload),
+  };
+}
+
 export function registerExtraGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_raw', {
     description: 'Dump the raw Gmail API response as JSON (lossless; for scripting and LLM consumption).',
@@ -3355,6 +3403,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_drafts_send', {
     description:
+      'SENDS MAIL — reads the stored draft and asks the MCP host to show a confirmation prompt with its recipients, subject, a preview of the body and the attachment names; the draft is sent only after the user accepts. ' +
       'Send an existing Gmail draft. If the id no longer resolves, the 404 comes back as a DRAFT_FORKED report — what happened, ' +
       'the drafts that do exist (with their free origin/rootsOwnThread fields) and what to do next — rather than a bare ' +
       'notFound. It names no replacement: that judgement needs a named pair and gog_gmail_drafts_diff. If the draft turns out ' +
@@ -3364,8 +3413,20 @@ export function registerExtraGmailTools(server: McpServer): void {
       draftId: z.string().describe('Draft ID to send'),
       account: accountParam,
     }),
-  }, async ({ draftId, account }) => {
+  }, async ({ draftId, account }, ctx) => {
+    // Sending a staged draft dispatches mail as irreversibly as gog_gmail_send,
+    // so it goes through the same confirmation rail (audit SEC-2) — otherwise
+    // drafts_create + drafts_send is an unconfirmed route around it. The prompt
+    // is built from the STORED draft, since that, not anything the caller says,
+    // is what will go out. A draft that no longer resolves takes the same
+    // fork-aware path a failed send always has.
+    const got = await runOrDiagnose(['gmail', 'drafts', 'get', pos(draftId)], { account });
+    if (got.isError) return forkAwareDraftFailure(got, 'gog_gmail_drafts_send', draftId, account);
+    const preview = previewStoredDraft(resultText(got) ?? '');
+    const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.drafts-send', { draftId, ...preview });
+    if (confirmation) return confirmation;
     const result = await runOrDiagnose(['gmail', 'drafts', 'send', pos(draftId)], { account });
+    if (!result.isError) logGmailDispatch('gog_gmail_drafts_send', preview.recipients, account);
     return forkAwareDraftFailure(result, 'gog_gmail_drafts_send', draftId, account);
   });
 
@@ -3399,7 +3460,7 @@ export function registerExtraGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_forward', {
     description:
-      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, note size, and attachment handling. '
+      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, the note text, and attachment handling. '
       + 'Mail is sent only after the user accepts that prompt. To STAGE a forward instead of sending it, use '
       + 'gog_gmail_drafts_forward, which never needs confirmation. '
       + 'Forward an existing Gmail message to new recipients.',
@@ -3419,7 +3480,9 @@ export function registerExtraGmailTools(server: McpServer): void {
     const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.forward', {
       messageId, to, cc, bcc, recipients, recipientCount: recipients.length,
       noteLength: note?.length ?? 0,
+      notePreview: bodyPreview(note),
       skipAttachments: Boolean(skipAttachments),
+      attachmentsIncluded: !skipAttachments,
     });
     if (confirmation) return confirmation;
     const args: GogArg[] = ['gmail', 'forward', pos(messageId), `--to=${to}`];
@@ -3541,6 +3604,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       sampleSenders,
       subject: subject || undefined,
       bodyLength: (body ?? bodyHtml ?? '').length,
+      bodyPreview: bodyPreview(body ?? bodyHtml),
       max: max ?? 20,
       label: label || 'AutoReplied',
       archive: Boolean(archive),
@@ -3698,7 +3762,7 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_filters_create', {
-    description: 'Create a Gmail filter. Specify match criteria (from/to/subject/query/hasAttachment) and one or more actions (label, archive, mark-read, star, important, trash, forward, never-spam).',
+    description: 'Create a Gmail filter. Specify match criteria (from/to/subject/query/hasAttachment) and one or more actions (label, archive, mark-read, star, important, trash, forward, never-spam). A filter with forward asks the MCP host to show a confirmation prompt first, since it sends every future matching message to that address.',
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       from: z.string().optional().describe('Match messages from this sender'),
@@ -3717,7 +3781,23 @@ export function registerExtraGmailTools(server: McpServer): void {
       forward: z.string().optional().describe('Forward to this email address (must be a verified forwarding address)'),
       account: accountParam,
     }),
-  }, async ({ from, to, subject, query, hasAttachment, addLabel, removeLabel, archive, markRead, star, important, trash, neverSpam, forward, account }) => {
+  }, async ({ from, to, subject, query, hasAttachment, addLabel, removeLabel, archive, markRead, star, important, trash, neverSpam, forward, account }, ctx) => {
+    // A forward action routes every FUTURE matching message to another
+    // address — persistent exfiltration if a prompt-injected agent sets it up —
+    // so it needs the user's confirmation like any other send (audit SEC-2).
+    if (forward) {
+      const criteria = Object.fromEntries(
+        Object.entries({ from, to, subject, query, hasAttachment }).filter(([, v]) => v !== undefined),
+      );
+      const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.filter-forward', {
+        forwardTo: forward,
+        criteria,
+        alsoArchive: Boolean(archive),
+        alsoTrash: Boolean(trash),
+        alsoMarkRead: Boolean(markRead),
+      });
+      if (confirmation) return confirmation;
+    }
     const args: GogArg[] = ['gmail', 'settings', 'filters', 'create'];
     if (from) args.push(`--from=${from}`);
     if (to) args.push(`--to=${to}`);
@@ -3733,7 +3813,9 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (trash) args.push('--trash');
     if (neverSpam) args.push('--never-spam');
     if (forward) args.push(`--forward=${forward}`, '--force'); // gog gates this op; without --force the runner's --no-input makes it refuse (forwarding filters only)
-    return runOrDiagnose(args, { account });
+    const result = await runOrDiagnose(args, { account });
+    if (forward && !result.isError) logGmailDispatch('gog_gmail_filters_create', extractEmails(forward), account);
+    return result;
   });
 
   server.registerTool('gog_gmail_filters_delete', {

@@ -26,6 +26,8 @@ export type { ReplyFlags } from './tools/gmail.js';
 // gmail sub-package's send-side forward/autoreply tools reuse these directly
 // rather than re-declaring the gate; the draft-side twins never import them.
 export {
+  attachmentNames,
+  bodyPreview,
   extractEmails,
   logGmailDispatch,
   requireGmailDispatchConfirmation,

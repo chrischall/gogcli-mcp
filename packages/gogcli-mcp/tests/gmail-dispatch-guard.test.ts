@@ -3,6 +3,9 @@ import { rawTextResult } from '@chrischall/mcp-utils';
 import type { CallToolResult, ServerContext } from '@modelcontextprotocol/server';
 import {
   GMAIL_DISPATCH_OPS,
+  BODY_PREVIEW_MAX,
+  attachmentNames,
+  bodyPreview,
   extractEmails,
   logGmailDispatch,
   replyDispatchOp,
@@ -173,6 +176,10 @@ const EXPECTED_TWIN: Record<GmailDispatchOp, string | null> = {
   'gmail.reply-all': 'gog_gmail_drafts_reply_all',
   'gmail.forward': 'gog_gmail_drafts_forward',
   'gmail.autoreply': null,
+  // Sending a draft IS the end of the staging path, and a forwarding filter
+  // routes future mail: neither has anything to stage instead.
+  'gmail.drafts-send': null,
+  'gmail.filter-forward': null,
 };
 
 describe('requireGmailDispatchConfirmation on a client that cannot be asked', () => {
@@ -204,6 +211,14 @@ describe('requireGmailDispatchConfirmation on a client that cannot be asked', ()
     expect(refusalNote(replyDispatchOp(kind))).toContain(`Stage it with ${twin} instead`);
   });
 
+  // Every staging twin used to point at gog_gmail_drafts_send, which now asks
+  // for confirmation too — so on a client that cannot be asked, the way through
+  // is the user sending the saved draft from Gmail themselves.
+  it('tells a client that cannot be asked that the user sends the staged draft from Gmail', () => {
+    expect(refusalNote('gmail.send')).toMatch(/send it from Gmail/);
+    expect(refusalNote('gmail.drafts-send')).toMatch(/still saved.*send it from Gmail/);
+  });
+
   it('refuses rather than dispatching, and says so in the payload', () => {
     const result = requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.forward', {
       messageId: 'm1',
@@ -221,5 +236,36 @@ describe('requireGmailDispatchConfirmation on a client that cannot be asked', ()
   it('still asks a client that declares form elicitation', () => {
     expect(requireGmailDispatchConfirmation(ctxDeclaring({ elicitation: { form: {} } }), 'gmail.forward', {}))
       .toMatchObject({ resultType: 'input_required' });
+  });
+});
+
+// SEC-5: a confirmation that shows only a body LENGTH lets a prompt-injected
+// agent stuff private data into an otherwise-benign reply. The prompt carries
+// a bounded preview of the text and the name of every attachment.
+describe('bodyPreview', () => {
+  it('returns a short body verbatim', () => {
+    expect(bodyPreview('Hello there')).toBe('Hello there');
+  });
+
+  it('bounds a long body and says how much was cut', () => {
+    const long = 'x'.repeat(BODY_PREVIEW_MAX + 500);
+    const preview = bodyPreview(long)!;
+    expect(preview.startsWith('x'.repeat(BODY_PREVIEW_MAX))).toBe(true);
+    expect(preview).toContain('[500 more characters not shown]');
+  });
+
+  it('returns undefined when there is no body', () => {
+    expect(bodyPreview(undefined)).toBeUndefined();
+    expect(bodyPreview('')).toBeUndefined();
+  });
+});
+
+describe('attachmentNames', () => {
+  it('lists server paths in full and inline attachments by filename', () => {
+    expect(attachmentNames(['/tmp/a.pdf'], [{ filename: 'b.png' }])).toEqual(['/tmp/a.pdf', 'b.png']);
+  });
+
+  it('is empty when nothing is attached', () => {
+    expect(attachmentNames(undefined, undefined)).toEqual([]);
   });
 });

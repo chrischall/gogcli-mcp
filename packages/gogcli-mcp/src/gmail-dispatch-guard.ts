@@ -2,9 +2,9 @@ import type { CallToolResult, InputRequiredResult, ServerContext } from '@modelc
 import { readEnvVar, requireConfirmation } from '@chrischall/mcp-utils';
 
 // ============================================================================
-// THE SAFETY RAIL. gog_gmail_reply / reply_all / send / forward / autoreply are
-// the only tools in this fleet that put a message irreversibly into someone
-// else's mailbox on the FIRST call. Every other Gmail write either stages
+// THE SAFETY RAIL. gog_gmail_reply / reply_all / send / forward / autoreply /
+// drafts_send, and a filter that forwards, are the tools in this fleet that put
+// a message irreversibly into someone else's mailbox. Every other Gmail write either stages
 // something (drafts) or acts on mail already in this account (labels,
 // archive, trash). A caller that meant "save a draft" and picked the wrong
 // tool — or an agent that inherited the wrong reply target — used to find out
@@ -26,7 +26,7 @@ import { readEnvVar, requireConfirmation } from '@chrischall/mcp-utils';
 // ============================================================================
 
 /**
- * The five dispatches this rail guards, spelled once.
+ * The dispatches this rail guards, spelled once.
  *
  * A UNION rather than `string`, because the staging-twin table below is keyed
  * by these values and a key that matches no call site is silent: it costs the
@@ -41,7 +41,14 @@ export type GmailDispatchOp =
   | 'gmail.reply'
   | 'gmail.reply-all'
   | 'gmail.forward'
-  | 'gmail.autoreply';
+  | 'gmail.autoreply'
+  // Sending a staged draft dispatches mail just as irreversibly as a direct
+  // send; draft-create then drafts-send was an unconfirmed two-step around the
+  // rail (audit SEC-2).
+  | 'gmail.drafts-send'
+  // A filter with a forward action sends every FUTURE matching message to
+  // another address — persistent exfiltration, not a one-off send.
+  | 'gmail.filter-forward';
 
 /** Every op, for tests that must cover the set rather than a chosen member. */
 export const GMAIL_DISPATCH_OPS: readonly GmailDispatchOp[] = [
@@ -50,6 +57,8 @@ export const GMAIL_DISPATCH_OPS: readonly GmailDispatchOp[] = [
   'gmail.reply-all',
   'gmail.forward',
   'gmail.autoreply',
+  'gmail.drafts-send',
+  'gmail.filter-forward',
 ];
 
 /**
@@ -66,9 +75,9 @@ export function replyDispatchOp(kind: 'reply' | 'reply-all'): GmailDispatchOp {
 
 /**
  * The staging twin of each dispatch, named in the refusal above. Every one of
- * these saves without sending, and `gog_gmail_drafts_send` then dispatches it —
- * which is the rail's own sanctioned two-step (staging is visible and
- * inspectable, so the send is never the FIRST call), not a way around it.
+ * these saves without sending. `gog_gmail_drafts_send` asks for confirmation
+ * too, so on a client that cannot show a prompt the way through is the USER
+ * sending the saved draft from Gmail — a human in the loop either way.
  *
  * `Partial<Record<…>>` and not an index signature: a key outside the union is
  * now rejected by the compiler, which is the whole point, while `autoreply`
@@ -83,6 +92,34 @@ const STAGING_TWIN: Partial<Record<GmailDispatchOp, string>> = {
   'gmail.send': 'gog_gmail_drafts_create',
 };
 
+// What to say when there is no staging twin but there IS still a way through.
+const UNSUPPORTED_NOTE: Partial<Record<GmailDispatchOp, string>> = {
+  'gmail.drafts-send': 'The draft is still saved: ask the user to review it and send it from Gmail.',
+};
+
+// Bound on the body text shown in a confirmation prompt. Enough to read what is
+// actually being sent (the point of SEC-5), small enough to keep the prompt a
+// prompt rather than a copy of the message.
+export const BODY_PREVIEW_MAX = 2048;
+
+/** The first BODY_PREVIEW_MAX characters of a body, marked when cut. */
+export function bodyPreview(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  if (text.length <= BODY_PREVIEW_MAX) return text;
+  return `${text.slice(0, BODY_PREVIEW_MAX)}… [${text.length - BODY_PREVIEW_MAX} more characters not shown]`;
+}
+
+/**
+ * Every attachment a dispatch will carry: a server path in full (so the user
+ * sees WHICH file on the gog host is leaving), an inline one by its filename.
+ */
+export function attachmentNames(
+  paths: readonly string[] | undefined,
+  inline: ReadonlyArray<{ filename: string }> | undefined,
+): string[] {
+  return [...(paths ?? []), ...(inline ?? []).map((a) => a.filename)];
+}
+
 /** Apply the shared stateless confirmation flow with Gmail-specific copy. */
 export function requireGmailDispatchConfirmation(
   ctx: ServerContext,
@@ -90,17 +127,20 @@ export function requireGmailDispatchConfirmation(
   details: Record<string, unknown>,
 ): InputRequiredResult | CallToolResult | undefined {
   const twin = STAGING_TWIN[op];
+  const note = twin
+    ? `Stage it with ${twin} instead; the user can review the draft and send it from Gmail `
+      + '(gog_gmail_drafts_send also asks for confirmation).'
+    : UNSUPPORTED_NOTE[op];
   return requireConfirmation(ctx, {
     action: op,
-    message: 'Review and confirm this email dispatch:',
+    message: op === 'gmail.filter-forward'
+      ? 'Review and confirm this mail-forwarding filter:'
+      : 'Review and confirm this email dispatch:',
     details,
-    confirmationLabel: 'Confirm that this email should be sent now.',
-    ...(twin
-      ? {
-          unsupportedNote: `Stage it with ${twin} instead, review the draft, `
-            + 'and send it with gog_gmail_drafts_send.',
-        }
-      : {}),
+    confirmationLabel: op === 'gmail.filter-forward'
+      ? 'Confirm that matching mail should be forwarded automatically from now on.'
+      : 'Confirm that this email should be sent now.',
+    ...(note ? { unsupportedNote: note } : {}),
   });
 }
 

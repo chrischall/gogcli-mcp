@@ -5,7 +5,7 @@ import { finalizeGmailSearch, fetchGmailPages } from '../gmail-results.js';
 import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
-import { extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText } from '../gmail-dispatch-guard.js';
+import { attachmentNames, bodyPreview, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText } from '../gmail-dispatch-guard.js';
 import { pos } from '../argv.js';
 
 // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
@@ -162,7 +162,10 @@ async function sendReply(
     subject: flags.subject || (headers.subject ? `Re: ${headers.subject}` : undefined),
     quoting: !flags.noQuote,
     bodyLength: (flags.body ?? flags.bodyHtml ?? '').length,
+    bodyPreview: bodyPreview(flags.body ?? flags.bodyHtml),
+    bodyHtmlFile: flags.bodyHtmlFile,
     attachmentCount: (flags.attach?.length ?? 0) + (flags.attachInline?.length ?? 0),
+    attachments: attachmentNames(flags.attach, flags.attachInline),
   });
   if (confirmation) return confirmation;
   const args: GogArg[] = ['gmail', kind, pos(messageId)];
@@ -252,7 +255,7 @@ export function registerGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_send', {
     description:
-      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, subject, and body size. '
+      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, subject, a preview of the body and the attachment names. '
       + 'Mail is sent only after the user accepts that prompt. '
       + 'Two ways to attach a file: `attach` takes paths READ ON THE GOG SERVER, and '
       + '`attachInline` takes the bytes themselves. Use attachInline unless you know the file exists on '
@@ -307,9 +310,11 @@ export function registerGmailTools(server: McpServer): void {
     const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.send', {
       to, cc, bcc, recipients, recipientCount: recipients.length, subject,
       bodyLength: body.length,
+      bodyPreview: bodyPreview(body),
       threaded: Boolean(replyToMessageId || threadId),
       quoting: Boolean(quote),
       attachmentCount: (attach?.length ?? 0) + (attachInline?.length ?? 0),
+      attachments: attachmentNames(attach, attachInline),
     });
     if (confirmation) return confirmation;
     const result = await runOrDiagnose(args, { account });
@@ -335,7 +340,7 @@ export function registerGmailTools(server: McpServer): void {
   // ==========================================================================
   server.registerTool('gog_gmail_reply', {
     description:
-      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the resolved recipient, subject, and body size. '
+      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the resolved recipient, subject, a preview of the body and the attachment names. '
       + 'Mail is sent only after the user accepts that prompt. To STAGE a reply instead '
       + 'of sending it, use gog_gmail_drafts_reply (gogcli-mcp-gmail only), which never needs confirmation. '
       + 'Reply to a Gmail message (goes to the original sender only). USE THIS, not gog_gmail_send, whenever you are '
@@ -354,7 +359,7 @@ export function registerGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_reply_all', {
     description:
-      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the resolved recipients, subject, and body size. '
+      'SENDS MAIL — asks the MCP host to show a confirmation prompt with the resolved recipients, subject, a preview of the body and the attachment names. '
       + 'Mail is sent only after the user accepts that prompt. To STAGE a '
       + 'reply-all instead of sending it, use gog_gmail_drafts_reply_all (gogcli-mcp-gmail only), which never needs '
       + 'confirmation. '
