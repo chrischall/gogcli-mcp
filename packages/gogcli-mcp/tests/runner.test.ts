@@ -969,6 +969,19 @@ describe('run safety flags', () => {
     expect(spawner).not.toHaveBeenCalled();
   });
 
+  // The backstop runs on every tool's argv, so it must match exact control
+  // names only: gog_zoom_auth_setup builds --account-id/--client-id/
+  // --client-secret, which a prefix match refused before spawning.
+  it('lets zoom auth setup credentials flags through to gog', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['zoom', 'auth', 'setup', '--alias=work', '--account-id=abc', '--client-id=x', '--client-secret=y'], { spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', 'zoom', 'auth', 'setup', '--alias=work', '--account-id=abc', '--client-id=x', '--client-secret=y'],
+      expect.any(Object),
+    );
+  });
+
   it('lets the same text through as a positional after --', async () => {
     const spawner = makeSpawner(0, '{}');
     await run(['gmail', 'search', '--', '--readonly=false'], { spawner });

@@ -16,24 +16,14 @@
 // Kept out of runner.ts on purpose: tool tests automock the runner module, and
 // these checks have to run for real inside the tool handlers.
 
-// Long-flag names whose override the model must never control. Matched as
-// PREFIXES (per the audit brief), so `--readonly=false`, `--readonly` and any
-// longer spelling all fail — gog has no flag abbreviation, so a prefix match
-// costs nothing legitimate.
-const FORBIDDEN_LONG_PREFIXES = [
-  '--readonly',
-  '--enable-commands', // also covers --enable-commands-exact
-  '--disable-commands',
-  '--access-token',
-  '--home',
-  '--account',
-  '--acct', // kong alias of --account
-  '--client',
-  '--gmail-no-send',
-  '--no-input',
-  '--non-interactive', // kong aliases of --no-input
-  '--noninteractive',
-];
+// Long-flag names whose override the model must never control, matched as
+// EXACT names: the flag alone (`--readonly`) or with an attached value
+// (`--readonly=false`), case-insensitively. Not as bare prefixes — that refused
+// legitimate command flags that merely share a leading word, such as
+// gog_zoom_auth_setup's --account-id / --client-id / --client-secret. gog has
+// no flag abbreviation, so a longer spelling is a different flag, not an
+// override.
+const FORBIDDEN_LONG_FLAG = /^--(readonly|enable-commands|enable-commands-exact|disable-commands|access-token|home|account|acct|client|gmail-no-send|no-input|non-interactive|noninteractive)(=|$)/i;
 
 // `-a` is the short form of --account. kong accepts short-flag CLUSTERS
 // (`-ja` = `-j -a`) and an attached value (`-aother@x`), so any single-dash
@@ -46,10 +36,9 @@ export function forbiddenArgReason(arg: string): string | undefined {
   if (arg === '--') {
     return 'The argument "--" is not allowed: it ends flag parsing and would disable safety flags appended after it.';
   }
-  const lower = arg.toLowerCase();
-  const prefix = FORBIDDEN_LONG_PREFIXES.find((p) => lower.startsWith(p));
-  if (prefix) {
-    return `The flag ${arg} is not allowed here: ${prefix} is a safety/credential control set by the server operator, not a per-call option.`;
+  const match = FORBIDDEN_LONG_FLAG.exec(arg);
+  if (match) {
+    return `The flag ${arg} is not allowed here: --${match[1].toLowerCase()} is a safety/credential control set by the server operator, not a per-call option.`;
   }
   if (SHORT_ACCOUNT_CLUSTER.test(arg)) {
     return `The flag ${arg} is not allowed here: -a selects the account. Use the tool's account parameter instead.`;

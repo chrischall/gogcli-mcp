@@ -23,6 +23,8 @@ describe('forbiddenArgReason', () => {
     '--no-input=false',
     '--non-interactive=false',
     '--noninteractive=false',
+    '--READONLY=false',
+    '--Account=attacker@example.com',
     '-a',
     '-aattacker@example.com',
     '-ja',
@@ -40,6 +42,14 @@ describe('forbiddenArgReason', () => {
     'has:attachment',
     'a--readonly',
     '',
+    // Legitimate command flags that merely share a leading word with a control
+    // (gog_zoom_auth_setup builds the first three). Matched as bare prefixes
+    // they were refused, so zoom auth setup could never run.
+    '--account-id=abc',
+    '--client-id=x',
+    '--client-secret=y',
+    '--home-dir=x',
+    '--readonly-note=x',
   ])('allows %j', (arg) => {
     expect(forbiddenArgReason(arg)).toBeUndefined();
   });
