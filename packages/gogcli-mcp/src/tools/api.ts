@@ -1,6 +1,24 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose } from './utils.js';
+import { errorResult } from '@chrischall/mcp-utils';
+import { accountParam, errorText, runOrDiagnose } from './utils.js';
+import { assertSafeForwardedArgs } from '../arg-guard.js';
+
+// Gmail methods gog_api_call refuses outright (audit SEC-2). `allowWrite` is a
+// boolean the MODEL sets, so it cannot stand in for the user's confirmation of
+// a send: `*.send` must go through gog_gmail_send / gog_gmail_drafts_send, which
+// ask the user. Forwarding addresses, auto-forwarding, filters (which can
+// forward) and delegates route FUTURE mail to someone else and are refused for
+// the same reason. --gmail-no-send is pinned on as a runtime backstop too.
+const GMAIL_API_BLOCKED = /(?:\.send$|forwarding|filters\.create|filters\.update|delegates\.create)/i;
+
+export function refusedApiCall(api: string, method: string): string | undefined {
+  if (api.trim().toLowerCase() === 'gmail' && GMAIL_API_BLOCKED.test(method.trim())) {
+    return `gmail ${method} is not available through gog_api_call: it sends or forwards mail. `
+      + 'Use gog_gmail_send / gog_gmail_drafts_send (which ask the user to confirm) or the dedicated gog_gmail_* tool.';
+  }
+  return undefined;
+}
 
 // Generic Google Discovery API access (gog 0.31). gog_api_list / gog_api_describe
 // are read-only Discovery lookups; gog_api_call is a Discovery-backed escape
@@ -36,7 +54,7 @@ export function registerApiTools(server: McpServer): void {
   });
 
   server.registerTool('gog_api_call', {
-    description: 'Call any Discovery-described Google API method directly — an escape hatch for endpoints gog has no dedicated tool for. Find the exact api/version/method/params with gog_api_describe first. Read methods (GET/LIST) run as-is. Mutating methods (POST/PUT/PATCH/DELETE) are refused unless you set allowWrite=true — keep it false to preview, or set dryRun=true to print the intended request without sending it.',
+    description: 'Call any Discovery-described Google API method directly — an escape hatch for endpoints gog has no dedicated tool for. Find the exact api/version/method/params with gog_api_describe first. Read methods (GET/LIST) run as-is. Mutating methods (POST/PUT/PATCH/DELETE) are refused unless you set allowWrite=true — keep it false to preview, or set dryRun=true to print the intended request without sending it. Gmail send and forwarding methods (users.messages.send, users.drafts.send, forwarding/auto-forwarding, filters, delegates) are refused — use the dedicated gog_gmail_* tools, which ask the user to confirm.',
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       api: z.string().describe('Discovery API name (e.g. drive, gmail, calendar)'),
@@ -50,6 +68,13 @@ export function registerApiTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ api, version, method, params, body, scope, allowWrite, dryRun, account }) => {
+    try {
+      assertSafeForwardedArgs([api, version, method]);
+      const refusal = refusedApiCall(api, method);
+      if (refusal) throw new Error(refusal);
+    } catch (err) {
+      return errorResult(errorText(err));
+    }
     const args = ['api', 'call', api, version, method];
     if (params) args.push(`--params=${params}`);
     if (body) args.push(`--body=${body}`);
@@ -60,6 +85,6 @@ export function registerApiTools(server: McpServer): void {
     if (dryRun) args.push('--dry-run');
     // Fleet convention: --force is appended LAST (after --dry-run when both are set).
     if (allowWrite) args.push('--force');
-    return runOrDiagnose(args, { account });
+    return runOrDiagnose(args, { account, gmailNoSend: true });
   });
 }

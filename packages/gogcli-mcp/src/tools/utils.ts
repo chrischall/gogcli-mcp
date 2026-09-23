@@ -5,6 +5,7 @@ import { run } from '../runner.js';
 import type { GogArg } from '../runner.js';
 import { normalizeTimestamps } from '../timestamps.js';
 import { stripConsumedPageToken } from '../pagination.js';
+import { assertSafeForwardedArgs, assertSafeSubcommand } from '../arg-guard.js';
 
 // Byte size at or below which a payload stays on the plain inline flag.
 //
@@ -122,6 +123,14 @@ export function pushPaginationFlags(
 // Register a `gog_<service>_run` escape-hatch tool. 11 services currently
 // register an identical-shape tool; this factory keeps them in lockstep.
 // Pass `omitAccount: true` only for auth, which doesn't take --account.
+//
+// THE ARGS ARE MODEL-SUPPLIED AND FORWARDED VERBATIM, so every call is vetted
+// before gog sees it (audit SEC-1): a safety-control override
+// (`--readonly=false`, `--disable-commands=`, `--account=…`, a bare `--`, …) is
+// refused rather than forwarded, and the subcommand must be a plain word.
+// `allowedSubcommands` narrows a service to a named subset (auth: never
+// `tokens export`), `vet` lets a service refuse specific shapes, and
+// `gmailNoSend` pins gog's own `--gmail-no-send` on.
 export function registerRunTool(
   server: McpServer,
   options: {
@@ -130,11 +139,21 @@ export function registerRunTool(
     omitAccount?: boolean;
     /** Extra sentence appended to the description (used by auth to point to gog_auth_add). */
     note?: string;
+    /** When set, only these subcommands may run; everything else is refused. */
+    allowedSubcommands?: readonly string[];
+    /** Service-specific refusal: return a reason to refuse, or undefined to allow. */
+    vet?: (subcommand: string, args: readonly string[]) => string | undefined;
+    /** Inject gog's --gmail-no-send, so no send can be smuggled through this tool. */
+    gmailNoSend?: boolean;
   },
 ): void {
-  const { service, examples, omitAccount = false, note } = options;
+  const { service, examples, omitAccount = false, note, allowedSubcommands, vet, gmailNoSend = false } = options;
   const baseDescription = `Run any gog ${service} subcommand not covered by the other tools. Run \`gog ${service} --help\` for the full list of subcommands, or \`gog ${service} <subcommand> --help\` for flags on a specific subcommand.`;
-  const description = note ? `${baseDescription} ${note}` : baseDescription;
+  const restriction = allowedSubcommands
+    ? ` Only these subcommands are available: ${allowedSubcommands.join(', ')}.`
+    : '';
+  const safety = ' Flags that override server safety controls (--readonly, --enable-commands, --disable-commands, --account, --access-token, --home, --client, --gmail-no-send, --no-input) and a bare "--" are refused.';
+  const description = `${baseDescription}${restriction}${safety}${note ? ` ${note}` : ''}`;
   const inputSchema: Record<string, z.ZodTypeAny> = {
     subcommand: z.string().describe(`The gog ${service} subcommand to run, e.g. ${examples}`),
     args: z.array(z.string()).describe('Additional positional args and flags'),
@@ -148,7 +167,20 @@ export function registerRunTool(
     inputSchema: z.object(inputSchema),
   }, async (rawArgs) => {
     const { subcommand, args, account } = rawArgs as { subcommand: string; args: string[]; account?: string };
-    return runOrDiagnose([service, subcommand, ...args], { account });
+    try {
+      assertSafeSubcommand(subcommand);
+      assertSafeForwardedArgs(args);
+      if (allowedSubcommands && !allowedSubcommands.includes(subcommand)) {
+        throw new Error(
+          `gog ${service} ${subcommand} is not available through gog_${service}_run. Allowed: ${allowedSubcommands.join(', ')}.`,
+        );
+      }
+      const refusal = vet?.(subcommand, args);
+      if (refusal) throw new Error(refusal);
+    } catch (err) {
+      return errorResult(errorText(err));
+    }
+    return runOrDiagnose([service, subcommand, ...args], gmailNoSend ? { account, gmailNoSend } : { account });
   });
 }
 
@@ -359,7 +391,7 @@ function isRejectedFieldMask(err: unknown): boolean {
 
 async function runProjected(
   args: GogArg[],
-  options: { account?: string; lossless?: boolean; fieldsMask?: string },
+  options: { account?: string; lossless?: boolean; fieldsMask?: string; gmailNoSend?: boolean },
 ): Promise<string> {
   const { fieldsMask } = options;
   if (!fieldsMask) return run(args, options);
@@ -377,7 +409,7 @@ async function runProjected(
 
 export async function runOrDiagnose(
   args: GogArg[],
-  options: { account?: string; lossless?: boolean; fieldsMask?: string; stripMedia?: boolean },
+  options: { account?: string; lossless?: boolean; fieldsMask?: string; stripMedia?: boolean; gmailNoSend?: boolean },
 ): Promise<CallToolResult> {
   try {
     // The single seam every tool's output passes through. Normalizing here —

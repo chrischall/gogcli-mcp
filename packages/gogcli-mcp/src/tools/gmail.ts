@@ -171,6 +171,23 @@ async function sendReply(
   return result;
 }
 
+// What --gmail-no-send does NOT cover (verified on gog 0.41.0): a bulk
+// auto-reply, and the settings that route future mail to someone else —
+// forwarding addresses, auto-forwarding, filters (which can forward) and
+// delegates (which grant another account the mailbox). Each has a dedicated,
+// reviewable tool; none may ride the escape hatch.
+const GMAIL_RUN_BLOCKED_SETTINGS = new Set(['forwarding', 'autoforward', 'filters', 'delegates']);
+
+export function vetGmailRun(subcommand: string, args: readonly string[]): string | undefined {
+  if (subcommand === 'autoreply') {
+    return 'gog gmail autoreply sends mail and is not available through gog_gmail_run. Use gog_gmail_autoreply, which asks the user to confirm.';
+  }
+  if (subcommand === 'settings' && GMAIL_RUN_BLOCKED_SETTINGS.has((args[0] ?? '').toLowerCase())) {
+    return `gog gmail settings ${args[0]} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;
+  }
+  return undefined;
+}
+
 export function registerGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_search', {
     description: 'Search Gmail threads using Gmail query syntax (e.g. "from:alice subject:invoice is:unread"). The query is passed verbatim to Gmail; a bare name token (from:alison) matches per Gmail\'s own heuristics, a full address (from:alison@example.com) is exact. To match a contact across several addresses, OR them: from:(a@x.com OR b@y.com). '
@@ -350,5 +367,13 @@ export function registerGmailTools(server: McpServer): void {
     return sendReply('reply-all', 'gog_gmail_reply_all', messageId, account, flags, ctx);
   });
 
-  registerRunTool(server, { service: 'gmail', examples: '"archive", "mark-read", "labels"' });
+  registerRunTool(server, {
+    service: 'gmail',
+    examples: '"archive", "mark-read", "labels"',
+    // gog's --gmail-no-send blocks send/reply/forward/drafts send and all of
+    // their aliases at runtime (verified on gog 0.41.0). Sending goes through the
+    // confirmed tools, never this escape hatch.
+    gmailNoSend: true,
+    vet: vetGmailRun,
+  });
 }

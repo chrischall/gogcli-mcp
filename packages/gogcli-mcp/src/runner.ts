@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process';
 import { delimiter, join } from 'node:path';
 import { currentCallSignal, killOnCancel, parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
 import { naiveSourceTimeZone } from './timestamps.js';
+import { forbiddenArgReason } from './arg-guard.js';
 
 export type Spawner = (
   command: string,
@@ -97,6 +98,11 @@ export interface RunOptions {
   // (see OPAQUE_FIELD_VALUE) — so a field carrying real prose, which is where a
   // real leaked token would live, still gets redacted normally.
   opaqueFields?: readonly string[];
+  // Inject gog's global --gmail-no-send, which blocks every Gmail send
+  // (send, reply, forward, drafts send, users.messages.send via api call) at
+  // runtime. Set by the escape hatches so none of them can dispatch mail
+  // around the confirmation rail.
+  gmailNoSend?: boolean;
 }
 
 const TIMEOUT_MS = 30_000;
@@ -458,10 +464,25 @@ async function spawnGog(
 // Assemble the full gog argv: the always-injected flags (--json/--color=never,
 // --no-input unless interactive, --readonly when opted in), --account, then the
 // caller's args. Shared by run() and runBinary() so both get identical flags.
+// Refuse a safety-control override sitting in FLAG position — anywhere before
+// the first `--`, after which gog reads every token as a positional. The tool
+// layer already vets model-supplied escape-hatch args (arg-guard.ts); this is
+// the backstop for every other path, so no tool can hand gog a
+// `--readonly=false` that would override the `--readonly` injected below.
+function assertNoSafetyOverrides(args: GogArg[]): void {
+  for (const arg of args) {
+    if (typeof arg !== 'string') continue;
+    if (arg === '--') return;
+    const reason = forbiddenArgReason(arg);
+    if (reason) throw new Error(reason);
+  }
+}
+
 function assembleArgs(
   args: GogArg[],
-  opts: { account?: string; interactive: boolean; readonly: boolean },
+  opts: { account?: string; interactive: boolean; readonly: boolean; gmailNoSend: boolean },
 ): GogArg[] {
+  assertNoSafetyOverrides(args);
   const effectiveAccount = opts.account ?? readEnvVar('GOG_ACCOUNT');
   const fullArgs: GogArg[] = ['--json', '--color=never'];
   if (!opts.interactive) {
@@ -473,6 +494,9 @@ function assembleArgs(
   if (opts.readonly || readonlyEnvEnabled()) {
     fullArgs.push('--readonly');
   }
+  if (opts.gmailNoSend) {
+    fullArgs.push('--gmail-no-send');
+  }
   if (effectiveAccount) {
     fullArgs.push('--account', effectiveAccount);
   }
@@ -481,7 +505,7 @@ function assembleArgs(
 }
 
 export async function run(args: GogArg[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner, interactive = false, timeout, readonly = false, redactMode = 'full', opaqueFields } = options;
+  const { account, spawner, interactive = false, timeout, readonly = false, redactMode = 'full', opaqueFields, gmailNoSend = false } = options;
   const base = redactMode === 'tokens' ? redactGoogleTokens : redactSecrets;
   // Only OUTPUT carries opaque payloads. An error message is prose by
   // definition, so it always takes the plain redactor — exempting a field there
@@ -490,7 +514,7 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
     ? (text: string): string => redactPreservingOpaqueFields(text, opaqueFields, base)
     : base;
 
-  const fullArgs = assembleArgs(args, { account, interactive, readonly });
+  const fullArgs = assembleArgs(args, { account, interactive, readonly, gmailNoSend });
 
   // Redaction wraps the spawn: a successful `gog auth tokens` (or any command
   // echoing a credential) would otherwise return raw Google tokens (ya29.…/1//…)
@@ -511,7 +535,7 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
 // would corrupt. No redaction: the base64 of a user's own binary file is opaque
 // and has no token shapes to leak.
 export async function runBinary(args: GogArg[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner, timeout, readonly = false } = options;
-  const fullArgs = assembleArgs(args, { account, interactive: false, readonly });
+  const { account, spawner, timeout, readonly = false, gmailNoSend = false } = options;
+  const fullArgs = assembleArgs(args, { account, interactive: false, readonly, gmailNoSend });
   return spawnExecutor(fullArgs, { timeout, interactive: false, spawner, binary: true });
 }

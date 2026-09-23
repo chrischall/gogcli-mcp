@@ -518,7 +518,7 @@ describe('gog_gmail_run', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_run', { subcommand: 'archive', args: ['msg1'] });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'archive', 'msg1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'archive', 'msg1'], { account: undefined, gmailNoSend: true });
   });
 
   it('returns error text on failure', async () => {
@@ -526,6 +526,69 @@ describe('gog_gmail_run', () => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_gmail_run', { subcommand: 'archive', args: [] });
     expect(result.content[0].text).toBe('Error: Run failed');
+  });
+
+  // SEC-1: gog takes the LAST value of a repeated flag, so a model-supplied
+  // override placed after the runner's injected safety flags would win.
+  it.each([
+    ['--readonly=false'],
+    ['--'],
+    ['--disable-commands='],
+    ['--enable-commands=gmail.send'],
+    ['--gmail-no-send=false'],
+    ['--account=attacker@example.com'],
+    ['-a'],
+  ])('refuses a forwarded %j without running gog', async (bad) => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_gmail_run', { subcommand: 'archive', args: ['msg1', bad] });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/not allowed/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('refuses a flag-shaped subcommand', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_gmail_run', { subcommand: '--readonly=false', args: ['archive'] });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/Invalid subcommand/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  // SEC-2: the escape hatch must not be a way around the send confirmation.
+  // gog's own --gmail-no-send blocks send/reply/forward/drafts send (and every
+  // alias of them — fwd, drafts post) at runtime, so it is pinned on.
+  it('always runs with gog --gmail-no-send', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_run', { subcommand: 'send', args: ['--to=x@example.com'] });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'send', '--to=x@example.com'], { account: undefined, gmailNoSend: true });
+  });
+
+  it.each([
+    ['autoreply', ['--body=hi']],
+    ['settings', ['forwarding', 'create', 'x@example.com']],
+    ['settings', ['autoforward', 'update', '--enable']],
+    ['settings', ['filters', 'create', '--forward=x@example.com']],
+    ['settings', ['delegates', 'add', 'x@example.com']],
+  ])('refuses gmail %s %j, which dispatch or forward mail outside --gmail-no-send', async (subcommand, args) => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_gmail_run', { subcommand, args });
+    expect(result.isError).toBe(true);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('still allows other settings subcommands', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_run', { subcommand: 'settings', args: ['sendas', 'list'] });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'settings', 'sendas', 'list'], { account: undefined, gmailNoSend: true });
+  });
+
+  it('allows bare settings (help/listing) with no args', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_run', { subcommand: 'settings', args: [] });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'settings'], { account: undefined, gmailNoSend: true });
   });
 });
 

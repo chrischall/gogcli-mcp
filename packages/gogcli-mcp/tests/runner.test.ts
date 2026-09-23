@@ -938,6 +938,43 @@ describe('run --readonly (gog 0.31)', () => {
   });
 });
 
+describe('run safety flags', () => {
+  it('injects --gmail-no-send when options.gmailNoSend is true', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['gmail', 'archive', 'm1'], { gmailNoSend: true, spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', '--gmail-no-send', 'gmail', 'archive', 'm1'],
+      expect.any(Object),
+    );
+  });
+
+  // Defence in depth behind the tool-level guard (audit SEC-1): whatever tool
+  // built the argv, a safety-control override in flag position never reaches
+  // gog, where the LAST value of a repeated flag would win.
+  it.each([
+    ['--readonly=false'],
+    ['--disable-commands='],
+    ['--enable-commands=gmail.send'],
+    ['--gmail-no-send=false'],
+    ['--access-token=ya29.x'],
+    ['--home=/tmp/x'],
+    ['--client=other'],
+    ['-a'],
+  ])('refuses a caller-supplied %j in flag position without spawning', async (bad) => {
+    const spawner = makeSpawner(0, '{}');
+    await expect(run(['drive', 'mkdir', 'x', bad], { readonly: true, spawner })).rejects.toThrow(/not allowed/);
+    await expect(runBinary(['drive', 'mkdir', 'x', bad], { spawner })).rejects.toThrow(/not allowed/);
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it('lets the same text through as a positional after --', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['gmail', 'search', '--', '--readonly=false'], { spawner });
+    expect(spawner).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('run executor', () => {
   it('uses the lazily-imported real spawn when no spawner is injected', async () => {
     vi.mocked(mockedSpawn).mockImplementation((() => makeProc(0, '{"real":true}')) as never);

@@ -4,6 +4,9 @@ import { run } from '../runner.js';
 import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
 import { errorText, formatAuthHealth, registerRunTool } from './utils.js';
 
+/** The `gog auth` subcommands gog_auth_run may run — account management only. */
+export const AUTH_RUN_SUBCOMMANDS: readonly string[] = ['list', 'status', 'services', 'remove', 'alias'];
+
 // Register the auth tools with a specific least-privilege default `services`.
 // Kept internal so the exported `registerAuthTools` stays a bare
 // `(server) => void` ToolRegistrar; `authToolsFor` binds a narrower default.
@@ -187,10 +190,15 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
     }
   });
 
+  // Account management only (audit SEC-3). `auth tokens export` writes a
+  // long-lived refresh token to a file, and `credentials` / `keyring` /
+  // `tokens import` handle the OAuth client secret and the token store — none of
+  // that belongs behind a model-callable escape hatch. `add` has its own tools.
   registerRunTool(server, {
     service: 'auth',
     examples: '"remove", "alias", "list"',
     omitAccount: true,
+    allowedSubcommands: AUTH_RUN_SUBCOMMANDS,
     note: 'For browser-based authorization, use gog_auth_add instead.',
   });
 }

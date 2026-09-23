@@ -65,7 +65,7 @@ describe('gog_api_call', () => {
     await harness.callTool('gog_api_call', { api: 'drive', version: 'v3', method: 'files.list', params: '{"q":"x"}' });
     expect(runner.run).toHaveBeenCalledWith(
       ['api', 'call', 'drive', 'v3', 'files.list', '--params={"q":"x"}'],
-      { account: undefined },
+      { account: undefined, gmailNoSend: true },
     );
   });
 
@@ -83,7 +83,7 @@ describe('gog_api_call', () => {
         '--params={"fields":"id"}', '--body={"name":"f"}',
         '--scope=https://www.googleapis.com/auth/drive', '--allow-write', '--dry-run', '--force',
       ],
-      { account: 'a@b.com' },
+      { account: 'a@b.com', gmailNoSend: true },
     );
   });
 
@@ -103,5 +103,43 @@ describe('gog_api_call', () => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_api_call', { api: 'drive', version: 'v3', method: 'files.list' });
     expect(result.content[0].text).toBe('Error: Call failed');
+  });
+
+  // SEC-2: allowWrite is a model-set boolean, so it cannot stand in for the
+  // user's confirmation of a send. Sends are refused here (and --gmail-no-send
+  // is pinned on as a backstop); so is anything that routes future mail away.
+  it.each([
+    ['gmail', 'users.messages.send'],
+    ['Gmail', 'users.drafts.send'],
+    ['gmail', 'users.settings.forwardingAddresses.create'],
+    ['gmail', 'users.settings.updateAutoForwarding'],
+    ['gmail', 'users.settings.filters.create'],
+    ['gmail', 'users.settings.delegates.create'],
+  ])('refuses %s %s', async (api, method) => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_api_call', { api, version: 'v1', method, allowWrite: true });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/not available through gog_api_call/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('still allows other gmail methods', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_api_call', { api: 'gmail', version: 'v1', method: 'users.labels.list' });
+    expect(result.isError).toBeFalsy();
+  });
+
+  // SEC-1: the positional api/version/method are model-supplied too.
+  it.each([
+    [{ api: '--readonly=false', version: 'v3', method: 'files.list' }],
+    [{ api: 'drive', version: '--', method: 'files.list' }],
+    [{ api: 'drive', version: 'v3', method: '--disable-commands=' }],
+  ])('refuses a safety-flag override in %j', async (input) => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_api_call', input);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/not allowed/);
+    expect(runner.run).not.toHaveBeenCalled();
   });
 });

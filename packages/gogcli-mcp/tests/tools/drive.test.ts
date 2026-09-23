@@ -295,6 +295,16 @@ describe('gog_drive_run', () => {
     const result = await harness.callTool('gog_drive_run', { subcommand: 'copy', args: [] });
     expect(result.content[0].text).toBe('Error: Run failed');
   });
+
+  // SEC-1 regression: `gog --readonly drive mkdir x --readonly=false` reached
+  // Google on gog 0.41.0, defeating the GOG_READONLY kill switch.
+  it('refuses --readonly=false so GOG_READONLY cannot be overridden', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_run', { subcommand: 'mkdir', args: ['x', '--readonly=false'] });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/--readonly=false is not allowed/);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
 });
 
 describe('gog_drive_extract_text', () => {

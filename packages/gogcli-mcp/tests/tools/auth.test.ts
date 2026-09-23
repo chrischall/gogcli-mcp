@@ -381,10 +381,36 @@ describe('gog_auth_run', () => {
   });
 
   it('works with empty args array', async () => {
-    vi.mocked(runner.run).mockResolvedValue('token info');
+    vi.mocked(runner.run).mockResolvedValue('accounts');
     const harness = await setupHandlers();
-    await harness.callTool('gog_auth_run', { subcommand: 'tokens', args: [] });
-    expect(runner.run).toHaveBeenCalledWith(['auth', 'tokens'], {});
+    await harness.callTool('gog_auth_run', { subcommand: 'list', args: [] });
+    expect(runner.run).toHaveBeenCalledWith(['auth', 'list'], {});
+  });
+
+  it.each(['list', 'status', 'services', 'remove', 'alias'])('allows %s', async (subcommand) => {
+    vi.mocked(runner.run).mockResolvedValue('ok');
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_auth_run', { subcommand, args: [] });
+    expect(result.isError).toBeFalsy();
+    expect(runner.run).toHaveBeenCalledWith(['auth', subcommand], {});
+  });
+
+  // SEC-3: `auth tokens export --out <path>` writes a long-lived refresh token
+  // to disk, where an attach path can read it back out. Credentials and the
+  // keyring are the same class. Only the account-management subset is exposed.
+  it.each([
+    ['tokens', ['export', 'me@example.com', '--out=/tmp/t.json']],
+    ['tokens', ['import', '/tmp/t.json']],
+    ['credentials', ['list']],
+    ['keyring', []],
+    ['add', ['me@example.com']],
+    ['service-account', ['set']],
+  ])('refuses auth %s %j', async (subcommand, args) => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_auth_run', { subcommand, args });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/not available through gog_auth_run/);
+    expect(runner.run).not.toHaveBeenCalled();
   });
 
   it('returns error text on failure', async () => {
