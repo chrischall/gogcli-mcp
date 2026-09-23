@@ -70,16 +70,16 @@ function confineFlagValue(flag: string, value: string): void {
   }
 }
 
-/**
- * Throw unless every local path in an escape-hatch call (`gog <service>
- * <subcommand> ...args`) lies inside GOG_FILE_ROOTS (or the private attachment
- * download root), and nothing in it would run a local program.
- */
 /** The dedicated tool to use when `gog <service> <subcommand>` is refused for a positional path, else undefined. */
 export function positionalPathTool(service: string, subcommand: string): string | undefined {
   return POSITIONAL_PATH_SUBCOMMANDS[service]?.[subcommand];
 }
 
+/**
+ * Throw unless every local path in an escape-hatch call (`gog <service>
+ * <subcommand> ...args`) lies inside GOG_FILE_ROOTS (or the private attachment
+ * download root), and nothing in it would run a local program.
+ */
 export function assertRunPathsConfined(service: string, subcommand: string, args: readonly string[]): void {
   const dedicated = positionalPathTool(service, subcommand);
   if (dedicated) {
