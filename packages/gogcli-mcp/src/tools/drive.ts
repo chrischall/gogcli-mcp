@@ -314,5 +314,5 @@ export function registerDriveTools(server: McpServer): void {
     }
   });
 
-  registerRunTool(server, { service: 'drive', examples: '"copy", "upload", "download", "permissions"' });
+  registerRunTool(server, { service: 'drive', examples: '"copy", "download", "permissions"' });
 }
