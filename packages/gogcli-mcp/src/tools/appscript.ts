@@ -7,6 +7,8 @@ import {
   paginationParams,
   pushPaginationFlags,
 } from './utils.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 // Google Apps Script (gog >= 0.38.0 for pull/deployments/versions).
 //
@@ -40,7 +42,7 @@ export function registerAppScriptTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ scriptId, account }) => {
-    return runOrDiagnose(['appscript', 'get', scriptId], { account });
+    return runOrDiagnose(['appscript', 'get', pos(scriptId)], { account });
   });
 
   server.registerTool('gog_appscript_content', {
@@ -54,7 +56,7 @@ export function registerAppScriptTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ scriptId, account }) => {
-    return runOrDiagnose(['appscript', 'content', scriptId], { account });
+    return runOrDiagnose(['appscript', 'content', pos(scriptId)], { account });
   });
 
   server.registerTool('gog_appscript_pull', {
@@ -73,7 +75,7 @@ export function registerAppScriptTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ scriptId, dir, overwrite, account }) => {
-    const args = ['appscript', 'pull', scriptId, dir];
+    const args: GogArg[] = ['appscript', 'pull', pos(scriptId), pos(dir)];
     if (overwrite) args.push('--overwrite');
     return runOrDiagnose(args, { account });
   });
@@ -90,7 +92,7 @@ export function registerAppScriptTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ title, parentId, account }) => {
-    const args = ['appscript', 'create', `--title=${title}`];
+    const args: GogArg[] = ['appscript', 'create', `--title=${title}`];
     if (parentId) args.push(`--parent-id=${parentId}`);
     return runOrDiagnose(args, { account });
   });
@@ -107,7 +109,7 @@ export function registerAppScriptTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ scriptId, max, pageToken, page, all, account }) => {
-    const args = ['appscript', 'deployments', scriptId];
+    const args: GogArg[] = ['appscript', 'deployments', pos(scriptId)];
     pushPaginationFlags(args, { max, pageToken, page, all });
     return runOrDiagnose(args, { account });
   });
@@ -123,7 +125,7 @@ export function registerAppScriptTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ scriptId, max, pageToken, page, all, account }) => {
-    const args = ['appscript', 'versions', scriptId];
+    const args: GogArg[] = ['appscript', 'versions', pos(scriptId)];
     pushPaginationFlags(args, { max, pageToken, page, all });
     return runOrDiagnose(args, { account });
   });
@@ -161,7 +163,7 @@ export function registerAppScriptTools(server: McpServer): void {
         throw new Error(`params must be a JSON ARRAY of positional arguments, e.g. '["a", 1]' — Apps Script takes positional arguments, not named ones. Received: ${params}`);
       }
     }
-    const args = ['appscript', 'run', scriptId, functionName];
+    const args: GogArg[] = ['appscript', 'run', pos(scriptId), pos(functionName)];
     if (params !== undefined) args.push(`--params=${params}`);
     if (devMode) args.push('--dev-mode');
     return runOrDiagnose(args, { account });

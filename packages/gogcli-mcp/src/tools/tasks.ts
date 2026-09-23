@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 export function registerTasksTools(server: McpServer): void {
   server.registerTool('gog_tasks_lists', {
@@ -21,7 +23,7 @@ export function registerTasksTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ tasklistId, account }) => {
-    return runOrDiagnose(['tasks', 'list', tasklistId], { account });
+    return runOrDiagnose(['tasks', 'list', pos(tasklistId)], { account });
   });
 
   server.registerTool('gog_tasks_get', {
@@ -33,7 +35,7 @@ export function registerTasksTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ tasklistId, taskId, account }) => {
-    return runOrDiagnose(['tasks', 'get', tasklistId, taskId], { account });
+    return runOrDiagnose(['tasks', 'get', pos(tasklistId), pos(taskId)], { account });
   });
 
   server.registerTool('gog_tasks_add', {
@@ -47,7 +49,7 @@ export function registerTasksTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ tasklistId, title, notes, due, account }) => {
-    const args = ['tasks', 'add', tasklistId, `--title=${title}`];
+    const args: GogArg[] = ['tasks', 'add', pos(tasklistId), `--title=${title}`];
     if (notes) args.push(`--notes=${notes}`);
     if (due) args.push(`--due=${due}`);
     return runOrDiagnose(args, { account });
@@ -62,7 +64,7 @@ export function registerTasksTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ tasklistId, taskId, account }) => {
-    return runOrDiagnose(['tasks', 'done', tasklistId, taskId], { account });
+    return runOrDiagnose(['tasks', 'done', pos(tasklistId), pos(taskId)], { account });
   });
 
   server.registerTool('gog_tasks_delete', {
@@ -76,7 +78,7 @@ export function registerTasksTools(server: McpServer): void {
   }, async ({ tasklistId, taskId, account }) => {
     // gog gates this delete behind a confirmation; the runner injects
     // --no-input, so without --force it refuses at runtime.
-    return runOrDiagnose(['tasks', 'delete', tasklistId, taskId, '--force'], { account });
+    return runOrDiagnose(['tasks', 'delete', pos(tasklistId), pos(taskId), '--force'], { account });
   });
 
   registerRunTool(server, { service: 'tasks', examples: '"update", "undo", "clear"' });

@@ -3,6 +3,7 @@ import { registerExtraContactsTools } from '../../src/tools/contacts-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
 import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
 import { rawTextResult } from '@chrischall/mcp-utils';
+import { pos } from '../../../gogcli-mcp/src/argv.js';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -35,27 +36,27 @@ describe('gog_people_me', () => {
 describe('gog_people_get', () => {
   it('calls runOrDiagnose with userId', async () => {
     await harness.callTool('gog_people_get', { userId: 'people/c123' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'get', 'people/c123'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'get', pos('people/c123')], { account: undefined });
   });
 });
 
 describe('gog_people_search', () => {
   it('calls runOrDiagnose with query', async () => {
     await harness.callTool('gog_people_search', { query: 'alice' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'search', 'alice'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'search', pos('alice')], { account: undefined });
   });
 
   it('passes pagination flags', async () => {
     await harness.callTool('gog_people_search', { query: 'alice', max: 100, page: 'tok', all: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['people', 'search', 'alice', '--max=100', '--page=tok', '--all'],
+      ['people', 'search', pos('alice'), '--max=100', '--page=tok', '--all'],
       { account: undefined },
     );
   });
 
   it('omits --all when false', async () => {
     await harness.callTool('gog_people_search', { query: 'x', all: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'search', 'x'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'search', pos('x')], { account: undefined });
   });
 });
 
@@ -68,7 +69,7 @@ describe('gog_people_relations', () => {
   it('passes userId and --type when provided', async () => {
     await harness.callTool('gog_people_relations', { userId: 'people/c123', type: 'manager' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['people', 'relations', 'people/c123', '--type=manager'],
+      ['people', 'relations', pos('people/c123'), '--type=manager'],
       { account: undefined },
     );
   });
@@ -77,7 +78,7 @@ describe('gog_people_relations', () => {
 describe('gog_contacts_update', () => {
   it('calls runOrDiagnose with just resourceName', async () => {
     await harness.callTool('gog_contacts_update', { resourceName: 'people/c1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'update', 'people/c1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'update', pos('people/c1')], { account: undefined });
   });
 
   it('passes all fields including empty-string clears', async () => {
@@ -97,7 +98,7 @@ describe('gog_contacts_update', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'contacts', 'update', 'people/c1',
+        'contacts', 'update', pos('people/c1'),
         '--given=Ada', '--family=Lovelace', '--email=', '--phone=+1',
         '--org=Analytical', '--title=Engineer', '--url=https://a.com',
         '--note=hi', '--address=1 St;City', '--birthday=1815-12-10', '--ignore-etag',
@@ -108,14 +109,14 @@ describe('gog_contacts_update', () => {
 
   it('omits --ignore-etag when false', async () => {
     await harness.callTool('gog_contacts_update', { resourceName: 'people/c1', ignoreEtag: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'update', 'people/c1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'update', pos('people/c1')], { account: undefined });
   });
 });
 
 describe('gog_contacts_delete', () => {
   it('calls runOrDiagnose with resourceName', async () => {
     await harness.callTool('gog_contacts_delete', { resourceName: 'people/c1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'delete', 'people/c1', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'delete', pos('people/c1'), '--force'], { account: undefined });
   });
 });
 
@@ -135,7 +136,7 @@ describe('gog_contacts_export', () => {
       page: 'tok',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['contacts', 'export', 'people/c1', '--query=ada', '--all', '--out=out.vcf', '--max=10', '--page=tok'],
+      ['contacts', 'export', pos('people/c1'), '--query=ada', '--all', '--out=out.vcf', '--max=10', '--page=tok'],
       { account: undefined },
     );
   });
@@ -221,13 +222,13 @@ describe('gog_contacts_other_list', () => {
 describe('gog_contacts_other_search', () => {
   it('calls runOrDiagnose with query', async () => {
     await harness.callTool('gog_contacts_other_search', { query: 'ada' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'other', 'search', 'ada'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'other', 'search', pos('ada')], { account: undefined });
   });
 
   it('passes --max when provided', async () => {
     await harness.callTool('gog_contacts_other_search', { query: 'ada', max: 25 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['contacts', 'other', 'search', 'ada', '--max=25'],
+      ['contacts', 'other', 'search', pos('ada'), '--max=25'],
       { account: undefined },
     );
   });
@@ -236,7 +237,7 @@ describe('gog_contacts_other_search', () => {
 describe('gog_people_raw', () => {
   it('calls runOrDiagnose with userId', async () => {
     await harness.callTool('gog_people_raw', { userId: 'people/c123' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'raw', 'people/c123'], { account: undefined, lossless: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'raw', pos('people/c123')], { account: undefined, lossless: true });
   });
 
   it('passes --person-fields and --pretty when provided', async () => {
@@ -246,13 +247,13 @@ describe('gog_people_raw', () => {
       pretty: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['people', 'raw', 'people/c123', '--person-fields=names,emailAddresses', '--pretty'],
+      ['people', 'raw', pos('people/c123'), '--person-fields=names,emailAddresses', '--pretty'],
       { account: undefined, lossless: true },
     );
   });
 
   it('omits --pretty when false', async () => {
     await harness.callTool('gog_people_raw', { userId: 'people/c123', pretty: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'raw', 'people/c123'], { account: undefined, lossless: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['people', 'raw', pos('people/c123')], { account: undefined, lossless: true });
   });
 });

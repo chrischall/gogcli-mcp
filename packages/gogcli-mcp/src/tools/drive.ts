@@ -5,6 +5,8 @@ import { rawTextResult, viewParam, resolveView } from '@chrischall/mcp-utils';
 
 import { run, runBinary } from '../runner.js';
 import { accountParam, diagnose, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 // A native Google Doc exports to text directly; anything else (PDF, image,
 // docx, …) is first copied WITH conversion to this type, which makes Drive run
@@ -52,7 +54,7 @@ export function registerDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ folderId, max, pageToken, page, query, allDrives, view, account }) => {
-    const args = ['drive', 'ls'];
+    const args: GogArg[] = ['drive', 'ls'];
     if (folderId) args.push(`--parent=${folderId}`);
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
@@ -78,7 +80,7 @@ export function registerDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ query, view, account }) => {
-    return runOrDiagnose(['drive', 'search', query], {
+    return runOrDiagnose(['drive', 'search', pos(query)], {
       account,
       stripMedia: resolveView(view, ['compact', 'full']) === 'compact',
     });
@@ -99,7 +101,7 @@ export function registerDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, view, account }) => {
-    return runOrDiagnose(['drive', 'get', fileId], {
+    return runOrDiagnose(['drive', 'get', pos(fileId)], {
       account,
       stripMedia: resolveView(view, ['compact', 'full']) === 'compact',
     });
@@ -113,7 +115,7 @@ export function registerDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ name, account }) => {
-    return runOrDiagnose(['drive', 'mkdir', name], { account });
+    return runOrDiagnose(['drive', 'mkdir', pos(name)], { account });
   });
 
   server.registerTool('gog_drive_rename', {
@@ -125,7 +127,7 @@ export function registerDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, newName, account }) => {
-    return runOrDiagnose(['drive', 'rename', fileId, newName], { account });
+    return runOrDiagnose(['drive', 'rename', pos(fileId), pos(newName)], { account });
   });
 
   server.registerTool('gog_drive_move', {
@@ -137,7 +139,7 @@ export function registerDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, parentId, account }) => {
-    return runOrDiagnose(['drive', 'move', fileId, `--parent=${parentId}`], { account });
+    return runOrDiagnose(['drive', 'move', pos(fileId), `--parent=${parentId}`], { account });
   });
 
   server.registerTool('gog_drive_delete', {
@@ -149,7 +151,7 @@ export function registerDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, permanent, account }) => {
-    const args = ['drive', 'delete', fileId];
+    const args: GogArg[] = ['drive', 'delete', pos(fileId)];
     if (permanent) args.push('--permanent');
     // gog gates drive delete behind a confirmation; the runner injects
     // --no-input, so without --force it refuses at runtime.
@@ -169,7 +171,7 @@ export function registerDriveTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ fileId, to, email, domain, role, account }) => {
-    const args = ['drive', 'share', fileId, `--to=${to}`];
+    const args: GogArg[] = ['drive', 'share', pos(fileId), `--to=${to}`];
     if (email) args.push(`--email=${email}`);
     if (domain) args.push(`--domain=${domain}`);
     if (role) args.push(`--role=${role}`);
@@ -201,7 +203,7 @@ export function registerDriveTools(server: McpServer): void {
   }, async ({ fileId, ocrLanguage, offset = 0, maxChars, account }) => {
     let tempDocId: string | undefined;
     try {
-      const { name, mimeType } = fileMeta(await run(['drive', 'get', fileId], { account }));
+      const { name, mimeType } = fileMeta(await run(['drive', 'get', pos(fileId)], { account }));
 
       // Native Docs export straight to text; everything else is OCR-converted first.
       let sourceId = fileId;
@@ -242,7 +244,7 @@ export function registerDriveTools(server: McpServer): void {
     } finally {
       // Always remove the temp Doc — on success, and on a mid-extraction failure.
       if (tempDocId) {
-        await run(['drive', 'delete', tempDocId, '--permanent', '--force'], { account }).catch(() => {});
+        await run(['drive', 'delete', pos(tempDocId), '--permanent', '--force'], { account }).catch(() => {});
       }
     }
   });
@@ -259,7 +261,7 @@ export function registerDriveTools(server: McpServer): void {
     }),
   }, async ({ fileId, account }): Promise<CallToolResult> => {
     try {
-      const { name, mimeType } = fileMeta(await run(['drive', 'get', fileId], { account }));
+      const { name, mimeType } = fileMeta(await run(['drive', 'get', pos(fileId)], { account }));
       const params = JSON.stringify({ fileId, alt: 'media' });
       const blob = await runBinary(['api', 'call', 'drive', 'v3', 'files.get', `--params=${params}`], { account });
       const type = mimeType ?? 'application/octet-stream';

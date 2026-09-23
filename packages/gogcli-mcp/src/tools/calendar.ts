@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { viewParam, resolveView } from '@chrischall/mcp-utils';
 import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken } from './utils.js';
 import { annotateTruncatedList } from '../pagination.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 // Reminder params, shared by create and update (gog >= 0.38.0 for
 // --no-reminders). An event's reminders are one of THREE states, and the two
@@ -33,7 +35,7 @@ const reminderParams = {
 // The one place the three states become argv. Kept together so create and
 // update cannot drift apart on the empty-array case.
 function pushReminderFlags(
-  args: string[],
+  args: GogArg[],
   p: { reminders?: string[]; noReminders?: boolean },
 ): void {
   if (p.noReminders) {
@@ -107,8 +109,8 @@ export function registerCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, from, to, days, today, query, max, pageToken, page, all, eventTypes, timezone, view, account }) => {
-    const args = ['calendar', 'events'];
-    if (calendarId) args.push(calendarId);
+    const args: GogArg[] = ['calendar', 'events'];
+    if (calendarId) args.push(pos(calendarId));
     if (from) args.push(`--from=${from}`);
     if (to) args.push(`--to=${to}`);
     if (days !== undefined) args.push(`--days=${days}`);
@@ -141,7 +143,7 @@ export function registerCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, eventId, timezone, account }) => {
-    const args = ['calendar', 'event', calendarId, eventId];
+    const args: GogArg[] = ['calendar', 'event', pos(calendarId), pos(eventId)];
     if (timezone) args.push(`--timezone=${timezone}`);
     return runOrDiagnose(args, { account });
   });
@@ -164,7 +166,7 @@ export function registerCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, timezone, withZoom, reminders, noReminders, account }) => {
-    const args = ['calendar', 'create', calendarId, `--summary=${summary}`, `--from=${from}`, `--to=${to}`];
+    const args: GogArg[] = ['calendar', 'create', pos(calendarId), `--summary=${summary}`, `--from=${from}`, `--to=${to}`];
     if (description) args.push(`--description=${description}`);
     if (location) args.push(`--location=${location}`);
     if (attendees) args.push(`--attendees=${attendees}`);
@@ -197,7 +199,7 @@ export function registerCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, removeMeet, reminders, noReminders, account }) => {
-    const args = ['calendar', 'update', calendarId, eventId];
+    const args: GogArg[] = ['calendar', 'update', pos(calendarId), pos(eventId)];
     if (summary !== undefined) args.push(`--summary=${summary}`);
     if (from !== undefined) args.push(`--from=${from}`);
     if (to !== undefined) args.push(`--to=${to}`);
@@ -225,7 +227,7 @@ export function registerCalendarTools(server: McpServer): void {
   }, async ({ calendarId, eventId, account }) => {
     // gog gates this delete behind a confirmation; the runner injects
     // --no-input, so without --force it refuses at runtime.
-    return runOrDiagnose(['calendar', 'delete', calendarId, eventId, '--force'], { account });
+    return runOrDiagnose(['calendar', 'delete', pos(calendarId), pos(eventId), '--force'], { account });
   });
 
   server.registerTool('gog_calendar_respond', {
@@ -239,7 +241,7 @@ export function registerCalendarTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ calendarId, eventId, status, comment, account }) => {
-    const args = ['calendar', 'respond', calendarId, eventId, `--status=${status}`];
+    const args: GogArg[] = ['calendar', 'respond', pos(calendarId), pos(eventId), `--status=${status}`];
     if (comment) args.push(`--comment=${comment}`);
     return runOrDiagnose(args, { account });
   });

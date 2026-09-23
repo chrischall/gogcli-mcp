@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 export function registerClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_list', {
@@ -17,7 +19,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ state, teacher, student, max, pageToken, page, all, account }) => {
-    const args = ['classroom', 'courses', 'list'];
+    const args: GogArg[] = ['classroom', 'courses', 'list'];
     if (state) args.push(`--state=${state}`);
     if (teacher) args.push(`--teacher=${teacher}`);
     if (student) args.push(`--student=${student}`);
@@ -36,7 +38,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, account }) => {
-    return runOrDiagnose(['classroom', 'courses', 'get', courseId], { account });
+    return runOrDiagnose(['classroom', 'courses', 'get', pos(courseId)], { account });
   });
 
   server.registerTool('gog_classroom_students_list', {
@@ -51,7 +53,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, max, pageToken, page, all, account }) => {
-    const args = ['classroom', 'students', 'list', courseId];
+    const args: GogArg[] = ['classroom', 'students', 'list', pos(courseId)];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -68,7 +70,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, userId, account }) => {
-    return runOrDiagnose(['classroom', 'students', 'get', courseId, userId], { account });
+    return runOrDiagnose(['classroom', 'students', 'get', pos(courseId), pos(userId)], { account });
   });
 
   server.registerTool('gog_classroom_teachers_list', {
@@ -83,7 +85,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, max, pageToken, page, all, account }) => {
-    const args = ['classroom', 'teachers', 'list', courseId];
+    const args: GogArg[] = ['classroom', 'teachers', 'list', pos(courseId)];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -100,7 +102,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, userId, account }) => {
-    return runOrDiagnose(['classroom', 'teachers', 'get', courseId, userId], { account });
+    return runOrDiagnose(['classroom', 'teachers', 'get', pos(courseId), pos(userId)], { account });
   });
 
   server.registerTool('gog_classroom_roster', {
@@ -117,7 +119,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, students, teachers, max, pageToken, page, all, account }) => {
-    const args = ['classroom', 'roster', courseId];
+    const args: GogArg[] = ['classroom', 'roster', pos(courseId)];
     if (students) args.push('--students');
     if (teachers) args.push('--teachers');
     if (max !== undefined) args.push(`--max=${max}`);
@@ -143,7 +145,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, state, topic, orderBy, max, pageToken, page, all, scanPages, account }) => {
-    const args = ['classroom', 'coursework', 'list', courseId];
+    const args: GogArg[] = ['classroom', 'coursework', 'list', pos(courseId)];
     if (state) args.push(`--state=${state}`);
     if (topic) args.push(`--topic=${topic}`);
     if (orderBy) args.push(`--order-by=${orderBy}`);
@@ -164,7 +166,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, courseworkId, account }) => {
-    return runOrDiagnose(['classroom', 'coursework', 'get', courseId, courseworkId], { account });
+    return runOrDiagnose(['classroom', 'coursework', 'get', pos(courseId), pos(courseworkId)], { account });
   });
 
   server.registerTool('gog_classroom_submissions_list', {
@@ -183,7 +185,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, courseworkId, state, late, user, max, pageToken, page, all, account }) => {
-    const args = ['classroom', 'submissions', 'list', courseId, courseworkId];
+    const args: GogArg[] = ['classroom', 'submissions', 'list', pos(courseId), pos(courseworkId)];
     if (state) args.push(`--state=${state}`);
     if (late) args.push(`--late=${late}`);
     if (user) args.push(`--user=${user}`);
@@ -204,7 +206,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, courseworkId, submissionId, account }) => {
-    return runOrDiagnose(['classroom', 'submissions', 'get', courseId, courseworkId, submissionId], { account });
+    return runOrDiagnose(['classroom', 'submissions', 'get', pos(courseId), pos(courseworkId), pos(submissionId)], { account });
   });
 
   server.registerTool('gog_classroom_submissions_grade', {
@@ -219,7 +221,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, courseworkId, submissionId, draft, assigned, account }) => {
-    const args = ['classroom', 'submissions', 'grade', courseId, courseworkId, submissionId];
+    const args: GogArg[] = ['classroom', 'submissions', 'grade', pos(courseId), pos(courseworkId), pos(submissionId)];
     if (draft) args.push(`--draft=${draft}`);
     if (assigned) args.push(`--assigned=${assigned}`);
     return runOrDiagnose(args, { account });
@@ -235,7 +237,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, courseworkId, submissionId, account }) => {
-    return runOrDiagnose(['classroom', 'submissions', 'return', courseId, courseworkId, submissionId], { account });
+    return runOrDiagnose(['classroom', 'submissions', 'return', pos(courseId), pos(courseworkId), pos(submissionId)], { account });
   });
 
   server.registerTool('gog_classroom_submissions_turn_in', {
@@ -248,7 +250,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, courseworkId, submissionId, account }) => {
-    return runOrDiagnose(['classroom', 'submissions', 'turn-in', courseId, courseworkId, submissionId], { account });
+    return runOrDiagnose(['classroom', 'submissions', 'turn-in', pos(courseId), pos(courseworkId), pos(submissionId)], { account });
   });
 
   server.registerTool('gog_classroom_submissions_reclaim', {
@@ -261,7 +263,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, courseworkId, submissionId, account }) => {
-    return runOrDiagnose(['classroom', 'submissions', 'reclaim', courseId, courseworkId, submissionId], { account });
+    return runOrDiagnose(['classroom', 'submissions', 'reclaim', pos(courseId), pos(courseworkId), pos(submissionId)], { account });
   });
 
   server.registerTool('gog_classroom_announcements_list', {
@@ -278,7 +280,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, state, orderBy, max, pageToken, page, all, account }) => {
-    const args = ['classroom', 'announcements', 'list', courseId];
+    const args: GogArg[] = ['classroom', 'announcements', 'list', pos(courseId)];
     if (state) args.push(`--state=${state}`);
     if (orderBy) args.push(`--order-by=${orderBy}`);
     if (max !== undefined) args.push(`--max=${max}`);
@@ -297,7 +299,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, announcementId, account }) => {
-    return runOrDiagnose(['classroom', 'announcements', 'get', courseId, announcementId], { account });
+    return runOrDiagnose(['classroom', 'announcements', 'get', pos(courseId), pos(announcementId)], { account });
   });
 
   server.registerTool('gog_classroom_announcements_create', {
@@ -311,7 +313,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, text, state, scheduled, account }) => {
-    const args = ['classroom', 'announcements', 'create', courseId, `--text=${text}`];
+    const args: GogArg[] = ['classroom', 'announcements', 'create', pos(courseId), `--text=${text}`];
     if (state) args.push(`--state=${state}`);
     if (scheduled) args.push(`--scheduled=${scheduled}`);
     return runOrDiagnose(args, { account });
@@ -329,7 +331,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, max, pageToken, page, all, account }) => {
-    const args = ['classroom', 'topics', 'list', courseId];
+    const args: GogArg[] = ['classroom', 'topics', 'list', pos(courseId)];
     if (max !== undefined) args.push(`--max=${max}`);
     const token = resolvePageToken({ pageToken, page });
     if (token) args.push(`--page=${token}`);
@@ -346,7 +348,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ courseId, topicId, account }) => {
-    return runOrDiagnose(['classroom', 'topics', 'get', courseId, topicId], { account });
+    return runOrDiagnose(['classroom', 'topics', 'get', pos(courseId), pos(topicId)], { account });
   });
 
   server.registerTool('gog_classroom_invitations_list', {
@@ -362,7 +364,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ course, user, max, pageToken, page, all, account }) => {
-    const args = ['classroom', 'invitations', 'list'];
+    const args: GogArg[] = ['classroom', 'invitations', 'list'];
     if (course) args.push(`--course=${course}`);
     if (user) args.push(`--user=${user}`);
     if (max !== undefined) args.push(`--max=${max}`);
@@ -380,7 +382,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ invitationId, account }) => {
-    return runOrDiagnose(['classroom', 'invitations', 'get', invitationId], { account });
+    return runOrDiagnose(['classroom', 'invitations', 'get', pos(invitationId)], { account });
   });
 
   server.registerTool('gog_classroom_invitations_accept', {
@@ -391,7 +393,7 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ invitationId, account }) => {
-    return runOrDiagnose(['classroom', 'invitations', 'accept', invitationId], { account });
+    return runOrDiagnose(['classroom', 'invitations', 'accept', pos(invitationId)], { account });
   });
 
   server.registerTool('gog_classroom_profile_get', {
@@ -402,8 +404,8 @@ export function registerClassroomTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ userId, account }) => {
-    const args = ['classroom', 'profile', 'get'];
-    if (userId) args.push(userId);
+    const args: GogArg[] = ['classroom', 'profile', 'get'];
+    if (userId) args.push(pos(userId));
     return runOrDiagnose(args, { account });
   });
 

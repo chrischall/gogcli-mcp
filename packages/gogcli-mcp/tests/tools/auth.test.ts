@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerAuthTools, authToolsFor } from '../../src/tools/auth.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -108,7 +109,7 @@ describe('gog_auth_add', () => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_auth_add', { email: 'user@gmail.com' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--services', 'all'],
+      ['auth', 'add', pos('user@gmail.com'), '--services', 'all'],
       { interactive: true, timeout: 300_000 },
     );
     expect(result.content[0].text).toBe('Authorization successful for user@gmail.com');
@@ -119,7 +120,7 @@ describe('gog_auth_add', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_auth_add', { email: 'user@gmail.com', services: 'sheets,gmail' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--services', 'sheets,gmail'],
+      ['auth', 'add', pos('user@gmail.com'), '--services', 'sheets,gmail'],
       { interactive: true, timeout: 300_000 },
     );
   });
@@ -137,7 +138,7 @@ describe('gog_auth_add', () => {
       extraScopes: 'https://www.googleapis.com/auth/bigquery.readonly',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--services', 'sheets',
+      ['auth', 'add', pos('user@gmail.com'), '--services', 'sheets',
         '--extra-scopes=https://www.googleapis.com/auth/bigquery.readonly', '--force-consent'],
       { interactive: true, timeout: 300_000 },
     );
@@ -148,7 +149,7 @@ describe('gog_auth_add', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_auth_add', { email: 'user@gmail.com' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--services', 'all'],
+      ['auth', 'add', pos('user@gmail.com'), '--services', 'all'],
       { interactive: true, timeout: 300_000 },
     );
   });
@@ -229,7 +230,7 @@ describe('gog_auth_add_url', () => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_auth_add_url', { email: 'user@gmail.com' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '1', '--services', 'all', '--force-consent'],
+      ['auth', 'add', pos('user@gmail.com'), '--remote', '--step', '1', '--services', 'all', '--force-consent'],
       { redactMode: 'tokens' },
     );
     expect(result.content[0].text).toContain('accounts.google.com');
@@ -240,7 +241,7 @@ describe('gog_auth_add_url', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_auth_add_url', { email: 'user@gmail.com', services: 'gmail,drive' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '1', '--services', 'gmail,drive', '--force-consent'],
+      ['auth', 'add', pos('user@gmail.com'), '--remote', '--step', '1', '--services', 'gmail,drive', '--force-consent'],
       { redactMode: 'tokens' },
     );
   });
@@ -254,7 +255,7 @@ describe('gog_auth_add_url', () => {
       extraScopes: 'https://www.googleapis.com/auth/bigquery.readonly',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '1', '--services', 'sheets', '--force-consent',
+      ['auth', 'add', pos('user@gmail.com'), '--remote', '--step', '1', '--services', 'sheets', '--force-consent',
         '--extra-scopes=https://www.googleapis.com/auth/bigquery.readonly'],
       { redactMode: 'tokens' },
     );
@@ -277,7 +278,7 @@ describe('gog_auth_add_complete', () => {
       redirectUrl: 'http://127.0.0.1:59436/oauth2/callback?code=abc&state=xyz',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '2', '--auth-url',
+      ['auth', 'add', pos('user@gmail.com'), '--remote', '--step', '2', '--auth-url',
         'http://127.0.0.1:59436/oauth2/callback?code=abc&state=xyz', '--services', 'all', '--force-consent'],
     );
     expect(result.content[0].text).toContain('stored');
@@ -292,7 +293,7 @@ describe('gog_auth_add_complete', () => {
       services: 'gmail,drive',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '2', '--auth-url',
+      ['auth', 'add', pos('user@gmail.com'), '--remote', '--step', '2', '--auth-url',
         'http://127.0.0.1/cb?code=c&state=s', '--services', 'gmail,drive', '--force-consent'],
     );
   });
@@ -307,7 +308,7 @@ describe('gog_auth_add_complete', () => {
       extraScopes: 'https://www.googleapis.com/auth/bigquery.readonly',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'user@gmail.com', '--remote', '--step', '2', '--auth-url',
+      ['auth', 'add', pos('user@gmail.com'), '--remote', '--step', '2', '--auth-url',
         'http://127.0.0.1/cb?code=c&state=s', '--services', 'sheets', '--force-consent',
         '--extra-scopes=https://www.googleapis.com/auth/bigquery.readonly'],
     );
@@ -332,7 +333,7 @@ describe('authToolsFor (least-privilege default services)', () => {
     const harness = await gmailHarness();
     await harness.callTool('gog_auth_add_url', { email: 'u@x.com' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'u@x.com', '--remote', '--step', '1', '--services', 'gmail', '--force-consent'],
+      ['auth', 'add', pos('u@x.com'), '--remote', '--step', '1', '--services', 'gmail', '--force-consent'],
       { redactMode: 'tokens' },
     );
   });
@@ -342,7 +343,7 @@ describe('authToolsFor (least-privilege default services)', () => {
     const harness = await gmailHarness();
     await harness.callTool('gog_auth_add', { email: 'u@x.com' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'u@x.com', '--services', 'gmail'],
+      ['auth', 'add', pos('u@x.com'), '--services', 'gmail'],
       { interactive: true, timeout: 300_000 },
     );
   });
@@ -355,7 +356,7 @@ describe('authToolsFor (least-privilege default services)', () => {
       redirectUrl: 'http://127.0.0.1/cb?code=c&state=s',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'u@x.com', '--remote', '--step', '2', '--auth-url',
+      ['auth', 'add', pos('u@x.com'), '--remote', '--step', '2', '--auth-url',
         'http://127.0.0.1/cb?code=c&state=s', '--services', 'gmail', '--force-consent'],
     );
   });
@@ -365,7 +366,7 @@ describe('authToolsFor (least-privilege default services)', () => {
     const harness = await gmailHarness();
     await harness.callTool('gog_auth_add_url', { email: 'u@x.com', services: 'gmail,drive' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['auth', 'add', 'u@x.com', '--remote', '--step', '1', '--services', 'gmail,drive', '--force-consent'],
+      ['auth', 'add', pos('u@x.com'), '--remote', '--step', '1', '--services', 'gmail,drive', '--force-consent'],
       { redactMode: 'tokens' },
     );
   });

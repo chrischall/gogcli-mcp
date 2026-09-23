@@ -3,6 +3,9 @@ import { delimiter, join } from 'node:path';
 import { currentCallSignal, killOnCancel, parseBoolEnv, readEnvVar, redactSecrets as redactSharedSecrets } from '@chrischall/mcp-utils';
 import { naiveSourceTimeZone } from './timestamps.js';
 import { forbiddenArgReason } from './arg-guard.js';
+import { isGogPositional, type GogPositional } from './argv.js';
+
+export type { GogPositional } from './argv.js';
 
 export type Spawner = (
   command: string,
@@ -56,10 +59,10 @@ export interface GogFileArg {
   positional?: boolean;
 }
 
-export type GogArg = string | GogFileArg;
+export type GogArg = string | GogFileArg | GogPositional;
 
 export function isGogFileArg(arg: GogArg): arg is GogFileArg {
-  return typeof arg !== 'string';
+  return typeof arg !== 'string' && arg.kind === 'file';
 }
 
 export interface RunOptions {
@@ -306,7 +309,7 @@ function formatTimeout(ms: number): string {
 // plain argv, and remove the temp dir afterwards — on success, on a non-zero
 // exit, and on timeout alike. A leaked temp file holds user email content.
 async function spawnWithTempFiles(
-  args: GogArg[],
+  args: Array<string | GogFileArg>,
   opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
 ): Promise<string> {
   const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
@@ -356,7 +359,7 @@ async function spawnWithTempFiles(
 // to happen synchronously within the `run()` call, which the fake-timer tests
 // in tests/runner.test.ts depend on.
 function spawnExecutor(
-  args: GogArg[],
+  args: Array<string | GogFileArg>,
   opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
 ): Promise<string> {
   if (args.some(isGogFileArg)) {
@@ -464,15 +467,38 @@ async function spawnGog(
 // Assemble the full gog argv: the always-injected flags (--json/--color=never,
 // --no-input unless interactive, --readonly when opted in), --account, then the
 // caller's args. Shared by run() and runBinary() so both get identical flags.
-// Refuse a safety-control override sitting in FLAG position — anywhere before
-// the first `--`, after which gog reads every token as a positional. The tool
-// layer already vets model-supplied escape-hatch args (arg-guard.ts); this is
-// the backstop for every other path, so no tool can hand gog a
-// `--readonly=false` that would override the `--readonly` injected below.
-function assertNoSafetyOverrides(args: GogArg[]): void {
+// Split the caller's argv into flag position and positional position.
+// pos()-marked values, positional file args, and anything after an explicit
+// `--` are positionals; they go after ONE `--` at the very end, in their
+// original order, so a value that starts with '-' is data, never a flag
+// (audit BUG-1). Commands and flags keep their relative order. With nothing
+// positional the argv is returned unchanged — no `--` at all.
+function placePositionals(args: GogArg[]): { flags: Array<string | GogFileArg>; positionals: Array<string | GogFileArg> } {
+  const flags: Array<string | GogFileArg> = [];
+  const positionals: Array<string | GogFileArg> = [];
+  let afterSeparator = false;
   for (const arg of args) {
+    if (arg === '--') {
+      afterSeparator = true;
+    } else if (isGogPositional(arg)) {
+      positionals.push(arg.value);
+    } else if (afterSeparator || (isGogFileArg(arg) && arg.positional)) {
+      positionals.push(arg);
+    } else {
+      flags.push(arg);
+    }
+  }
+  return { flags, positionals };
+}
+
+// Refuse a safety-control override sitting in FLAG position. The tool layer
+// already vets model-supplied escape-hatch args (arg-guard.ts); this is the
+// backstop for every other path, so no tool can hand gog a `--readonly=false`
+// that would override the `--readonly` injected below (gog takes the LAST
+// value of a repeated flag). Positionals are exempt: after `--` they are data.
+function assertNoSafetyOverrides(flags: Array<string | GogFileArg>): void {
+  for (const arg of flags) {
     if (typeof arg !== 'string') continue;
-    if (arg === '--') return;
     const reason = forbiddenArgReason(arg);
     if (reason) throw new Error(reason);
   }
@@ -481,10 +507,11 @@ function assertNoSafetyOverrides(args: GogArg[]): void {
 function assembleArgs(
   args: GogArg[],
   opts: { account?: string; interactive: boolean; readonly: boolean; gmailNoSend: boolean },
-): GogArg[] {
-  assertNoSafetyOverrides(args);
+): Array<string | GogFileArg> {
+  const { flags, positionals } = placePositionals(args);
+  assertNoSafetyOverrides(flags);
   const effectiveAccount = opts.account ?? readEnvVar('GOG_ACCOUNT');
-  const fullArgs: GogArg[] = ['--json', '--color=never'];
+  const fullArgs: Array<string | GogFileArg> = ['--json', '--color=never'];
   if (!opts.interactive) {
     fullArgs.push('--no-input');
   }
@@ -500,7 +527,8 @@ function assembleArgs(
   if (effectiveAccount) {
     fullArgs.push('--account', effectiveAccount);
   }
-  fullArgs.push(...args);
+  fullArgs.push(...flags);
+  if (positionals.length > 0) fullArgs.push('--', ...positionals);
   return fullArgs;
 }
 

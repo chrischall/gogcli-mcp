@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { errorResult } from '@chrischall/mcp-utils';
 import { accountParam, errorText, runOrDiagnose } from './utils.js';
 import { assertSafeForwardedArgs } from '../arg-guard.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 // Gmail methods gog_api_call refuses outright (audit SEC-2). `allowWrite` is a
 // boolean the MODEL sets, so it cannot stand in for the user's confirmation of
@@ -33,7 +35,7 @@ export function registerApiTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ all, account }) => {
-    const args = ['api', 'list'];
+    const args: GogArg[] = ['api', 'list'];
     if (all) args.push('--all');
     return runOrDiagnose(args, { account });
   });
@@ -48,8 +50,8 @@ export function registerApiTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ api, version, method, account }) => {
-    const args = ['api', 'describe', api, version];
-    if (method) args.push(method);
+    const args: GogArg[] = ['api', 'describe', pos(api), pos(version)];
+    if (method) args.push(pos(method));
     return runOrDiagnose(args, { account });
   });
 
@@ -75,7 +77,7 @@ export function registerApiTools(server: McpServer): void {
     } catch (err) {
       return errorResult(errorText(err));
     }
-    const args = ['api', 'call', api, version, method];
+    const args: GogArg[] = ['api', 'call', pos(api), pos(version), pos(method)];
     if (params) args.push(`--params=${params}`);
     if (body) args.push(`--body=${body}`);
     if (scope) args.push(`--scope=${scope}`);

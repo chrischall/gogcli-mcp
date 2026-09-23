@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerTasksTools } from '../../src/tools/tasks.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -30,7 +31,7 @@ describe('gog_tasks_list', () => {
     vi.mocked(runner.run).mockResolvedValue('{"items":[]}');
     const harness = await setupHandlers();
     await harness.callTool('gog_tasks_list', { tasklistId: 'list1' });
-    expect(runner.run).toHaveBeenCalledWith(['tasks', 'list', 'list1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['tasks', 'list', pos('list1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -46,7 +47,7 @@ describe('gog_tasks_get', () => {
     vi.mocked(runner.run).mockResolvedValue('{"id":"task1"}');
     const harness = await setupHandlers();
     await harness.callTool('gog_tasks_get', { tasklistId: 'list1', taskId: 'task1' });
-    expect(runner.run).toHaveBeenCalledWith(['tasks', 'get', 'list1', 'task1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['tasks', 'get', pos('list1'), pos('task1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -63,7 +64,7 @@ describe('gog_tasks_add', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_tasks_add', { tasklistId: 'list1', title: 'Buy milk' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['tasks', 'add', 'list1', '--title=Buy milk'],
+      ['tasks', 'add', pos('list1'), '--title=Buy milk'],
       { account: undefined },
     );
   });
@@ -73,7 +74,7 @@ describe('gog_tasks_add', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_tasks_add', { tasklistId: 'list1', title: 'Buy milk', notes: 'Whole milk', due: '2026-04-20' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['tasks', 'add', 'list1', '--title=Buy milk', '--notes=Whole milk', '--due=2026-04-20'],
+      ['tasks', 'add', pos('list1'), '--title=Buy milk', '--notes=Whole milk', '--due=2026-04-20'],
       { account: undefined },
     );
   });
@@ -91,7 +92,7 @@ describe('gog_tasks_done', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_tasks_done', { tasklistId: 'list1', taskId: 'task1' });
-    expect(runner.run).toHaveBeenCalledWith(['tasks', 'done', 'list1', 'task1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['tasks', 'done', pos('list1'), pos('task1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -107,7 +108,7 @@ describe('gog_tasks_delete', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_tasks_delete', { tasklistId: 'list1', taskId: 'task1' });
-    expect(runner.run).toHaveBeenCalledWith(['tasks', 'delete', 'list1', 'task1', '--force'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['tasks', 'delete', pos('list1'), pos('task1'), '--force'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {

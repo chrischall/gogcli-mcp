@@ -6,6 +6,7 @@ import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
 import { extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText } from '../gmail-dispatch-guard.js';
+import { pos } from '../argv.js';
 
 // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
 // only in the subcommand and default recipient set (reply → sender; reply-all
@@ -150,7 +151,7 @@ async function sendReply(
   flags: ReplyFlags,
   ctx: ServerContext,
 ) {
-  const metaResult = await runOrDiagnose(['gmail', 'get', messageId, '--format=metadata'], { account });
+  const metaResult = await runOrDiagnose(['gmail', 'get', pos(messageId), '--format=metadata'], { account });
   if (metaResult.isError) return metaResult;
   const headers = parseMetadataHeaders(resultText(metaResult));
   const recipients = computeReplyRecipients(kind, headers, flags);
@@ -164,7 +165,7 @@ async function sendReply(
     attachmentCount: (flags.attach?.length ?? 0) + (flags.attachInline?.length ?? 0),
   });
   if (confirmation) return confirmation;
-  const args: GogArg[] = ['gmail', kind, messageId];
+  const args: GogArg[] = ['gmail', kind, pos(messageId)];
   appendReplyFlags(args, flags);
   const result = await runOrDiagnose(args, { account });
   if (!result.isError) logGmailDispatch(toolName, recipients, account);
@@ -206,7 +207,7 @@ export function registerGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ query, max, pageToken, page, maxPages, all, fromContact, account }) => {
-    const args = ['gmail', 'search', query];
+    const args: GogArg[] = ['gmail', 'search', pos(query)];
     if (max !== undefined) args.push(`--max=${max}`);
     if (all) args.push('--all');
     if (fromContact) args.push(`--from-contact=${fromContact}`);
@@ -243,7 +244,7 @@ export function registerGmailTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ messageId, format, sanitizeContent, account }) => {
-    const args = ['gmail', 'get', messageId];
+    const args: GogArg[] = ['gmail', 'get', pos(messageId)];
     if (format) args.push(`--format=${format}`);
     if (sanitizeContent) args.push('--sanitize-content');
     return runOrDiagnose(args, { account });

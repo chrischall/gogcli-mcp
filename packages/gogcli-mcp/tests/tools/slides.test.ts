@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerSlidesTools } from '../../src/tools/slides.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -14,7 +15,7 @@ describe('gog_slides_export', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_export', { presentationId: 'p1' });
-    expect(runner.run).toHaveBeenCalledWith(['slides', 'export', 'p1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['slides', 'export', pos('p1')], { account: undefined });
   });
 
   it('passes --out and --format when provided', async () => {
@@ -22,7 +23,7 @@ describe('gog_slides_export', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_export', { presentationId: 'p1', out: '/tmp/deck.pdf', format: 'pdf' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['slides', 'export', 'p1', '--out=/tmp/deck.pdf', '--format=pdf'],
+      ['slides', 'export', pos('p1'), '--out=/tmp/deck.pdf', '--format=pdf'],
       { account: undefined },
     );
   });
@@ -32,7 +33,7 @@ describe('gog_slides_export', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_export', { presentationId: 'p1', out: '/tmp/deck.pptx', overwrite: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['slides', 'export', 'p1', '--out=/tmp/deck.pptx', '--overwrite'],
+      ['slides', 'export', pos('p1'), '--out=/tmp/deck.pptx', '--overwrite'],
       { account: undefined },
     );
   });
@@ -50,7 +51,7 @@ describe('gog_slides_info', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_info', { presentationId: 'p1' });
-    expect(runner.run).toHaveBeenCalledWith(['slides', 'info', 'p1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['slides', 'info', pos('p1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -66,7 +67,7 @@ describe('gog_slides_create', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_create', { title: 'Deck' });
-    expect(runner.run).toHaveBeenCalledWith(['slides', 'create', 'Deck'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['slides', 'create', pos('Deck')], { account: undefined });
   });
 
   it('passes --parent and --template when provided', async () => {
@@ -74,7 +75,7 @@ describe('gog_slides_create', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_create', { title: 'Deck', parent: 'folder1', template: 'tpl1' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['slides', 'create', 'Deck', '--parent=folder1', '--template=tpl1'],
+      ['slides', 'create', pos('Deck'), '--parent=folder1', '--template=tpl1'],
       { account: undefined },
     );
   });
@@ -93,7 +94,7 @@ describe('gog_slides_copy', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_copy', { presentationId: 'p1', title: 'Copy' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['slides', 'copy', 'p1', 'Copy'],
+      ['slides', 'copy', pos('p1'), pos('Copy')],
       { account: undefined },
     );
   });
@@ -103,7 +104,7 @@ describe('gog_slides_copy', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_copy', { presentationId: 'p1', title: 'Copy', parent: 'folder1' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['slides', 'copy', 'p1', 'Copy', '--parent=folder1'],
+      ['slides', 'copy', pos('p1'), pos('Copy'), '--parent=folder1'],
       { account: undefined },
     );
   });
@@ -121,7 +122,7 @@ describe('gog_slides_list_slides', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_list_slides', { presentationId: 'p1' });
-    expect(runner.run).toHaveBeenCalledWith(['slides', 'list-slides', 'p1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['slides', 'list-slides', pos('p1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -138,7 +139,7 @@ describe('gog_slides_read_slide', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_read_slide', { presentationId: 'p1', slideId: 's1' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['slides', 'read-slide', 'p1', 's1'],
+      ['slides', 'read-slide', pos('p1'), pos('s1')],
       { account: undefined },
     );
   });
@@ -148,7 +149,7 @@ describe('gog_slides_read_slide', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_slides_read_slide', { presentationId: 'p1', slideId: 's1', detail: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['slides', 'read-slide', 'p1', 's1', '--detail'],
+      ['slides', 'read-slide', pos('p1'), pos('s1'), '--detail'],
       { account: undefined },
     );
   });

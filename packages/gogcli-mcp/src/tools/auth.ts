@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { run } from '../runner.js';
 import { errorResult, rawTextResult } from '@chrischall/mcp-utils';
 import { errorText, formatAuthHealth, registerRunTool } from './utils.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 /** The `gog auth` subcommands gog_auth_run may run — account management only. */
 export const AUTH_RUN_SUBCOMMANDS: readonly string[] = ['list', 'status', 'services', 'remove', 'alias'];
@@ -112,7 +114,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
     }),
   }, async ({ email, services = defaultServices, extraScopes }) => {
     try {
-      const args = ['auth', 'add', email, '--services', services];
+      const args: GogArg[] = ['auth', 'add', pos(email), '--services', services];
       // --force-consent rides along with extraScopes and only with them. Google
       // re-prompts for a NEW scope only when consent is forced; without it the
       // account can come back still missing the scope, with a success message —
@@ -150,7 +152,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       // (the whole point when recovering from a dead one). redactMode 'tokens'
       // keeps the consent URL's scope names intact (the shared redactor mangles
       // them) while still stripping any real token — a step-1 URL carries none.
-      const args = ['auth', 'add', email, '--remote', '--step', '1', '--services', services, '--force-consent'];
+      const args: GogArg[] = ['auth', 'add', pos(email), '--remote', '--step', '1', '--services', services, '--force-consent'];
       if (extraScopes) args.push(`--extra-scopes=${extraScopes}`);
       return rawTextResult(await run(args, { redactMode: 'tokens' }));
     } catch (err) {
@@ -181,7 +183,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
     }),
   }, async ({ email, redirectUrl, services = defaultServices, extraScopes }) => {
     try {
-      const args = ['auth', 'add', email, '--remote', '--step', '2', '--auth-url', redirectUrl,
+      const args: GogArg[] = ['auth', 'add', pos(email), '--remote', '--step', '2', '--auth-url', redirectUrl,
         '--services', services, '--force-consent'];
       if (extraScopes) args.push(`--extra-scopes=${extraScopes}`);
       return rawTextResult(await run(args));

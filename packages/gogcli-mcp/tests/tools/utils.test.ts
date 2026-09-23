@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as runner from '../../src/runner.js';
 import { runOrDiagnose, pushPaginationFlags, formatAccountList, formatAuthHealth } from '../../src/tools/utils.js';
+import { pos } from '../../src/argv.js';
 
 // PARTIAL mock: only `run` is stubbed; everything else stays real.
 vi.mock('../../src/runner.js', async (importOriginal) => ({
@@ -51,7 +52,7 @@ describe('formatAccountList', () => {
         email: 'chris.c.hall@gmail.com',
         subject: '109876543210987654321',
         client: 'default',
-        services: ['gmail', 'drive'],
+        services: ['gmail', pos('drive')],
         scopes: ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/drive'],
         created_at: '2026-01-02T03:04:05Z',
       },
@@ -94,7 +95,7 @@ describe('formatAccountList', () => {
 describe('runOrDiagnose', () => {
   it('returns output text on success (not flagged as an error)', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"ok":true}');
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toBe('{"ok":true}');
     expect(result.isError).toBeUndefined();
   });
@@ -106,7 +107,7 @@ describe('runOrDiagnose', () => {
   it('leaves a lossless response byte-for-byte untouched', async () => {
     const raw = '{\n  "id": "m1",\n  "internalDate": "1785209760000"\n}';
     vi.mocked(runner.run).mockResolvedValue(raw);
-    const result = await runOrDiagnose(['gmail', 'raw', 'm1'], { lossless: true });
+    const result = await runOrDiagnose(['gmail', 'raw', pos('m1')], { lossless: true });
     expect(result.content[0].text).toBe(raw);
   });
 
@@ -182,7 +183,7 @@ describe('runOrDiagnose', () => {
   it('does NOT minify a lossless response', async () => {
     const raw = '{\n  "id": "m1"\n}';
     vi.mocked(runner.run).mockResolvedValue(raw);
-    const result = await runOrDiagnose(['gmail', 'raw', 'm1'], { lossless: true });
+    const result = await runOrDiagnose(['gmail', 'raw', pos('m1')], { lossless: true });
     expect(result.content[0].text).toBe(raw);
   });
 
@@ -230,7 +231,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run).mockResolvedValue(
       '{\n  "id": "f1",\n  "thumbnailLink": "https://lh3.googleusercontent.com/x=s220",\n  "webViewLink": "https://docs.google.com/d/f1"\n}',
     );
-    const result = await runOrDiagnose(['drive', 'get', 'f1'], { stripMedia: true });
+    const result = await runOrDiagnose(['drive', 'get', pos('f1')], { stripMedia: true });
     expect(result.content[0].text).toBe('{"id":"f1","webViewLink":"https://docs.google.com/d/f1"}');
   });
 
@@ -240,14 +241,14 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run).mockResolvedValue(
       JSON.stringify({ files: [{ id: 'f1', hasThumbnail: false, thumbnailLink: 'https://x/y=s220', webViewLink: 'https://docs/f1' }] }),
     );
-    const result = await runOrDiagnose(['drive', 'search', 'q'], { stripMedia: true });
+    const result = await runOrDiagnose(['drive', 'search', pos('q')], { stripMedia: true });
     const parsed = JSON.parse(result.content[0].text as string);
     expect(parsed.files[0]).toEqual({ id: 'f1', hasThumbnail: false, webViewLink: 'https://docs/f1' });
   });
 
   it('does not strip media unless asked', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"thumbnailLink":"https://x/y=s220"}');
-    const result = await runOrDiagnose(['drive', 'get', 'f1'], {});
+    const result = await runOrDiagnose(['drive', 'get', pos('f1')], {});
     expect(result.content[0].text).toBe('{"thumbnailLink":"https://x/y=s220"}');
   });
 
@@ -263,7 +264,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Doc not found'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toBe(
       'Error: Doc not found\n\nConfigured accounts:\nuser@gmail.com',
     );
@@ -284,7 +285,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('refusing to delete gmail draft r123 without --force (non-interactive)'))
       .mockResolvedValueOnce(authListJson);
-    const result = await runOrDiagnose(['gmail', 'drafts', 'delete', 'r123'], {});
+    const result = await runOrDiagnose(['gmail', 'drafts', 'delete', pos('r123')], {});
     const text = result.content[0].text;
     expect(text).toContain('Configured accounts:\nchris.c.hall@gmail.com');
     expect(text).not.toContain('scopes');
@@ -297,7 +298,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Doc not found'))
       .mockResolvedValueOnce('{"accounts":[]}');
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toBe('Error: Doc not found\n\nConfigured accounts:\n(none)');
   });
 
@@ -305,7 +306,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Request failed with status 401'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['docs', 'comments', 'list', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'comments', 'list', pos('abc')], {});
     expect(result.content[0].text).toContain('Error: Request failed with status 401');
     expect(result.content[0].text).toContain('Configured accounts:\nuser@gmail.com');
     expect(result.content[0].text).toContain('gog_auth_add');
@@ -315,7 +316,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('unauthorized access'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toContain('gog_auth_add');
   });
 
@@ -323,7 +324,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('token has been expired or revoked'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toContain('gog_auth_add');
   });
 
@@ -331,7 +332,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('invalid_grant'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toContain('gog_auth_add');
   });
 
@@ -346,7 +347,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('429 rateLimitExceeded: the access token expired mid-request, retry'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['sheets', 'get', 'A1'], {});
+    const result = await runOrDiagnose(['sheets', 'get', pos('A1')], {});
     const text = result.content[0].text as string;
     expect(text).toContain('often transient');
     expect(text).not.toContain('gog_auth_add');
@@ -359,7 +360,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('401 unauthorized (quota project unset)'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['sheets', 'get', 'A1'], {});
+    const result = await runOrDiagnose(['sheets', 'get', pos('A1')], {});
     expect(result.content[0].text).toContain('gog_auth_add');
   });
 
@@ -375,7 +376,7 @@ describe('runOrDiagnose', () => {
         new Error('page token accepted; the requested export link has expired and must be regenerated'),
       )
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['drive', 'export', 'abc'], {});
+    const result = await runOrDiagnose(['drive', pos('export'), pos('abc')], {});
     expect(result.content[0].text).not.toContain('gog_auth_add');
   });
 
@@ -383,7 +384,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('oauth2: "invalid_grant" "Token has been expired or revoked."'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['gmail', 'search', 'is:unread'], {});
+    const result = await runOrDiagnose(['gmail', 'search', pos('is:unread')], {});
     const text = result.content[0].text as string;
     // plain-English cause
     expect(text).toContain('7-day');
@@ -398,7 +399,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Request failed with status 401'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     const text = result.content[0].text as string;
     expect(text).toContain('gog_auth_add');
     expect(text).not.toContain('In production');
@@ -408,7 +409,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Request failed with status 401'))
       .mockRejectedValueOnce(new Error('auth list failed'));
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toContain('Error: Request failed with status 401');
     expect(result.content[0].text).toContain('gog_auth_add');
     expect(result.content[0].text).not.toContain('Configured accounts');
@@ -418,7 +419,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Doc not found'))
       .mockRejectedValueOnce(new Error('auth list failed'));
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toBe('Error: Doc not found');
     expect(result.isError).toBe(true);
     expect(result.content[0].text).not.toContain('gog_auth_add');
@@ -428,7 +429,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Request failed with status 429'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
+    const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).toContain('transient');
     expect(result.content[0].text).toContain('Retry');
   });
@@ -439,7 +440,7 @@ describe('runOrDiagnose', () => {
       vi.mocked(runner.run)
         .mockRejectedValueOnce(new Error(`Request failed with status ${status}`))
         .mockResolvedValueOnce('user@gmail.com');
-      const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
+      const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
       expect(result.content[0].text, `status ${status}`).toContain('transient');
     }
   });
@@ -450,7 +451,7 @@ describe('runOrDiagnose', () => {
       vi.mocked(runner.run)
         .mockRejectedValueOnce(new Error(msg))
         .mockResolvedValueOnce('user@gmail.com');
-      const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
+      const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
       expect(result.content[0].text, msg).toContain('transient');
     }
   });
@@ -459,7 +460,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('DEADLINE_EXCEEDED: context deadline exceeded'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
+    const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).toContain('transient');
   });
 
@@ -467,7 +468,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Request failed with status 404'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['sheets', 'get', 'abc', 'A1'], {});
+    const result = await runOrDiagnose(['sheets', 'get', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).not.toContain('transient');
   });
 
@@ -475,7 +476,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Request failed with status 401'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['docs', 'cat', 'abc'], {});
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toContain('gog_auth_add');
     expect(result.content[0].text).not.toContain('transient');
   });
@@ -484,7 +485,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Request failed with status 503'))
       .mockRejectedValueOnce(new Error('auth list failed'));
-    const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
+    const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).toContain('transient');
     expect(result.content[0].text).not.toContain('Configured accounts');
   });
@@ -493,7 +494,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Range (Sheet1!AP1:AW1) exceeds grid limits. Max rows: 1000, max columns: 41'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['sheets', 'update', 'abc', 'AP1'], {});
+    const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('AP1')], {});
     expect(result.content[0].text).toContain('exceeds grid limits');
     expect(result.content[0].text).toContain('gog_sheets_insert');
   });
@@ -502,7 +503,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('Spreadsheet not found'))
       .mockResolvedValueOnce('user@gmail.com');
-    const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
+    const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).not.toContain('gog_sheets_insert');
   });
 
@@ -510,7 +511,7 @@ describe('runOrDiagnose', () => {
     vi.mocked(runner.run)
       .mockRejectedValueOnce(new Error('exceeds grid limits. Max rows: 1000, max columns: 41'))
       .mockRejectedValueOnce(new Error('auth list failed'));
-    const result = await runOrDiagnose(['sheets', 'update', 'abc', 'A1'], {});
+    const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).toContain('gog_sheets_insert');
     expect(result.content[0].text).not.toContain('Configured accounts');
   });

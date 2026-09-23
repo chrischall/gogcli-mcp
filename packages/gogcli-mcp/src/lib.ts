@@ -45,6 +45,8 @@ export type { FinalizeOptions, GmailListMethod } from './gmail-results.js';
 export { bootstrapGogAuth, AUTH_BOOTSTRAP_MARKER } from './bootstrap-auth.js';
 export type { AuthBootstrapStatus, AuthBootstrapOptions } from './bootstrap-auth.js';
 export type { RunOptions, Spawner, GogArg, GogFileArg } from './runner.js';
+export { pos } from './argv.js';
+export type { GogPositional } from './argv.js';
 // Caller-supplied attachment bytes — the only outbound attachment path that
 // works when the caller and gog share no filesystem (a hosted deployment such
 // as mcp-host). See src/attachments.ts.

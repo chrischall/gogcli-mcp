@@ -3,6 +3,7 @@ import { registerExtraCalendarTools } from '../../src/tools/calendar-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
 import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
 import { rawTextResult } from '@chrischall/mcp-utils';
+import { pos } from '../../../gogcli-mcp/src/argv.js';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -43,7 +44,7 @@ describe('gog_meet_create', () => {
 describe('gog_meet_get', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
     await harness.callTool('gog_meet_get', { meetingCode: 'abc-defg-hij' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'get', 'abc-defg-hij'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'get', pos('abc-defg-hij')], { account: undefined });
   });
 });
 
@@ -51,28 +52,28 @@ describe('gog_meet_update', () => {
   it('calls runOrDiagnose with meetingCode and --access', async () => {
     await harness.callTool('gog_meet_update', { meetingCode: 'abc-defg-hij', access: 'restricted' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['meet', 'update', 'abc-defg-hij', '--access=restricted'],
+      ['meet', 'update', pos('abc-defg-hij'), '--access=restricted'],
       { account: undefined },
     );
   });
 
   it('omits --access when not provided', async () => {
     await harness.callTool('gog_meet_update', { meetingCode: 'abc-defg-hij' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'update', 'abc-defg-hij'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'update', pos('abc-defg-hij')], { account: undefined });
   });
 });
 
 describe('gog_meet_end', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
     await harness.callTool('gog_meet_end', { meetingCode: 'abc-defg-hij' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'end', 'abc-defg-hij', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'end', pos('abc-defg-hij'), '--force'], { account: undefined });
   });
 });
 
 describe('gog_meet_history', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
     await harness.callTool('gog_meet_history', { meetingCode: 'abc-defg-hij' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'history', 'abc-defg-hij'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'history', pos('abc-defg-hij')], { account: undefined });
   });
 
   it('passes pagination flags', async () => {
@@ -83,14 +84,14 @@ describe('gog_meet_history', () => {
       all: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['meet', 'history', 'abc-defg-hij', '--max=50', '--page=tok', '--all'],
+      ['meet', 'history', pos('abc-defg-hij'), '--max=50', '--page=tok', '--all'],
       { account: undefined },
     );
   });
 
   it('omits --all when false', async () => {
     await harness.callTool('gog_meet_history', { meetingCode: 'abc-defg-hij', all: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'history', 'abc-defg-hij'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'history', pos('abc-defg-hij')], { account: undefined });
   });
 });
 
@@ -169,7 +170,7 @@ describe('gog_calendar_calendars', () => {
 describe('gog_calendar_search', () => {
   it('calls runOrDiagnose with just the query', async () => {
     await harness.callTool('gog_calendar_search', { query: 'standup' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'search', 'standup'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'search', pos('standup')], { account: undefined });
   });
 
   // One case per LEGAL window, not one case passing every flag at once. gog
@@ -187,7 +188,7 @@ describe('gog_calendar_search', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'calendar', 'search', 'standup',
+        'calendar', 'search', pos('standup'),
         '--from=today', '--to=tomorrow',
         '--calendar=primary', '--max=10',
       ],
@@ -198,7 +199,7 @@ describe('gog_calendar_search', () => {
   it('anchors --days at --from when both are given', async () => {
     await harness.callTool('gog_calendar_search', { query: 'standup', from: '2026-09-25', days: 7 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'search', 'standup', '--from=2026-09-25', '--days=7'],
+      ['calendar', 'search', pos('standup'), '--from=2026-09-25', '--days=7'],
       { account: undefined },
     );
   });
@@ -208,7 +209,7 @@ describe('gog_calendar_search', () => {
       vi.mocked(lib.runOrDiagnose).mockClear();
       await harness.callTool('gog_calendar_search', { query: 'standup', [param]: true });
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-        ['calendar', 'search', 'standup', flag],
+        ['calendar', 'search', pos('standup'), flag],
         { account: undefined },
       );
     }
@@ -217,7 +218,7 @@ describe('gog_calendar_search', () => {
   it('passes --week-start alongside --week', async () => {
     await harness.callTool('gog_calendar_search', { query: 'standup', week: true, weekStart: 'sun' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'search', 'standup', '--week', '--week-start=sun'],
+      ['calendar', 'search', pos('standup'), '--week', '--week-start=sun'],
       { account: undefined },
     );
   });
@@ -226,7 +227,7 @@ describe('gog_calendar_search', () => {
     await harness.callTool('gog_calendar_search', {
       query: 'standup', today: false, tomorrow: false, week: false,
     });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'search', 'standup'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'search', pos('standup')], { account: undefined });
   });
 });
 
@@ -246,7 +247,7 @@ describe('gog_calendar_changed', () => {
       account: 'me@example.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'changed', 'primary', '--calendars=work,personal', '--since=48h', '--max=25', '--all'],
+      ['calendar', 'changed', pos('primary'), '--calendars=work,personal', '--since=48h', '--max=25', '--all'],
       { account: 'me@example.com' },
     );
   });
@@ -271,7 +272,7 @@ describe('gog_calendar_freebusy', () => {
       from: 'A', to: 'B', calendarIds: 'primary,team@x.com', all: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'freebusy', 'primary,team@x.com', '--from=A', '--to=B', '--all'],
+      ['calendar', 'freebusy', pos('primary,team@x.com'), '--from=A', '--to=B', '--all'],
       { account: undefined },
     );
   });
@@ -295,20 +296,20 @@ describe('gog_calendar_colors', () => {
 describe('gog_calendar_acl', () => {
   it('calls runOrDiagnose with calendarId only', async () => {
     await harness.callTool('gog_calendar_acl', { calendarId: 'primary' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'acl', 'primary'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'acl', pos('primary')], { account: undefined });
   });
 
   it('passes pagination flags', async () => {
     await harness.callTool('gog_calendar_acl', { calendarId: 'primary', max: 25, page: 'tok', all: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'acl', 'primary', '--max=25', '--page=tok', '--all'],
+      ['calendar', 'acl', pos('primary'), '--max=25', '--page=tok', '--all'],
       { account: undefined },
     );
   });
 
   it('omits --all when false', async () => {
     await harness.callTool('gog_calendar_acl', { calendarId: 'primary', all: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'acl', 'primary'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['calendar', 'acl', pos('primary')], { account: undefined });
   });
 });
 
@@ -318,7 +319,7 @@ describe('gog_calendar_move', () => {
       calendarId: 'primary', eventId: 'ev1', destinationCalendarId: 'team@x.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'move', 'primary', 'ev1', 'team@x.com'],
+      ['calendar', 'move', pos('primary'), pos('ev1'), pos('team@x.com')],
       { account: undefined },
     );
   });
@@ -329,7 +330,7 @@ describe('gog_calendar_move', () => {
       sendUpdates: 'all',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'move', 'primary', 'ev1', 'team@x.com', '--send-updates=all'],
+      ['calendar', 'move', pos('primary'), pos('ev1'), pos('team@x.com'), '--send-updates=all'],
       { account: undefined },
     );
   });
@@ -355,7 +356,7 @@ describe('gog_calendar_out_of_office', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'calendar', 'out-of-office', 'primary',
+        'calendar', 'out-of-office', pos('primary'),
         '--from=2026-06-01', '--to=2026-06-05',
         '--summary=Vacation', '--auto-decline=new',
         '--decline-message=Away', '--all-day',
@@ -377,7 +378,7 @@ describe('gog_meet_participants', () => {
   it('calls runOrDiagnose with meetingCode', async () => {
     await harness.callTool('gog_meet_participants', { meetingCode: 'abc-defg-hij' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['meet', 'participants', 'abc-defg-hij'],
+      ['meet', 'participants', pos('abc-defg-hij')],
       { account: undefined },
     );
   });
@@ -392,7 +393,7 @@ describe('gog_meet_participants', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'meet', 'participants', 'abc-defg-hij',
+        'meet', 'participants', pos('abc-defg-hij'),
         '--conference=conf123',
         '--max=100',
         '--page=tok',
@@ -405,7 +406,7 @@ describe('gog_meet_participants', () => {
   it('omits --all when false', async () => {
     await harness.callTool('gog_meet_participants', { meetingCode: 'abc-defg-hij', all: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['meet', 'participants', 'abc-defg-hij'],
+      ['meet', 'participants', pos('abc-defg-hij')],
       { account: undefined },
     );
   });
@@ -415,7 +416,7 @@ describe('gog_calendar_unsubscribe', () => {
   it('calls runOrDiagnose with calendarId', async () => {
     await harness.callTool('gog_calendar_unsubscribe', { calendarId: 'cal@group.calendar.google.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'unsubscribe', 'cal@group.calendar.google.com'],
+      ['calendar', 'unsubscribe', pos('cal@group.calendar.google.com')],
       { account: undefined },
     );
   });
@@ -423,7 +424,7 @@ describe('gog_calendar_unsubscribe', () => {
   it('passes account through', async () => {
     await harness.callTool('gog_calendar_unsubscribe', { calendarId: 'cal', account: 'me@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'unsubscribe', 'cal'],
+      ['calendar', 'unsubscribe', pos('cal')],
       { account: 'me@x.com' },
     );
   });
@@ -433,7 +434,7 @@ describe('gog_calendar_delete_calendar', () => {
   it('calls runOrDiagnose with calendarId', async () => {
     await harness.callTool('gog_calendar_delete_calendar', { calendarId: 'cal' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'delete-calendar', 'cal', '--force'],
+      ['calendar', 'delete-calendar', pos('cal'), '--force'],
       { account: undefined },
     );
   });
@@ -441,7 +442,7 @@ describe('gog_calendar_delete_calendar', () => {
   it('passes account through', async () => {
     await harness.callTool('gog_calendar_delete_calendar', { calendarId: 'cal', account: 'me@x.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['calendar', 'delete-calendar', 'cal', '--force'],
+      ['calendar', 'delete-calendar', pos('cal'), '--force'],
       { account: 'me@x.com' },
     );
   });

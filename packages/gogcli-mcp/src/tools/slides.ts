@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 export function registerSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_export', {
@@ -14,7 +16,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, out, format, overwrite, account }) => {
-    const args = ['slides', 'export', presentationId];
+    const args: GogArg[] = ['slides', 'export', pos(presentationId)];
     if (out) args.push(`--out=${out}`);
     if (format) args.push(`--format=${format}`);
     if (overwrite) args.push('--overwrite');
@@ -29,7 +31,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, account }) => {
-    return runOrDiagnose(['slides', 'info', presentationId], { account });
+    return runOrDiagnose(['slides', 'info', pos(presentationId)], { account });
   });
 
   server.registerTool('gog_slides_create', {
@@ -42,7 +44,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ title, parent, template, account }) => {
-    const args = ['slides', 'create', title];
+    const args: GogArg[] = ['slides', 'create', pos(title)];
     if (parent) args.push(`--parent=${parent}`);
     if (template) args.push(`--template=${template}`);
     return runOrDiagnose(args, { account });
@@ -58,7 +60,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, title, parent, account }) => {
-    const args = ['slides', 'copy', presentationId, title];
+    const args: GogArg[] = ['slides', 'copy', pos(presentationId), pos(title)];
     if (parent) args.push(`--parent=${parent}`);
     return runOrDiagnose(args, { account });
   });
@@ -71,7 +73,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, account }) => {
-    return runOrDiagnose(['slides', 'list-slides', presentationId], { account });
+    return runOrDiagnose(['slides', 'list-slides', pos(presentationId)], { account });
   });
 
   server.registerTool('gog_slides_read_slide', {
@@ -84,7 +86,7 @@ export function registerSlidesTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ presentationId, slideId, detail, account }) => {
-    const args = ['slides', 'read-slide', presentationId, slideId];
+    const args: GogArg[] = ['slides', 'read-slide', pos(presentationId), pos(slideId)];
     if (detail) args.push('--detail');
     return runOrDiagnose(args, { account });
   });

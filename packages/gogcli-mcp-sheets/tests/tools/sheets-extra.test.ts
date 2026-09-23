@@ -3,6 +3,7 @@ import { registerExtraSheetsTools } from '../../src/tools/sheets-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
 import { rawTextResult } from '@chrischall/mcp-utils';
+import { pos } from '../../../gogcli-mcp/src/argv.js';
 
 vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   const actual = await importOriginal<typeof lib>();
@@ -24,14 +25,14 @@ describe('gog_sheets_add_tab', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_add_tab', { spreadsheetId: 'sid', tabName: 'NewTab' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'add-tab', 'sid', 'NewTab'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'add-tab', pos('sid'), pos('NewTab')], { account: undefined });
   });
 
   it('forwards account', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_add_tab', { spreadsheetId: 'sid', tabName: 'T', account: 'a@b.com' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'add-tab', 'sid', 'T'], { account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'add-tab', pos('sid'), pos('T')], { account: 'a@b.com' });
   });
 });
 
@@ -41,7 +42,7 @@ describe('gog_sheets_delete_tab', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_delete_tab', { spreadsheetId: 'sid', tabName: 'OldTab' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'delete-tab', 'sid', 'OldTab', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'delete-tab', pos('sid'), pos('OldTab'), '--force'], { account: undefined });
   });
 });
 
@@ -51,7 +52,7 @@ describe('gog_sheets_rename_tab', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_rename_tab', { spreadsheetId: 'sid', oldName: 'Old', newName: 'New' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'rename-tab', 'sid', 'Old', 'New'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'rename-tab', pos('sid'), pos('Old'), pos('New')], { account: undefined });
   });
 });
 
@@ -61,14 +62,14 @@ describe('gog_sheets_copy', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_copy', { spreadsheetId: 'sid', title: 'Copy' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy', 'sid', 'Copy'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy', pos('sid'), pos('Copy')], { account: undefined });
   });
 
   it('includes --parent when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_copy', { spreadsheetId: 'sid', title: 'Copy', parent: 'folderId' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy', 'sid', 'Copy', '--parent=folderId'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy', pos('sid'), pos('Copy'), '--parent=folderId'], { account: undefined });
   });
 });
 
@@ -78,21 +79,21 @@ describe('gog_sheets_export', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_export', { spreadsheetId: 'sid' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', 'sid'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', pos('sid')], { account: undefined });
   });
 
   it('includes --format and --out when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_export', { spreadsheetId: 'sid', format: 'pdf', out: '/tmp/out.pdf' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', 'sid', '--format=pdf', '--out=/tmp/out.pdf'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', pos('sid'), '--format=pdf', '--out=/tmp/out.pdf'], { account: undefined });
   });
 
   it('includes --overwrite when requested', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_export', { spreadsheetId: 'sid', out: '/tmp/out.csv', overwrite: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', 'sid', '--out=/tmp/out.csv', '--overwrite'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'export', pos('sid'), '--out=/tmp/out.csv', '--overwrite'], { account: undefined });
   });
 });
 
@@ -102,21 +103,21 @@ describe('gog_sheets_freeze', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_freeze', { spreadsheetId: 'sid' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'freeze', 'sid'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'freeze', pos('sid')], { account: undefined });
   });
 
   it('includes --rows, --cols, --sheet when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_freeze', { spreadsheetId: 'sid', rows: 1, cols: 2, sheet: 'Data' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'freeze', 'sid', '--rows=1', '--cols=2', '--sheet=Data'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'freeze', pos('sid'), '--rows=1', '--cols=2', '--sheet=Data'], { account: undefined });
   });
 
   it('includes --rows=0 when rows is 0', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_freeze', { spreadsheetId: 'sid', rows: 0 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'freeze', 'sid', '--rows=0'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'freeze', pos('sid'), '--rows=0'], { account: undefined });
   });
 });
 
@@ -129,7 +130,7 @@ describe('gog_sheets_insert', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'Sheet1', dimension: 'ROWS', start: 5 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'Sheet1', 'ROWS', '6'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', pos('sid'), pos('Sheet1'), pos('ROWS'), pos('6')], { account: undefined });
   });
 
   it('bug: start=1, after:false inserts before 0-based index 1 (new row 2), not at the top', async () => {
@@ -138,7 +139,7 @@ describe('gog_sheets_insert', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 1, count: 1 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '2', '--count=1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', pos('sid'), pos('S1'), pos('ROWS'), pos('2'), '--count=1'], { account: undefined });
   });
 
   it('shifts start by +1 when after:true so the new dimension lands AFTER start', async () => {
@@ -147,7 +148,7 @@ describe('gog_sheets_insert', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'COLUMNS', start: 0, count: 3, after: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'COLUMNS', '1', '--count=3', '--after'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', pos('sid'), pos('S1'), pos('COLUMNS'), pos('1'), '--count=3', '--after'], { account: undefined });
   });
 
   it('issue #42 acceptance: start=28, after:true leaves column 28 untouched (insertion lands at 29)', async () => {
@@ -155,14 +156,14 @@ describe('gog_sheets_insert', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'COLUMNS', start: 28, after: true, count: 1 });
     // CLI is 1-based; with --after CLI uses startIndex = c.Start, so passing 29 → API startIndex=29.
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'COLUMNS', '29', '--count=1', '--after'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', pos('sid'), pos('S1'), pos('COLUMNS'), pos('29'), '--count=1', '--after'], { account: undefined });
   });
 
   it('includes --count=0 when count is 0', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, count: 0 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '1', '--count=0'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', pos('sid'), pos('S1'), pos('ROWS'), pos('1'), '--count=0'], { account: undefined });
   });
 
   it('omits --after and sends start+1 so start=0 inserts at the very top (after:false)', async () => {
@@ -172,21 +173,21 @@ describe('gog_sheets_insert', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 0, after: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', pos('sid'), pos('S1'), pos('ROWS'), pos('1')], { account: undefined });
   });
 
   it('passes --inherit-from-before=true when set', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 5, after: true, inheritFromBefore: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '6', '--after', '--inherit-from-before=true'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', pos('sid'), pos('S1'), pos('ROWS'), pos('6'), '--after', '--inherit-from-before=true'], { account: undefined });
   });
 
   it('passes --inherit-from-before=false to inherit from the following neighbor', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_insert', { spreadsheetId: 'sid', sheet: 'S1', dimension: 'ROWS', start: 5, after: true, inheritFromBefore: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', 'sid', 'S1', 'ROWS', '6', '--after', '--inherit-from-before=false'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'insert', pos('sid'), pos('S1'), pos('ROWS'), pos('6'), '--after', '--inherit-from-before=false'], { account: undefined });
   });
 });
 
@@ -195,21 +196,21 @@ describe('gog_sheets_copy_paste', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_copy_paste', { spreadsheetId: 'sid', source: 'Sheet1!A2:H71', dest: 'Sheet1!A2:H120' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', 'sid', 'Sheet1!A2:H71', 'Sheet1!A2:H120'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', pos('sid'), pos('Sheet1!A2:H71'), pos('Sheet1!A2:H120')], { account: undefined });
   });
 
   it('appends --type and --transpose when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_copy_paste', { spreadsheetId: 'sid', source: 'A1:B2', dest: 'D1:E2', type: 'FORMULA', transpose: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', 'sid', 'A1:B2', 'D1:E2', '--type=FORMULA', '--transpose'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', pos('sid'), pos('A1:B2'), pos('D1:E2'), '--type=FORMULA', '--transpose'], { account: undefined });
   });
 
   it('forwards account', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_copy_paste', { spreadsheetId: 'sid', source: 'A1', dest: 'B1', account: 'a@b.com' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', 'sid', 'A1', 'B1'], { account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'copy-paste', pos('sid'), pos('A1'), pos('B1')], { account: 'a@b.com' });
   });
 });
 
@@ -219,14 +220,14 @@ describe('gog_sheets_merge', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_merge', { spreadsheetId: 'sid', range: 'A1:C3' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'merge', 'sid', 'A1:C3'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'merge', pos('sid'), pos('A1:C3')], { account: undefined });
   });
 
   it('includes --type when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_merge', { spreadsheetId: 'sid', range: 'A1:C3', type: 'MERGE_COLUMNS' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'merge', 'sid', 'A1:C3', '--type=MERGE_COLUMNS'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'merge', pos('sid'), pos('A1:C3'), '--type=MERGE_COLUMNS'], { account: undefined });
   });
 });
 
@@ -236,7 +237,7 @@ describe('gog_sheets_unmerge', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_unmerge', { spreadsheetId: 'sid', range: 'A1:C3' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'unmerge', 'sid', 'A1:C3'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'unmerge', pos('sid'), pos('A1:C3')], { account: undefined });
   });
 });
 
@@ -248,7 +249,7 @@ describe('gog_sheets_format', () => {
     const fj = '{"textFormat":{"bold":true}}';
     await harness.callTool('gog_sheets_format', { spreadsheetId: 'sid', range: 'A1:B2', formatJson: fj, formatFields: 'textFormat.bold' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'format', 'sid', 'A1:B2', `--format-json=${fj}`, '--format-fields=textFormat.bold'],
+      ['sheets', 'format', pos('sid'), pos('A1:B2'), `--format-json=${fj}`, '--format-fields=textFormat.bold'],
       { account: undefined },
     );
   });
@@ -258,7 +259,7 @@ describe('gog_sheets_format', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_format', { spreadsheetId: 'sid', range: 'A1', formatJson: '{}' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'format', 'sid', 'A1', '--format-json={}'],
+      ['sheets', 'format', pos('sid'), pos('A1'), '--format-json={}'],
       { account: undefined },
     );
   });
@@ -277,8 +278,8 @@ describe('gog_sheets_format', () => {
     const argv = call[0];
     expect(argv[0]).toBe('sheets');
     expect(argv[1]).toBe('format');
-    expect(argv[2]).toBe('sid');
-    expect(argv[3]).toBe('A1:C3');
+    expect(argv[2]).toEqual(pos('sid'));
+    expect(argv[3]).toEqual(pos('A1:C3'));
     const fmtArg = (argv[4] as string).replace(/^--format-json=/, '');
     const parsed = JSON.parse(fmtArg);
     expect(parsed.textFormat.bold).toBe(true);
@@ -366,7 +367,7 @@ describe('gog_sheets_list_tabs', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_list_tabs', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'metadata', 'sid', '--select=sheets.properties.sheetId,sheets.properties.title,sheets.properties.index,sheets.properties.gridProperties'],
+      ['sheets', 'metadata', pos('sid'), '--select=sheets.properties.sheetId,sheets.properties.title,sheets.properties.index,sheets.properties.gridProperties'],
       { account: undefined },
     );
   });
@@ -378,14 +379,14 @@ describe('gog_sheets_number_format', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A10' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'number-format', 'sid', 'A1:A10'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'number-format', pos('sid'), pos('A1:A10')], { account: undefined });
   });
 
   it('includes --type and --pattern when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1', type: 'CURRENCY', pattern: '#,##0.00' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'number-format', 'sid', 'A1', '--type=CURRENCY', '--pattern=#,##0.00'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'number-format', pos('sid'), pos('A1'), '--type=CURRENCY', '--pattern=#,##0.00'], { account: undefined });
   });
 
   // Issue #43: warn when DATE/DATE_TIME format applied to small integers (silent 1899/1900 render).
@@ -401,12 +402,12 @@ describe('gog_sheets_number_format', () => {
       const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'Sheet1!A1:A3', type: 'DATE' });
       // Peek call goes out first.
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-        ['sheets', 'get', 'sid', 'Sheet1!A1:A3', '--render=UNFORMATTED_VALUE'],
+        ['sheets', 'get', pos('sid'), pos('Sheet1!A1:A3'), '--render=UNFORMATTED_VALUE'],
         { account: undefined },
       );
       // The format call still happens (warning is non-blocking).
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-        ['sheets', 'number-format', 'sid', 'Sheet1!A1:A3', '--type=DATE'],
+        ['sheets', 'number-format', pos('sid'), pos('Sheet1!A1:A3'), '--type=DATE'],
         { account: undefined },
       );
       const text = result.content[0].text;
@@ -434,7 +435,7 @@ describe('gog_sheets_number_format', () => {
       // Only the format call should fire — no peek.
       expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-        ['sheets', 'number-format', 'sid', 'Sheet1!A1:A3', '--type=DATE'],
+        ['sheets', 'number-format', pos('sid'), pos('Sheet1!A1:A3'), '--type=DATE'],
         { account: undefined },
       );
       expect(result.content[0].text).not.toMatch(/warning/i);
@@ -459,7 +460,7 @@ describe('gog_sheets_number_format', () => {
       await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'CURRENCY' });
       expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-        ['sheets', 'number-format', 'sid', 'A1:A3', '--type=CURRENCY'],
+        ['sheets', 'number-format', pos('sid'), pos('A1:A3'), '--type=CURRENCY'],
         { account: undefined },
       );
     });
@@ -573,7 +574,7 @@ describe('gog_sheets_number_format', () => {
       const result = await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1:A3', type: 'DATE' });
       // Format call should still happen.
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-        ['sheets', 'number-format', 'sid', 'A1:A3', '--type=DATE'],
+        ['sheets', 'number-format', pos('sid'), pos('A1:A3'), '--type=DATE'],
         { account: undefined },
       );
       // No warning emitted when peek didn't yield clear evidence.
@@ -590,11 +591,11 @@ describe('gog_sheets_number_format', () => {
       });
       await harness.callTool('gog_sheets_number_format', { spreadsheetId: 'sid', range: 'A1', type: 'DATE', account: 'a@b.com' });
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-        ['sheets', 'get', 'sid', 'A1', '--render=UNFORMATTED_VALUE'],
+        ['sheets', 'get', pos('sid'), pos('A1'), '--render=UNFORMATTED_VALUE'],
         { account: 'a@b.com' },
       );
       expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-        ['sheets', 'number-format', 'sid', 'A1', '--type=DATE'],
+        ['sheets', 'number-format', pos('sid'), pos('A1'), '--type=DATE'],
         { account: 'a@b.com' },
       );
     });
@@ -607,21 +608,21 @@ describe('gog_sheets_read_format', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_read_format', { spreadsheetId: 'sid', range: 'A1:B2' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'read-format', 'sid', 'A1:B2'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'read-format', pos('sid'), pos('A1:B2')], { account: undefined });
   });
 
   it('includes --effective when true', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_read_format', { spreadsheetId: 'sid', range: 'A1', effective: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'read-format', 'sid', 'A1', '--effective'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'read-format', pos('sid'), pos('A1'), '--effective'], { account: undefined });
   });
 
   it('omits --effective when false', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_read_format', { spreadsheetId: 'sid', range: 'A1', effective: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'read-format', 'sid', 'A1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'read-format', pos('sid'), pos('A1')], { account: undefined });
   });
 });
 
@@ -631,21 +632,21 @@ describe('gog_sheets_resize_columns', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_resize_columns', { spreadsheetId: 'sid', columns: 'A:C' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-columns', 'sid', 'A:C'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-columns', pos('sid'), pos('A:C')], { account: undefined });
   });
 
   it('includes --width and --auto when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_resize_columns', { spreadsheetId: 'sid', columns: 'A:C', width: 200, auto: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-columns', 'sid', 'A:C', '--width=200', '--auto'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-columns', pos('sid'), pos('A:C'), '--width=200', '--auto'], { account: undefined });
   });
 
   it('includes --width=0 when width is 0', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_resize_columns', { spreadsheetId: 'sid', columns: 'A:A', width: 0 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-columns', 'sid', 'A:A', '--width=0'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-columns', pos('sid'), pos('A:A'), '--width=0'], { account: undefined });
   });
 });
 
@@ -655,21 +656,21 @@ describe('gog_sheets_resize_rows', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_resize_rows', { spreadsheetId: 'sid', rows: '1:10' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-rows', 'sid', '1:10'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-rows', pos('sid'), pos('1:10')], { account: undefined });
   });
 
   it('includes --height and --auto when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_resize_rows', { spreadsheetId: 'sid', rows: '1:5', height: 40, auto: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-rows', 'sid', '1:5', '--height=40', '--auto'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-rows', pos('sid'), pos('1:5'), '--height=40', '--auto'], { account: undefined });
   });
 
   it('includes --height=0 when height is 0', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_resize_rows', { spreadsheetId: 'sid', rows: '1:1', height: 0 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-rows', 'sid', '1:1', '--height=0'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'resize-rows', pos('sid'), pos('1:1'), '--height=0'], { account: undefined });
   });
 });
 
@@ -679,7 +680,7 @@ describe('gog_sheets_notes', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_notes', { spreadsheetId: 'sid', range: 'A1:B5' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'notes', 'sid', 'A1:B5'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'notes', pos('sid'), pos('A1:B5')], { account: undefined });
   });
 });
 
@@ -689,14 +690,14 @@ describe('gog_sheets_update_note', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_update_note', { spreadsheetId: 'sid', range: 'A1', note: 'Hello' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'update-note', 'sid', 'A1', '--note=Hello'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'update-note', pos('sid'), pos('A1'), '--note=Hello'], { account: undefined });
   });
 
   it('passes empty string to clear note', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_update_note', { spreadsheetId: 'sid', range: 'A1', note: '' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'update-note', 'sid', 'A1', '--note='], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'update-note', pos('sid'), pos('A1'), '--note='], { account: undefined });
   });
 
   it('spills a large note to a --note-file payload arg', async () => {
@@ -705,7 +706,7 @@ describe('gog_sheets_update_note', () => {
     const big = 'n'.repeat(lib.PAYLOAD_INLINE_MAX + 1);
     await harness.callTool('gog_sheets_update_note', { spreadsheetId: 'sid', range: 'A1', note: big });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'update-note', 'sid', 'A1',
+      ['sheets', 'update-note', pos('sid'), pos('A1'),
         { kind: 'file', flag: 'note-file', contents: big, ext: undefined }],
       { account: undefined },
     );
@@ -718,7 +719,7 @@ describe('gog_sheets_links', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_links', { spreadsheetId: 'sid', range: 'A1:Z100' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'links', 'sid', 'A1:Z100'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'links', pos('sid'), pos('A1:Z100')], { account: undefined });
   });
 });
 
@@ -729,7 +730,7 @@ describe('gog_sheets_links_set', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_links_set', { spreadsheetId: 'sid', cell: 'A1', url: 'https://x.com', text: 'Link' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'links', 'set', 'sid', 'A1', 'https://x.com', 'Link'],
+      ['sheets', 'links', 'set', pos('sid'), pos('A1'), pos('https://x.com'), pos('Link')],
       { account: undefined },
     );
   });
@@ -739,7 +740,7 @@ describe('gog_sheets_links_set', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_links_set', { spreadsheetId: 'sid', cell: 'B2', runsJson: '[{"text":"A","uri":"https://a"}]' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'links', 'set', 'sid', 'B2', '--runs-json=[{"text":"A","uri":"https://a"}]'],
+      ['sheets', 'links', 'set', pos('sid'), pos('B2'), '--runs-json=[{"text":"A","uri":"https://a"}]'],
       { account: undefined },
     );
   });
@@ -749,7 +750,7 @@ describe('gog_sheets_links_set', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_links_set', { spreadsheetId: 'sid', cellsJson: '[{"cell":"A1","url":"https://a"}]' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'links', 'set', 'sid', '--cells-json=[{"cell":"A1","url":"https://a"}]'],
+      ['sheets', 'links', 'set', pos('sid'), '--cells-json=[{"cell":"A1","url":"https://a"}]'],
       { account: undefined },
     );
   });
@@ -764,7 +765,7 @@ describe('gog_sheets_links_set', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_links_set', { spreadsheetId: 'sid', cellsJson: '@/tmp/cells.json' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'links', 'set', 'sid', '--cells-json=@/tmp/cells.json'],
+      ['sheets', 'links', 'set', pos('sid'), '--cells-json=@/tmp/cells.json'],
       { account: undefined },
     );
   });
@@ -788,7 +789,7 @@ describe('gog_sheets_named_ranges_list', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_named_ranges_list', { spreadsheetId: 'sid' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'list', 'sid'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'list', pos('sid')], { account: undefined });
   });
 });
 
@@ -798,7 +799,7 @@ describe('gog_sheets_named_ranges_get', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_named_ranges_get', { spreadsheetId: 'sid', nameOrId: 'MyRange' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'get', 'sid', 'MyRange'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'get', pos('sid'), pos('MyRange')], { account: undefined });
   });
 });
 
@@ -808,7 +809,7 @@ describe('gog_sheets_named_ranges_add', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_named_ranges_add', { spreadsheetId: 'sid', name: 'Totals', range: 'Sheet1!A1:B10' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'add', 'sid', 'Totals', 'Sheet1!A1:B10'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'add', pos('sid'), pos('Totals'), pos('Sheet1!A1:B10')], { account: undefined });
   });
 });
 
@@ -818,14 +819,14 @@ describe('gog_sheets_named_ranges_update', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_named_ranges_update', { spreadsheetId: 'sid', nameOrId: 'MyRange' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'update', 'sid', 'MyRange'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'update', pos('sid'), pos('MyRange')], { account: undefined });
   });
 
   it('includes --name and --range when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_named_ranges_update', { spreadsheetId: 'sid', nameOrId: 'MyRange', name: 'NewName', range: 'Sheet1!C1:D5' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'update', 'sid', 'MyRange', '--name=NewName', '--range=Sheet1!C1:D5'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'update', pos('sid'), pos('MyRange'), '--name=NewName', '--range=Sheet1!C1:D5'], { account: undefined });
   });
 });
 
@@ -835,7 +836,7 @@ describe('gog_sheets_named_ranges_delete', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_named_ranges_delete', { spreadsheetId: 'sid', nameOrId: 'OldRange' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'delete', 'sid', 'OldRange'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'named-ranges', 'delete', pos('sid'), pos('OldRange')], { account: undefined });
   });
 });
 
@@ -847,7 +848,7 @@ describe('gog_sheets_batch_update', () => {
     const data = '[{"range":"Sheet1!A1:B1","values":[["a","b"]]}]';
     await harness.callTool('gog_sheets_batch_update', { spreadsheetId: 'sid', dataJson: data });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'batch-update', 'sid', `--data-json=${data}`],
+      ['sheets', 'batch-update', pos('sid'), `--data-json=${data}`],
       { account: undefined },
     );
   });
@@ -866,7 +867,7 @@ describe('gog_sheets_batch_update', () => {
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       [
-        'sheets', 'batch-update', 'sid',
+        'sheets', 'batch-update', pos('sid'),
         '--data-json=[]',
         '--input=RAW',
         '--include-values-in-response',
@@ -884,7 +885,7 @@ describe('gog_sheets_batch_update', () => {
       spreadsheetId: 'sid', dataJson: '[]', includeValuesInResponse: false,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'batch-update', 'sid', '--data-json=[]'],
+      ['sheets', 'batch-update', pos('sid'), '--data-json=[]'],
       { account: undefined },
     );
   });
@@ -897,7 +898,7 @@ describe('gog_sheets_reorder_tab', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_reorder_tab', { spreadsheetId: 'sid', tab: 'Data', to: 2 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'reorder-tab', 'sid', '--tab=Data', '--to=2'],
+      ['sheets', 'reorder-tab', pos('sid'), '--tab=Data', '--to=2'],
       { account: undefined },
     );
   });
@@ -907,7 +908,7 @@ describe('gog_sheets_reorder_tab', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_reorder_tab', { spreadsheetId: 'sid', tab: '123', to: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'reorder-tab', 'sid', '--tab=123', '--to=0'],
+      ['sheets', 'reorder-tab', pos('sid'), '--tab=123', '--to=0'],
       { account: undefined },
     );
   });
@@ -917,7 +918,7 @@ describe('gog_sheets_reorder_tab', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_reorder_tab', { spreadsheetId: 'sid', tab: 'Data', to: 1, account: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'reorder-tab', 'sid', '--tab=Data', '--to=1'],
+      ['sheets', 'reorder-tab', pos('sid'), '--tab=Data', '--to=1'],
       { account: 'a@b.com' },
     );
   });
@@ -929,14 +930,14 @@ describe('gog_sheets_chart_list', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_chart_list', { spreadsheetId: 'sid' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'list', 'sid'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'list', pos('sid')], { account: undefined });
   });
 
   it('forwards account', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_chart_list', { spreadsheetId: 'sid', account: 'a@b.com' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'list', 'sid'], { account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'list', pos('sid')], { account: 'a@b.com' });
   });
 });
 
@@ -946,7 +947,7 @@ describe('gog_sheets_chart_get', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_chart_get', { spreadsheetId: 'sid', chartId: '12345' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'get', 'sid', '12345'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'get', pos('sid'), pos('12345')], { account: undefined });
   });
 });
 
@@ -958,7 +959,7 @@ describe('gog_sheets_chart_create', () => {
     const spec = '{"basicChart":{"chartType":"COLUMN"}}';
     await harness.callTool('gog_sheets_chart_create', { spreadsheetId: 'sid', specJson: spec });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'chart', 'create', 'sid', `--spec-json=${spec}`],
+      ['sheets', 'chart', 'create', pos('sid'), `--spec-json=${spec}`],
       { account: undefined },
     );
   });
@@ -970,7 +971,7 @@ describe('gog_sheets_chart_create', () => {
       spreadsheetId: 'sid', specJson: '{}', sheet: 'Data', anchor: 'E10', width: 800, height: 400,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'chart', 'create', 'sid', '--spec-json={}', '--sheet=Data', '--anchor=E10', '--width=800', '--height=400'],
+      ['sheets', 'chart', 'create', pos('sid'), '--spec-json={}', '--sheet=Data', '--anchor=E10', '--width=800', '--height=400'],
       { account: undefined },
     );
   });
@@ -980,7 +981,7 @@ describe('gog_sheets_chart_create', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_chart_create', { spreadsheetId: 'sid', specJson: '{}', width: 0, height: 0 });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'chart', 'create', 'sid', '--spec-json={}', '--width=0', '--height=0'],
+      ['sheets', 'chart', 'create', pos('sid'), '--spec-json={}', '--width=0', '--height=0'],
       { account: undefined },
     );
   });
@@ -993,7 +994,7 @@ describe('gog_sheets_chart_update', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_chart_update', { spreadsheetId: 'sid', chartId: '99', specJson: '{}' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'chart', 'update', 'sid', '99', '--spec-json={}'],
+      ['sheets', 'chart', 'update', pos('sid'), pos('99'), '--spec-json={}'],
       { account: undefined },
     );
   });
@@ -1005,7 +1006,7 @@ describe('gog_sheets_chart_delete', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_chart_delete', { spreadsheetId: 'sid', chartId: '7' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'delete', 'sid', '7', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'chart', 'delete', pos('sid'), pos('7'), '--force'], { account: undefined });
   });
 });
 
@@ -1015,7 +1016,7 @@ describe('gog_sheets_table_list', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_table_list', { spreadsheetId: 'sid' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'list', 'sid'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'list', pos('sid')], { account: undefined });
   });
 });
 
@@ -1025,7 +1026,7 @@ describe('gog_sheets_table_get', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_table_get', { spreadsheetId: 'sid', tableId: 't1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'get', 'sid', 't1'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'get', pos('sid'), pos('t1')], { account: undefined });
   });
 });
 
@@ -1037,7 +1038,7 @@ describe('gog_sheets_table_create', () => {
     const cols = '[{"columnName":"Name","columnType":"TEXT"}]';
     await harness.callTool('gog_sheets_table_create', { spreadsheetId: 'sid', range: 'Sheet1!A1:B10', name: 'People', columnsJson: cols });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'table', 'create', 'sid', 'Sheet1!A1:B10', '--name=People', `--columns-json=${cols}`],
+      ['sheets', 'table', 'create', pos('sid'), pos('Sheet1!A1:B10'), '--name=People', `--columns-json=${cols}`],
       { account: undefined },
     );
   });
@@ -1050,7 +1051,7 @@ describe('gog_sheets_table_append', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_table_append', { spreadsheetId: 'sid', tableId: 't1', valuesJson: '[["a",1]]' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'table', 'append', 'sid', 't1', '--values-json=[["a",1]]'],
+      ['sheets', 'table', 'append', pos('sid'), pos('t1'), '--values-json=[["a",1]]'],
       { account: undefined },
     );
   });
@@ -1060,7 +1061,7 @@ describe('gog_sheets_table_append', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_table_append', { spreadsheetId: 'sid', tableId: 't1', valuesJson: '[]', input: 'RAW' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'table', 'append', 'sid', 't1', '--values-json=[]', '--input=RAW'],
+      ['sheets', 'table', 'append', pos('sid'), pos('t1'), '--values-json=[]', '--input=RAW'],
       { account: undefined },
     );
   });
@@ -1072,7 +1073,7 @@ describe('gog_sheets_table_clear', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_table_clear', { spreadsheetId: 'sid', tableId: 't1' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'clear', 'sid', 't1', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'clear', pos('sid'), pos('t1'), '--force'], { account: undefined });
   });
 });
 
@@ -1082,7 +1083,7 @@ describe('gog_sheets_table_delete', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_table_delete', { spreadsheetId: 'sid', tableId: 't1', keep_data: false });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'delete', 'sid', 't1', '--discard-data', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'table', 'delete', pos('sid'), pos('t1'), '--discard-data', '--force'], { account: undefined });
     expect(lib.run).not.toHaveBeenCalled();
   });
 
@@ -1094,10 +1095,10 @@ describe('gog_sheets_table_delete', () => {
       .mockResolvedValueOnce('{"updatedRows":2}');                         // update restore
     const harness = await setupHandlers();
     const res = await harness.callTool('gog_sheets_table_delete', { spreadsheetId: 'sid', tableId: 't1', account: 'a@b.com' });
-    expect(lib.run).toHaveBeenNthCalledWith(1, ['sheets', 'table', 'get', 'sid', 't1'], { account: 'a@b.com' });
-    expect(lib.run).toHaveBeenNthCalledWith(2, ['sheets', 'get', 'sid', 'Sheet1!A1:C2', '--render=FORMULA'], { account: 'a@b.com' });
-    expect(lib.run).toHaveBeenNthCalledWith(3, ['sheets', 'table', 'delete', 'sid', 't1', '--discard-data', '--force'], { account: 'a@b.com' });
-    expect(lib.run).toHaveBeenNthCalledWith(4, ['sheets', 'update', 'sid', 'Sheet1!A1:C2', '--values-json=[["Name","City","N"],["A","NYC","=1+1"]]'], { account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(1, ['sheets', 'table', 'get', pos('sid'), pos('t1')], { account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(2, ['sheets', 'get', pos('sid'), pos('Sheet1!A1:C2'), '--render=FORMULA'], { account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(3, ['sheets', 'table', 'delete', pos('sid'), pos('t1'), '--discard-data', '--force'], { account: 'a@b.com' });
+    expect(lib.run).toHaveBeenNthCalledWith(4, ['sheets', 'update', pos('sid'), pos('Sheet1!A1:C2'), '--values-json=[["Name","City","N"],["A","NYC","=1+1"]]'], { account: 'a@b.com' });
     expect(res.content[0].text).toContain('2 row');
     expect(res.content[0].text).toContain('Sheet1!A1:C2');
   });
@@ -1163,14 +1164,14 @@ describe('gog_sheets_banding_list', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_banding_list', { spreadsheetId: 'sid' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'list', 'sid'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'list', pos('sid')], { account: undefined });
   });
 
   it('includes --sheet when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_banding_list', { spreadsheetId: 'sid', sheet: 'Data' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'list', 'sid', '--sheet=Data'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'list', pos('sid'), '--sheet=Data'], { account: undefined });
   });
 });
 
@@ -1180,7 +1181,7 @@ describe('gog_sheets_banding_set', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_banding_set', { spreadsheetId: 'sid', range: 'Sheet1!A1:D20' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'set', 'sid', 'Sheet1!A1:D20'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'set', pos('sid'), pos('Sheet1!A1:D20')], { account: undefined });
   });
 
   it('includes --row-properties-json and --column-properties-json when provided', async () => {
@@ -1192,7 +1193,7 @@ describe('gog_sheets_banding_set', () => {
       columnPropertiesJson: '{"secondBandColor":{}}',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'banding', 'set', 'sid', 'A1:D20', '--row-properties-json={"firstBandColor":{}}', '--column-properties-json={"secondBandColor":{}}'],
+      ['sheets', 'banding', 'set', pos('sid'), pos('A1:D20'), '--row-properties-json={"firstBandColor":{}}', '--column-properties-json={"secondBandColor":{}}'],
       { account: undefined },
     );
   });
@@ -1204,28 +1205,28 @@ describe('gog_sheets_banding_clear', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_banding_clear', { spreadsheetId: 'sid' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', 'sid', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', pos('sid'), '--force'], { account: undefined });
   });
 
   it('includes --id when provided (including 0)', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_banding_clear', { spreadsheetId: 'sid', id: 0 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', 'sid', '--id=0', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', pos('sid'), '--id=0', '--force'], { account: undefined });
   });
 
   it('includes --all and --sheet when clearing a whole sheet', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_banding_clear', { spreadsheetId: 'sid', all: true, sheet: 'Data' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', 'sid', '--all', '--sheet=Data', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', pos('sid'), '--all', '--sheet=Data', '--force'], { account: undefined });
   });
 
   it('omits --all when false', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_banding_clear', { spreadsheetId: 'sid', all: false, id: 5 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', 'sid', '--id=5', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'banding', 'clear', pos('sid'), '--id=5', '--force'], { account: undefined });
   });
 });
 
@@ -1235,14 +1236,14 @@ describe('gog_sheets_conditional_format_list', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_conditional_format_list', { spreadsheetId: 'sid' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'list', 'sid'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'list', pos('sid')], { account: undefined });
   });
 
   it('includes --sheet when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_conditional_format_list', { spreadsheetId: 'sid', sheet: 'Data' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'list', 'sid', '--sheet=Data'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'list', pos('sid'), '--sheet=Data'], { account: undefined });
   });
 });
 
@@ -1255,7 +1256,7 @@ describe('gog_sheets_conditional_format_add', () => {
       spreadsheetId: 'sid', range: 'A1:A100', type: 'not-blank', formatJson: '{"backgroundColor":{}}',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'conditional-format', 'add', 'sid', 'A1:A100', '--type=not-blank', '--format-json={"backgroundColor":{}}'],
+      ['sheets', 'conditional-format', 'add', pos('sid'), pos('A1:A100'), '--type=not-blank', '--format-json={"backgroundColor":{}}'],
       { account: undefined },
     );
   });
@@ -1267,7 +1268,7 @@ describe('gog_sheets_conditional_format_add', () => {
       spreadsheetId: 'sid', range: 'B1:B50', type: 'number-gt', expr: '100', formatJson: '{}', formatFields: 'backgroundColor,textFormat.bold',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'conditional-format', 'add', 'sid', 'B1:B50', '--type=number-gt', '--format-json={}', '--expr=100', '--format-fields=backgroundColor,textFormat.bold'],
+      ['sheets', 'conditional-format', 'add', pos('sid'), pos('B1:B50'), '--type=number-gt', '--format-json={}', '--expr=100', '--format-fields=backgroundColor,textFormat.bold'],
       { account: undefined },
     );
   });
@@ -1279,7 +1280,7 @@ describe('gog_sheets_conditional_format_add', () => {
       spreadsheetId: 'sid', range: 'A1', type: 'text-eq', expr: '', formatJson: '{}',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'conditional-format', 'add', 'sid', 'A1', '--type=text-eq', '--format-json={}', '--expr='],
+      ['sheets', 'conditional-format', 'add', pos('sid'), pos('A1'), '--type=text-eq', '--format-json={}', '--expr='],
       { account: undefined },
     );
   });
@@ -1291,7 +1292,7 @@ describe('gog_sheets_conditional_format_add', () => {
       spreadsheetId: 'sid', range: 'Sheet1!A1:A100', gradientRuleJson: '{"minpoint":{},"maxpoint":{}}',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'conditional-format', 'add', 'sid', 'Sheet1!A1:A100', '--gradient-rule-json={"minpoint":{},"maxpoint":{}}'],
+      ['sheets', 'conditional-format', 'add', pos('sid'), pos('Sheet1!A1:A100'), '--gradient-rule-json={"minpoint":{},"maxpoint":{}}'],
       { account: undefined },
     );
   });
@@ -1304,7 +1305,7 @@ describe('gog_sheets_filter_set', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_filter_set', { spreadsheetId: 'sid', range: 'Sheet1!A1:C10' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'filter', 'set', 'sid', 'Sheet1!A1:C10'],
+      ['sheets', 'filter', 'set', pos('sid'), pos('Sheet1!A1:C10')],
       { account: undefined },
     );
   });
@@ -1314,7 +1315,7 @@ describe('gog_sheets_filter_set', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_filter_set', { spreadsheetId: 'sid', range: 'Sheet1!A1:C10', replace: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'filter', 'set', 'sid', 'Sheet1!A1:C10', '--force'],
+      ['sheets', 'filter', 'set', pos('sid'), pos('Sheet1!A1:C10'), '--force'],
       { account: undefined },
     );
   });
@@ -1324,7 +1325,7 @@ describe('gog_sheets_filter_set', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_filter_set', { spreadsheetId: 'sid', range: 'Named', account: 'x@y.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'filter', 'set', 'sid', 'Named'],
+      ['sheets', 'filter', 'set', pos('sid'), pos('Named')],
       { account: 'x@y.com' },
     );
   });
@@ -1336,28 +1337,28 @@ describe('gog_sheets_conditional_format_clear', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_conditional_format_clear', { spreadsheetId: 'sid', sheet: 'Data' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', 'sid', '--sheet=Data', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', pos('sid'), '--sheet=Data', '--force'], { account: undefined });
   });
 
   it('includes --index when provided (including 0)', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_conditional_format_clear', { spreadsheetId: 'sid', sheet: 'Data', index: 0 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', 'sid', '--sheet=Data', '--index=0', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', pos('sid'), '--sheet=Data', '--index=0', '--force'], { account: undefined });
   });
 
   it('includes --all when true', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_conditional_format_clear', { spreadsheetId: 'sid', sheet: 'Data', all: true });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', 'sid', '--sheet=Data', '--all', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', pos('sid'), '--sheet=Data', '--all', '--force'], { account: undefined });
   });
 
   it('omits --all when false', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_conditional_format_clear', { spreadsheetId: 'sid', sheet: 'Data', all: false, index: 2 });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', 'sid', '--sheet=Data', '--index=2', '--force'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'conditional-format', 'clear', pos('sid'), '--sheet=Data', '--index=2', '--force'], { account: undefined });
   });
 });
 
@@ -1367,14 +1368,14 @@ describe('gog_sheets_snapshot', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_snapshot', { spreadsheetId: 'sid', name: 'Backup A' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', 'sid', 'Backup A'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', pos('sid'), pos('Backup A')], { account: undefined });
   });
 
   it('includes --parent and forwards account', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_snapshot', { spreadsheetId: 'sid', name: 'Backup A', parent: 'folder1', account: 'a@b.com' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', 'sid', 'Backup A', '--parent=folder1'], { account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['drive', 'copy', pos('sid'), pos('Backup A'), '--parent=folder1'], { account: 'a@b.com' });
   });
 });
 
@@ -1385,7 +1386,7 @@ describe('gog_sheets_validation_get', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_validation_get', { spreadsheetId: 'sid', range: 'Sheet1!A1:A10' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'validation', 'get', 'sid', 'Sheet1!A1:A10'],
+      ['sheets', 'validation', 'get', pos('sid'), pos('Sheet1!A1:A10')],
       { account: undefined },
     );
   });
@@ -1399,7 +1400,7 @@ describe('gog_sheets_validation_set', () => {
       spreadsheetId: 'sid', range: 'A1:A10', type: 'ONE_OF_LIST', values: ['Red', 'Green'],
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'validation', 'set', 'sid', 'A1:A10', '--type=ONE_OF_LIST', '--value=Red', '--value=Green'],
+      ['sheets', 'validation', 'set', pos('sid'), pos('A1:A10'), '--type=ONE_OF_LIST', '--value=Red', '--value=Green'],
       { account: undefined },
     );
   });
@@ -1412,7 +1413,7 @@ describe('gog_sheets_validation_set', () => {
       strict: true, inputMessage: 'Pick 1-10', showCustomUi: true, filteredRowsIncluded: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'validation', 'set', 'sid', 'A1', '--type=NUMBER_BETWEEN', '--value=1', '--value=10',
+      ['sheets', 'validation', 'set', pos('sid'), pos('A1'), '--type=NUMBER_BETWEEN', '--value=1', '--value=10',
         '--strict', '--input-message=Pick 1-10', '--show-custom-ui', '--filtered-rows-included'],
       { account: undefined },
     );
@@ -1425,7 +1426,7 @@ describe('gog_sheets_validation_clear', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_validation_clear', { spreadsheetId: 'sid', range: 'A1:A10', filteredRowsIncluded: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'validation', 'clear', 'sid', 'A1:A10', '--filtered-rows-included'],
+      ['sheets', 'validation', 'clear', pos('sid'), pos('A1:A10'), '--filtered-rows-included'],
       { account: undefined },
     );
   });
@@ -1439,7 +1440,7 @@ describe('gog_sheets_delete_dimension', () => {
       spreadsheetId: 'sid', rangeOrSheet: 'Sheet1', dimension: 'ROWS', start: 5, end: 7,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'delete-dimension', 'sid', 'Sheet1', '--dimension=ROWS', '--start=5', '--end=7', '--force'],
+      ['sheets', 'delete-dimension', pos('sid'), pos('Sheet1'), '--dimension=ROWS', '--start=5', '--end=7', '--force'],
       { account: undefined },
     );
   });
@@ -1451,7 +1452,7 @@ describe('gog_sheets_delete_dimension', () => {
       spreadsheetId: 'sid', rangeOrSheet: 'Sheet1!C:D', dimension: 'COLUMNS', account: 'a@b.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'delete-dimension', 'sid', 'Sheet1!C:D', '--dimension=COLUMNS', '--force'],
+      ['sheets', 'delete-dimension', pos('sid'), pos('Sheet1!C:D'), '--dimension=COLUMNS', '--force'],
       { account: 'a@b.com' },
     );
   });
@@ -1464,7 +1465,7 @@ describe('validation tools bare calls', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_validation_set', { spreadsheetId: 'sid', range: 'A1', type: 'BOOLEAN' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'validation', 'set', 'sid', 'A1', '--type=BOOLEAN'],
+      ['sheets', 'validation', 'set', pos('sid'), pos('A1'), '--type=BOOLEAN'],
       { account: undefined },
     );
   });
@@ -1474,7 +1475,7 @@ describe('validation tools bare calls', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_validation_clear', { spreadsheetId: 'sid', range: 'A1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'validation', 'clear', 'sid', 'A1'],
+      ['sheets', 'validation', 'clear', pos('sid'), pos('A1')],
       { account: undefined },
     );
   });
@@ -1517,14 +1518,14 @@ describe('gog_sheets_datasource_list', () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_datasource_list', { spreadsheetId: 'sid' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'datasource', 'list', 'sid'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'datasource', 'list', pos('sid')], { account: undefined });
   });
 
   it('forwards account', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_datasource_list', { spreadsheetId: 'sid', account: 'me@x.com' });
-    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'datasource', 'list', 'sid'], { account: 'me@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['sheets', 'datasource', 'list', pos('sid')], { account: 'me@x.com' });
   });
 });
 
@@ -1534,7 +1535,7 @@ describe('gog_sheets_datasource_describe', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_datasource_describe', { spreadsheetId: 'sid', dataSourceId: 'ds1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'describe', 'sid', 'ds1'],
+      ['sheets', 'datasource', 'describe', pos('sid'), pos('ds1')],
       { account: undefined },
     );
   });
@@ -1546,7 +1547,7 @@ describe('gog_sheets_datasource_table_list', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_datasource_table_list', { spreadsheetId: 'sid' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'table', 'list', 'sid'],
+      ['sheets', 'datasource', 'table', 'list', pos('sid')],
       { account: undefined },
     );
   });
@@ -1556,7 +1557,7 @@ describe('gog_sheets_datasource_table_list', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_datasource_table_list', { spreadsheetId: 'sid', dataSourceId: 'ds1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'table', 'list', 'sid', '--data-source-id=ds1'],
+      ['sheets', 'datasource', 'table', 'list', pos('sid'), '--data-source-id=ds1'],
       { account: undefined },
     );
   });
@@ -1568,7 +1569,7 @@ describe('gog_sheets_datasource_table_describe', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_datasource_table_describe', { spreadsheetId: 'sid', anchor: 'Extracts!B3' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'table', 'describe', 'sid', 'Extracts!B3'],
+      ['sheets', 'datasource', 'table', 'describe', pos('sid'), pos('Extracts!B3')],
       { account: undefined },
     );
   });
@@ -1580,7 +1581,7 @@ describe('gog_sheets_datasource_table_read', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_datasource_table_read', { spreadsheetId: 'sid', anchor: 'Extracts!B3' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'table', 'read', 'sid', 'Extracts!B3'],
+      ['sheets', 'datasource', 'table', 'read', pos('sid'), pos('Extracts!B3')],
       { account: undefined },
     );
   });
@@ -1592,7 +1593,7 @@ describe('gog_sheets_datasource_table_read', () => {
       spreadsheetId: 'sid', anchor: 'Extracts!B3', maxRows: 250, render: 'UNFORMATTED_VALUE',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'table', 'read', 'sid', 'Extracts!B3', '--max-rows=250', '--render=UNFORMATTED_VALUE'],
+      ['sheets', 'datasource', 'table', 'read', pos('sid'), pos('Extracts!B3'), '--max-rows=250', '--render=UNFORMATTED_VALUE'],
       { account: undefined },
     );
   });
@@ -1615,7 +1616,7 @@ describe('gog_sheets_datasource_add', () => {
       spreadsheetId: 'sid', billingProject: 'my-proj', query: 'SELECT 1',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'add', 'sid', '--billing-project=my-proj', '--query=SELECT 1'],
+      ['sheets', 'datasource', 'add', pos('sid'), '--billing-project=my-proj', '--query=SELECT 1'],
       { account: undefined },
     );
   });
@@ -1627,7 +1628,7 @@ describe('gog_sheets_datasource_add', () => {
       spreadsheetId: 'sid', billingProject: 'billing', dataset: 'ds', table: 'tbl', tableProject: 'owner',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'add', 'sid', '--billing-project=billing', '--table-project=owner', '--dataset=ds', '--table=tbl'],
+      ['sheets', 'datasource', 'add', pos('sid'), '--billing-project=billing', '--table-project=owner', '--dataset=ds', '--table=tbl'],
       { account: undefined },
     );
   });
@@ -1661,7 +1662,7 @@ describe('gog_sheets_datasource_update', () => {
       spreadsheetId: 'sid', dataSourceId: 'ds1', query: 'SELECT 2',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'update', 'sid', 'ds1', '--query=SELECT 2'],
+      ['sheets', 'datasource', 'update', pos('sid'), pos('ds1'), '--query=SELECT 2'],
       { account: undefined },
     );
   });
@@ -1673,7 +1674,7 @@ describe('gog_sheets_datasource_update', () => {
       spreadsheetId: 'sid', dataSourceId: 'ds1', billingProject: 'new-proj', dataset: 'ds2', table: 't2',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'update', 'sid', 'ds1', '--billing-project=new-proj', '--dataset=ds2', '--table=t2'],
+      ['sheets', 'datasource', 'update', pos('sid'), pos('ds1'), '--billing-project=new-proj', '--dataset=ds2', '--table=t2'],
       { account: undefined },
     );
   });
@@ -1685,7 +1686,7 @@ describe('gog_sheets_datasource_update', () => {
       spreadsheetId: 'sid', dataSourceId: 'ds1', tableProject: 'other-owner',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'update', 'sid', 'ds1', '--table-project=other-owner'],
+      ['sheets', 'datasource', 'update', pos('sid'), pos('ds1'), '--table-project=other-owner'],
       { account: undefined },
     );
   });
@@ -1715,7 +1716,7 @@ describe('gog_sheets_datasource_refresh', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_datasource_refresh', { spreadsheetId: 'sid', dataSourceId: 'ds1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'refresh', 'sid', 'ds1'],
+      ['sheets', 'datasource', 'refresh', pos('sid'), pos('ds1')],
       { account: undefined },
     );
   });
@@ -1727,7 +1728,7 @@ describe('gog_sheets_datasource_refresh', () => {
       spreadsheetId: 'sid', dataSourceId: 'ds1', forceRefresh: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'refresh', 'sid', 'ds1', '--force-refresh'],
+      ['sheets', 'datasource', 'refresh', pos('sid'), pos('ds1'), '--force-refresh'],
       { account: undefined },
     );
   });
@@ -1768,7 +1769,7 @@ describe('gog_sheets_datasource_delete', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_sheets_datasource_delete', { spreadsheetId: 'sid', dataSourceId: 'ds1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'delete', 'sid', 'ds1', '--force'],
+      ['sheets', 'datasource', 'delete', pos('sid'), pos('ds1'), '--force'],
       { account: undefined },
     );
   });
@@ -1780,7 +1781,7 @@ describe('gog_sheets_datasource_delete', () => {
       spreadsheetId: 'sid', dataSourceId: 'ds1', account: 'me@x.com',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['sheets', 'datasource', 'delete', 'sid', 'ds1', '--force'],
+      ['sheets', 'datasource', 'delete', pos('sid'), pos('ds1'), '--force'],
       { account: 'me@x.com' },
     );
   });

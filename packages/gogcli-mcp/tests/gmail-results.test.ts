@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { rawTextResult, errorResult } from '@chrischall/mcp-utils';
 import * as runner from '../src/runner.js';
 import { finalizeGmailSearch, fetchGmailPages } from '../src/gmail-results.js';
+import { pos } from '../src/argv.js';
 
 vi.mock('../src/runner.js');
 
@@ -145,7 +146,7 @@ describe('finalizeGmailSearch — truncation metadata', () => {
       itemsKey: 'messages', method: 'users.messages.list', query: 'invoice', account: 'me@x.com',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['api', 'call', 'gmail', 'v1', 'users.messages.list',
+      ['api', 'call', 'gmail', 'v1', pos('users.messages.list'),
         `--params=${JSON.stringify({ userId: 'me', q: 'invoice', maxResults: 500, fields: 'messages/id,nextPageToken' })}`],
       { account: 'me@x.com' },
     );

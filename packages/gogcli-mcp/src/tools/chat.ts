@@ -9,6 +9,7 @@ import {
 } from './utils.js';
 import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
+import { pos } from '../argv.js';
 
 // Google Chat (gog >= 0.38.0 for the mention/reaction metadata in
 // `messages list`, >= 0.39.0 for `messages search`; the rest is older).
@@ -54,7 +55,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ max, pageToken, page, all, account }) => {
-    const args = ['chat', 'spaces', 'list'];
+    const args: GogArg[] = ['chat', 'spaces', 'list'];
     pushPaginationFlags(args, { max, pageToken, page, all });
     return runOrDiagnose(args, { account });
   });
@@ -72,7 +73,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ displayName, exact, max, account }) => {
-    const args = ['chat', 'spaces', 'find', displayName];
+    const args: GogArg[] = ['chat', 'spaces', 'find', pos(displayName)];
     if (exact) args.push('--exact');
     if (max !== undefined) args.push(`--max=${max}`);
     return runOrDiagnose(args, { account });
@@ -89,7 +90,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ displayName, members, account }) => {
-    const args = ['chat', 'spaces', 'create', displayName];
+    const args: GogArg[] = ['chat', 'spaces', 'create', pos(displayName)];
     if (members) for (const member of members) args.push(`--member=${member}`);
     return runOrDiagnose(args, { account });
   });
@@ -105,7 +106,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ space, max, pageToken, page, all, account }) => {
-    const args = ['chat', 'threads', 'list', space];
+    const args: GogArg[] = ['chat', 'threads', 'list', pos(space)];
     pushPaginationFlags(args, { max, pageToken, page, all });
     return runOrDiagnose(args, { account });
   });
@@ -128,7 +129,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ space, thread, unread, order, max, pageToken, page, all, account }) => {
-    const args = ['chat', 'messages', 'list', space];
+    const args: GogArg[] = ['chat', 'messages', 'list', pos(space)];
     if (thread) args.push(`--thread=${thread}`);
     if (unread) args.push('--unread');
     if (order) args.push(`--order=${order}`);
@@ -163,7 +164,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ query, order, view, markup, max, pageToken, page, all, account }) => {
-    const args = ['chat', 'messages', 'search', query];
+    const args: GogArg[] = ['chat', 'messages', 'search', pos(query)];
     if (order) args.push(`--order=${order}`);
     if (view) args.push(`--view=${view}`);
     if (markup) args.push(`--markup=${markup}`);
@@ -193,7 +194,7 @@ export function registerChatTools(server: McpServer): void {
     if (text === undefined && !attach?.length && !attachInline?.length) {
       throw new Error('A Chat message needs text, an attachment, or both.');
     }
-    const args: GogArg[] = ['chat', 'messages', 'send', space];
+    const args: GogArg[] = ['chat', 'messages', 'send', pos(space)];
     if (text !== undefined) args.push(`--text=${text}`);
     if (thread) args.push(`--thread=${thread}`);
     if (attach) for (const path of attach) args.push(`--attach=${path}`);
@@ -217,7 +218,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ email, text, thread, account }) => {
-    const args = ['chat', 'dm', 'send', email, `--text=${text}`];
+    const args: GogArg[] = ['chat', 'dm', 'send', pos(email), `--text=${text}`];
     if (thread) args.push(`--thread=${thread}`);
     return runOrDiagnose(args, { account });
   });
@@ -232,7 +233,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ email, account }) => {
-    return runOrDiagnose(['chat', 'dm', 'space', email], { account });
+    return runOrDiagnose(['chat', 'dm', 'space', pos(email)], { account });
   });
 
   server.registerTool('gog_chat_reactions_list', {
@@ -248,7 +249,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ message, space, max, pageToken, page, all, account }) => {
-    const args = ['chat', 'messages', 'reactions', 'list', message];
+    const args: GogArg[] = ['chat', 'messages', 'reactions', 'list', pos(message)];
     if (space) args.push(`--space=${space}`);
     pushPaginationFlags(args, { max, pageToken, page, all });
     return runOrDiagnose(args, { account });
@@ -266,7 +267,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ message, emoji, space, account }) => {
-    const args = ['chat', 'messages', 'reactions', 'create', message, emoji];
+    const args: GogArg[] = ['chat', 'messages', 'reactions', 'create', pos(message), pos(emoji)];
     if (space) args.push(`--space=${space}`);
     return runOrDiagnose(args, { account });
   });
@@ -282,7 +283,7 @@ export function registerChatTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ reaction, account }) => {
-    return runOrDiagnose(['chat', 'messages', 'reactions', 'delete', reaction], { account });
+    return runOrDiagnose(['chat', 'messages', 'reactions', 'delete', pos(reaction)], { account });
   });
 
   registerRunTool(server, {

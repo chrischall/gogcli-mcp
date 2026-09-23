@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerClassroomTools } from '../../src/tools/classroom.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -51,7 +52,7 @@ describe('gog_classroom_courses_list', () => {
 describe('gog_classroom_courses_get', () => {
   it('calls run with courseId', async () => {
     await harness.callTool('gog_classroom_courses_get', { courseId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'courses', 'get', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'courses', 'get', pos('c1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -64,20 +65,20 @@ describe('gog_classroom_courses_get', () => {
 describe('gog_classroom_students_list', () => {
   it('calls run with courseId only', async () => {
     await harness.callTool('gog_classroom_students_list', { courseId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'students', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'students', 'list', pos('c1')], { account: undefined });
   });
 
   it('passes all listing flags', async () => {
     await harness.callTool('gog_classroom_students_list', { courseId: 'c1', max: 20, page: 'tok', all: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'students', 'list', 'c1', '--max=20', '--page=tok', '--all'],
+      ['classroom', 'students', 'list', pos('c1'), '--max=20', '--page=tok', '--all'],
       { account: undefined },
     );
   });
 
   it('omits --all when false', async () => {
     await harness.callTool('gog_classroom_students_list', { courseId: 'c1', all: false });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'students', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'students', 'list', pos('c1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -90,7 +91,7 @@ describe('gog_classroom_students_list', () => {
 describe('gog_classroom_students_get', () => {
   it('calls run with courseId and userId', async () => {
     await harness.callTool('gog_classroom_students_get', { courseId: 'c1', userId: 'u1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'students', 'get', 'c1', 'u1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'students', 'get', pos('c1'), pos('u1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -103,20 +104,20 @@ describe('gog_classroom_students_get', () => {
 describe('gog_classroom_teachers_list', () => {
   it('calls run with courseId only', async () => {
     await harness.callTool('gog_classroom_teachers_list', { courseId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'teachers', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'teachers', 'list', pos('c1')], { account: undefined });
   });
 
   it('passes all listing flags', async () => {
     await harness.callTool('gog_classroom_teachers_list', { courseId: 'c1', max: 20, page: 'tok', all: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'teachers', 'list', 'c1', '--max=20', '--page=tok', '--all'],
+      ['classroom', 'teachers', 'list', pos('c1'), '--max=20', '--page=tok', '--all'],
       { account: undefined },
     );
   });
 
   it('omits --all when false', async () => {
     await harness.callTool('gog_classroom_teachers_list', { courseId: 'c1', all: false });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'teachers', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'teachers', 'list', pos('c1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -129,7 +130,7 @@ describe('gog_classroom_teachers_list', () => {
 describe('gog_classroom_teachers_get', () => {
   it('calls run with courseId and userId', async () => {
     await harness.callTool('gog_classroom_teachers_get', { courseId: 'c1', userId: 'u1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'teachers', 'get', 'c1', 'u1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'teachers', 'get', pos('c1'), pos('u1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -142,20 +143,20 @@ describe('gog_classroom_teachers_get', () => {
 describe('gog_classroom_roster', () => {
   it('calls run with courseId only', async () => {
     await harness.callTool('gog_classroom_roster', { courseId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'roster', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'roster', pos('c1')], { account: undefined });
   });
 
   it('passes all flags', async () => {
     await harness.callTool('gog_classroom_roster', { courseId: 'c1', students: true, teachers: true, max: 50, page: 'tok', all: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'roster', 'c1', '--students', '--teachers', '--max=50', '--page=tok', '--all'],
+      ['classroom', 'roster', pos('c1'), '--students', '--teachers', '--max=50', '--page=tok', '--all'],
       { account: undefined },
     );
   });
 
   it('omits boolean flags when false', async () => {
     await harness.callTool('gog_classroom_roster', { courseId: 'c1', students: false, teachers: false, all: false });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'roster', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'roster', pos('c1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -168,7 +169,7 @@ describe('gog_classroom_roster', () => {
 describe('gog_classroom_coursework_list', () => {
   it('calls run with courseId only', async () => {
     await harness.callTool('gog_classroom_coursework_list', { courseId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'coursework', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'coursework', 'list', pos('c1')], { account: undefined });
   });
 
   it('passes all listing flags', async () => {
@@ -183,14 +184,14 @@ describe('gog_classroom_coursework_list', () => {
       scanPages: 5,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'coursework', 'list', 'c1', '--state=PUBLISHED', '--topic=t1', '--order-by=updateTime desc', '--max=50', '--page=tok', '--all', '--scan-pages=5'],
+      ['classroom', 'coursework', 'list', pos('c1'), '--state=PUBLISHED', '--topic=t1', '--order-by=updateTime desc', '--max=50', '--page=tok', '--all', '--scan-pages=5'],
       { account: undefined },
     );
   });
 
   it('omits --all when false', async () => {
     await harness.callTool('gog_classroom_coursework_list', { courseId: 'c1', all: false });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'coursework', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'coursework', 'list', pos('c1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -203,7 +204,7 @@ describe('gog_classroom_coursework_list', () => {
 describe('gog_classroom_coursework_get', () => {
   it('calls run with courseId and courseworkId', async () => {
     await harness.callTool('gog_classroom_coursework_get', { courseId: 'c1', courseworkId: 'w1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'coursework', 'get', 'c1', 'w1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'coursework', 'get', pos('c1'), pos('w1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -216,7 +217,7 @@ describe('gog_classroom_coursework_get', () => {
 describe('gog_classroom_submissions_list', () => {
   it('calls run with ids only', async () => {
     await harness.callTool('gog_classroom_submissions_list', { courseId: 'c1', courseworkId: 'w1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'list', 'c1', 'w1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'list', pos('c1'), pos('w1')], { account: undefined });
   });
 
   it('passes all listing flags', async () => {
@@ -231,14 +232,14 @@ describe('gog_classroom_submissions_list', () => {
       all: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'submissions', 'list', 'c1', 'w1', '--state=TURNED_IN', '--late=late', '--user=u1', '--max=20', '--page=tok', '--all'],
+      ['classroom', 'submissions', 'list', pos('c1'), pos('w1'), '--state=TURNED_IN', '--late=late', '--user=u1', '--max=20', '--page=tok', '--all'],
       { account: undefined },
     );
   });
 
   it('omits --all when false', async () => {
     await harness.callTool('gog_classroom_submissions_list', { courseId: 'c1', courseworkId: 'w1', all: false });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'list', 'c1', 'w1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'list', pos('c1'), pos('w1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -251,7 +252,7 @@ describe('gog_classroom_submissions_list', () => {
 describe('gog_classroom_submissions_get', () => {
   it('calls run with all three ids', async () => {
     await harness.callTool('gog_classroom_submissions_get', { courseId: 'c1', courseworkId: 'w1', submissionId: 's1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'get', 'c1', 'w1', 's1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'get', pos('c1'), pos('w1'), pos('s1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -264,13 +265,13 @@ describe('gog_classroom_submissions_get', () => {
 describe('gog_classroom_submissions_grade', () => {
   it('calls run with ids only', async () => {
     await harness.callTool('gog_classroom_submissions_grade', { courseId: 'c1', courseworkId: 'w1', submissionId: 's1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'grade', 'c1', 'w1', 's1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'grade', pos('c1'), pos('w1'), pos('s1')], { account: undefined });
   });
 
   it('passes --draft and --assigned when provided', async () => {
     await harness.callTool('gog_classroom_submissions_grade', { courseId: 'c1', courseworkId: 'w1', submissionId: 's1', draft: '90', assigned: '95' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'submissions', 'grade', 'c1', 'w1', 's1', '--draft=90', '--assigned=95'],
+      ['classroom', 'submissions', 'grade', pos('c1'), pos('w1'), pos('s1'), '--draft=90', '--assigned=95'],
       { account: undefined },
     );
   });
@@ -285,7 +286,7 @@ describe('gog_classroom_submissions_grade', () => {
 describe('gog_classroom_submissions_return', () => {
   it('calls run with ids', async () => {
     await harness.callTool('gog_classroom_submissions_return', { courseId: 'c1', courseworkId: 'w1', submissionId: 's1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'return', 'c1', 'w1', 's1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'return', pos('c1'), pos('w1'), pos('s1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -298,7 +299,7 @@ describe('gog_classroom_submissions_return', () => {
 describe('gog_classroom_submissions_turn_in', () => {
   it('calls run with ids', async () => {
     await harness.callTool('gog_classroom_submissions_turn_in', { courseId: 'c1', courseworkId: 'w1', submissionId: 's1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'turn-in', 'c1', 'w1', 's1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'turn-in', pos('c1'), pos('w1'), pos('s1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -311,7 +312,7 @@ describe('gog_classroom_submissions_turn_in', () => {
 describe('gog_classroom_submissions_reclaim', () => {
   it('calls run with ids', async () => {
     await harness.callTool('gog_classroom_submissions_reclaim', { courseId: 'c1', courseworkId: 'w1', submissionId: 's1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'reclaim', 'c1', 'w1', 's1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'submissions', 'reclaim', pos('c1'), pos('w1'), pos('s1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -324,20 +325,20 @@ describe('gog_classroom_submissions_reclaim', () => {
 describe('gog_classroom_announcements_list', () => {
   it('calls run with courseId only', async () => {
     await harness.callTool('gog_classroom_announcements_list', { courseId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'announcements', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'announcements', 'list', pos('c1')], { account: undefined });
   });
 
   it('passes all listing flags', async () => {
     await harness.callTool('gog_classroom_announcements_list', { courseId: 'c1', state: 'PUBLISHED', orderBy: 'updateTime desc', max: 20, page: 'tok', all: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'announcements', 'list', 'c1', '--state=PUBLISHED', '--order-by=updateTime desc', '--max=20', '--page=tok', '--all'],
+      ['classroom', 'announcements', 'list', pos('c1'), '--state=PUBLISHED', '--order-by=updateTime desc', '--max=20', '--page=tok', '--all'],
       { account: undefined },
     );
   });
 
   it('omits --all when false', async () => {
     await harness.callTool('gog_classroom_announcements_list', { courseId: 'c1', all: false });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'announcements', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'announcements', 'list', pos('c1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -350,7 +351,7 @@ describe('gog_classroom_announcements_list', () => {
 describe('gog_classroom_announcements_get', () => {
   it('calls run with ids', async () => {
     await harness.callTool('gog_classroom_announcements_get', { courseId: 'c1', announcementId: 'a1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'announcements', 'get', 'c1', 'a1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'announcements', 'get', pos('c1'), pos('a1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -364,7 +365,7 @@ describe('gog_classroom_announcements_create', () => {
   it('calls run with required text only', async () => {
     await harness.callTool('gog_classroom_announcements_create', { courseId: 'c1', text: 'Hi' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'announcements', 'create', 'c1', '--text=Hi'],
+      ['classroom', 'announcements', 'create', pos('c1'), '--text=Hi'],
       { account: undefined },
     );
   });
@@ -372,7 +373,7 @@ describe('gog_classroom_announcements_create', () => {
   it('passes all optional flags', async () => {
     await harness.callTool('gog_classroom_announcements_create', { courseId: 'c1', text: 'Hi', state: 'DRAFT', scheduled: '2026-05-01T12:00' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'announcements', 'create', 'c1', '--text=Hi', '--state=DRAFT', '--scheduled=2026-05-01T12:00'],
+      ['classroom', 'announcements', 'create', pos('c1'), '--text=Hi', '--state=DRAFT', '--scheduled=2026-05-01T12:00'],
       { account: undefined },
     );
   });
@@ -387,20 +388,20 @@ describe('gog_classroom_announcements_create', () => {
 describe('gog_classroom_topics_list', () => {
   it('calls run with courseId only', async () => {
     await harness.callTool('gog_classroom_topics_list', { courseId: 'c1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'topics', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'topics', 'list', pos('c1')], { account: undefined });
   });
 
   it('passes all listing flags', async () => {
     await harness.callTool('gog_classroom_topics_list', { courseId: 'c1', max: 20, page: 'tok', all: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['classroom', 'topics', 'list', 'c1', '--max=20', '--page=tok', '--all'],
+      ['classroom', 'topics', 'list', pos('c1'), '--max=20', '--page=tok', '--all'],
       { account: undefined },
     );
   });
 
   it('omits --all when false', async () => {
     await harness.callTool('gog_classroom_topics_list', { courseId: 'c1', all: false });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'topics', 'list', 'c1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'topics', 'list', pos('c1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -413,7 +414,7 @@ describe('gog_classroom_topics_list', () => {
 describe('gog_classroom_topics_get', () => {
   it('calls run with ids', async () => {
     await harness.callTool('gog_classroom_topics_get', { courseId: 'c1', topicId: 't1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'topics', 'get', 'c1', 't1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'topics', 'get', pos('c1'), pos('t1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -452,7 +453,7 @@ describe('gog_classroom_invitations_list', () => {
 describe('gog_classroom_invitations_get', () => {
   it('calls run with invitationId', async () => {
     await harness.callTool('gog_classroom_invitations_get', { invitationId: 'i1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'invitations', 'get', 'i1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'invitations', 'get', pos('i1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -465,7 +466,7 @@ describe('gog_classroom_invitations_get', () => {
 describe('gog_classroom_invitations_accept', () => {
   it('calls run with invitationId', async () => {
     await harness.callTool('gog_classroom_invitations_accept', { invitationId: 'i1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'invitations', 'accept', 'i1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'invitations', 'accept', pos('i1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -483,7 +484,7 @@ describe('gog_classroom_profile_get', () => {
 
   it('passes userId when provided', async () => {
     await harness.callTool('gog_classroom_profile_get', { userId: 'u1' });
-    expect(runner.run).toHaveBeenCalledWith(['classroom', 'profile', 'get', 'u1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['classroom', 'profile', 'get', pos('u1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {

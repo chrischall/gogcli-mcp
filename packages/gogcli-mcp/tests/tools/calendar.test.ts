@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerCalendarTools, CALENDAR_EVENTS_COMPACT_FIELDS } from '../../src/tools/calendar.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
+import type { GogArg } from '../../src/runner.js';
 
 vi.mock('../../src/runner.js');
 
@@ -10,7 +12,7 @@ const setupHandlers = () => createTestHarness(registerCalendarTools);
 // gog_calendar_events answers in the compact rung by default, so every call
 // carries the mask. These keep the window-flag tests below about window flags
 // while still asserting the shipped default rather than an opted-out view.
-const evArgs = (...extra: string[]) =>
+const evArgs = (...extra: GogArg[]) =>
   ['calendar', 'events', ...extra, `--fields=${CALENDAR_EVENTS_COMPACT_FIELDS}`];
 const evOpts = { account: undefined, fieldsMask: CALENDAR_EVENTS_COMPACT_FIELDS };
 
@@ -67,7 +69,7 @@ describe('gog_calendar_events', () => {
       query: 'standup',
       all: true,
     });
-    expect(runner.run).toHaveBeenCalledWith(evArgs('primary', '--from=2026-01-01', '--to=2026-01-31', '--query=standup', '--all'), evOpts);
+    expect(runner.run).toHaveBeenCalledWith(evArgs(pos('primary'), '--from=2026-01-01', '--to=2026-01-31', '--query=standup', '--all'), evOpts);
   });
 
   it('appends --today on its own', async () => {
@@ -118,7 +120,7 @@ describe('gog_calendar_get', () => {
     vi.mocked(runner.run).mockResolvedValue('{"id":"evt1"}');
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_get', { calendarId: 'primary', eventId: 'evt1' });
-    expect(runner.run).toHaveBeenCalledWith(['calendar', 'event', 'primary', 'evt1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['calendar', 'event', pos('primary'), pos('evt1')], { account: undefined });
   });
 
   it('appends --timezone when provided', async () => {
@@ -126,7 +128,7 @@ describe('gog_calendar_get', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_get', { calendarId: 'primary', eventId: 'evt1', timezone: 'local' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'event', 'primary', 'evt1', '--timezone=local'],
+      ['calendar', 'event', pos('primary'), pos('evt1'), '--timezone=local'],
       { account: undefined },
     );
   });
@@ -150,7 +152,7 @@ describe('gog_calendar_create', () => {
       to: '2026-04-14T09:30:00Z',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'create', 'primary', '--summary=Standup', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z'],
+      ['calendar', 'create', pos('primary'), '--summary=Standup', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z'],
       { account: undefined },
     );
   });
@@ -171,7 +173,7 @@ describe('gog_calendar_create', () => {
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'calendar', 'create', 'primary',
+        'calendar', 'create', pos('primary'),
         '--summary=All-day', '--from=2026-04-14', '--to=2026-04-15',
         '--description=Desc', '--location=NYC', '--attendees=a@b.com,c@d.com', '--all-day',
         '--timezone=America/New_York',
@@ -195,7 +197,7 @@ describe('gog_calendar_create', () => {
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'calendar', 'create', 'primary',
+        'calendar', 'create', pos('primary'),
         '--summary=Sync', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z',
         '--with-zoom',
       ],
@@ -210,7 +212,7 @@ describe('gog_calendar_create', () => {
       calendarId: 'primary', summary: 's', from: 'f', to: 't', withZoom: false,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'create', 'primary', '--summary=s', '--from=f', '--to=t'],
+      ['calendar', 'create', pos('primary'), '--summary=s', '--from=f', '--to=t'],
       { account: undefined },
     );
   });
@@ -233,7 +235,7 @@ describe('gog_calendar_update', () => {
       summary: 'New Title',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--summary=New Title'],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--summary=New Title'],
       { account: undefined },
     );
   });
@@ -246,12 +248,12 @@ describe('gog_calendar_update', () => {
       calendarId: 'primary', eventId: 'evt1', attachments: ['https://drive.google.com/file/d/a', 'https://x.test/b.pdf'],
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--attachment=https://drive.google.com/file/d/a', '--attachment=https://x.test/b.pdf'],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--attachment=https://drive.google.com/file/d/a', '--attachment=https://x.test/b.pdf'],
       { account: undefined },
     );
     await harness.callTool('gog_calendar_update', { calendarId: 'primary', eventId: 'evt1', attachments: [''] });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--attachment='],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--attachment='],
       { account: undefined },
     );
   });
@@ -271,7 +273,7 @@ describe('gog_calendar_update', () => {
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'calendar', 'update', 'primary', 'evt1',
+        'calendar', 'update', pos('primary'), pos('evt1'),
         '--summary=New', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T10:00:00Z',
         '--description=Desc', '--location=NYC', '--attendees=a@b.com',
       ],
@@ -290,7 +292,7 @@ describe('gog_calendar_update', () => {
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'calendar', 'update', 'primary', 'evt1',
+        'calendar', 'update', pos('primary'), pos('evt1'),
         '--add-attendee=room@resource.calendar.google.com;resource,x@y.com;optional',
       ],
       { account: undefined },
@@ -305,7 +307,7 @@ describe('gog_calendar_update', () => {
       calendarId: 'primary', eventId: 'evt1', withZoom: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--with-zoom'],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--with-zoom'],
       { account: undefined },
     );
 
@@ -315,7 +317,7 @@ describe('gog_calendar_update', () => {
       calendarId: 'primary', eventId: 'evt1', regenerateZoom: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--regenerate-zoom'],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--regenerate-zoom'],
       { account: undefined },
     );
 
@@ -325,7 +327,7 @@ describe('gog_calendar_update', () => {
       calendarId: 'primary', eventId: 'evt1', removeZoom: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--remove-zoom'],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--remove-zoom'],
       { account: undefined },
     );
   });
@@ -338,7 +340,7 @@ describe('gog_calendar_update', () => {
       calendarId: 'primary', eventId: 'evt1', removeMeet: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--remove-meet'],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--remove-meet'],
       { account: undefined },
     );
   });
@@ -351,7 +353,7 @@ describe('gog_calendar_update', () => {
       withZoom: false, regenerateZoom: false, removeZoom: false,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1'],
+      ['calendar', 'update', pos('primary'), pos('evt1')],
       { account: undefined },
     );
   });
@@ -369,7 +371,7 @@ describe('gog_calendar_delete', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_delete', { calendarId: 'primary', eventId: 'evt1' });
-    expect(runner.run).toHaveBeenCalledWith(['calendar', 'delete', 'primary', 'evt1', '--force'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['calendar', 'delete', pos('primary'), pos('evt1'), '--force'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -386,7 +388,7 @@ describe('gog_calendar_respond', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_calendar_respond', { calendarId: 'primary', eventId: 'evt1', status: 'accepted' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'respond', 'primary', 'evt1', '--status=accepted'],
+      ['calendar', 'respond', pos('primary'), pos('evt1'), '--status=accepted'],
       { account: undefined },
     );
   });
@@ -401,7 +403,7 @@ describe('gog_calendar_respond', () => {
       comment: 'Can\'t make it',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'respond', 'primary', 'evt1', '--status=declined', '--comment=Can\'t make it'],
+      ['calendar', 'respond', pos('primary'), pos('evt1'), '--status=declined', '--comment=Can\'t make it'],
       { account: undefined },
     );
   });
@@ -500,7 +502,7 @@ describe('gog_calendar_create reminders', () => {
       reminders: ['popup:30m', 'email:1d'],
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'create', 'primary', '--summary=Standup', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z',
+      ['calendar', 'create', pos('primary'), '--summary=Standup', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z',
         '--reminder=popup:30m', '--reminder=email:1d'],
       { account: undefined },
     );
@@ -517,7 +519,7 @@ describe('gog_calendar_create reminders', () => {
       noReminders: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'create', 'primary', '--summary=Quiet', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z',
+      ['calendar', 'create', pos('primary'), '--summary=Quiet', '--from=2026-04-14T09:00:00Z', '--to=2026-04-14T09:30:00Z',
         '--no-reminders'],
       { account: undefined },
     );
@@ -559,7 +561,7 @@ describe('gog_calendar_update reminders', () => {
       calendarId: 'primary', eventId: 'evt1', reminders: ['popup:15m'],
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--reminder=popup:15m'],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--reminder=popup:15m'],
       { account: undefined },
     );
   });
@@ -573,7 +575,7 @@ describe('gog_calendar_update reminders', () => {
       calendarId: 'primary', eventId: 'evt1', reminders: [],
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--reminder='],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--reminder='],
       { account: undefined },
     );
   });
@@ -585,7 +587,7 @@ describe('gog_calendar_update reminders', () => {
       calendarId: 'primary', eventId: 'evt1', noReminders: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--no-reminders'],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--no-reminders'],
       { account: undefined },
     );
   });
@@ -597,7 +599,7 @@ describe('gog_calendar_update reminders', () => {
       calendarId: 'primary', eventId: 'evt1', summary: 'Renamed',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['calendar', 'update', 'primary', 'evt1', '--summary=Renamed'],
+      ['calendar', 'update', pos('primary'), pos('evt1'), '--summary=Renamed'],
       { account: undefined },
     );
   });

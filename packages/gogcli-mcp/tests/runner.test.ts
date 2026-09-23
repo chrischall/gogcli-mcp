@@ -4,6 +4,7 @@ import { spawn as mockedSpawn } from 'node:child_process';
 import { withCallSignal } from '@chrischall/mcp-utils';
 import { run, runBinary } from '../src/runner.js';
 import type { Spawner } from '../src/runner.js';
+import { pos } from '../src/argv.js';
 
 // The real spawn is dynamically imported inside runner's default executor.
 // Mock it so the no-spawner/no-executor fallback can be exercised without
@@ -972,6 +973,59 @@ describe('run safety flags', () => {
     const spawner = makeSpawner(0, '{}');
     await run(['gmail', 'search', '--', '--readonly=false'], { spawner });
     expect(spawner).toHaveBeenCalledTimes(1);
+  });
+});
+
+// BUG-1: a positional value that starts with '-' (a Gmail negation query such
+// as "-in:spam", an ID or a name the model chose) must never be parsed as a
+// gog flag. Values marked with pos() go after a single `--`, after every flag,
+// in their original order — the pattern upstream gogcli's own MCP tools use.
+describe('run positionals', () => {
+  it('moves pos() values after -- at the end, keeping their order', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['sheets', 'get', pos('id1'), pos('-A1'), '--render=FORMULA'], { spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', 'sheets', 'get', '--render=FORMULA', '--', 'id1', '-A1'],
+      expect.any(Object),
+    );
+  });
+
+  it('passes a flag-shaped positional through as data, not a flag', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['gmail', 'search', pos('--readonly=false')], { readonly: true, spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', '--readonly', 'gmail', 'search', '--', '--readonly=false'],
+      expect.any(Object),
+    );
+  });
+
+  it('adds no -- when nothing is marked positional', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(['gmail', 'labels', 'list'], { spawner });
+    expect((spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]![1]).not.toContain('--');
+  });
+
+  it('treats a positional file arg as a positional', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await run(
+      ['drive', 'upload', { kind: 'file', flag: 'upload', contents: 'aGk=', encoding: 'base64', filename: 'a.txt', positional: true }, '--parent=p'],
+      { spawner },
+    );
+    const argv = (spawner as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]![1] as string[];
+    expect(argv.slice(0, 7)).toEqual(['--json', '--color=never', '--no-input', 'drive', 'upload', '--parent=p', '--']);
+    expect(argv[7]).toMatch(/a\.txt$/);
+  });
+
+  it('keeps everything after an explicit -- positional', async () => {
+    const spawner = makeSpawner(0, '{}');
+    await runBinary(['api', 'call', '--', 'drive', pos('v3')], { spawner });
+    expect(spawner).toHaveBeenCalledWith(
+      'gog',
+      ['--json', '--color=never', '--no-input', 'api', 'call', '--', 'drive', 'v3'],
+      expect.any(Object),
+    );
   });
 });
 

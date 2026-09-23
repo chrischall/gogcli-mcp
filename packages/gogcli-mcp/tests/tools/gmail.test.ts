@@ -4,6 +4,7 @@ import * as runner from '../../src/runner.js';
 import { PAYLOAD_INLINE_MAX } from '../../src/tools/utils.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
 import type { ElicitRequest, ElicitResult } from '@modelcontextprotocol/server';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -19,14 +20,23 @@ describe('gog_gmail_search', () => {
     vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_search', { query: 'from:alice' });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'from:alice'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', pos('from:alice')], { account: undefined });
+  });
+
+  // BUG-1: `gog gmail search "-in:spam"` failed with "unknown flag -i". The
+  // query is marked positional so the runner passes it after `--`.
+  it('marks a negation query positional so gog never parses it as a flag', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_search', { query: '-in:spam', max: 5 });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', pos('-in:spam'), '--max=5'], { account: undefined });
   });
 
   it('appends --max flag when provided', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_search', { query: 'is:unread', max: 5 });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'is:unread', '--max=5'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', pos('is:unread'), '--max=5'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -40,7 +50,7 @@ describe('gog_gmail_search', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_search', { query: 'subject:invoice', fromContact: 'Alice' });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'subject:invoice', '--from-contact=Alice'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', pos('subject:invoice'), '--from-contact=Alice'], { account: undefined });
   });
 });
 
@@ -52,14 +62,14 @@ describe('gog_gmail_search — pagination and result finalization', () => {
     vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_search', { query: 'x', pageToken: 'tok', all: true });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'x', '--all', '--page=tok'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', pos('x'), '--all', '--page=tok'], { account: undefined });
   });
 
   it('omits --all when false', async () => {
     vi.mocked(runner.run).mockResolvedValue('{"threads":[]}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_search', { query: 'x', all: false });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', 'x'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'search', pos('x')], { account: undefined });
   });
 
   it('sorts results newest-first', async () => {
@@ -88,7 +98,7 @@ describe('gog_gmail_search — pagination and result finalization', () => {
     expect(out.totalMatches).toBe(3);
     expect(out.warning).toContain('INCOMPLETE RESULT SET: returned 1 of 3 matches');
     expect(runner.run).toHaveBeenCalledWith(
-      ['api', 'call', 'gmail', 'v1', 'users.threads.list',
+      ['api', 'call', 'gmail', 'v1', pos('users.threads.list'),
         '--params={"userId":"me","q":"invoice","maxResults":500,"fields":"threads/id,nextPageToken"}'],
       { account: undefined },
     );
@@ -195,14 +205,14 @@ describe('gog_gmail_get', () => {
     vi.mocked(runner.run).mockResolvedValue('{"id":"msg1"}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_get', { messageId: 'msg1' });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'msg1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1')], { account: undefined });
   });
 
   it('appends --format flag when provided', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_get', { messageId: 'msg1', format: 'metadata' });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'msg1', '--format=metadata'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1'), '--format=metadata'], { account: undefined });
   });
 
   // gog >= 0.37.0 (openclaw/gogcli#992): before that release the sanitized
@@ -212,14 +222,14 @@ describe('gog_gmail_get', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_get', { messageId: 'msg1', sanitizeContent: true });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'msg1', '--sanitize-content'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1'), '--sanitize-content'], { account: undefined });
   });
 
   it('omits --sanitize-content when false', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_get', { messageId: 'msg1', sanitizeContent: false });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'msg1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -609,7 +619,7 @@ describe.each([
     const harness = await setupHandlers();
     await harness.callTool(tool, { messageId: 'msg1', body: 'Sounds good' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['gmail', subcommand, 'msg1', '--body=Sounds good', '--auto-from-addressed-alias=false'],
+      ['gmail', subcommand, pos('msg1'), '--body=Sounds good', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -619,7 +629,7 @@ describe.each([
     const harness = await setupHandlers();
     await harness.callTool(tool, { messageId: 'msg1', body: 'Ack', noQuote: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['gmail', subcommand, 'msg1', '--body=Ack', '--no-quote', '--auto-from-addressed-alias=false'],
+      ['gmail', subcommand, pos('msg1'), '--body=Ack', '--no-quote', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -640,7 +650,7 @@ describe.each([
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'gmail', subcommand, 'msg1', '--body=Adding Carol',
+        'gmail', subcommand, pos('msg1'), '--body=Adding Carol',
         '--to=bob@example.com', '--cc=carol@example.com', '--bcc=dave@example.com',
         '--remove=eve@example.com', '--subject=Re: Custom', '--from=me@example.com',
         '--auto-from-addressed-alias=false',
@@ -654,7 +664,7 @@ describe.each([
     const harness = await setupHandlers();
     await harness.callTool(tool, { messageId: 'msg1', body: 'Hi', autoFromAddressedAlias: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['gmail', subcommand, 'msg1', '--body=Hi', '--auto-from-addressed-alias'],
+      ['gmail', subcommand, pos('msg1'), '--body=Hi', '--auto-from-addressed-alias'],
       { account: undefined },
     );
   });
@@ -669,7 +679,7 @@ describe.each([
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'gmail', subcommand, 'msg1', '--body=See attached',
+        'gmail', subcommand, pos('msg1'), '--body=See attached',
         '--attach=/tmp/shot.png', '--attach=/tmp/notes.pdf',
         '--auto-from-addressed-alias=false',
       ],
@@ -688,7 +698,7 @@ describe.each([
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'gmail', subcommand, 'msg1', '--body=Bytes',
+        'gmail', subcommand, pos('msg1'), '--body=Bytes',
         { kind: 'file', flag: 'attach', contents: bytes, encoding: 'base64', filename: 'a.txt' },
         '--auto-from-addressed-alias=false',
       ],
@@ -703,7 +713,7 @@ describe.each([
     await harness.callTool(tool, { messageId: 'msg1', body: big });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'gmail', subcommand, 'msg1',
+        'gmail', subcommand, pos('msg1'),
         { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
         '--auto-from-addressed-alias=false',
       ],
@@ -728,7 +738,7 @@ describe('gog_gmail_reply — full flag set', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: 'Thanks' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['gmail', 'reply', 'm1', '--body=Thanks', '--auto-from-addressed-alias=false'],
+      ['gmail', 'reply', pos('m1'), '--body=Thanks', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -755,7 +765,7 @@ describe('gog_gmail_reply — full flag set', () => {
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'gmail', 'reply', 'm1',
+        'gmail', 'reply', pos('m1'),
         '--body=Hi',
         '--body-html=<p>Hi</p>',
         '--to=a@b.com',
@@ -783,7 +793,7 @@ describe('gog_gmail_reply — full flag set', () => {
       messageId: 'm1', body: 'Hi', noQuote: false, signature: false,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['gmail', 'reply', 'm1', '--body=Hi', '--auto-from-addressed-alias=false'],
+      ['gmail', 'reply', pos('m1'), '--body=Hi', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -795,7 +805,7 @@ describe('gog_gmail_reply_all — full flag set', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_gmail_reply_all', { messageId: 'm1', body: 'Thanks all' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['gmail', 'reply-all', 'm1', '--body=Thanks all', '--auto-from-addressed-alias=false'],
+      ['gmail', 'reply-all', pos('m1'), '--body=Thanks all', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -812,7 +822,7 @@ describe('gog_gmail_reply_all — full flag set', () => {
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'gmail', 'reply-all', 'm1',
+        'gmail', 'reply-all', pos('m1'),
         '--body-html=<p>Hi</p>',
         '--cc=x@y.com',
         '--cc=z@y.com',
@@ -859,7 +869,7 @@ describe.each([
   it('elicits the resolved recipients and sends nothing when the user declines', async () => {
     const { result, request, details } = await promptedDetails({ body: 'Sounds good' });
     expect(runner.run).toHaveBeenCalledTimes(2);
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', 'm1', '--format=metadata'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('m1'), '--format=metadata'], { account: undefined });
     expect(request?.params.requestedSchema).toEqual(expect.objectContaining({ type: 'object' }));
     expect(JSON.parse(result.content[0].text as string)).toEqual(expect.objectContaining({
       confirmed: false,
@@ -900,10 +910,10 @@ describe.each([
     const harness = await setupHandlers();
     const result = await harness.callTool(tool, { messageId: 'm1', body: 'Sounds good' });
     expect(runner.run).toHaveBeenCalledTimes(3);
-    expect(runner.run).toHaveBeenNthCalledWith(1, ['gmail', 'get', 'm1', '--format=metadata'], { account: undefined });
+    expect(runner.run).toHaveBeenNthCalledWith(1, ['gmail', 'get', pos('m1'), '--format=metadata'], { account: undefined });
     expect(runner.run).toHaveBeenNthCalledWith(
       3,
-      ['gmail', subcommand, 'm1', '--body=Sounds good', '--auto-from-addressed-alias=false'],
+      ['gmail', subcommand, pos('m1'), '--body=Sounds good', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
     expect(result.content[0].text).toBe('{"id":"sent1"}');
@@ -998,7 +1008,7 @@ describe('gog_gmail_reply body-vs-file conflicts', () => {
       messageId: 'm1', body: 'Hi', bodyHtmlFile: '/tmp/b.html',
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['gmail', 'reply', 'm1', '--body=Hi', '--body-html-file=/tmp/b.html', '--auto-from-addressed-alias=false'],
+      ['gmail', 'reply', pos('m1'), '--body=Hi', '--body-html-file=/tmp/b.html', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -1011,7 +1021,7 @@ describe('gog_gmail_reply body-vs-file conflicts', () => {
     await harness.callTool('gog_gmail_reply', { messageId: 'm1', body: big, bodyHtml: bigHtml });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'gmail', 'reply', 'm1',
+        'gmail', 'reply', pos('m1'),
         { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
         { kind: 'file', flag: 'body-html-file', contents: bigHtml, ext: 'html' },
         '--auto-from-addressed-alias=false',

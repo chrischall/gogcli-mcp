@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerApiTools } from '../../src/tools/api.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -37,7 +38,7 @@ describe('gog_api_describe', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_api_describe', { api: 'drive', version: 'v3' });
-    expect(runner.run).toHaveBeenCalledWith(['api', 'describe', 'drive', 'v3'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['api', 'describe', pos('drive'), pos('v3')], { account: undefined });
   });
 
   it('describes a single method when method is provided', async () => {
@@ -45,7 +46,7 @@ describe('gog_api_describe', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_api_describe', { api: 'drive', version: 'v3', method: 'files.list' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['api', 'describe', 'drive', 'v3', 'files.list'],
+      ['api', 'describe', pos('drive'), pos('v3'), pos('files.list')],
       { account: undefined },
     );
   });
@@ -64,7 +65,7 @@ describe('gog_api_call', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_api_call', { api: 'drive', version: 'v3', method: 'files.list', params: '{"q":"x"}' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['api', 'call', 'drive', 'v3', 'files.list', '--params={"q":"x"}'],
+      ['api', 'call', pos('drive'), pos('v3'), pos('files.list'), '--params={"q":"x"}'],
       { account: undefined, gmailNoSend: true },
     );
   });
@@ -79,7 +80,7 @@ describe('gog_api_call', () => {
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
-        'api', 'call', 'drive', 'v3', 'files.create',
+        'api', 'call', pos('drive'), pos('v3'), pos('files.create'),
         '--params={"fields":"id"}', '--body={"name":"f"}',
         '--scope=https://www.googleapis.com/auth/drive', '--allow-write', '--dry-run', '--force',
       ],
@@ -94,7 +95,7 @@ describe('gog_api_call', () => {
       api: 'drive', version: 'v3', method: 'files.create', allowWrite: true,
     });
     const passedArgs = vi.mocked(runner.run).mock.calls[0][0];
-    expect(passedArgs).toEqual(['api', 'call', 'drive', 'v3', 'files.create', '--allow-write', '--force']);
+    expect(passedArgs).toEqual(['api', 'call', pos('drive'), pos('v3'), pos('files.create'), '--allow-write', '--force']);
     expect(passedArgs[passedArgs.length - 1]).toBe('--force');
   });
 

@@ -111,7 +111,7 @@ export const paginationParams = {
 // Append pagination flags to an argv array. Mirrors the shape of
 // paginationParams above. Use together to keep call sites concise.
 export function pushPaginationFlags(
-  args: string[],
+  args: GogArg[],
   p: { max?: number; pageToken?: string; page?: string; all?: boolean },
 ): void {
   if (p.max !== undefined) args.push(`--max=${p.max}`);

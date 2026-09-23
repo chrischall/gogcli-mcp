@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
+import { pos } from '../argv.js';
+import type { GogArg } from '../runner.js';
 
 export function registerDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_info', {
@@ -11,7 +13,7 @@ export function registerDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, account }) => {
-    return runOrDiagnose(['docs', 'info', docId], { account });
+    return runOrDiagnose(['docs', 'info', pos(docId)], { account });
   });
 
   server.registerTool('gog_docs_cat', {
@@ -23,7 +25,7 @@ export function registerDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, chips, account }) => {
-    const args = ['docs', 'cat', docId];
+    const args: GogArg[] = ['docs', 'cat', pos(docId)];
     if (chips) args.push('--chips');
     return runOrDiagnose(args, { account });
   });
@@ -36,7 +38,7 @@ export function registerDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ title, account }) => {
-    return runOrDiagnose(['docs', 'create', title], { account });
+    return runOrDiagnose(['docs', 'create', pos(title)], { account });
   });
 
   server.registerTool('gog_docs_write', {
@@ -62,7 +64,7 @@ export function registerDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, text, append, checkOrphans, bullets, bulletPreset, ordered, noBullets, indentStart, indentEnd, indentFirstLine, spaceAbove, spaceBelow, keepLinesTogether, keepWithNext, batch, account }) => {
-    const args = ['docs', 'write', docId, `--text=${text}`];
+    const args: GogArg[] = ['docs', 'write', pos(docId), `--text=${text}`];
     if (append) args.push('--append');
     if (checkOrphans) args.push('--check-orphans');
     if (bullets) args.push('--bullets');
@@ -90,7 +92,7 @@ export function registerDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, find, replace, account }) => {
-    return runOrDiagnose(['docs', 'find-replace', docId, find, replace], { account });
+    return runOrDiagnose(['docs', 'find-replace', pos(docId), pos(find), pos(replace)], { account });
   });
 
   server.registerTool('gog_docs_structure', {
@@ -101,7 +103,7 @@ export function registerDocsTools(server: McpServer): void {
       account: accountParam,
     }),
   }, async ({ docId, account }) => {
-    return runOrDiagnose(['docs', 'structure', docId], { account });
+    return runOrDiagnose(['docs', 'structure', pos(docId)], { account });
   });
 
   registerRunTool(server, { service: 'docs', examples: '"copy", "clear", "insert", "sed", "export"' });

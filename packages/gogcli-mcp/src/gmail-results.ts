@@ -3,6 +3,7 @@ import { rawTextResult } from '@chrischall/mcp-utils';
 import { run } from './runner.js';
 import { annotateTruncation, hasMorePages } from './pagination.js';
 import type { MatchCount } from './pagination.js';
+import { pos } from './argv.js';
 
 // Post-processing for Gmail search output, on the seam between gog's JSON and
 // the model client. Two guarantees live here, both of which exist because a
@@ -102,7 +103,7 @@ async function countMatches(
       maxResults: COUNT_PROBE_PAGE_SIZE,
       fields: `${itemsKey}/id,nextPageToken`,
     });
-    const raw = await run(['api', 'call', 'gmail', 'v1', method, `--params=${params}`], { account });
+    const raw = await run(['api', 'call', 'gmail', 'v1', pos(method), `--params=${params}`], { account });
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const items = parsed[itemsKey];
     if (!Array.isArray(items)) return {};

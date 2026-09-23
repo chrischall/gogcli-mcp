@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerAppScriptTools } from '../../src/tools/appscript.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -14,7 +15,7 @@ describe('gog_appscript_get', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_appscript_get', { scriptId: 'S1' });
-    expect(runner.run).toHaveBeenCalledWith(['appscript', 'get', 'S1'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['appscript', 'get', pos('S1')], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -30,7 +31,7 @@ describe('gog_appscript_content', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_appscript_content', { scriptId: 'S1', account: 'me@x.com' });
-    expect(runner.run).toHaveBeenCalledWith(['appscript', 'content', 'S1'], { account: 'me@x.com' });
+    expect(runner.run).toHaveBeenCalledWith(['appscript', 'content', pos('S1')], { account: 'me@x.com' });
   });
 });
 
@@ -39,7 +40,7 @@ describe('gog_appscript_pull', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_appscript_pull', { scriptId: 'S1', dir: '/tmp/proj' });
-    expect(runner.run).toHaveBeenCalledWith(['appscript', 'pull', 'S1', '/tmp/proj'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['appscript', 'pull', pos('S1'), pos('/tmp/proj')], { account: undefined });
   });
 
   it('passes --overwrite', async () => {
@@ -47,7 +48,7 @@ describe('gog_appscript_pull', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_appscript_pull', { scriptId: 'S1', dir: '/tmp/proj', overwrite: true });
     expect(runner.run).toHaveBeenCalledWith(
-      ['appscript', 'pull', 'S1', '/tmp/proj', '--overwrite'],
+      ['appscript', 'pull', pos('S1'), pos('/tmp/proj'), '--overwrite'],
       { account: undefined },
     );
   });
@@ -95,7 +96,7 @@ describe('gog_appscript_deployments', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_appscript_deployments', { scriptId: 'S1', max: 10, pageToken: 'tok' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['appscript', 'deployments', 'S1', '--max=10', '--page=tok'],
+      ['appscript', 'deployments', pos('S1'), '--max=10', '--page=tok'],
       { account: undefined },
     );
   });
@@ -106,7 +107,7 @@ describe('gog_appscript_versions', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_appscript_versions', { scriptId: 'S1', all: true });
-    expect(runner.run).toHaveBeenCalledWith(['appscript', 'versions', 'S1', '--all'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['appscript', 'versions', pos('S1'), '--all'], { account: undefined });
   });
 });
 
@@ -115,7 +116,7 @@ describe('gog_appscript_run_function', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_appscript_run_function', { scriptId: 'S1', functionName: 'doWork' });
-    expect(runner.run).toHaveBeenCalledWith(['appscript', 'run', 'S1', 'doWork'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['appscript', 'run', pos('S1'), pos('doWork')], { account: undefined });
   });
 
   it('passes params and --dev-mode', async () => {
@@ -125,7 +126,7 @@ describe('gog_appscript_run_function', () => {
       scriptId: 'S1', functionName: 'doWork', params: '["a",1]', devMode: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['appscript', 'run', 'S1', 'doWork', '--params=["a",1]', '--dev-mode'],
+      ['appscript', 'run', pos('S1'), pos('doWork'), '--params=["a",1]', '--dev-mode'],
       { account: undefined },
     );
   });

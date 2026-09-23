@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerChatTools } from '../../src/tools/chat.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
+import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
@@ -58,7 +59,7 @@ describe('gog_chat_spaces_find', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_spaces_find', { displayName: 'Team' });
-    expect(runner.run).toHaveBeenCalledWith(['chat', 'spaces', 'find', 'Team'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['chat', 'spaces', 'find', pos('Team')], { account: undefined });
   });
 
   it('passes --exact and --max', async () => {
@@ -66,7 +67,7 @@ describe('gog_chat_spaces_find', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_spaces_find', { displayName: 'Team', exact: true, max: 5 });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'spaces', 'find', 'Team', '--exact', '--max=5'],
+      ['chat', 'spaces', 'find', pos('Team'), '--exact', '--max=5'],
       { account: undefined },
     );
   });
@@ -78,7 +79,7 @@ describe('gog_chat_spaces_create', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_spaces_create', { displayName: 'Launch', members: ['a@b.com', 'c@d.com'] });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'spaces', 'create', 'Launch', '--member=a@b.com', '--member=c@d.com'],
+      ['chat', 'spaces', 'create', pos('Launch'), '--member=a@b.com', '--member=c@d.com'],
       { account: undefined },
     );
   });
@@ -87,7 +88,7 @@ describe('gog_chat_spaces_create', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_spaces_create', { displayName: 'Solo' });
-    expect(runner.run).toHaveBeenCalledWith(['chat', 'spaces', 'create', 'Solo'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['chat', 'spaces', 'create', pos('Solo')], { account: undefined });
   });
 });
 
@@ -97,7 +98,7 @@ describe('gog_chat_threads_list', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_threads_list', { space: 'spaces/AAA', max: 10 });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'threads', 'list', 'spaces/AAA', '--max=10'],
+      ['chat', 'threads', 'list', pos('spaces/AAA'), '--max=10'],
       { account: undefined },
     );
   });
@@ -108,7 +109,7 @@ describe('gog_chat_messages_list', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_messages_list', { space: 'spaces/AAA' });
-    expect(runner.run).toHaveBeenCalledWith(['chat', 'messages', 'list', 'spaces/AAA'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['chat', 'messages', 'list', pos('spaces/AAA')], { account: undefined });
   });
 
   it('filters by thread, unread and order', async () => {
@@ -118,7 +119,7 @@ describe('gog_chat_messages_list', () => {
       space: 'spaces/AAA', thread: 'spaces/AAA/threads/T', unread: true, order: 'createTime desc', max: 50,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'list', 'spaces/AAA', '--thread=spaces/AAA/threads/T', '--unread',
+      ['chat', 'messages', 'list', pos('spaces/AAA'), '--thread=spaces/AAA/threads/T', '--unread',
         '--order=createTime desc', '--max=50'],
       { account: undefined },
     );
@@ -138,7 +139,7 @@ describe('gog_chat_messages_search', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_messages_search', { query: 'project decision' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'search', 'project decision'],
+      ['chat', 'messages', 'search', pos('project decision')],
       { account: undefined },
     );
   });
@@ -156,7 +157,7 @@ describe('gog_chat_messages_search', () => {
       all: true,
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'search', 'from:alice@example.com budget', '--order=create_time desc',
+      ['chat', 'messages', 'search', pos('from:alice@example.com budget'), '--order=create_time desc',
         '--view=full', '--markup=markdown', '--max=100', '--page=tok', '--all'],
       { account: undefined },
     );
@@ -198,7 +199,7 @@ describe('gog_chat_messages_send', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_messages_send', { space: 'spaces/AAA', text: 'hi' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'send', 'spaces/AAA', '--text=hi'],
+      ['chat', 'messages', 'send', pos('spaces/AAA'), '--text=hi'],
       { account: undefined },
     );
   });
@@ -210,7 +211,7 @@ describe('gog_chat_messages_send', () => {
       space: 'spaces/AAA', text: 'see this', thread: 'spaces/AAA/threads/T', attach: ['/tmp/a.png'],
     });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'send', 'spaces/AAA', '--text=see this', '--thread=spaces/AAA/threads/T', '--attach=/tmp/a.png'],
+      ['chat', 'messages', 'send', pos('spaces/AAA'), '--text=see this', '--thread=spaces/AAA/threads/T', '--attach=/tmp/a.png'],
       { account: undefined },
     );
   });
@@ -234,7 +235,7 @@ describe('gog_chat_messages_send', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_messages_send', { space: 'spaces/AAA', attach: ['/tmp/a.png'] });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'send', 'spaces/AAA', '--attach=/tmp/a.png'],
+      ['chat', 'messages', 'send', pos('spaces/AAA'), '--attach=/tmp/a.png'],
       { account: undefined },
     );
   });
@@ -253,7 +254,7 @@ describe('gog_chat_dm_send', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_dm_send', { email: 'a@b.com', text: 'hi' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'dm', 'send', 'a@b.com', '--text=hi'],
+      ['chat', 'dm', 'send', pos('a@b.com'), '--text=hi'],
       { account: undefined },
     );
   });
@@ -263,7 +264,7 @@ describe('gog_chat_dm_send', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_dm_send', { email: 'a@b.com', text: 'hi', thread: 'spaces/D/threads/T' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'dm', 'send', 'a@b.com', '--text=hi', '--thread=spaces/D/threads/T'],
+      ['chat', 'dm', 'send', pos('a@b.com'), '--text=hi', '--thread=spaces/D/threads/T'],
       { account: undefined },
     );
   });
@@ -274,7 +275,7 @@ describe('gog_chat_dm_space', () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_dm_space', { email: 'a@b.com' });
-    expect(runner.run).toHaveBeenCalledWith(['chat', 'dm', 'space', 'a@b.com'], { account: undefined });
+    expect(runner.run).toHaveBeenCalledWith(['chat', 'dm', 'space', pos('a@b.com')], { account: undefined });
   });
 });
 
@@ -284,7 +285,7 @@ describe('gog_chat_reactions_list', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_reactions_list', { message: 'MSG', space: 'spaces/AAA', max: 10 });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'reactions', 'list', 'MSG', '--space=spaces/AAA', '--max=10'],
+      ['chat', 'messages', 'reactions', 'list', pos('MSG'), '--space=spaces/AAA', '--max=10'],
       { account: undefined },
     );
   });
@@ -294,7 +295,7 @@ describe('gog_chat_reactions_list', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_reactions_list', { message: 'spaces/AAA/messages/M' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'reactions', 'list', 'spaces/AAA/messages/M'],
+      ['chat', 'messages', 'reactions', 'list', pos('spaces/AAA/messages/M')],
       { account: undefined },
     );
   });
@@ -306,7 +307,7 @@ describe('gog_chat_reactions_create', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_reactions_create', { message: 'spaces/AAA/messages/M', emoji: '👍' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'reactions', 'create', 'spaces/AAA/messages/M', '👍'],
+      ['chat', 'messages', 'reactions', 'create', pos('spaces/AAA/messages/M'), pos('👍')],
       { account: undefined },
     );
   });
@@ -316,7 +317,7 @@ describe('gog_chat_reactions_create', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_reactions_create', { message: 'M', emoji: '👍', space: 'spaces/AAA' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'reactions', 'create', 'M', '👍', '--space=spaces/AAA'],
+      ['chat', 'messages', 'reactions', 'create', pos('M'), pos('👍'), '--space=spaces/AAA'],
       { account: undefined },
     );
   });
@@ -328,7 +329,7 @@ describe('gog_chat_reactions_delete', () => {
     const harness = await setupHandlers();
     await harness.callTool('gog_chat_reactions_delete', { reaction: 'spaces/AAA/messages/M/reactions/R' });
     expect(runner.run).toHaveBeenCalledWith(
-      ['chat', 'messages', 'reactions', 'delete', 'spaces/AAA/messages/M/reactions/R'],
+      ['chat', 'messages', 'reactions', 'delete', pos('spaces/AAA/messages/M/reactions/R')],
       { account: undefined },
     );
   });
