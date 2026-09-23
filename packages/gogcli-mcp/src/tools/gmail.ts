@@ -191,14 +191,29 @@ async function sendReply(
 // forwarding addresses, auto-forwarding, filters (which can forward) and
 // delegates (which grant another account the mailbox). Each has a dedicated,
 // reviewable tool; none may ride the escape hatch.
+//
+// gog accepts these both under `settings` AND one level up, as
+// `gog gmail filters|forwarding|autoforward|delegates ...` (left out of
+// `gog schema`, but they reach Google), so both spellings are refused.
 const GMAIL_RUN_BLOCKED_SETTINGS = new Set(['forwarding', 'autoforward', 'filters', 'delegates']);
 
 export function vetGmailRun(subcommand: string, args: readonly string[]): string | undefined {
   if (subcommand === 'autoreply') {
     return 'gog gmail autoreply sends mail and is not available through gog_gmail_run. Use gog_gmail_autoreply, which asks the user to confirm.';
   }
-  if (subcommand === 'settings' && GMAIL_RUN_BLOCKED_SETTINGS.has((args[0] ?? '').toLowerCase())) {
-    return `gog gmail settings ${args[0]} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;
+  if (GMAIL_RUN_BLOCKED_SETTINGS.has(subcommand)) {
+    return `gog gmail ${subcommand} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;
+  }
+  if (subcommand === 'settings') {
+    // kong lets flags precede the command word, and a global flag can take its
+    // value as the next token (`settings --color never filters ...`), so the
+    // word is not necessarily args[0]. Refuse it wherever it appears; a
+    // legitimate settings call carrying one of these words as a value is rare
+    // and has a dedicated tool anyway.
+    const blocked = args.find((a) => GMAIL_RUN_BLOCKED_SETTINGS.has(a.toLowerCase()));
+    if (blocked) {
+      return `gog gmail settings ${blocked} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;
+    }
   }
   return undefined;
 }
