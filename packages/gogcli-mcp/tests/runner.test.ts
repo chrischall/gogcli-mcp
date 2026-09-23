@@ -1029,6 +1029,38 @@ describe('run positionals', () => {
   });
 });
 
+// BUG-2: binary mode buffered a whole Drive file (plus a base64 copy) with no
+// ceiling, so one multi-GB read could exhaust the server process.
+describe('runBinary maxOutputBytes', () => {
+  function streamingSpawner(chunks: Buffer[]): { spawner: Spawner; kill: ReturnType<typeof vi.fn> } {
+    const kill = vi.fn();
+    const spawner = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<Spawner>;
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stdout = new EventEmitter();
+      (proc as unknown as { stdout: EventEmitter; stderr: EventEmitter }).stderr = new EventEmitter();
+      proc.kill = kill;
+      setTimeout(() => {
+        for (const c of chunks) (proc as unknown as { stdout: EventEmitter }).stdout.emit('data', c);
+        proc.emit('close', 0);
+      }, 0);
+      return proc;
+    }) as unknown as Spawner;
+    return { spawner, kill };
+  }
+
+  it('kills gog and rejects once the output passes the cap', async () => {
+    const { spawner, kill } = streamingSpawner([Buffer.alloc(6), Buffer.alloc(6), Buffer.alloc(6)]);
+    await expect(runBinary(['api', 'call'], { spawner, maxOutputBytes: 10 }))
+      .rejects.toThrow(/more than 10 bytes/);
+    expect(kill).toHaveBeenCalled();
+  });
+
+  it('returns output at or under the cap', async () => {
+    const { spawner } = streamingSpawner([Buffer.from('hello')]);
+    expect(await runBinary(['api', 'call'], { spawner, maxOutputBytes: 5 })).toBe(Buffer.from('hello').toString('base64'));
+  });
+});
+
 describe('run executor', () => {
   it('uses the lazily-imported real spawn when no spawner is injected', async () => {
     vi.mocked(mockedSpawn).mockImplementation((() => makeProc(0, '{"real":true}')) as never);

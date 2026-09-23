@@ -446,8 +446,42 @@ describe('gog_drive_read_bytes', () => {
     expect(result.content[0].text).toContain('a.pdf');
     expect(runner.runBinary).toHaveBeenCalledWith(
       ['api', 'call', 'drive', 'v3', 'files.get', '--params={"fileId":"f1","alt":"media"}'],
-      { account: undefined },
+      { account: undefined, maxOutputBytes: 8 * 1024 * 1024 },
     );
+  });
+
+  // BUG-2: the size is known from `drive get` before a byte is fetched.
+  it('refuses a file over the inline ceiling without fetching its bytes', async () => {
+    vi.mocked(runner.run).mockResolvedValueOnce(JSON.stringify({ file: { name: 'backup.zip', mimeType: 'application/zip', size: '4294967296' } }));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_read_bytes', { fileId: 'f1' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/4294967296 bytes.*8 MiB/);
+    expect(result.content[0].text).toContain('gog_drive_extract_text');
+    expect(runner.runBinary).not.toHaveBeenCalled();
+  });
+
+  it('names the file by id when an oversized file has no name', async () => {
+    vi.mocked(runner.run).mockResolvedValueOnce(JSON.stringify({ size: 9 * 1024 * 1024 }));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_read_bytes', { fileId: 'f9' });
+    expect(result.content[0].text).toMatch(/^f9 is 9437184 bytes/);
+  });
+
+  it('treats an unparseable size as unknown and relies on the fetch cap', async () => {
+    vi.mocked(runner.run).mockResolvedValueOnce(JSON.stringify({ file: { name: 'a.bin', size: 'n/a' } }));
+    vi.mocked(runner.runBinary).mockResolvedValueOnce(Buffer.from('x').toString('base64'));
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_drive_read_bytes', { fileId: 'f1' });
+    expect(result.isError).toBeFalsy();
+  });
+
+  it('caps the fetch itself when Drive reports no size', async () => {
+    vi.mocked(runner.run).mockResolvedValueOnce(JSON.stringify({ file: { name: 'a.bin', mimeType: 'application/octet-stream' } }));
+    vi.mocked(runner.runBinary).mockResolvedValueOnce(Buffer.from('x').toString('base64'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_drive_read_bytes', { fileId: 'f1' });
+    expect(runner.runBinary).toHaveBeenCalledWith(expect.any(Array), { account: undefined, maxOutputBytes: 8 * 1024 * 1024 });
   });
 
   it('names the text fallback when the resource type is one hosts refuse to render', async () => {

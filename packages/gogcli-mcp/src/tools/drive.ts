@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { rawTextResult, viewParam, resolveView } from '@chrischall/mcp-utils';
+import { errorResult, rawTextResult, viewParam, resolveView } from '@chrischall/mcp-utils';
+import { MAX_INLINE_ATTACHMENT_BYTES } from '../attachments.js';
 
 import { run, runBinary } from '../runner.js';
 import { accountParam, diagnose, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
@@ -15,11 +16,20 @@ const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document';
 
 // Parse `gog drive get` JSON into { name, mimeType }. gog nests the payload
 // under `file`; fall back to the top level if that ever changes.
-function fileMeta(raw: string): { name?: string; mimeType?: string } {
-  const parsed = JSON.parse(raw) as { file?: { name?: string; mimeType?: string }; name?: string; mimeType?: string };
+type DriveMeta = { name?: string; mimeType?: string; size?: string | number };
+
+function fileMeta(raw: string): { name?: string; mimeType?: string; size?: number } {
+  const parsed = JSON.parse(raw) as { file?: DriveMeta } & DriveMeta;
   const f = parsed.file ?? parsed;
-  return { name: f.name, mimeType: f.mimeType };
+  // Drive reports int64 fields as strings; native Google formats carry none.
+  const size = f.size === undefined ? undefined : Number(f.size);
+  return { name: f.name, mimeType: f.mimeType, size: Number.isFinite(size) ? size : undefined };
 }
+
+// The most gog_drive_read_bytes returns inline — the same 8 MiB per-file cap
+// the attachment path enforces. The bytes travel base64-encoded (4/3 larger)
+// inside one JSON-RPC message, and past this no MCP client accepts the result.
+export const MAX_DRIVE_READ_BYTES = MAX_INLINE_ATTACHMENT_BYTES;
 
 
 // The `compact` rung for gog_drive_ls, as a Google Drive field mask.
@@ -253,7 +263,7 @@ export function registerDriveTools(server: McpServer): void {
     description:
       'Fetch a Drive file\'s raw bytes and return them base64-encoded as an embedded resource — the ' +
       'generic fallback for callers that want the file itself (to parse locally) rather than extracted ' +
-      'text. For readable text from a PDF, prefer gog_drive_extract_text.',
+      'text. Files over 8 MiB are refused (checked before downloading). For readable text from a PDF, prefer gog_drive_extract_text.',
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('Drive file ID'),
@@ -261,9 +271,21 @@ export function registerDriveTools(server: McpServer): void {
     }),
   }, async ({ fileId, account }): Promise<CallToolResult> => {
     try {
-      const { name, mimeType } = fileMeta(await run(['drive', 'get', pos(fileId)], { account }));
+      const { name, mimeType, size } = fileMeta(await run(['drive', 'get', pos(fileId)], { account }));
+      // Refuse an oversized file BEFORE fetching it (audit BUG-2): buffering a
+      // multi-GB file plus its base64 copy can take down the whole server.
+      if (size !== undefined && size > MAX_DRIVE_READ_BYTES) {
+        return errorResult(
+          `${name ?? fileId} is ${size} bytes, over the 8 MiB this tool returns inline. `
+          + 'Use gog_drive_extract_text for its text, or share its webViewLink (gog_drive_get) instead.',
+        );
+      }
       const params = JSON.stringify({ fileId, alt: 'media' });
-      const blob = await runBinary(['api', 'call', 'drive', 'v3', 'files.get', `--params=${params}`], { account });
+      // The cap also bounds the fetch itself, for files Drive reports no size for.
+      const blob = await runBinary(
+        ['api', 'call', 'drive', 'v3', 'files.get', `--params=${params}`],
+        { account, maxOutputBytes: MAX_DRIVE_READ_BYTES },
+      );
       const type = mimeType ?? 'application/octet-stream';
       // Several hosts (claude.ai among them) render embedded IMAGE resources
       // and reject every other type outright — "Resources of type

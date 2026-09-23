@@ -106,6 +106,10 @@ export interface RunOptions {
   // runtime. Set by the escape hatches so none of them can dispatch mail
   // around the confirmation rail.
   gmailNoSend?: boolean;
+  // Ceiling on the bytes gog may write to stdout. Past it the child is killed
+  // and the call rejects, so one oversized download (a multi-GB Drive file read
+  // through runBinary) cannot exhaust this process's memory.
+  maxOutputBytes?: number;
 }
 
 const TIMEOUT_MS = 30_000;
@@ -310,7 +314,7 @@ function formatTimeout(ms: number): string {
 // exit, and on timeout alike. A leaked temp file holds user email content.
 async function spawnWithTempFiles(
   args: Array<string | GogFileArg>,
-  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean; maxOutputBytes?: number },
 ): Promise<string> {
   const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
@@ -360,7 +364,7 @@ async function spawnWithTempFiles(
 // in tests/runner.test.ts depend on.
 function spawnExecutor(
   args: Array<string | GogFileArg>,
-  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean; maxOutputBytes?: number },
 ): Promise<string> {
   if (args.some(isGogFileArg)) {
     return spawnWithTempFiles(args, opts);
@@ -374,9 +378,9 @@ function spawnExecutor(
 // injected `spawner` bypasses the real child_process spawn.
 async function spawnGog(
   fullArgs: string[],
-  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean },
+  opts: { timeout?: number; interactive?: boolean; spawner?: Spawner; binary?: boolean; maxOutputBytes?: number },
 ): Promise<string> {
-  const { timeout, interactive = false, spawner, binary = false } = opts;
+  const { timeout, interactive = false, spawner, binary = false, maxOutputBytes } = opts;
   const spawn = spawner ?? (await import('node:child_process')).spawn as unknown as Spawner;
   const effectiveTimeout = timeout ?? TIMEOUT_MS;
 
@@ -413,7 +417,19 @@ async function spawnGog(
       reject(new Error(`gog timed out after ${formatTimeout(effectiveTimeout)}`));
     }, effectiveTimeout);
 
-    child.stdout!.on('data', (chunk: Buffer) => { stdoutChunks.push(chunk); });
+    let stdoutBytes = 0;
+    child.stdout!.on('data', (chunk: Buffer) => {
+      if (settled) return;
+      stdoutBytes += chunk.length;
+      if (maxOutputBytes !== undefined && stdoutBytes > maxOutputBytes) {
+        settled = true;
+        stopWatching();
+        child.kill();
+        reject(new Error(`gog output exceeded the limit: more than ${maxOutputBytes} bytes`));
+        return;
+      }
+      stdoutChunks.push(chunk);
+    });
     child.stderr!.on('data', (chunk: Buffer) => { stderrChunks.push(chunk); });
 
     child.on('close', (code: number | null) => {
@@ -563,7 +579,7 @@ export async function run(args: GogArg[], options: RunOptions = {}): Promise<str
 // would corrupt. No redaction: the base64 of a user's own binary file is opaque
 // and has no token shapes to leak.
 export async function runBinary(args: GogArg[], options: RunOptions = {}): Promise<string> {
-  const { account, spawner, timeout, readonly = false, gmailNoSend = false } = options;
+  const { account, spawner, timeout, readonly = false, gmailNoSend = false, maxOutputBytes } = options;
   const fullArgs = assembleArgs(args, { account, interactive: false, readonly, gmailNoSend });
-  return spawnExecutor(fullArgs, { timeout, interactive: false, spawner, binary: true });
+  return spawnExecutor(fullArgs, { timeout, interactive: false, spawner, binary: true, maxOutputBytes });
 }
