@@ -165,38 +165,52 @@ The escape hatches are bound by the same roots: a path flag passed through `gog_
 `drive sync`, `gmail import`, `appscript pull`, `slides add-slide` / `insert-image` / `replace-slide`) are refused
 there — use their dedicated tools.
 
-## Sending mail from clients without confirmation prompts
+## Confirmation prompts, and clients without them
 
-Every Gmail send path asks the user to confirm a preview through an MCP elicitation prompt. Some clients —
-claude.ai chat among them — cannot show one, and by default the send tools refuse there
-(`"reason": "confirmation-unsupported"`). To send from such a client, opt in to a two-step fallback:
+Tools that reach another person ask the user to confirm a preview first, through an MCP elicitation prompt:
+
+| Service | Tools | Asks when |
+|---|---|---|
+| Gmail | `gog_gmail_send`, `_reply`, `_reply_all`, `_forward`, `_autoreply`, `_drafts_send` | always |
+| Chat | `gog_chat_messages_send`, `gog_chat_dm_send` | always |
+| Drive | `gog_drive_share` | always (granting access is the risk; gog sends no share email by default) |
+| Classroom | `gog_classroom_announcements_create` | unless `state` is `DRAFT` (students cannot see drafts) |
+| Classroom | `gog_classroom_invitations_create` | always |
+| Calendar | `gog_calendar_create` | only with attendees (the event lands on their calendars; no invitation email is sent) |
+| Calendar | `gog_calendar_update` | only for a change guests can see, on an event that has or gains guests (reminder-only changes never ask) |
+| Calendar | `gog_calendar_respond` | always (the organizer sees it) |
+
+A Gmail forwarding filter (`gog_gmail_filters_create` with `forward`) asks too, but never takes the fallback below.
+
+Some clients, claude.ai chat among them, cannot show the prompt, and by default these tools refuse there
+(`"reason": "confirmation-unsupported"`). To use them from such a client, opt in to a two-step fallback:
 
 ```json
 "env": { "GOG_ACCOUNT": "you@gmail.com", "GOG_SEND_CONFIRM_FALLBACK": "token" }
 ```
 
-It applies to `gog_gmail_send`, `gog_gmail_reply`, `gog_gmail_reply_all`, `gog_gmail_forward`,
-`gog_gmail_autoreply` and `gog_gmail_drafts_send`, and only when the client declares no elicitation support; a
-client that can prompt keeps the prompt.
+It applies only when the client declares no elicitation support; a client that can prompt keeps the prompt.
 
-1. **Phase 1** — the tool is called without `confirmToken`. Nothing is sent. It returns
-   `"status": "confirmation-required"`, the full preview (from, to, cc, bcc, subject, the complete body,
-   attachment names and sizes, threadId, In-Reply-To; for a draft also its draftId and messageId), a
-   `confirmToken`, and the instruction to show the preview to the user verbatim and send only after they approve
-   in chat.
-2. **Phase 2** — the tool is called again with the same arguments plus `confirmToken`. It re-reads the draft or
-   message and sends only if what would go out still matches what the token was issued for.
+1. **Phase 1**: the tool is called without `confirmToken`. Nothing is sent or changed. It returns
+   `"status": "confirmation-required"`, the full preview, a `confirmToken`, and the instruction to show the preview
+   to the user verbatim and go ahead only after they approve in chat. For mail the preview has from, to, cc, bcc,
+   subject, the complete body, attachment names and sizes, threadId and In-Reply-To (a draft also shows its draftId
+   and messageId). A share names the file, grantee and role. An announcement or invitation names the class. A
+   calendar change shows the event as it stands and what changes.
+2. **Phase 2**: the tool is called again with the same arguments plus `confirmToken`. It re-reads the draft,
+   message, file, course or event, and acts only if that still matches what the token was issued for.
 
-A token is an HMAC-SHA256 over the tool, account, draft/message and a SHA-256 of the send payload (recipients,
-subject, text and HTML body, attachment names and sizes, In-Reply-To/References). It is single-use and expires
-after 10 minutes. Anything else sends nothing and returns an error:
+A token is an HMAC-SHA256 over the tool, account, target, the target's version (a draft's messageId, an event's
+etag) and a SHA-256 of the payload. For mail the payload is the recipients, subject, text and HTML body, attachment
+names and sizes, and In-Reply-To/References. The token is single-use and expires after 10 minutes. Anything else
+sends nothing and returns an error:
 
 | error | meaning |
 |---|---|
-| `DRAFT_CHANGED` | the draft was edited or re-saved (its messageId rotated — mail clients such as Apple Mail do this on every save), or the payload changed. The result carries the new preview and a fresh token for the user to re-approve. |
+| `DRAFT_CHANGED` | what would happen changed: a draft was edited or re-saved (its messageId rotated, which mail clients such as Apple Mail do on every save), an event was edited elsewhere (its etag rotated), or the payload differs. The result carries the new preview and a fresh token for the user to re-approve. |
 | `TOKEN_EXPIRED` | older than the TTL |
-| `TOKEN_REUSED` | already used — one approval sends once |
-| `TOKEN_INVALID` | tampered, issued for a different tool, account or draft/message, or issued before a server restart |
+| `TOKEN_REUSED` | already used: one approval acts once |
+| `TOKEN_INVALID` | tampered, issued for a different tool, account or target, or issued before a server restart |
 
 | variable | default | |
 |---|---|---|
@@ -206,9 +220,8 @@ after 10 minutes. Anything else sends nothing and returns an error:
 
 **What this does not do.** With elicitation, the host asks the user and the model never sees the approval. With
 the fallback, the approval is a tool argument, so the check that the user really approved is the model following
-the instruction. The token makes sure what gets sent is exactly what was previewed, and that it is sent once, for
-that one tool, account and draft. It cannot prove a human said yes. That is why the fallback is opt-in. A
-forwarding filter (`gog_gmail_filters_create` with `forward`) never uses it.
+the instruction. The token makes sure what happens is exactly what was previewed, and that it happens once, for
+that one tool, account and target. It cannot prove a human said yes. That is why the fallback is opt-in.
 
 ## Development
 
@@ -227,7 +240,7 @@ npm run typecheck  # typecheck all packages
 - `GOG_ACCESS_TOKEN` is stripped from the child process environment to prevent stale token auth
 - Server-side paths are confined to `GOG_FILE_ROOTS` (resolved through symlinks), in the structured tools and the escape hatches alike, so a prompt-injected agent cannot attach `~/.ssh` or gog's own credentials to an email, or write attachment bytes over `~/.zshrc`; escape-hatch flags that make gog run a local command (`--on-change`, `--on-new`, `--mmdc`) are refused
 - Escape-hatch tools (`gog_<service>_run`, `gog_api_call`) refuse args that would override safety flags (`--readonly=false`, `--disable-commands=`, `--account`, a bare `--`, …); `gog_auth_run` cannot export tokens
-- Every Gmail send path — send, reply, forward, autoreply, sending a draft, and a forwarding filter — asks the user to confirm a preview showing recipients, subject, the body and attachment names. On a client without elicitation the opt-in `GOG_SEND_CONFIRM_FALLBACK=token` swaps that prompt for a two-step preview + single-use token ([details](#sending-mail-from-clients-without-confirmation-prompts)); a forwarding filter never takes that path
+- Every tool that reaches another person asks the user to confirm a preview first: every Gmail send path and a forwarding filter, Chat posts and DMs, Drive shares, published Classroom announcements and invitations, and Calendar changes that guests will see. On a client without elicitation, the opt-in `GOG_SEND_CONFIRM_FALLBACK=token` replaces that prompt with a two-step preview and a single-use token ([details](#confirmation-prompts-and-clients-without-them)). A forwarding filter never takes that path
 - Attachment downloads land in a private per-user temp directory (mode 0700) and are deleted after delivery or swept after 24 hours
 
 ## License

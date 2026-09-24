@@ -5,6 +5,7 @@ import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAlias
 import { annotateTruncatedList } from '../pagination.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
+import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
 
 // Reminder params, shared by create and update (gog >= 0.38.0 for
 // --no-reminders). An event's reminders are one of THREE states, and the two
@@ -20,6 +21,72 @@ import type { GogArg } from '../runner.js';
 // the flag (leave whatever the event already has) and from --no-reminders
 // (override the calendar with silence). An empty array is how a JSON caller
 // says it, since there is no way to send a bare flag with no value.
+// ============================================================================
+// GUEST-VISIBLE CHANGES go through the dispatch rail. gog sends no invitation
+// email here (its --send-updates defaults to none and these tools never pass
+// it), but a guest still sees the event appear, move or change on their own
+// calendar, and an organizer sees a response. A change nobody else can see — a
+// guest-free event, or a reminder, which is per-user — is not gated.
+// ============================================================================
+
+/** The emails in an attendees flag value (`a@x.com;optional,b@y.com;resource`), resources excluded. */
+export function parseAttendees(value: string | undefined): string[] {
+  if (!value) return [];
+  return value.split(',')
+    .map((entry) => entry.split(';'))
+    .filter((parts) => !parts.slice(1).some((m) => m.trim().toLowerCase() === 'resource'))
+    .map((parts) => parts[0]!.trim())
+    .filter(Boolean);
+}
+
+type EventAttendee = { email?: unknown; self?: unknown; resource?: unknown };
+type EventTime = { dateTime?: unknown; date?: unknown };
+
+function timeOf(t: EventTime | undefined): string | undefined {
+  const v = t?.dateTime ?? t?.date;
+  return typeof v === 'string' ? v : undefined;
+}
+
+/** What a calendar dispatch's prompt shows about the event as it stands now. */
+export function eventSnapshot(raw: string): {
+  summary?: string;
+  start?: string;
+  end?: string;
+  organizer?: string;
+  guests: string[];
+  etag?: string;
+} {
+  let event: {
+    summary?: unknown; start?: EventTime; end?: EventTime; etag?: unknown;
+    organizer?: { email?: unknown }; attendees?: EventAttendee[];
+  } | undefined;
+  try {
+    event = (JSON.parse(raw) as { event?: typeof event } | null)?.event;
+  } catch {
+    event = undefined;
+  }
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  return {
+    summary: str(event?.summary),
+    start: timeOf(event?.start),
+    end: timeOf(event?.end),
+    organizer: str(event?.organizer?.email),
+    // Guests are the OTHER people: not this account's own attendee row, not rooms.
+    guests: (Array.isArray(event?.attendees) ? event.attendees : [])
+      .filter((a) => a.self !== true && a.resource !== true && typeof a.email === 'string')
+      .map((a) => a.email as string),
+    etag: str(event?.etag),
+  };
+}
+
+async function readEvent(calendarId: string, eventId: string, account: string | undefined) {
+  const got = await runOrDiagnose(['calendar', 'event', pos(calendarId), pos(eventId)], { account });
+  if (got.isError) return { error: got };
+  return { event: eventSnapshot(resultText(got)) };
+}
+
+const CALENDAR_CONFIRM_LABEL = 'Confirm that this change, which other people will see, should be made now.';
+
 const reminderParams = {
   reminders: z.array(z.string()).max(5).optional().describe(
     'Reminders as method:duration, e.g. ["popup:30m", "email:1d"]. Method is popup or email; duration accepts m/h/d '
@@ -149,7 +216,10 @@ export function registerCalendarTools(server: McpServer): void {
   });
 
   server.registerTool('gog_calendar_create', {
-    description: 'Create a calendar event. Set withZoom=true to attach a Zoom meeting (requires Zoom S2S OAuth setup via gog_zoom_auth_setup; the join URL + meeting ID + passcode are appended to the event description — Google rejects native conference card writes from non-Workspace-Marketplace OAuth clients).',
+    description: 'Create a calendar event. Set withZoom=true to attach a Zoom meeting (requires Zoom S2S OAuth setup via gog_zoom_auth_setup; the join URL + meeting ID + passcode are appended to the event description — Google rejects native conference card writes from non-Workspace-Marketplace OAuth clients). '
+      + 'With attendees, the event lands on other people\'s calendars (no invitation email is sent), so the MCP host is '
+      + 'asked to show the user a confirmation prompt with the guests, time and details first; a guest-free event is '
+      + 'created without asking.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: false },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID (use "primary" for the default calendar)'),
@@ -164,8 +234,9 @@ export function registerCalendarTools(server: McpServer): void {
       withZoom: z.boolean().optional().describe('Create a Zoom video conference for this event (requires Zoom S2S OAuth setup)'),
       ...reminderParams,
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, timezone, withZoom, reminders, noReminders, account }) => {
+  }, async ({ calendarId, summary, from, to, description, location, attendees, allDay, timezone, withZoom, reminders, noReminders, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['calendar', 'create', pos(calendarId), `--summary=${summary}`, `--from=${from}`, `--to=${to}`];
     if (description) args.push(`--description=${description}`);
     if (location) args.push(`--location=${location}`);
@@ -174,11 +245,33 @@ export function registerCalendarTools(server: McpServer): void {
     if (timezone) args.push(`--timezone=${timezone}`);
     if (withZoom) args.push('--with-zoom');
     pushReminderFlags(args, { reminders, noReminders });
+    const guests = parseAttendees(attendees);
+    if (guests.length > 0) {
+      const event = { calendarId, summary, from, to, allDay: Boolean(allDay), timezone, location, description, guests, attendees, withZoom: Boolean(withZoom) };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'calendar.create',
+        message: 'Review and confirm this event, which will appear on the guests\' calendars:',
+        confirmationLabel: CALENDAR_CONFIRM_LABEL,
+        details: event,
+        unsupportedNote: 'Create it without attendees instead; the user can add the guests in Google Calendar.',
+        fallback: {
+          tool: 'gog_calendar_create',
+          account,
+          confirmToken,
+          subject: () => ({ target: calendarId, payload: event, preview: event }),
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_calendar_update', {
-    description: 'Update an existing calendar event. Zoom: withZoom adds a Zoom meeting, regenerateZoom replaces the existing one, removeZoom strips it. removeMeet clears the event\'s Google Meet conference data (e.g. before attaching another provider). Conference flags are independent — use one per call.',
+    description: 'Update an existing calendar event. Zoom: withZoom adds a Zoom meeting, regenerateZoom replaces the existing one, removeZoom strips it. removeMeet clears the event\'s Google Meet conference data (e.g. before attaching another provider). Conference flags are independent — use one per call. '
+      + 'A change guests can see (time, title, place, description, attendees, attachments, conferencing) on an event '
+      + 'that has guests — or gains them — reads the event and asks the MCP host to show the user a confirmation prompt '
+      + 'with the event as it stands and the change; no invitation email is sent. Reminder-only changes and guest-free '
+      + 'events are updated without asking.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: false },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
@@ -197,8 +290,9 @@ export function registerCalendarTools(server: McpServer): void {
       removeMeet: z.boolean().optional().describe('Remove the event\'s Google Meet video conference (clears conference data only)'),
       ...reminderParams,
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, removeMeet, reminders, noReminders, account }) => {
+  }, async ({ calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, removeMeet, reminders, noReminders, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['calendar', 'update', pos(calendarId), pos(eventId)];
     if (summary !== undefined) args.push(`--summary=${summary}`);
     if (from !== undefined) args.push(`--from=${from}`);
@@ -213,6 +307,36 @@ export function registerCalendarTools(server: McpServer): void {
     if (removeZoom) args.push('--remove-zoom');
     if (removeMeet) args.push('--remove-meet');
     pushReminderFlags(args, { reminders, noReminders });
+    // Every field guests can see; reminders are per-user and are not on it.
+    const changes = Object.fromEntries(Object.entries({
+      summary, from, to, description, location, attendees, addAttendees, attachments,
+      withZoom, regenerateZoom, removeZoom, removeMeet,
+    }).filter(([, v]) => v !== undefined && v !== false));
+    if (Object.keys(changes).length > 0) {
+      const read = await readEvent(calendarId, eventId, account);
+      if (read.error) return read.error;
+      const { etag, ...current } = read.event;
+      const added = [...parseAttendees(attendees), ...parseAttendees(addAttendees)];
+      if (current.guests.length > 0 || added.length > 0) {
+        const view = { calendarId, eventId, current, changes };
+        const confirmation = await requireDispatchConfirmation(ctx, {
+          action: 'calendar.update',
+          message: 'Review and confirm this change to an event other people are on:',
+          confirmationLabel: CALENDAR_CONFIRM_LABEL,
+          details: view,
+          unsupportedNote: 'Ask the user to make this change in Google Calendar.',
+          fallback: {
+            tool: 'gog_calendar_update',
+            account,
+            confirmToken,
+            // The etag rotates on any edit, so an event changed elsewhere between
+            // the two phases is DRAFT_CHANGED rather than edited over.
+            subject: () => ({ target: `${calendarId}/${eventId}`, revision: etag, payload: view, preview: view }),
+          },
+        });
+        if (confirmation) return confirmation;
+      }
+    }
     return runOrDiagnose(args, { account });
   });
 
@@ -231,7 +355,9 @@ export function registerCalendarTools(server: McpServer): void {
   });
 
   server.registerTool('gog_calendar_respond', {
-    description: 'Respond to a calendar event invitation.',
+    description: 'Respond to a calendar event invitation. The organizer sees the response, so this reads the event and '
+      + 'asks the MCP host to show the user a confirmation prompt with the event, organizer, response and comment; '
+      + 'nothing is recorded unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
@@ -239,10 +365,29 @@ export function registerCalendarTools(server: McpServer): void {
       status: z.enum(['accepted', 'declined', 'tentative']).describe('Response status'),
       comment: z.string().optional().describe('Optional comment to include with response'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ calendarId, eventId, status, comment, account }) => {
+  }, async ({ calendarId, eventId, status, comment, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['calendar', 'respond', pos(calendarId), pos(eventId), `--status=${status}`];
     if (comment) args.push(`--comment=${comment}`);
+    const read = await readEvent(calendarId, eventId, account);
+    if (read.error) return read.error;
+    const { etag, ...event } = read.event;
+    const view = { calendarId, eventId, event, response: status, ...(comment ? { comment } : {}) };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'calendar.respond',
+      message: 'Review and confirm this response, which the organizer will see:',
+      confirmationLabel: 'Confirm that this response should be recorded now.',
+      details: view,
+      unsupportedNote: 'Ask the user to respond from Google Calendar.',
+      fallback: {
+        tool: 'gog_calendar_respond',
+        account,
+        confirmToken,
+        subject: () => ({ target: `${calendarId}/${eventId}`, revision: etag, payload: view, preview: view }),
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(args, { account });
   });
 

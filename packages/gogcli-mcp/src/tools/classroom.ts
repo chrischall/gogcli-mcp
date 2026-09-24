@@ -3,6 +3,37 @@ import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
+import { bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+
+/**
+ * The course a Classroom dispatch reaches, for its confirmation prompt: a user
+ * approving "post to 123456789" cannot tell which class that is. Read on every
+ * call, so it is also the token fallback's phase-2 re-read. Unreadable output
+ * names nothing rather than throwing.
+ */
+export async function readCourse(
+  courseId: string,
+  account: string | undefined,
+  // A sub-package passes the runOrDiagnose it imported from lib.js, so its own
+  // tests' mock of that seam covers this read too.
+  runner: typeof runOrDiagnose = runOrDiagnose,
+) {
+  const got = await runner(['classroom', 'courses', 'get', pos(courseId)], { account });
+  if (got.isError) return { error: got };
+  let course: { name?: unknown; section?: unknown } | undefined;
+  try {
+    course = (JSON.parse(resultText(got)) as { course?: typeof course } | null)?.course;
+  } catch {
+    course = undefined;
+  }
+  return {
+    course: {
+      id: courseId,
+      ...(typeof course?.name === 'string' ? { name: course.name } : {}),
+      ...(typeof course?.section === 'string' ? { section: course.section } : {}),
+    },
+  };
+}
 
 export function registerClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_list', {
@@ -303,19 +334,47 @@ export function registerClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_announcements_create', {
-    description: 'Create an announcement in a Google Classroom course.',
+    description: 'Create an announcement in a Google Classroom course. Unless state is DRAFT (which students cannot '
+      + 'see), this reads the course and asks the MCP host to show the user a confirmation prompt with the class, the '
+      + 'full text and when it publishes; nothing is posted unless they accept. To stage one without asking, pass '
+      + 'state DRAFT.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       text: z.string().describe('Announcement text'),
-      state: z.enum(['PUBLISHED', 'DRAFT']).optional().describe('State'),
+      state: z.enum(['PUBLISHED', 'DRAFT']).optional().describe('State (DRAFT is visible only to teachers and needs no confirmation)'),
       scheduled: z.string().optional().describe('Scheduled publish time'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, text, state, scheduled, account }) => {
+  }, async ({ courseId, text, state, scheduled, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['classroom', 'announcements', 'create', pos(courseId), `--text=${text}`];
     if (state) args.push(`--state=${state}`);
     if (scheduled) args.push(`--scheduled=${scheduled}`);
+    // A draft reaches nobody until a teacher publishes it: it is this tool's
+    // own staging twin, so it needs no confirmation.
+    if (state !== 'DRAFT') {
+      const read = await readCourse(courseId, account);
+      if (read.error) return read.error;
+      const publishes = scheduled ? `at ${scheduled}` : 'immediately';
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'classroom.announcement-create',
+        message: 'Review and confirm this Classroom announcement:',
+        confirmationLabel: 'Confirm that this announcement should be posted to the class.',
+        details: { course: read.course, publishes, textPreview: bodyPreview(text) },
+        unsupportedNote: 'Create it with state DRAFT instead; the user can review and post it from Classroom.',
+        fallback: {
+          tool: 'gog_classroom_announcements_create',
+          account,
+          confirmToken,
+          subject: () => {
+            const view = { course: read.course, publishes, text };
+            return { target: courseId, payload: view, preview: view };
+          },
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 

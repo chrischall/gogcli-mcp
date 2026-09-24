@@ -18,7 +18,9 @@ let harness: TestHarness;
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
-  harness = await createTestHarness(registerExtraClassroomTools);
+  harness = await createTestHarness(registerExtraClassroomTools, {
+    elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+  });
 });
 
 describe('gog_classroom_courses_create', () => {
@@ -249,6 +251,55 @@ describe('gog_classroom_topics_delete', () => {
 });
 
 describe('gog_classroom_invitations_create', () => {
+  const COURSE = rawTextResult(JSON.stringify({ course: { id: 'c1', name: 'Algebra II' } }));
+
+  it('reads the course and prompts with the class, invitee and role', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(COURSE);
+    let message = '';
+    const h = await createTestHarness(registerExtraClassroomTools, {
+      elicitation: async (r) => { message = r.params.message; return { action: 'decline' }; },
+    });
+    await h.callTool('gog_classroom_invitations_create', { courseId: 'c1', userId: 'kid@example.com', role: 'OWNER' });
+    expect(message).toMatch(/OWNERSHIP/);
+    expect(JSON.parse(message.split('\n').slice(1).join('\n')).details)
+      .toEqual({ course: { id: 'c1', name: 'Algebra II' }, invitee: 'kid@example.com', role: 'OWNER' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['classroom', 'courses', 'get', pos('c1')], { account: undefined });
+    expect(lib.runOrDiagnose).not.toHaveBeenCalledWith(
+      ['classroom', 'invitations', 'create', pos('c1'), pos('kid@example.com'), '--role=OWNER'], { account: undefined });
+  });
+
+  it('refuses a client that cannot be prompted', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(COURSE);
+    const h = await createTestHarness(registerExtraClassroomTools);
+    const r = JSON.parse((await h.callTool('gog_classroom_invitations_create', { courseId: 'c1', userId: 'u1', role: 'STUDENT' })).content[0]!.text as string);
+    expect(r).toMatchObject({ reason: 'confirmation-unsupported', action: 'classroom.invitation-create' });
+    expect(r.note).toMatch(/invite them from Classroom/);
+  });
+
+  it('token fallback: phase 1 previews, phase 2 invites', async () => {
+    const ORIGINAL = { ...process.env };
+    process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+    try {
+      vi.mocked(lib.runOrDiagnose).mockResolvedValue(COURSE);
+      const h = await createTestHarness(registerExtraClassroomTools);
+      const args = { courseId: 'c1', userId: 'u1', role: 'STUDENT' as const };
+      const p1 = JSON.parse((await h.callTool('gog_classroom_invitations_create', args)).content[0]!.text as string);
+      expect(p1.preview).toEqual({ course: { id: 'c1', name: 'Algebra II' }, invitee: 'u1', role: 'STUDENT' });
+      await h.callTool('gog_classroom_invitations_create', { ...args, confirmToken: p1.confirmToken });
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['classroom', 'invitations', 'create', pos('c1'), pos('u1'), '--role=STUDENT'], { account: undefined });
+    } finally {
+      process.env = ORIGINAL;
+    }
+  });
+
+  it('returns a failed course read without inviting', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue({ content: [{ type: 'text', text: 'Error: not found' }], isError: true });
+    const r = await harness.callTool('gog_classroom_invitations_create', { courseId: 'c1', userId: 'u1', role: 'STUDENT' });
+    expect(r.isError).toBe(true);
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+  });
+
   it('calls runOrDiagnose with courseId, userId, role', async () => {
     await harness.callTool('gog_classroom_invitations_create', { courseId: 'c1', userId: 'u1', role: 'STUDENT' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(

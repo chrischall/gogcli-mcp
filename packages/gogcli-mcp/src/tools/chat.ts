@@ -11,6 +11,23 @@ import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import { pos } from '../argv.js';
 import { confinePaths } from '../file-roots.js';
+import {
+  attachmentDetails,
+  attachmentNames,
+  attachmentPreview,
+  bodyPreview,
+  CONFIRM_FALLBACK_DESCRIPTION,
+  confirmTokenParam,
+  requireDispatchConfirmation,
+  senderPreview,
+} from '../dispatch-confirmation.js';
+
+// A Chat post lands in other people's view the moment it is sent and cannot be
+// unsent here, so both send tools go through the dispatch rail like Gmail does.
+const CHAT_CONFIRM = {
+  message: 'Review and confirm this Google Chat message:',
+  confirmationLabel: 'Confirm that this Chat message should be posted now.',
+} as const;
 
 // Google Chat (gog >= 0.38.0 for the mention/reaction metadata in
 // `messages list`, >= 0.39.0 for `messages search`; the rest is older).
@@ -178,7 +195,9 @@ export function registerChatTools(server: McpServer): void {
       'Post a message to a Chat space. THIS IS IMMEDIATELY VISIBLE TO EVERYONE IN THE SPACE and cannot be unsent through '
       + 'this tool, so treat it like sending mail, not like saving a draft. Pass `thread` to reply inside an existing '
       + 'conversation (from gog_chat_threads_list or a message\'s thread field); omit it to start a new one. Text supports '
-      + 'Chat\'s markdown-ish formatting (*bold*, _italic_, `code`).' + workspaceOnlyNote,
+      + 'Chat\'s markdown-ish formatting (*bold*, _italic_, `code`). Asks the MCP host to show the user a confirmation '
+      + 'prompt with the space, thread, text and attachments first; nothing is posted unless they accept.'
+      + CONFIRM_FALLBACK_DESCRIPTION + workspaceOnlyNote,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       space: spaceParam,
@@ -190,8 +209,9 @@ export function registerChatTools(server: McpServer): void {
       ),
       attachInline: attachInlineParam,
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ space, text, thread, attach, attachInline, account }) => {
+  }, async ({ space, text, thread, attach, attachInline, account, confirmToken }, ctx) => {
     confinePaths(attach, 'attach');
     if (text === undefined && !attach?.length && !attachInline?.length) {
       throw new Error('A Chat message needs text, an attachment, or both.');
@@ -204,24 +224,61 @@ export function registerChatTools(server: McpServer): void {
     // a temp file beside gog. `args` is passed so the size check sees the whole
     // request, not just the attachments.
     args.push(...inlineAttachmentArgs('attach', attachInline, args));
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      ...CHAT_CONFIRM,
+      action: 'chat.message-send',
+      details: { space, thread, textPreview: bodyPreview(text), attachments: attachmentNames(attach, attachInline) },
+      fallback: {
+        tool: 'gog_chat_messages_send',
+        account,
+        confirmToken,
+        subject: () => {
+          const attachments = attachmentDetails(attach, attachInline);
+          const from = senderPreview(account);
+          return {
+            target: space,
+            payload: { from, space, thread, text, attachments },
+            preview: { from, space, thread, text, attachments: attachmentPreview(attachments) },
+          };
+        },
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_chat_dm_send', {
     description:
       'Send a direct message to one person by email address, creating the DM space if this is the first message. Delivered '
-      + 'immediately and cannot be unsent through this tool. For a room rather than a person, use gog_chat_messages_send.'
-      + workspaceOnlyNote,
+      + 'immediately and cannot be unsent through this tool. For a room rather than a person, use gog_chat_messages_send. '
+      + 'Asks the MCP host to show the user a confirmation prompt with the recipient and text first; nothing is sent '
+      + 'unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION + workspaceOnlyNote,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       email: z.string().describe('Recipient email address'),
       text: z.string().describe('Message text'),
       thread: threadParam,
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ email, text, thread, account }) => {
+  }, async ({ email, text, thread, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['chat', 'dm', 'send', pos(email), `--text=${text}`];
     if (thread) args.push(`--thread=${thread}`);
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      ...CHAT_CONFIRM,
+      action: 'chat.dm-send',
+      details: { to: email, thread, textPreview: bodyPreview(text) },
+      fallback: {
+        tool: 'gog_chat_dm_send',
+        account,
+        confirmToken,
+        subject: () => {
+          const from = senderPreview(account);
+          return { target: email, payload: { from, to: email, thread, text }, preview: { from, to: email, thread, text } };
+        },
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(args, { account });
   });
 

@@ -6,7 +6,10 @@ import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
-const setupHandlers = () => createTestHarness(registerDriveTools);
+// The dispatch rail asks before guest-visible / outbound calls; this client accepts.
+const setupHandlers = () => createTestHarness(registerDriveTools, {
+  elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+});
 
 // gog_drive_ls answers in the compact rung by default, so every call carries
 // the mask. These keep the flag-mapping tests below about flag mapping while
