@@ -13,11 +13,16 @@ import { readEnvVar } from '@chrischall/mcp-utils';
 //
 // WHAT THIS DOES AND DOES NOT PROVE. Unlike elicitation, the approval here is a
 // tool argument, so the gate is the model honouring "show this to the user and
-// wait". The token cannot make the model ask; what it guarantees is that the
-// thing sent is byte-for-byte the thing previewed — a draft edited in a mail
-// client, a rotated messageId, a changed recipient or a swapped attachment
-// between the two calls all refuse — and that one approval sends once, for one
-// tool, account and draft, within the TTL. That is why the mode is opt-in.
+// wait". The token cannot make the model ask; what it guarantees is that what
+// is sent matches what was previewed — a draft edited in a mail client (its
+// messageId rotates), a changed recipient or body, or a swapped attachment
+// between the two calls all refuse. Caller-supplied files are bound by content
+// hash; a stored draft's attachments by name and size, since Gmail's
+// attachment ids are unstable and any edit rotates the messageId anyway. One
+// approval acts once, for one tool, account and target, within the TTL — per
+// PROCESS: spent tokens live in memory, so with a shared GOG_CONFIRM_SECRET a
+// restart or a second instance would accept a spent token again until it
+// expires. That is why the mode is opt-in.
 // ============================================================================
 
 export type ConfirmTokenError = 'DRAFT_CHANGED' | 'TOKEN_EXPIRED' | 'TOKEN_REUSED' | 'TOKEN_INVALID';
@@ -46,7 +51,8 @@ type Claims = { t: string; a: string; g: string; r?: string; h: string; iat: num
 
 let secret: Buffer | undefined;
 // nonce → expiry (ms). Entries are dropped once they would have expired
-// anyway, so the set is bounded by the tokens spent within one TTL.
+// anyway, so the set is bounded by the tokens spent within one TTL. In memory
+// only: see the header on GOG_CONFIRM_SECRET and restarts.
 const spent = new Map<string, number>();
 
 /** GOG_SEND_CONFIRM_FALLBACK=token turns the fallback on. Anything else is off. */

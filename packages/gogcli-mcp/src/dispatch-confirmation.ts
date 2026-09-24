@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import type { CallToolResult, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
 import { callerAcceptsFormElicitation, readEnvVar, requireConfirmation, textResult } from '@chrischall/mcp-utils';
 import { z } from 'zod';
@@ -52,11 +52,11 @@ export function attachmentNames(
 export type AttachmentDetail = { name: string; size: number | null; sha256?: string };
 
 /**
- * Name and byte size of every attachment a dispatch carries, for the token
- * fallback's preview and payload hash. A server path is stat'ed (it is already
- * confined to GOG_FILE_ROOTS; an unreadable one reports `size: null` and gog
- * will fail on it anyway); inline bytes are measured and fingerprinted, since
- * they are in hand.
+ * Name, byte size and content SHA-256 of every file a dispatch carries, for the
+ * token fallback's preview and payload hash. A server path is read (it is
+ * already confined to GOG_FILE_ROOTS) so a same-size swap between the phases is
+ * still a changed payload; an unreadable one reports `size: null` and gog will
+ * fail on it anyway.
  */
 export function attachmentDetails(
   paths: readonly string[] | undefined,
@@ -64,13 +64,15 @@ export function attachmentDetails(
 ): AttachmentDetail[] {
   const out: AttachmentDetail[] = [];
   for (const path of paths ?? []) {
-    let size: number | null = null;
+    let bytes: Buffer | undefined;
     try {
-      size = statSync(path).size;
+      bytes = readFileSync(path);
     } catch {
-      size = null;
+      bytes = undefined;
     }
-    out.push({ name: path, size });
+    out.push(bytes
+      ? { name: path, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }
+      : { name: path, size: null });
   }
   for (const a of inline ?? []) {
     out.push({

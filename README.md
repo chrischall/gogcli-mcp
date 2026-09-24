@@ -202,7 +202,7 @@ It applies only when the client declares no elicitation support; a client that c
 
 A token is an HMAC-SHA256 over the tool, account, target, the target's version (a draft's messageId, an event's
 etag) and a SHA-256 of the payload. For mail the payload is the recipients, subject, text and HTML body, attachment
-names and sizes, and In-Reply-To/References. The token is single-use and expires after 10 minutes. Anything else
+names and sizes (plus a content hash for files you pass in), and In-Reply-To/References. The token is single-use and expires after 10 minutes. Anything else
 sends nothing and returns an error:
 
 | error | meaning |
@@ -216,7 +216,7 @@ sends nothing and returns an error:
 |---|---|---|
 | `GOG_SEND_CONFIRM_FALLBACK` | unset (off) | `token` enables the two-step flow |
 | `GOG_CONFIRM_TTL_SECONDS` | `600` | token lifetime |
-| `GOG_CONFIRM_SECRET` | random per process | HMAC key; set it only if tokens must survive a server restart |
+| `GOG_CONFIRM_SECRET` | random per process | HMAC key; set it only if tokens must survive a server restart. Used tokens are remembered in memory, per process, so with a fixed secret a token that was already used is accepted again after a restart (or by another instance with the same secret) until it expires. Leave it unset unless you need that. |
 
 **What this does not do.** With elicitation, the host asks the user and the model never sees the approval. With
 the fallback, the approval is a tool argument, so the check that the user really approved is the model following

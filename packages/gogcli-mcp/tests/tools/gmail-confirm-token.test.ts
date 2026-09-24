@@ -129,13 +129,13 @@ describe('gog_gmail_send — token fallback', () => {
       expect(sendCalls()).toHaveLength(0);
     });
 
-    it('binds a server-side attachment by size: a file that changed size is DRAFT_CHANGED', async () => {
+    it('binds a server-side attachment by content: a same-size swap is DRAFT_CHANGED', async () => {
       const path = join(fileRoot, 'report.txt');
       writeFileSync(path, 'v1');
       const harness = await noElicitation();
       const first = json(await harness.callTool('gog_gmail_send', { ...SEND_ARGS, attach: [path] }));
       expect(first.preview.attachments).toEqual([{ name: path, size: 2 }]);
-      writeFileSync(path, 'version two');
+      writeFileSync(path, 'v2');
       const body = json(await harness.callTool('gog_gmail_send', { ...SEND_ARGS, attach: [path], confirmToken: first.confirmToken }));
       expect(body.error).toBe('DRAFT_CHANGED');
       expect(sendCalls()).toHaveLength(0);
