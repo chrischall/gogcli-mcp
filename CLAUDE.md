@@ -104,7 +104,7 @@ tool that reaches another person goes through: Gmail (via the `requireGmailDispa
 `src/gmail-dispatch-guard.ts`), Chat send and DM, Drive share, Classroom announcement and invitation, and
 guest-visible Calendar create/update/respond. A new tool that posts, shares, invites or notifies belongs on it. Its escape hatches must refuse the same action: a `vet` on the service's `registerRunTool` covering every gog alias (`vetChatRun`, `vetCalendarRun`, …), and an entry in `DISPATCH_API_BLOCKED` (`src/tools/api.ts`) for the raw API method; otherwise the model forwards the subcommand and nobody is asked (#400).
 Elicitation is primary. Only when the client declares none AND the call site passes a `DispatchTokenFallback`
-AND `GOG_SEND_CONFIRM_FALLBACK=token` does it run the two-phase flow in `src/send-confirm-token.ts`. The fallback's `subject()` is called lazily, so an extra read there
+AND `GOG_SEND_CONFIRM_FALLBACK=token` does it run the two-phase flow, which is mcp-utils' `requireConfirmationWithFallback` (the token mechanism lives there); `src/send-confirm-token.ts` only holds this server's env config, key and spent-token store. The fallback's `subject()` is called lazily, so an extra read there
 (`gog_gmail_forward` fetches the original) never touches the elicitation path. It must rebuild the payload from a
 **fresh** read on every call, because phase 2 is only as good as that re-read. A draft binds its messageId and an
 event binds its etag as the token's `revision`. The forwarding-filter call site deliberately passes no fallback.
