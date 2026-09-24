@@ -8,7 +8,7 @@ import { registerChatTools } from '../../src/tools/chat.js';
 import { registerAppScriptTools, projectSnapshot } from '../../src/tools/appscript.js';
 import { registerClassroomTools, readCoursework, readSubmission, studentLabel } from '../../src/tools/classroom.js';
 import { registerCalendarTools, eventSnapshot } from '../../src/tools/calendar.js';
-import { registerDriveTools, commentSnapshot } from '../../src/tools/drive.js';
+import { registerDriveTools, commentMentions, commentSnapshot } from '../../src/tools/drive.js';
 
 vi.mock('../../src/runner.js');
 
@@ -434,6 +434,14 @@ describe('gog_drive_delete with permanent=true', () => {
       .toEqual({ author: 'Alice <alice@example.com>', content: 'Please fix', resolved: false });
     expect(commentSnapshot(JSON.stringify({ comment: { content: 'x', author: { displayName: 'Bob' } } }))).toEqual({ author: 'Bob', content: 'x' });
     expect(commentSnapshot(JSON.stringify({ comment: { author: { emailAddress: 'b@example.com' }, resolved: 'yes' } }))).toEqual({ author: 'b@example.com' });
+    expect(commentSnapshot(JSON.stringify({ content: 'bare', author: { displayName: 'Cy' } }))).toEqual({ author: 'Cy', content: 'bare' });
+    expect(commentSnapshot('null')).toEqual({});
     expect(commentSnapshot('nope')).toEqual({});
+  });
+
+  it('commentMentions finds +/@ mentions once each, ignoring bare addresses', () => {
+    expect(commentMentions('+alice@example.com please check with @bob@example.co.uk and +alice@example.com'))
+      .toEqual(['alice@example.com', 'bob@example.co.uk']);
+    expect(commentMentions('mail carol@example.com about it')).toEqual([]);
   });
 });

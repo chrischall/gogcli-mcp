@@ -18,7 +18,11 @@ let harness: TestHarness;
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
-  harness = await createTestHarness(registerExtraCalendarTools);
+  // The gated tools (move with sendUpdates, out-of-office, delete-calendar) are
+  // exercised prompt-by-prompt in calendar-extra-gates.test.ts; here the user accepts.
+  harness = await createTestHarness(registerExtraCalendarTools, {
+    elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+  });
 });
 
 describe('gog_meet_create', () => {

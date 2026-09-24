@@ -115,7 +115,7 @@
     },
     {
       "name": "gog_classroom_courses_delete",
-      "description": "Delete a course"
+      "description": "Delete a course (asks the user to confirm)"
     },
     {
       "name": "gog_classroom_courses_archive",
@@ -135,7 +135,7 @@
     },
     {
       "name": "gog_classroom_students_add",
-      "description": "Add a student to a course"
+      "description": "Add a student to a course (asks the user to confirm unless adding yourself)"
     },
     {
       "name": "gog_classroom_students_remove",
@@ -151,7 +151,7 @@
     },
     {
       "name": "gog_classroom_teachers_add",
-      "description": "Add a teacher to a course"
+      "description": "Add a teacher to a course (asks the user to confirm)"
     },
     {
       "name": "gog_classroom_teachers_remove",
@@ -171,7 +171,7 @@
     },
     {
       "name": "gog_classroom_coursework_create",
-      "description": "Create coursework (assignment/question)"
+      "description": "Create coursework (assignment/question) (asks the user to confirm unless DRAFT)"
     },
     {
       "name": "gog_classroom_coursework_update",
@@ -179,7 +179,7 @@
     },
     {
       "name": "gog_classroom_coursework_delete",
-      "description": "Delete coursework"
+      "description": "Delete coursework (asks the user to confirm)"
     },
     {
       "name": "gog_classroom_submissions_list",
@@ -195,7 +195,7 @@
     },
     {
       "name": "gog_classroom_submissions_return",
-      "description": "Return a graded submission"
+      "description": "Return a graded submission (asks the user to confirm)"
     },
     {
       "name": "gog_classroom_submissions_turn_in",

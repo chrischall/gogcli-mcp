@@ -51,7 +51,8 @@ export function shareTargetMeta(raw: string): { name?: string; mimeType?: string
 export function commentSnapshot(raw: string): { author?: string; content?: string; resolved?: boolean } {
   let comment: { content?: unknown; resolved?: unknown; author?: { displayName?: unknown; emailAddress?: unknown } } | undefined;
   try {
-    comment = (JSON.parse(raw) as { comment?: typeof comment } | null)?.comment;
+    const parsed = JSON.parse(raw) as ({ comment?: typeof comment } & NonNullable<typeof comment>) | null;
+    comment = parsed?.comment ?? parsed ?? undefined;
   } catch {
     comment = undefined;
   }
@@ -63,6 +64,14 @@ export function commentSnapshot(raw: string): { author?: string; content?: strin
     ...(typeof comment?.content === 'string' ? { content: comment.content } : {}),
     ...(typeof comment?.resolved === 'boolean' ? { resolved: comment.resolved } : {}),
   };
+}
+
+/**
+ * The people a comment's text +mentions (or @mentions) by email — Drive
+ * notifies each of them, so a comment's prompt names them.
+ */
+export function commentMentions(text: string): string[] {
+  return [...new Set(text.match(/(?<=[+@])[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) ?? [])];
 }
 
 function fileMeta(raw: string): { name?: string; mimeType?: string; size?: number } {

@@ -1,6 +1,32 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, payloadArg, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
+import {
+  accountParam,
+  runOrDiagnose,
+  paginationParams,
+  pushPaginationFlags,
+  payloadArg,
+  pos,
+  confinePath,
+  bodyPreview,
+  commentMentions,
+  commentSnapshot,
+  CONFIRM_FALLBACK_DESCRIPTION,
+  confirmTokenParam,
+  requireDispatchConfirmation,
+  resultText,
+} from '../../../gogcli-mcp/src/lib.js';
+
+/** A Doc's title from `gog docs info`, for a comment's prompt. Unreadable output names nothing. */
+export function docTitle(raw: string): string | undefined {
+  try {
+    const parsed = JSON.parse(raw) as { title?: unknown; document?: { title?: unknown } } | null;
+    const title = parsed?.document?.title ?? parsed?.title;
+    return typeof title === 'string' ? title : undefined;
+  } catch {
+    return undefined;
+  }
+}
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDocsTools(server: McpServer): void {
@@ -419,30 +445,84 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_comments_add', {
     description:
-      'Add a comment to a Google Doc. Optionally attach quoted text that appears as the highlighted passage in the Google Docs UI.',
+      'Add a comment to a Google Doc. Optionally attach quoted text that appears as the highlighted passage in the Google Docs UI. '
+      + 'The Doc\'s owner and everyone the text +mentions are notified, so this reads the Doc and asks the MCP host to show '
+      + 'the user a confirmation prompt with the Doc, the text and who is mentioned first; nothing is posted unless they '
+      + 'accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       content: z.string().describe('Comment text'),
       quoted: z.string().optional().describe('Quoted text to attach to the comment (shown in UIs when available)'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ docId, content, quoted, account }) => {
+  }, async ({ docId, content, quoted, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['docs', 'comments', 'add', pos(docId), pos(content)];
     if (quoted) args.push(`--quoted=${quoted}`);
+    const got = await runOrDiagnose(['docs', 'info', pos(docId)], { account });
+    if (got.isError) return got;
+    const title = docTitle(resultText(got));
+    const doc = { id: docId, ...(title !== undefined ? { title } : {}) };
+    const mentions = commentMentions(content);
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'docs.comment-add',
+      message: 'Review and confirm this comment — the Doc\'s owner and anyone mentioned are notified:',
+      confirmationLabel: 'Confirm that this comment should be posted now.',
+      details: { doc, textPreview: bodyPreview(content), quoted, mentions },
+      unsupportedNote: 'Ask the user to comment from Google Docs.',
+      fallback: {
+        tool: 'gog_docs_comments_add',
+        account,
+        confirmToken,
+        subject: () => {
+          const view = { doc, text: content, quoted, mentions };
+          return { target: docId, payload: view, preview: view };
+        },
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_docs_comments_reply', {
-    description: 'Reply to an existing comment on a Google Doc.',
+    description: 'Reply to an existing comment on a Google Doc. Everyone on the thread and anyone the reply +mentions is '
+      + 'notified, so this reads the Doc and the comment and asks the MCP host to show the user a confirmation prompt '
+      + 'with both and the reply first; nothing is posted unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       commentId: z.string().describe('Comment ID to reply to'),
       content: z.string().describe('Reply text'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ docId, commentId, content, account }) => {
+  }, async ({ docId, commentId, content, account, confirmToken }, ctx) => {
+    const got = await runOrDiagnose(['docs', 'info', pos(docId)], { account });
+    if (got.isError) return got;
+    const thread = await runOrDiagnose(['docs', 'comments', 'get', pos(docId), pos(commentId)], { account });
+    if (thread.isError) return thread;
+    const title = docTitle(resultText(got));
+    const doc = { id: docId, ...(title !== undefined ? { title } : {}) };
+    const replyingTo = commentSnapshot(resultText(thread));
+    const mentions = commentMentions(content);
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'docs.comment-reply',
+      message: 'Review and confirm this reply — everyone on the thread and anyone mentioned is notified:',
+      confirmationLabel: 'Confirm that this reply should be posted now.',
+      details: { doc, replyingTo, textPreview: bodyPreview(content), mentions },
+      unsupportedNote: 'Ask the user to reply from Google Docs.',
+      fallback: {
+        tool: 'gog_docs_comments_reply',
+        account,
+        confirmToken,
+        subject: () => {
+          const view = { doc, replyingTo, text: content, mentions };
+          return { target: `${docId}/${commentId}`, payload: view, preview: view };
+        },
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(['docs', 'comments', 'reply', pos(docId), pos(commentId), pos(content)], { account });
   });
 

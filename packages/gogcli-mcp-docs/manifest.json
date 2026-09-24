@@ -180,11 +180,11 @@
     },
     {
       "name": "gog_docs_comments_add",
-      "description": "Add a comment to a Google Doc. Optionally attach quoted text that appears as the highlighted passage in the Google Docs UI."
+      "description": "Add a comment to a Google Doc. Optionally attach quoted text that appears as the highlighted passage in the Google Docs UI. Asks the user to confirm."
     },
     {
       "name": "gog_docs_comments_reply",
-      "description": "Reply to an existing comment on a Google Doc."
+      "description": "Reply to an existing comment on a Google Doc. Asks the user to confirm."
     },
     {
       "name": "gog_docs_comments_resolve",

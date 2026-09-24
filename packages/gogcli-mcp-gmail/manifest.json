@@ -150,7 +150,7 @@
     },
     {
       "name": "gog_gmail_batch_delete",
-      "description": "Permanently delete multiple messages (irreversible; requires force:true)"
+      "description": "Permanently delete multiple messages (irreversible; requires force:true) (asks the user to confirm)"
     },
     {
       "name": "gog_gmail_batch_modify",
@@ -266,7 +266,7 @@
     },
     {
       "name": "gog_gmail_vacation_update",
-      "description": "Enable, disable, or update the vacation responder"
+      "description": "Enable, disable, or update the vacation responder (enabling asks the user to confirm)"
     },
     {
       "name": "gog_gmail_filters_list",
@@ -294,7 +294,7 @@
     },
     {
       "name": "gog_gmail_sendas_create",
-      "description": "Create a send-as alias"
+      "description": "Create a send-as alias (asks the user to confirm)"
     },
     {
       "name": "gog_gmail_sendas_update",

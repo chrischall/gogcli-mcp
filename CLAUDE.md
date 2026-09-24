@@ -101,8 +101,12 @@ missing and skips.
 
 **Dispatch confirmation.** `requireDispatchConfirmation` (`src/dispatch-confirmation.ts`) is the one rail every
 tool that reaches another person goes through: Gmail (via the `requireGmailDispatchConfirmation` wrapper in
-`src/gmail-dispatch-guard.ts`), Chat send and DM, Drive share, Classroom announcement and invitation, and
-guest-visible Calendar create/update/respond. A new tool that posts, shares, invites or notifies belongs on it. Its escape hatches must refuse the same action: a `vet` on the service's `registerRunTool` covering every gog alias (`vetChatRun`, `vetCalendarRun`, …), and an entry in `DISPATCH_API_BLOCKED` (`src/tools/api.ts`) for the raw API method; otherwise the model forwards the subcommand and nobody is asked (#400).
+`src/gmail-dispatch-guard.ts`), Chat send, DM and member-seeded space create, Drive share, Drive/Docs comments,
+Classroom announcement, invitation, roster add, coursework create and submission return, guest-visible Calendar
+create/update/respond/move/delete, Out of Office with auto-decline, Gmail vacation enable and send-as create, Apps
+Script run, billed Connected Sheets datasource add/update/refresh, and permanent deletes (Drive, Gmail batch,
+calendars, courses, coursework). A new tool that posts, shares, invites, notifies, runs code, bills or destroys data
+for good belongs on it. Its escape hatches must refuse the same action: a `vet` on the service's `registerRunTool` covering every gog alias (`vetChatRun`, `vetCalendarRun`, …), and an entry in `DISPATCH_API_BLOCKED` (`src/tools/api.ts`) for the raw API method; otherwise the model forwards the subcommand and nobody is asked (#400).
 Elicitation is primary. When the client declares none AND the call site passes a `DispatchTokenFallback`,
 `MCP_CONFIRM_MODE` decides (ask-user by default, auto, or refuse), through mcp-utils' `confirmationFromEnv` +
 `requireConfirmationWithFallback`. The token mechanism and the env layer both live there, shared with the whole
