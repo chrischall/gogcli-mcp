@@ -10,6 +10,7 @@ import { bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, flagValue
 const CLASSROOM_CREATE_WORDS = new Set(['create', 'add', 'new']);
 const CLASSROOM_UPDATE_WORDS = new Set(['update', 'edit', 'set']);
 const CLASSROOM_RETURN_WORDS = new Set(['return', 'send']);
+const CLASSROOM_ASSIGNEE_WORDS = new Set(['assignees', 'assign']);
 type ClassroomGroup = 'announcements' | 'invitations' | 'coursework' | 'materials' | 'students' | 'teachers' | 'submissions' | 'guardian-invitations';
 const CLASSROOM_GROUPS: Record<string, ClassroomGroup> = {
   announcements: 'announcements', announcement: 'announcements', ann: 'announcements',
@@ -36,6 +37,11 @@ function createsVisibleWork(args: readonly string[]): boolean {
   return flagValue(args, 'state')?.toUpperCase() !== 'DRAFT' || flagValue(args, 'scheduled') !== undefined;
 }
 
+/** True when an assignees change shows an item to more students: ALL_STUDENTS or an added student. Removing students only narrows it. */
+function widensAssignees(args: readonly string[]): boolean {
+  return flagValue(args, 'mode')?.toUpperCase() === 'ALL_STUDENTS' || flagValue(args, 'add-student') !== undefined;
+}
+
 /**
  * gog_classroom_run must not post, publish, enrol, return or invite what the
  * dedicated tools would ask about (#400; SEC-3, fleet-audit #932). Publishing
@@ -50,11 +56,17 @@ export function vetClassroomRun(subcommand: string, args: readonly string[]): st
   const what = (word: string) => `gog classroom ${sub} ${word.toLowerCase()}`;
   const create = hasCommandWord(args, CLASSROOM_CREATE_WORDS);
   const update = hasCommandWord(args, CLASSROOM_UPDATE_WORDS);
+  const widenedAssignees = (): string | undefined => {
+    const word = hasCommandWord(args, CLASSROOM_ASSIGNEE_WORDS);
+    return word && widensAssignees(args)
+      ? refusedInRun(what(word), via, 'shows it to more students', 'Ask the user to change who it is assigned to from Classroom.')
+      : undefined;
+  };
   switch (group) {
     case 'announcements':
       if (create) return gatedElsewhere(what(create), via, 'posts to a class', 'gog_classroom_announcements_create');
       if (update && publishesToStudents(args)) return gatedElsewhere(what(update), via, 'publishes an announcement to a class', 'gog_classroom_announcements_update');
-      return undefined;
+      return widenedAssignees();
     case 'invitations':
       return create ? gatedElsewhere(what(create), via, 'invites someone to a class', 'gog_classroom_invitations_create') : undefined;
     case 'coursework':
@@ -62,11 +74,15 @@ export function vetClassroomRun(subcommand: string, args: readonly string[]): st
         return refusedInRun(what(create), via, 'publishes work to students', 'Use gog_classroom_coursework_create, or create it with --state=DRAFT and no --scheduled.');
       }
       if (update && publishesToStudents(args)) return gatedElsewhere(what(update), via, 'publishes work to students', 'gog_classroom_coursework_update');
-      return undefined;
+      return widenedAssignees();
     case 'materials':
-      return create && createsVisibleWork(args)
-        ? refusedInRun(what(create), via, 'publishes material to students', 'Create it with --state=DRAFT and no --scheduled; the user can publish it from Classroom.')
-        : undefined;
+      // No dedicated tool updates materials, so publishing one is refused
+      // outright rather than sent to a gated tool.
+      if (create && createsVisibleWork(args)) {
+        return refusedInRun(what(create), via, 'publishes material to students', 'Create it with --state=DRAFT and no --scheduled; ask the user to publish it from Classroom.');
+      }
+      if (update && publishesToStudents(args)) return refusedInRun(what(update), via, 'publishes material to students', 'Ask the user to publish it from Classroom.');
+      return undefined;
     case 'students':
       return create ? refusedInRun(what(create), via, 'enrols someone in a class', 'Use gog_classroom_students_add.') : undefined;
     case 'teachers':

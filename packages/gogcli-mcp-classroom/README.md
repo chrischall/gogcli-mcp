@@ -71,6 +71,8 @@ Plus 5 auth tools. Dedicated tools cover the common Classroom operations; anythi
 - `coursework assignees` (individualized assignment targeting)
 - `announcement assignees` (individualized announcement targeting)
 
+It refuses what would reach students without the user being asked: publishing an announcement, coursework or material (`--state=PUBLISHED` or `--scheduled`), assigning an item to more students (`--mode=ALL_STUDENTS` or `--add-student`), roster adds, submission returns and guardian invitations. Use the dedicated tool, or ask the user to do it from Classroom.
+
 Example: `{ "subcommand": "guardians", "args": ["list", "<studentUserId>"] }`.
 
 ## License

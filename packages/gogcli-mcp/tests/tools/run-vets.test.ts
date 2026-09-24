@@ -102,6 +102,33 @@ describe('vetClassroomRun', () => {
     expect(vetClassroomRun(sub, args)).toMatch(/gog_classroom_coursework_update.*asks the user/);
   });
 
+  // Materials have no dedicated update tool, so publishing one through
+  // update/edit/set was the create-as-DRAFT then update-to-PUBLISHED route.
+  it.each([
+    ['materials', ['update', 'c1', 'm1', '--state=PUBLISHED']],
+    ['materials', ['update', 'c1', 'm1', '--state', 'PUBLISHED']],
+    ['material', ['edit', 'c1', 'm1', '--state=published']],
+    ['material', ['SET', 'c1', 'm1', '--state', 'Published']],
+    ['materials', ['set', 'c1', 'm1', '--scheduled=2026-10-01T12:00:00Z']],
+    ['material', ['update', 'c1', 'm1', '--state=DRAFT', '--scheduled', '2026-10-01T12:00:00Z']],
+  ])('refuses publishing material via %s %j', (sub, args) => {
+    const refusal = vetClassroomRun(sub, args);
+    expect(refusal).toMatch(/publishes material to students and is not available through gog_classroom_run/);
+    expect(refusal).toMatch(/Ask the user to publish it from Classroom/);
+  });
+
+  // Assigning a published item to more students widens who sees it.
+  it.each([
+    ['announcements', ['assignees', 'c1', 'a1', '--mode=ALL_STUDENTS']],
+    ['ann', ['assign', 'c1', 'a1', '--add-student=s1,s2']],
+    ['coursework', ['assignees', 'c1', 'w1', '--mode', 'all_students']],
+    ['work', ['ASSIGN', 'c1', 'w1', '--add-student', 's1']],
+  ])('refuses widening assignees via %s %j', (sub, args) => {
+    const refusal = vetClassroomRun(sub, args);
+    expect(refusal).toMatch(/shows it to more students and is not available through gog_classroom_run/);
+    expect(refusal).toMatch(/from Classroom/);
+  });
+
   it.each([
     ['coursework', ['create', 'c1', '--title=HW'], /gog_classroom_coursework_create/],
     ['work', ['add', 'c1', '--title=HW', '--state=PUBLISHED'], /gog_classroom_coursework_create/],
@@ -130,6 +157,10 @@ describe('vetClassroomRun', () => {
     ['coursework', ['create', 'c1', '--title=HW', '--state=DRAFT']],
     ['materials', ['create', 'c1', '--title=Notes', '--state=draft']],
     ['materials', ['list', 'c1']],
+    ['materials', ['update', 'c1', 'm1', '--state=DRAFT']],
+    ['material', ['edit', 'c1', 'm1', '--title=Renamed']],
+    ['announcements', ['assignees', 'c1', 'a1', '--remove-student=s1']],
+    ['coursework', ['assign', 'c1', 'w1', '--mode=INDIVIDUAL_STUDENTS', '--remove-student', 's1']],
     ['students', ['list', 'c1']],
     ['students', ['remove', 'c1', 'u1', '--force']],
     ['teachers', ['get', 'c1', 'u1']],
