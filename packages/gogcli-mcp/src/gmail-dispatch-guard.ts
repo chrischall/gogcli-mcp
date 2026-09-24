@@ -1,5 +1,17 @@
+import { createHash } from 'node:crypto';
+import { statSync } from 'node:fs';
 import type { CallToolResult, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
-import { readEnvVar, requireConfirmation } from '@chrischall/mcp-utils';
+import { callerAcceptsFormElicitation, readEnvVar, requireConfirmation, textResult } from '@chrischall/mcp-utils';
+import { z } from 'zod';
+import {
+  confirmTokenTtlSeconds,
+  hashSendPayload,
+  issueConfirmToken,
+  sendConfirmFallbackEnabled,
+  verifyConfirmToken,
+  type ConfirmBinding,
+  type ConfirmTokenError,
+} from './send-confirm-token.js';
 
 // ============================================================================
 // THE SAFETY RAIL. gog_gmail_reply / reply_all / send / forward / autoreply /
@@ -14,6 +26,12 @@ import { readEnvVar, requireConfirmation } from '@chrischall/mcp-utils';
 // result containing the preview, and only the protocol retry carrying the
 // user's accepted confirmation dispatches. The confirmation is never a tool
 // argument, so a model cannot bypass the user by setting a boolean itself.
+//
+// The one exception is OPT-IN: with GOG_SEND_CONFIRM_FALLBACK=token, a client
+// that cannot be prompted gets a two-phase preview + confirmToken instead of a
+// refusal (`DispatchTokenFallback`, send-confirm-token.ts). There the approval
+// IS a tool argument; see that file for exactly what the token does and does
+// not guarantee.
 //
 // A CLIENT THAT CANNOT SHOW THAT PROMPT gets a sentence rather than a prompt
 // it will refuse to deliver (`unsupportedNote`, mcp-utils `requireConfirmation`).
@@ -120,17 +138,180 @@ export function attachmentNames(
   return [...(paths ?? []), ...(inline ?? []).map((a) => a.filename)];
 }
 
-/** Apply the shared stateless confirmation flow with Gmail-specific copy. */
-export function requireGmailDispatchConfirmation(
+/** One attachment as the fallback preview shows it and its hash binds it. */
+export type AttachmentDetail = { name: string; size: number | null; sha256?: string };
+
+/**
+ * Name and byte size of every attachment a dispatch carries, for the token
+ * fallback's preview and payload hash. A server path is stat'ed (it is already
+ * confined to GOG_FILE_ROOTS; an unreadable one reports `size: null` and gog
+ * will fail on it anyway); inline bytes are measured and fingerprinted, since
+ * they are in hand.
+ */
+export function attachmentDetails(
+  paths: readonly string[] | undefined,
+  inline: ReadonlyArray<{ filename: string; contentBase64: string }> | undefined,
+): AttachmentDetail[] {
+  const out: AttachmentDetail[] = [];
+  for (const path of paths ?? []) {
+    let size: number | null = null;
+    try {
+      size = statSync(path).size;
+    } catch {
+      size = null;
+    }
+    out.push({ name: path, size });
+  }
+  for (const a of inline ?? []) {
+    out.push({
+      name: a.filename,
+      size: Buffer.from(a.contentBase64, 'base64').length,
+      sha256: createHash('sha256').update(a.contentBase64).digest('hex'),
+    });
+  }
+  return out;
+}
+
+/** Who a dispatch goes out as, for the fallback preview: an explicit alias, else the account. */
+export function senderPreview(account: string | undefined, from?: string): string {
+  return from ?? account ?? readEnvVar('GOG_ACCOUNT') ?? "the gog account's default address";
+}
+
+/** Drop the fingerprint for display: the user needs a name and a size. */
+export function attachmentPreview(details: readonly AttachmentDetail[]): Array<{ name: string; size: number | null }> {
+  return details.map(({ name, size }) => ({ name, size }));
+}
+
+export const CONFIRM_INSTRUCTION =
+  'Show this preview to the user verbatim and send only after they explicitly approve in chat. '
+  + 'Then call again with confirmToken.';
+
+const FALLBACK_HINT = 'Or set GOG_SEND_CONFIRM_FALLBACK=token to enable two-step confirmation.';
+
+/** Appended to each gated tool's description. */
+export const CONFIRM_FALLBACK_DESCRIPTION =
+  ' If the client cannot show that prompt (no MCP elicitation, e.g. claude.ai) and the server sets '
+  + 'GOG_SEND_CONFIRM_FALLBACK=token, a two-step flow applies instead: call WITHOUT confirmToken and nothing is '
+  + 'sent — the result has status "confirmation-required", the full preview and a confirmToken. Show that preview '
+  + 'to the user verbatim; only after they explicitly approve it in chat, call again with the SAME arguments plus '
+  + 'confirmToken. The tool re-reads what it would send and refuses (DRAFT_CHANGED, with a fresh preview and token) '
+  + 'if it changed; TOKEN_EXPIRED / TOKEN_REUSED / TOKEN_INVALID also send nothing.';
+
+export const confirmTokenParam = z.string().optional().describe(
+  'ONLY for the two-step fallback (client without MCP elicitation, server with GOG_SEND_CONFIRM_FALLBACK=token). '
+  + 'The confirmToken from this same tool\'s phase-1 "confirmation-required" response, passed back ONLY after the user '
+  + 'has seen that preview and explicitly approved sending it in chat — never on the first call, never invented, never '
+  + 'reused. Call again with the same arguments. Ignored when the client supports elicitation.',
+);
+
+/** What the fallback binds a token to — recomputed from a fresh read on every call. */
+export interface TokenSubject {
+  /** The draftId / messageId / query the dispatch acts on. */
+  target: string;
+  /** A draft's messageId: rotates when the draft is edited or re-saved. */
+  revision?: string;
+  /** Canonical send payload; its SHA-256 is bound into the token. */
+  payload: unknown;
+  /** The complete preview shown to the user. */
+  preview: Record<string, unknown>;
+}
+
+/**
+ * Opt-in second rail for a client that cannot be prompted. `subject` is only
+ * called when the fallback actually runs, so a tool may do an extra read there
+ * without changing the elicitation path at all. It may return an error result
+ * (a failed read), which is passed back unchanged.
+ */
+export interface DispatchTokenFallback {
+  tool: string;
+  account?: string;
+  confirmToken?: string;
+  subject: () => TokenSubject | CallToolResult | Promise<TokenSubject | CallToolResult>;
+}
+
+const TOKEN_ERROR_NOTE: Record<Exclude<ConfirmTokenError, 'DRAFT_CHANGED'>, string> = {
+  TOKEN_EXPIRED: 'Nothing was sent: the confirmToken expired. Call again WITHOUT confirmToken for a fresh preview, '
+    + 'and ask the user to approve it again.',
+  TOKEN_REUSED: 'Nothing was sent by this call: this confirmToken was already used, and one approval sends once. '
+    + 'If another send is really intended, call again WITHOUT confirmToken and get a new approval.',
+  TOKEN_INVALID: 'Nothing was sent: this confirmToken was not issued by this server for this tool, account and '
+    + 'draft/message (or the server has restarted since). Call again WITHOUT confirmToken for a fresh preview and approval.',
+};
+
+const DRAFT_CHANGED_NOTE = {
+  'message-id-rotated': 'Nothing was sent: the draft was edited or re-saved since the user approved it (its messageId '
+    + 'rotated), so what would go out is not what they saw.',
+  'payload-changed': 'Nothing was sent: what would go out no longer matches what the user approved.',
+} as const;
+
+function isToolResult(value: TokenSubject | CallToolResult): value is CallToolResult {
+  return Array.isArray((value as CallToolResult).content);
+}
+
+function rejection(data: Record<string, unknown>): CallToolResult {
+  return { ...textResult({ status: 'confirmation-rejected', confirmed: false, dispatched: false, ...data }), isError: true };
+}
+
+async function tokenConfirmation(op: GmailDispatchOp, fallback: DispatchTokenFallback): Promise<CallToolResult | undefined> {
+  const subject = await fallback.subject();
+  if (isToolResult(subject)) return subject;
+  const binding: ConfirmBinding = {
+    tool: fallback.tool,
+    account: fallback.account ?? readEnvVar('GOG_ACCOUNT') ?? '',
+    target: subject.target,
+    ...(subject.revision === undefined ? {} : { revision: subject.revision }),
+    payloadHash: hashSendPayload(subject.payload),
+  };
+  const phaseOne = () => {
+    const { token, expiresAt } = issueConfirmToken(binding);
+    return {
+      action: op,
+      preview: subject.preview,
+      confirmToken: token,
+      expiresAt,
+      ttlSeconds: confirmTokenTtlSeconds(),
+      instruction: CONFIRM_INSTRUCTION,
+    };
+  };
+  if (!fallback.confirmToken) {
+    return textResult({ status: 'confirmation-required', confirmed: false, dispatched: false, ...phaseOne() });
+  }
+  const verdict = verifyConfirmToken(fallback.confirmToken, binding);
+  if (verdict.ok) return undefined;
+  if (verdict.error === 'DRAFT_CHANGED') {
+    return rejection({
+      error: 'DRAFT_CHANGED',
+      reason: verdict.reason,
+      note: `${DRAFT_CHANGED_NOTE[verdict.reason!]} The current preview and a fresh confirmToken are below.`,
+      ...phaseOne(),
+    });
+  }
+  return rejection({ error: verdict.error, action: op, note: TOKEN_ERROR_NOTE[verdict.error] });
+}
+
+/**
+ * Apply the shared stateless confirmation flow with Gmail-specific copy.
+ *
+ * Elicitation stays the primary path and is untouched. Only when the caller
+ * declares it cannot be prompted AND a `fallback` is supplied AND
+ * GOG_SEND_CONFIRM_FALLBACK=token does the two-phase token flow run instead of
+ * the refusal; with the env unset, the refusal names that switch.
+ */
+export async function requireGmailDispatchConfirmation(
   ctx: ServerContext,
   op: GmailDispatchOp,
   details: Record<string, unknown>,
-): InputRequiredResult | CallToolResult | undefined {
+  fallback?: DispatchTokenFallback,
+): Promise<InputRequiredResult | CallToolResult | undefined> {
+  if (fallback && callerAcceptsFormElicitation(ctx) === false && sendConfirmFallbackEnabled()) {
+    return tokenConfirmation(op, fallback);
+  }
   const twin = STAGING_TWIN[op];
-  const note = twin
+  const base = twin
     ? `Stage it with ${twin} instead; the user can review the draft and send it from Gmail `
       + '(gog_gmail_drafts_send also asks for confirmation).'
     : UNSUPPORTED_NOTE[op];
+  const note = fallback ? [base, FALLBACK_HINT].filter(Boolean).join(' ') : base;
   return requireConfirmation(ctx, {
     action: op,
     message: op === 'gmail.filter-forward'

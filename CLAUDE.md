@@ -75,6 +75,9 @@ GOG_READONLY=1        # block all mutating gog API requests (injects gog's --rea
 DISPLAY_TZ=<IANA>     # zone for *Display fields and for interpreting naive gog values; defaults to America/New_York
 GOG_TIMEZONE=<IANA>   # zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge
 GOG_GMAIL_TRUSTED_DOMAINS=<csv> # additional domains excluded from external-recipient audit alerts
+GOG_SEND_CONFIRM_FALLBACK=token # opt-in two-phase preview + confirmToken for Gmail sends on clients with no elicitation
+GOG_CONFIRM_TTL_SECONDS=<n>     # confirmToken lifetime (default 600)
+GOG_CONFIRM_SECRET=<secret>     # confirmToken HMAC key (default: random per process); stripped from gog's env by the _SECRET rule
 GOG_FILE_ROOTS=<dirs>  # ':'-separated dirs every server-side path param (attach/localPath/file/out/outDir/dir) must resolve inside; default ~/gogcli-mcp-files
 GOG_CLIENT_ID=<id>          # startup auth bootstrap: OAuth client id, imported into gog's keyring
 GOG_CLIENT_SECRET=<secret>  # startup auth bootstrap: OAuth client secret
@@ -95,6 +98,14 @@ is not re-imported, a rotated one is. It never throws — a broken bootstrap sti
 leaves the auth tools reachable. Set none of them and it does nothing (local
 installs authorise with `gog auth add` as before); set some and it logs what is
 missing and skips.
+
+**Send confirmation fallback.** `requireGmailDispatchConfirmation` (`src/gmail-dispatch-guard.ts`) is the one
+rail every Gmail dispatch goes through. Elicitation is primary. Only when the client declares none AND the call
+site passes a `DispatchTokenFallback` AND `GOG_SEND_CONFIRM_FALLBACK=token` does it run the two-phase flow in
+`src/send-confirm-token.ts`. The fallback's `subject()` is called lazily, so an extra read there
+(`gog_gmail_forward` fetches the original) never touches the elicitation path. It must rebuild the payload from a
+**fresh** read on every call, because phase 2 is only as good as that re-read. A draft binds its messageId as the
+token's `revision`. The forwarding-filter call site deliberately passes no fallback.
 
 `runner.ts` treats unresolved `.mcpb` placeholders (`${user_config.xxx}`) and empty strings as unset — useful for desktop clients that pass blank user-config fields through literally.
 

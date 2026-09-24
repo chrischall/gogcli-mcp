@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, senderPreview, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
@@ -1244,7 +1244,7 @@ export type GmailPayloadPart = {
   mimeType?: string;
   filename?: string;
   headers?: GmailHeader[];
-  body?: { data?: string };
+  body?: { data?: string; size?: number };
   parts?: GmailPayloadPart[];
 };
 
@@ -2357,6 +2357,51 @@ function parseSearchSenders(raw: string): string[] {
   }
 }
 
+// The token fallback binds the matched set itself, not just the senders: the
+// same people in different threads is a different send.
+function parseSearchMatches(raw: string): Array<{ id?: string; from?: string; subject?: string }> {
+  try {
+    const parsed = JSON.parse(raw) as { threads?: Array<{ id?: string; from?: string; subject?: string }> };
+    return Array.isArray(parsed.threads) ? parsed.threads.map(({ id, from, subject }) => ({ id, from, subject })) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** What `gog gmail get --format=metadata --json` says about a message being forwarded. */
+export function parseForwardMetadata(raw: string): {
+  from?: string;
+  subject?: string;
+  date?: string;
+  messageIdHeader?: string;
+  threadId?: string;
+  attachments: Array<{ name: string; size: number | null }>;
+} {
+  let parsed: {
+    headers?: Record<string, unknown>;
+    message?: { threadId?: unknown };
+    attachments?: Array<{ filename?: unknown; size?: unknown }>;
+  } | null = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = null;
+  }
+  const header = (k: string) => (typeof parsed?.headers?.[k] === 'string' ? parsed.headers[k] as string : undefined);
+  const threadId = parsed?.message?.threadId;
+  return {
+    from: header('from'),
+    subject: header('subject'),
+    date: header('date'),
+    messageIdHeader: header('message_id'),
+    threadId: typeof threadId === 'string' ? threadId : undefined,
+    attachments: (Array.isArray(parsed?.attachments) ? parsed.attachments : []).map((a) => ({
+      name: typeof a.filename === 'string' ? a.filename : '',
+      size: typeof a.size === 'number' ? a.size : null,
+    })),
+  };
+}
+
 // After confirmation, the send needs no extra recipient lookup: gog's own
 // autoreply response already reports the resolved reply target per matched
 // message (internal/cmd/gmail_autoreply.go's gmailAutoReplyResult.ReplyTo,
@@ -2416,6 +2461,75 @@ export function previewStoredDraft(raw: string): {
     subject: headerValue(headers, 'Subject'),
     bodyPreview: bodyPreview(bestBodyText(message?.payload)),
     attachments: attachmentFilenames(message?.payload),
+  };
+}
+
+/** The first inline (non-attachment) body of one MIME type, decoded; '' if none. */
+function firstInlineBody(payload: GmailPayloadPart | undefined, mime: string): string {
+  let found: string | undefined;
+  const walk = (part: GmailPayloadPart | undefined): void => {
+    if (!part || found !== undefined) return;
+    if (part.body?.data && !part.filename && partMimeType(part) === mime) found = decodePartText(part);
+    for (const child of part.parts ?? []) walk(child);
+  };
+  walk(payload);
+  return found ?? '';
+}
+
+/** Every named attachment part with its byte size, in order. */
+function attachmentSizes(payload: GmailPayloadPart | undefined): Array<{ name: string; size: number | null }> {
+  const out: Array<{ name: string; size: number | null }> = [];
+  const walk = (part: GmailPayloadPart | undefined): void => {
+    if (!part) return;
+    if (part.filename) out.push({ name: part.filename, size: part.body?.size ?? null });
+    for (const child of part.parts ?? []) walk(child);
+  };
+  walk(payload);
+  return out;
+}
+
+/**
+ * The token fallback's subject for sending a stored draft: the COMPLETE draft
+ * as it would go out, bound to its draftId and — as the revision — its current
+ * messageId, which Gmail rotates whenever the draft is re-saved (Apple Mail does
+ * so on every save). Attachment ids are left out of the hash: they are not
+ * stable across reads of the same unchanged message.
+ */
+export function storedDraftTokenSubject(raw: string, draftId: string, account: string | undefined) {
+  let message: GmailDraftMessage | undefined;
+  try {
+    message = (JSON.parse(raw) as { draft?: { message?: GmailDraftMessage } }).draft?.message;
+  } catch {
+    message = undefined;
+  }
+  const headers = parseHeaders(message?.payload);
+  const h = (name: string) => headerValue(headers, name);
+  const bodyText = firstInlineBody(message?.payload, 'text/plain');
+  const bodyHtml = firstInlineBody(message?.payload, 'text/html');
+  const attachments = attachmentSizes(message?.payload);
+  const fields = {
+    from: h('From') ?? senderPreview(account),
+    to: h('To'),
+    cc: h('Cc'),
+    bcc: h('Bcc'),
+    subject: h('Subject'),
+    attachments,
+    threadId: message?.threadId,
+    inReplyTo: h('In-Reply-To'),
+    references: h('References'),
+  };
+  return {
+    target: draftId,
+    revision: message?.id,
+    payload: { ...fields, bodyText, bodyHtml },
+    preview: {
+      draftId,
+      messageId: message?.id,
+      ...fields,
+      // The plain-text part when there is one; an HTML-only draft shows its
+      // HTML, since that is what the recipient reads.
+      body: bodyText || bodyHtml,
+    },
   };
 }
 
@@ -3447,13 +3561,17 @@ export function registerExtraGmailTools(server: McpServer): void {
       'Send an existing Gmail draft. If the id no longer resolves, the 404 comes back as a DRAFT_FORKED report — what happened, ' +
       'the drafts that do exist (with their free origin/rootsOwnThread fields) and what to do next — rather than a bare ' +
       'notFound. It names no replacement: that judgement needs a named pair and gog_gmail_drafts_diff. If the draft turns out ' +
-      'to be still listed, the answer is GOOGLE_404_NOT_THE_DRAFT instead and claims no fork at all.',
+      'to be still listed, the answer is GOOGLE_404_NOT_THE_DRAFT instead and claims no fork at all.' +
+      CONFIRM_FALLBACK_DESCRIPTION +
+      ' The token is bound to the draft\'s current messageId, so a draft edited or re-saved between the two calls (a mail ' +
+      'client rotates the messageId on every save) is DRAFT_CHANGED, never sent unseen.',
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       draftId: z.string().describe('Draft ID to send'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ draftId, account }, ctx) => {
+  }, async ({ draftId, account, confirmToken }, ctx) => {
     // Sending a staged draft dispatches mail as irreversibly as gog_gmail_send,
     // so it goes through the same confirmation rail (audit SEC-2) — otherwise
     // drafts_create + drafts_send is an unconfirmed route around it. The prompt
@@ -3462,8 +3580,16 @@ export function registerExtraGmailTools(server: McpServer): void {
     // fork-aware path a failed send always has.
     const got = await runOrDiagnose(['gmail', 'drafts', 'get', pos(draftId)], { account });
     if (got.isError) return forkAwareDraftFailure(got, 'gog_gmail_drafts_send', draftId, account);
-    const preview = previewStoredDraft(resultText(got) ?? '');
-    const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.drafts-send', { draftId, ...preview });
+    const raw = resultText(got) ?? '';
+    const preview = previewStoredDraft(raw);
+    // The drafts get above runs on EVERY call, so on phase 2 of the token
+    // fallback it is the re-read the token is checked against.
+    const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.drafts-send', { draftId, ...preview }, {
+      tool: 'gog_gmail_drafts_send',
+      account,
+      confirmToken,
+      subject: () => storedDraftTokenSubject(raw, draftId, account),
+    });
     if (confirmation) return confirmation;
     const result = await runOrDiagnose(['gmail', 'drafts', 'send', pos(draftId)], { account });
     if (!result.isError) logGmailDispatch('gog_gmail_drafts_send', preview.recipients, account);
@@ -3504,7 +3630,8 @@ export function registerExtraGmailTools(server: McpServer): void {
       'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, the note text, and attachment handling. '
       + 'Mail is sent only after the user accepts that prompt. To STAGE a forward instead of sending it, use '
       + 'gog_gmail_drafts_forward, which never needs confirmation. '
-      + 'Forward an existing Gmail message to new recipients.',
+      + 'Forward an existing Gmail message to new recipients.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       messageId: z.string().describe('Gmail message ID to forward'),
@@ -3515,15 +3642,41 @@ export function registerExtraGmailTools(server: McpServer): void {
       from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
       skipAttachments: z.boolean().optional().describe('Do not include original attachments'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, account }, ctx) => {
+  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, account, confirmToken }, ctx) => {
     const recipients = extractEmails(to, cc, bcc);
-    const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.forward', {
+    const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.forward', {
       messageId, to, cc, bcc, recipients, recipientCount: recipients.length,
       noteLength: note?.length ?? 0,
       notePreview: bodyPreview(note),
       skipAttachments: Boolean(skipAttachments),
       attachmentsIncluded: !skipAttachments,
+    }, {
+      tool: 'gog_gmail_forward',
+      account,
+      confirmToken,
+      // Fallback only: read what is being forwarded, so the user sees whose
+      // message and which attachments leave, and phase 2 re-reads it.
+      subject: async () => {
+        const meta = await runOrDiagnose(['gmail', 'get', pos(messageId), '--format=metadata'], { account });
+        if (meta.isError) return meta;
+        const original = parseForwardMetadata(resultText(meta) ?? '');
+        const attachments = skipAttachments ? [] : original.attachments;
+        const sender = senderPreview(account, from);
+        const subject = original.subject ? `Fwd: ${original.subject}` : undefined;
+        return {
+          target: messageId,
+          payload: { from: sender, to, cc, bcc, subject, note, attachments, original },
+          preview: {
+            from: sender, to, cc, bcc, subject,
+            body: note,
+            forwarding: { messageId, from: original.from, subject: original.subject, date: original.date, messageIdHeader: original.messageIdHeader },
+            attachments,
+            threadId: original.threadId,
+          },
+        };
+      },
     });
     if (confirmation) return confirmation;
     const args: GogArg[] = ['gmail', 'forward', pos(messageId), `--to=${to}`];
@@ -3617,7 +3770,8 @@ export function registerExtraGmailTools(server: McpServer): void {
       + 'only after the user accepts that prompt. There is no draft-only counterpart for this one: it acts across a query-defined '
       + 'set of messages rather than a single reply target, so gog has no "stage all of these as drafts" command to '
       + 'stand in for it — the confirmation prompt is this tool\'s only pre-send check. '
-      + 'Reply once to all messages matching a Gmail search query. Use the label flag to dedupe across runs.',
+      + 'Reply once to all messages matching a Gmail search query. Use the label flag to dedupe across runs.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       query: z.string().describe('Gmail search query'),
@@ -3633,13 +3787,14 @@ export function registerExtraGmailTools(server: McpServer): void {
       skipBulk: z.boolean().optional().describe('Skip auto-generated/list mail'),
       allowSelf: z.boolean().optional().describe('Allow replying to messages sent by your own address'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ query, max, subject, body, bodyHtml, from, replyTo, label, archive, markRead, skipBulk, allowSelf, account }, ctx) => {
+  }, async ({ query, max, subject, body, bodyHtml, from, replyTo, label, archive, markRead, skipBulk, allowSelf, account, confirmToken }, ctx) => {
     const searchResult = await runOrDiagnose(['gmail', 'search', pos(query), `--max=${max ?? 20}`], { account });
     if (searchResult.isError) return searchResult;
     const senders = parseSearchSenders(resultText(searchResult) ?? '{}');
     const sampleSenders = extractEmails(...senders);
-    const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.autoreply', {
+    const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.autoreply', {
       query,
       matchCount: senders.length,
       sampleSenders,
@@ -3650,6 +3805,35 @@ export function registerExtraGmailTools(server: McpServer): void {
       label: label || 'AutoReplied',
       archive: Boolean(archive),
       markRead: Boolean(markRead),
+    }, {
+      tool: 'gog_gmail_autoreply',
+      account,
+      confirmToken,
+      // The search above runs on every call; binding its matches means a
+      // different set of messages on phase 2 is DRAFT_CHANGED, not a surprise.
+      subject: () => {
+        const matches = parseSearchMatches(resultText(searchResult) ?? '{}');
+        const sender = senderPreview(account, from);
+        const options = {
+          max: max ?? 20, label: label || 'AutoReplied', archive: Boolean(archive), markRead: Boolean(markRead),
+          skipBulk: Boolean(skipBulk), allowSelf: Boolean(allowSelf),
+        };
+        return {
+          target: query,
+          payload: { from: sender, replyTo, subject, body, bodyHtml, matches, ...options },
+          preview: {
+            from: sender,
+            to: sampleSenders,
+            subject: subject || 'Re: <each original subject>',
+            body: body ?? bodyHtml,
+            ...(replyTo ? { replyTo } : {}),
+            query,
+            matchCount: matches.length,
+            matches,
+            ...options,
+          },
+        };
+      },
     });
     if (confirmation) return confirmation;
     const args: GogArg[] = ['gmail', 'autoreply', pos(query)];
@@ -3830,7 +4014,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       const criteria = Object.fromEntries(
         Object.entries({ from, to, subject, query, hasAttachment }).filter(([, v]) => v !== undefined),
       );
-      const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.filter-forward', {
+      const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.filter-forward', {
         forwardTo: forward,
         criteria,
         alsoArchive: Boolean(archive),
