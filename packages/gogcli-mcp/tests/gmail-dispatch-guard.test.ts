@@ -284,7 +284,8 @@ describe('attachmentDetails', () => {
     const path = join(dir, 'a.txt');
     writeFileSync(path, 'hello');
     const details = attachmentDetails([path, join(dir, 'missing.pdf')], [{ filename: 'b.png', contentBase64: Buffer.from('abc').toString('base64') }]);
-    expect(details[0]).toEqual({ name: path, size: 5 });
+    expect(details[0]).toMatchObject({ name: path, size: 5 });
+    expect(details[0]!.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(details[1]).toEqual({ name: join(dir, 'missing.pdf'), size: null });
     expect(details[2]).toMatchObject({ name: 'b.png', size: 3 });
     expect(details[2]!.sha256).toMatch(/^[0-9a-f]{64}$/);

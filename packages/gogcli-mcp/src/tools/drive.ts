@@ -8,6 +8,7 @@ import { run, runBinary } from '../runner.js';
 import { accountParam, diagnose, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
+import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
 
 // A native Google Doc exports to text directly; anything else (PDF, image,
 // docx, …) is first copied WITH conversion to this type, which makes Drive run
@@ -17,6 +18,16 @@ const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document';
 // Parse `gog drive get` JSON into { name, mimeType }. gog nests the payload
 // under `file`; fall back to the top level if that ever changes.
 type DriveMeta = { name?: string; mimeType?: string; size?: string | number };
+
+/** fileMeta for a preview: unreadable output names nothing rather than throwing. */
+export function shareTargetMeta(raw: string): { name?: string; mimeType?: string } {
+  try {
+    const { name, mimeType } = fileMeta(raw);
+    return { name, mimeType };
+  } catch {
+    return {};
+  }
+}
 
 function fileMeta(raw: string): { name?: string; mimeType?: string; size?: number } {
   const parsed = JSON.parse(raw) as { file?: DriveMeta } & DriveMeta;
@@ -170,7 +181,10 @@ export function registerDriveTools(server: McpServer): void {
   });
 
   server.registerTool('gog_drive_share', {
-    description: 'Share a Google Drive file or folder.',
+    description: 'Share a Google Drive file or folder. Granting access is the risk even though no email is sent (gog '
+      + 'does not notify by default), so this reads the file and asks the MCP host to show the user a confirmation '
+      + 'prompt naming it, who gets access and with what role; nothing is shared unless they accept.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File or folder ID'),
@@ -179,8 +193,39 @@ export function registerDriveTools(server: McpServer): void {
       domain: z.string().optional().describe('Domain (required when to=domain)'),
       role: z.enum(['reader', 'writer']).optional().describe('Permission role (default: reader)'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ fileId, to, email, domain, role, account }) => {
+  }, async ({ fileId, to, email, domain, role, account, confirmToken }, ctx) => {
+    // Read first, on every call: a prompt that shows only an opaque id asks the
+    // user to approve something they cannot recognise, and on the token
+    // fallback's phase 2 this is the re-read the token is checked against.
+    const got = await runOrDiagnose(['drive', 'get', pos(fileId)], { account });
+    if (got.isError) return got;
+    const file = { id: fileId, ...shareTargetMeta(resultText(got)) };
+    const grant = {
+      file,
+      to,
+      ...(email ? { email } : {}),
+      ...(domain ? { domain } : {}),
+      role: role ?? 'reader',
+      publicLink: to === 'anyone',
+    };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'drive.share',
+      message: to === 'anyone'
+        ? 'Review and confirm making this file available to ANYONE with the link:'
+        : 'Review and confirm this Drive share:',
+      confirmationLabel: 'Confirm that this access should be granted now.',
+      details: grant,
+      unsupportedNote: 'Ask the user to share it themselves from Google Drive.',
+      fallback: {
+        tool: 'gog_drive_share',
+        account,
+        confirmToken,
+        subject: () => ({ target: fileId, payload: grant, preview: grant }),
+      },
+    });
+    if (confirmation) return confirmation;
     const args: GogArg[] = ['drive', 'share', pos(fileId), `--to=${to}`];
     if (email) args.push(`--email=${email}`);
     if (domain) args.push(`--domain=${domain}`);

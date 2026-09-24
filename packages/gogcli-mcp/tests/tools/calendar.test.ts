@@ -7,7 +7,10 @@ import type { GogArg } from '../../src/runner.js';
 
 vi.mock('../../src/runner.js');
 
-const setupHandlers = () => createTestHarness(registerCalendarTools);
+// The dispatch rail asks before guest-visible / outbound calls; this client accepts.
+const setupHandlers = () => createTestHarness(registerCalendarTools, {
+  elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+});
 
 // gog_calendar_events answers in the compact rung by default, so every call
 // carries the mask. These keep the window-flag tests below about window flags

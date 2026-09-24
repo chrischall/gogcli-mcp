@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, pos } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, pos, readCourse, requireDispatchConfirmation, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 const courseState = z.enum(['ACTIVE', 'ARCHIVED', 'PROVISIONED', 'DECLINED', 'SUSPENDED']);
@@ -286,15 +286,37 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_invitations_create', {
-    description: 'Create an invitation to a Google Classroom course.',
+    description: 'Create an invitation to a Google Classroom course — Classroom emails the invitee. Reads the course '
+      + 'and asks the MCP host to show the user a confirmation prompt with the class, the invitee and the role; '
+      + 'nothing is sent unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('User ID to invite'),
       role: z.enum(['STUDENT', 'TEACHER', 'OWNER']).describe('Role for the invited user'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, userId, role, account }) => {
+  }, async ({ courseId, userId, role, account, confirmToken }, ctx) => {
+    const read = await readCourse(courseId, account, runOrDiagnose);
+    if (read.error) return read.error;
+    const invitation = { course: read.course, invitee: userId, role };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'classroom.invitation-create',
+      message: role === 'OWNER'
+        ? 'Review and confirm this Classroom invitation — it offers OWNERSHIP of the course:'
+        : 'Review and confirm this Classroom invitation:',
+      confirmationLabel: 'Confirm that this invitation should be sent now.',
+      details: invitation,
+      unsupportedNote: 'Ask the user to invite them from Classroom.',
+      fallback: {
+        tool: 'gog_classroom_invitations_create',
+        account,
+        confirmToken,
+        subject: () => ({ target: `${courseId}/${userId}`, payload: invitation, preview: invitation }),
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(['classroom', 'invitations', 'create', pos(courseId), pos(userId), `--role=${role}`], { account });
   });
 

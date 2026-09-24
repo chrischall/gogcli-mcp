@@ -6,7 +6,10 @@ import { pos } from '../../src/argv.js';
 
 vi.mock('../../src/runner.js');
 
-const setupHandlers = () => createTestHarness(registerClassroomTools);
+// The dispatch rail asks before guest-visible / outbound calls; this client accepts.
+const setupHandlers = () => createTestHarness(registerClassroomTools, {
+  elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+});
 
 let harness: TestHarness;
 
