@@ -129,9 +129,9 @@ describe('gog_gmail_drafts_send — token fallback', () => {
     const result = await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1', confirmToken });
     expect(result.isError).toBe(true);
     const body = json(result);
-    expect(body).toMatchObject({ error: 'DRAFT_CHANGED', reason: 'message-id-rotated', dispatched: false });
+    expect(body).toMatchObject({ error: 'DRAFT_CHANGED', reason: 'revision-changed', dispatched: false });
     expect(body.preview).toMatchObject({ messageId: 'm2', body: 'Please find the export attached. P.S. one more thing' });
-    expect(body.confirmToken).toMatch(/^gct1\./);
+    expect(body.confirmToken).toMatch(/^mcpu\.token\.v1\./);
     expect(calls('send')).toHaveLength(0);
 
     // The fresh token re-approves the new content.
@@ -180,7 +180,7 @@ describe('gog_gmail_drafts_send — token fallback', () => {
 
   it('a draft that no longer resolves still takes the fork-aware path', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(errorResult('Error: notFound'));
-    const result = await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1', confirmToken: 'gct1.x.y' });
+    const result = await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1', confirmToken: 'not-a-real-token' });
     expect(result.isError).toBe(true);
     expect(calls('send')).toHaveLength(0);
   });

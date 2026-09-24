@@ -61,7 +61,7 @@ describe('gog_gmail_send — token fallback', () => {
     process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
     vi.mocked(runner.run).mockResolvedValue(SENT);
     const harness = await withElicitation();
-    const result = await harness.callTool('gog_gmail_send', { ...SEND_ARGS, confirmToken: 'gct1.not.real' });
+    const result = await harness.callTool('gog_gmail_send', { ...SEND_ARGS, confirmToken: 'not-a-real-token' });
     expect(result.content[0]!.text).toBe(SENT);
     expect(sendCalls()).toHaveLength(1);
   });
@@ -101,7 +101,7 @@ describe('gog_gmail_send — token fallback', () => {
         inReplyTo: 'm0',
         quotesOriginal: false,
       });
-      expect(body.confirmToken).toMatch(/^gct1\./);
+      expect(body.confirmToken).toMatch(/^mcpu\.token\.v1\./);
       expect(body.instruction).toMatch(/verbatim/);
       expect(runner.run).not.toHaveBeenCalled();
     });

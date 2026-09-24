@@ -34,7 +34,7 @@ export type { AttachmentDetail, DispatchTokenFallback, TokenSubject } from './di
 //
 // The one exception is OPT-IN: with GOG_SEND_CONFIRM_FALLBACK=token, a client
 // that cannot be prompted gets a two-phase preview + confirmToken instead of a
-// refusal (`DispatchTokenFallback`, send-confirm-token.ts). There the approval
+// refusal (`DispatchTokenFallback`; mcp-utils' requireConfirmationWithFallback). There the approval
 // IS a tool argument; see that file for exactly what the token does and does
 // not guarantee.
 //

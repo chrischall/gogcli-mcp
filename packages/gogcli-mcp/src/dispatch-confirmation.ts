@@ -1,16 +1,17 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { CallToolResult, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
-import { callerAcceptsFormElicitation, readEnvVar, requireConfirmation, textResult } from '@chrischall/mcp-utils';
-import { z } from 'zod';
 import {
+  CONFIRM_TOKEN_INSTRUCTION,
+  readEnvVar,
+  requireConfirmationWithFallback,
+  type ConfirmSubject,
+} from '@chrischall/mcp-utils';
+import {
+  confirmSpentStore,
+  confirmTokenKey,
   confirmTokenTtlSeconds,
-  hashSendPayload,
-  issueConfirmToken,
   sendConfirmFallbackEnabled,
-  verifyConfirmToken,
-  type ConfirmBinding,
-  type ConfirmTokenError,
 } from './send-confirm-token.js';
 
 // ============================================================================
@@ -22,7 +23,9 @@ import {
 // the approval. On a client that declares no elicitation (claude.ai, measured),
 // the call is refused — unless the call site supplies a `DispatchTokenFallback`
 // and the server opted in with GOG_SEND_CONFIRM_FALLBACK=token, in which case
-// the two-phase preview + confirmToken flow (send-confirm-token.ts) runs instead.
+// the two-phase preview + confirmToken flow (mcp-utils'
+// requireConfirmationWithFallback; this server's env config is in
+// send-confirm-token.ts) runs instead.
 // ============================================================================
 
 // Bound on the body text shown in a confirmation prompt. Enough to read what is
@@ -100,9 +103,7 @@ export const CONFIRM_SEND_INSTRUCTION =
   + 'Then call again with confirmToken.';
 
 /** The same instruction for a dispatch that is not mail (a share, an invitation, a post). */
-export const CONFIRM_ACTION_INSTRUCTION =
-  'Show this preview to the user verbatim and proceed only after they explicitly approve in chat. '
-  + 'Then call again with confirmToken.';
+export const CONFIRM_ACTION_INSTRUCTION = CONFIRM_TOKEN_INSTRUCTION;
 
 const FALLBACK_HINT = 'Or set GOG_SEND_CONFIRM_FALLBACK=token to enable two-step confirmation.';
 
@@ -115,24 +116,12 @@ export const CONFIRM_FALLBACK_DESCRIPTION =
   + 'confirmToken. The tool re-reads what it would act on and refuses (DRAFT_CHANGED, with a fresh preview and token) '
   + 'if it changed; TOKEN_EXPIRED / TOKEN_REUSED / TOKEN_INVALID also do nothing.';
 
-export const confirmTokenParam = z.string().optional().describe(
-  'ONLY for the two-step fallback (client without MCP elicitation, server with GOG_SEND_CONFIRM_FALLBACK=token). '
-  + 'The confirmToken from this same tool\'s phase-1 "confirmation-required" response, passed back ONLY after the user '
-  + 'has seen that preview and explicitly approved it in chat — never on the first call, never invented, never '
-  + 'reused. Call again with the same arguments. Ignored when the client supports elicitation.',
-);
+// The schema input every gated tool adds: mcp-utils' own, so its wording and
+// the helper that reads it cannot drift apart.
+export { confirmTokenParam } from '@chrischall/mcp-utils';
 
 /** What the fallback binds a token to — recomputed from a fresh read on every call. */
-export interface TokenSubject {
-  /** The draftId / messageId / fileId / eventId / query the dispatch acts on. */
-  target: string;
-  /** A version that rotates on edit: a draft's messageId, an event's etag. */
-  revision?: string;
-  /** Canonical send payload; its SHA-256 is bound into the token. */
-  payload: unknown;
-  /** The complete preview shown to the user. */
-  preview: Record<string, unknown>;
-}
+export type TokenSubject = ConfirmSubject;
 
 /**
  * Opt-in second rail for a client that cannot be prompted. `subject` is only
@@ -147,66 +136,6 @@ export interface DispatchTokenFallback {
   /** Phase 1's instruction to the model. Defaults to {@link CONFIRM_ACTION_INSTRUCTION}. */
   instruction?: string;
   subject: () => TokenSubject | CallToolResult | Promise<TokenSubject | CallToolResult>;
-}
-
-const TOKEN_ERROR_NOTE: Record<Exclude<ConfirmTokenError, 'DRAFT_CHANGED'>, string> = {
-  TOKEN_EXPIRED: 'Nothing was sent or changed: the confirmToken expired. Call again WITHOUT confirmToken for a fresh preview, '
-    + 'and ask the user to approve it again.',
-  TOKEN_REUSED: 'Nothing was sent or changed by this call: this confirmToken was already used, and one approval acts once. '
-    + 'If doing it again is really intended, call again WITHOUT confirmToken and get a new approval.',
-  TOKEN_INVALID: 'Nothing was sent or changed: this confirmToken was not issued by this server for this tool, account and '
-    + 'target (or the server has restarted since). Call again WITHOUT confirmToken for a fresh preview and approval.',
-};
-
-const DRAFT_CHANGED_NOTE = {
-  'message-id-rotated': 'Nothing was sent or changed: the target was edited since the user approved it (a draft\'s '
-    + 'messageId or an event\'s version rotated), so what would happen is not what they saw.',
-  'payload-changed': 'Nothing was sent or changed: what would happen no longer matches what the user approved.',
-} as const;
-
-function isToolResult(value: TokenSubject | CallToolResult): value is CallToolResult {
-  return Array.isArray((value as CallToolResult).content);
-}
-
-function rejection(data: Record<string, unknown>): CallToolResult {
-  return { ...textResult({ status: 'confirmation-rejected', confirmed: false, dispatched: false, ...data }), isError: true };
-}
-
-async function tokenConfirmation(op: string, fallback: DispatchTokenFallback): Promise<CallToolResult | undefined> {
-  const subject = await fallback.subject();
-  if (isToolResult(subject)) return subject;
-  const binding: ConfirmBinding = {
-    tool: fallback.tool,
-    account: fallback.account ?? readEnvVar('GOG_ACCOUNT') ?? '',
-    target: subject.target,
-    ...(subject.revision === undefined ? {} : { revision: subject.revision }),
-    payloadHash: hashSendPayload(subject.payload),
-  };
-  const phaseOne = () => {
-    const { token, expiresAt } = issueConfirmToken(binding);
-    return {
-      action: op,
-      preview: subject.preview,
-      confirmToken: token,
-      expiresAt,
-      ttlSeconds: confirmTokenTtlSeconds(),
-      instruction: fallback.instruction ?? CONFIRM_ACTION_INSTRUCTION,
-    };
-  };
-  if (!fallback.confirmToken) {
-    return textResult({ status: 'confirmation-required', confirmed: false, dispatched: false, ...phaseOne() });
-  }
-  const verdict = verifyConfirmToken(fallback.confirmToken, binding);
-  if (verdict.ok) return undefined;
-  if (verdict.error === 'DRAFT_CHANGED') {
-    return rejection({
-      error: 'DRAFT_CHANGED',
-      reason: verdict.reason,
-      note: `${DRAFT_CHANGED_NOTE[verdict.reason!]} The current preview and a fresh confirmToken are below.`,
-      ...phaseOne(),
-    });
-  }
-  return rejection({ error: verdict.error, action: op, note: TOKEN_ERROR_NOTE[verdict.error] });
 }
 
 /**
@@ -252,18 +181,28 @@ export async function requireDispatchConfirmation(
   options: DispatchConfirmationOptions,
 ): Promise<InputRequiredResult | CallToolResult | undefined> {
   const { action, fallback } = options;
-  if (fallback && callerAcceptsFormElicitation(ctx) === false && sendConfirmFallbackEnabled()) {
-    return tokenConfirmation(action, fallback);
-  }
-  const note = fallback
+  const enabled = fallback !== undefined && sendConfirmFallbackEnabled();
+  const note = fallback && !enabled
     ? [options.unsupportedNote, FALLBACK_HINT].filter(Boolean).join(' ')
     : options.unsupportedNote;
-  return requireConfirmation(ctx, {
+  return requireConfirmationWithFallback(ctx, {
     action,
     message: options.message,
     details: options.details,
     confirmationLabel: options.confirmationLabel,
     ...(note ? { unsupportedNote: note } : {}),
+    ...(enabled ? {
+      tokenFallback: {
+        key: confirmTokenKey(),
+        tool: fallback.tool,
+        account: fallback.account ?? readEnvVar('GOG_ACCOUNT') ?? '',
+        confirmToken: fallback.confirmToken,
+        subject: fallback.subject,
+        ttlSeconds: confirmTokenTtlSeconds(),
+        instruction: fallback.instruction ?? CONFIRM_ACTION_INSTRUCTION,
+        spent: confirmSpentStore(),
+      },
+    } : {}),
   });
 }
 

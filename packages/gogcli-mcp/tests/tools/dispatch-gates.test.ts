@@ -343,7 +343,7 @@ describe('calendar', () => {
       expect(p1.status).toBe('confirmation-required');
       stubReads({ 'calendar event': EVENT({ etag: '"v2"' }) });
       expect(json(await harness.callTool('gog_calendar_update', { ...args, confirmToken: p1.confirmToken })))
-        .toMatchObject({ error: 'DRAFT_CHANGED', reason: 'message-id-rotated' });
+        .toMatchObject({ error: 'DRAFT_CHANGED', reason: 'revision-changed' });
       expect(callsTo('calendar', 'update')).toHaveLength(0);
     });
   });

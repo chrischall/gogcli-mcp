@@ -364,7 +364,7 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
 
   it('leaves elicitation untouched even with the env set and a token passed', async () => {
     process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
-    const fb = fallback('gct1.anything.here');
+    const fb = fallback('not-a-real-token');
     expect(await requireGmailDispatchConfirmation(CAN_BE_ASKED, 'gmail.drafts-send', {}, fb))
       .toMatchObject({ resultType: 'input_required' });
     expect(fb.subject).not.toHaveBeenCalled();
@@ -385,7 +385,7 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
         instruction: CONFIRM_INSTRUCTION,
       });
       expect(r.instruction).toBe('Show this preview to the user verbatim and send only after they explicitly approve in chat. Then call again with confirmToken.');
-      expect(r.confirmToken).toMatch(/^gct1\./);
+      expect(r.confirmToken).toMatch(/^mcpu\.token\.v1\./);
       expect(typeof r.expiresAt).toBe('string');
     });
 
@@ -400,8 +400,8 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
       const r = await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, fallback(confirmToken, rotated));
       expect((r as CallToolResult).isError).toBe(true);
       const body = parse(r);
-      expect(body).toMatchObject({ status: 'confirmation-rejected', error: 'DRAFT_CHANGED', reason: 'message-id-rotated', dispatched: false, instruction: CONFIRM_INSTRUCTION });
-      expect(body.note).toMatch(/messageId/);
+      expect(body).toMatchObject({ status: 'confirmation-rejected', error: 'DRAFT_CHANGED', reason: 'revision-changed', dispatched: false, instruction: CONFIRM_INSTRUCTION });
+      expect(body.note).toMatch(/edited since/);
       expect(body.confirmToken).not.toBe(confirmToken);
       expect(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, fallback(body.confirmToken, rotated))).toBeUndefined();
     });
