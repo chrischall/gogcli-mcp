@@ -40,7 +40,8 @@ export {
 } from './gmail-dispatch-guard.js';
 // The service-neutral rail for every other tool that reaches another person.
 export { requireDispatchConfirmation } from './dispatch-confirmation.js';
-export { readCourse } from './tools/classroom.js';
+export { readCourse, readClassroomWork } from './tools/classroom.js';
+export type { ClassroomWork, ClassroomWorkKind } from './tools/classroom.js';
 export type { AttachmentDetail, DispatchTokenFallback, TokenSubject } from './gmail-dispatch-guard.js';
 export { run, runBinary, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
 // Sub-package tools that read gog JSON through bare `run()` (rather than the

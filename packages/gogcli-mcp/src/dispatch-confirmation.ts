@@ -134,16 +134,44 @@ export interface DispatchTokenFallback {
 
 /**
  * The refusal an escape hatch (`gog_<service>_run`, `gog_api_call`) gives for an
- * action a dedicated tool gates. Without it, the run tool is a way around the
- * rail: the model forwards the same subcommand and nobody is asked (#400).
+ * action it must not perform: the run tool cannot see the guests, the class or
+ * the folder tree a change reaches, so it cannot preview it. `instead` names
+ * the way through — the dedicated tool, or the user doing it in the product.
+ */
+export function refusedInRun(what: string, via: string, does: string, instead: string): string {
+  return `${what} ${does} and is not available through ${via}. ${instead}`;
+}
+
+/**
+ * {@link refusedInRun} for an action a dedicated tool gates. Without it, the
+ * run tool is a way around the rail: the model forwards the same subcommand
+ * and nobody is asked (#400).
  */
 export function gatedElsewhere(what: string, via: string, does: string, tool: string): string {
-  return `${what} ${does} and is not available through ${via}. Use ${tool}, which asks the user to confirm.`;
+  return refusedInRun(what, via, does, `Use ${tool}, which asks the user to confirm.`);
 }
 
 /** True when any forwarded token is one of `words` (kong lets flags precede the command word). */
 export function hasCommandWord(args: readonly string[], words: ReadonlySet<string>): string | undefined {
   return args.find((a) => words.has(a.toLowerCase()));
+}
+
+/**
+ * The value of `--name=value` or `--name value` among forwarded args, `''` for
+ * a bare `--name`, undefined when the flag is absent. Kong accepts both
+ * spellings, so a vet that read only one of them would be a way around itself.
+ * Over-inclusive on a bare flag followed by another flag (it reads that flag
+ * as the value): a vet only ever asks whether the flag is present or names a
+ * specific value, and refusing is the safe direction of error.
+ */
+export function flagValue(args: readonly string[], name: string): string | undefined {
+  const flag = `--${name}`;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === flag) return args[i + 1] ?? '';
+    if (a.startsWith(`${flag}=`)) return a.slice(flag.length + 1);
+  }
+  return undefined;
 }
 
 export interface DispatchConfirmationOptions {

@@ -8,13 +8,26 @@ import { run, runBinary } from '../runner.js';
 import { accountParam, diagnose, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
-import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, refusedInRun, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
 
 /** gog_drive_run must not grant access that gog_drive_share would ask about. */
 export function vetDriveRun(subcommand: string, _args: readonly string[]): string | undefined {
-  return subcommand.toLowerCase() === 'share'
-    ? gatedElsewhere('gog drive share', 'gog_drive_run', 'grants access to a file', 'gog_drive_share')
-    : undefined;
+  const sub = subcommand.toLowerCase();
+  if (sub === 'share') return gatedElsewhere('gog drive share', 'gog_drive_run', 'grants access to a file', 'gog_drive_share');
+  // `bulk update-role --from=reader --to=writer` (and `bulk remove-public`)
+  // rewrites the permissions of every matching file under a folder, with no
+  // positional path for the path guard to see and no file for a preview to
+  // name (SEC-1, fleet-audit #930). `permissions` only lists.
+  if (sub === 'bulk') {
+    return gatedElsewhere('gog drive bulk', 'gog_drive_run',
+      'rewrites sharing permissions across every matching file in a tree', 'gog_drive_share (one file at a time)');
+  }
+  // `unshare` removes a collaborator's access; the dedicated tool shows the
+  // host a structured, annotated call rather than an opaque argv.
+  if (sub === 'unshare') {
+    return refusedInRun('gog drive unshare', 'gog_drive_run', "removes someone's access to a file", 'Use gog_drive_unshare.');
+  }
+  return undefined;
 }
 
 // A native Google Doc exports to text directly; anything else (PDF, image,

@@ -3,26 +3,126 @@ import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
-import { bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, hasCommandWord, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+import { bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, flagValue, gatedElsewhere, hasCommandWord, refusedInRun, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
 
-// gog's spellings (internal/cmd/classroom.go, classroom_announcements.go, classroom_invitations.go).
+// gog's spellings (internal/cmd/classroom*.go), each alias mapped to the
+// resource it names.
 const CLASSROOM_CREATE_WORDS = new Set(['create', 'add', 'new']);
-const CLASSROOM_GATED: Record<string, { does: string; tool: string }> = {
-  announcements: { does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
-  announcement: { does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
-  ann: { does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
-  invitations: { does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
-  invitation: { does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
-  invites: { does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
+const CLASSROOM_UPDATE_WORDS = new Set(['update', 'edit', 'set']);
+const CLASSROOM_RETURN_WORDS = new Set(['return', 'send']);
+type ClassroomGroup = 'announcements' | 'invitations' | 'coursework' | 'materials' | 'students' | 'teachers' | 'submissions' | 'guardian-invitations';
+const CLASSROOM_GROUPS: Record<string, ClassroomGroup> = {
+  announcements: 'announcements', announcement: 'announcements', ann: 'announcements',
+  invitations: 'invitations', invitation: 'invitations', invites: 'invitations',
+  coursework: 'coursework', work: 'coursework',
+  materials: 'materials', material: 'materials',
+  students: 'students', student: 'students',
+  teachers: 'teachers', teacher: 'teachers',
+  submissions: 'submissions', submission: 'submissions',
+  'guardian-invitations': 'guardian-invitations', 'guardian-invites': 'guardian-invitations',
 };
 
-/** gog_classroom_run must not post or invite what the dedicated tools would ask about. */
+/**
+ * True when forwarded flags publish existing work to students: state
+ * PUBLISHED publishes now; a schedule publishes then (a scheduled item is a
+ * draft that publishes itself). A text edit or a return to DRAFT is neither.
+ */
+function publishesToStudents(args: readonly string[]): boolean {
+  return flagValue(args, 'state')?.toUpperCase() === 'PUBLISHED' || flagValue(args, 'scheduled') !== undefined;
+}
+
+/** True when a create reaches students: anything but an unscheduled DRAFT (gog's default state is PUBLISHED). */
+function createsVisibleWork(args: readonly string[]): boolean {
+  return flagValue(args, 'state')?.toUpperCase() !== 'DRAFT' || flagValue(args, 'scheduled') !== undefined;
+}
+
+/**
+ * gog_classroom_run must not post, publish, enrol, return or invite what the
+ * dedicated tools would ask about (#400; SEC-3, fleet-audit #932). Publishing
+ * through `update --state=PUBLISHED` was the two-step around the create gate
+ * that closed for Gmail drafts, so the update words are vetted on their flags.
+ */
 export function vetClassroomRun(subcommand: string, args: readonly string[]): string | undefined {
   const sub = subcommand.toLowerCase();
-  const gated = Object.hasOwn(CLASSROOM_GATED, sub) ? CLASSROOM_GATED[sub] : undefined;
-  if (!gated) return undefined;
-  const word = hasCommandWord(args, CLASSROOM_CREATE_WORDS);
-  return word ? gatedElsewhere(`gog classroom ${sub} ${word.toLowerCase()}`, 'gog_classroom_run', gated.does, gated.tool) : undefined;
+  if (!Object.hasOwn(CLASSROOM_GROUPS, sub)) return undefined;
+  const group = CLASSROOM_GROUPS[sub]!;
+  const via = 'gog_classroom_run';
+  const what = (word: string) => `gog classroom ${sub} ${word.toLowerCase()}`;
+  const create = hasCommandWord(args, CLASSROOM_CREATE_WORDS);
+  const update = hasCommandWord(args, CLASSROOM_UPDATE_WORDS);
+  switch (group) {
+    case 'announcements':
+      if (create) return gatedElsewhere(what(create), via, 'posts to a class', 'gog_classroom_announcements_create');
+      if (update && publishesToStudents(args)) return gatedElsewhere(what(update), via, 'publishes an announcement to a class', 'gog_classroom_announcements_update');
+      return undefined;
+    case 'invitations':
+      return create ? gatedElsewhere(what(create), via, 'invites someone to a class', 'gog_classroom_invitations_create') : undefined;
+    case 'coursework':
+      if (create && createsVisibleWork(args)) {
+        return refusedInRun(what(create), via, 'publishes work to students', 'Use gog_classroom_coursework_create, or create it with --state=DRAFT and no --scheduled.');
+      }
+      if (update && publishesToStudents(args)) return gatedElsewhere(what(update), via, 'publishes work to students', 'gog_classroom_coursework_update');
+      return undefined;
+    case 'materials':
+      return create && createsVisibleWork(args)
+        ? refusedInRun(what(create), via, 'publishes material to students', 'Create it with --state=DRAFT and no --scheduled; the user can publish it from Classroom.')
+        : undefined;
+    case 'students':
+      return create ? refusedInRun(what(create), via, 'enrols someone in a class', 'Use gog_classroom_students_add.') : undefined;
+    case 'teachers':
+      return create ? refusedInRun(what(create), via, "gives someone a teacher's access to a class and its roster", 'Use gog_classroom_teachers_add.') : undefined;
+    case 'submissions': {
+      const word = hasCommandWord(args, CLASSROOM_RETURN_WORDS);
+      return word ? refusedInRun(what(word), via, 'returns work to a student, who is notified', 'Use gog_classroom_submissions_return.') : undefined;
+    }
+    case 'guardian-invitations':
+      return create ? refusedInRun(what(create), via, 'emails a guardian invitation', 'Ask the user to invite the guardian from Classroom.') : undefined;
+  }
+}
+
+/** The Classroom items a publish-through-update reaches students with. */
+export type ClassroomWorkKind = 'announcements' | 'coursework';
+
+/** What {@link readClassroomWork} names about an item; each field only when gog returned it as a string. */
+export interface ClassroomWork {
+  id: string;
+  text?: string;
+  title?: string;
+  state?: string;
+  updateTime?: string;
+}
+
+/**
+ * The announcement or coursework a publish reaches students with, for its
+ * confirmation prompt (the text or title: a user approving "publish a1" cannot
+ * tell what a1 says) and as the token fallback's revision (updateTime rotates
+ * on every edit, so an approval never publishes text it did not name). Read on
+ * every call. gog nests the payload under the API resource name; unreadable
+ * output names nothing rather than throwing.
+ */
+export async function readClassroomWork(
+  kind: ClassroomWorkKind,
+  courseId: string,
+  itemId: string,
+  account: string | undefined,
+  // A sub-package passes the runOrDiagnose it imported from lib.js (see readCourse).
+  runner: typeof runOrDiagnose = runOrDiagnose,
+): Promise<{ error: Awaited<ReturnType<typeof runOrDiagnose>>; work?: undefined } | { error?: undefined; work: ClassroomWork }> {
+  const got = await runner(['classroom', kind, 'get', pos(courseId), pos(itemId)], { account });
+  if (got.isError) return { error: got };
+  let item: Record<string, unknown> | undefined;
+  try {
+    const parsed = JSON.parse(resultText(got)) as Record<string, unknown> | null;
+    const nested = parsed?.announcement ?? parsed?.courseWork ?? parsed;
+    item = typeof nested === 'object' && nested !== null ? nested as Record<string, unknown> : undefined;
+  } catch {
+    item = undefined;
+  }
+  const work: ClassroomWork = { id: itemId };
+  for (const key of ['text', 'title', 'state', 'updateTime'] as const) {
+    if (typeof item?.[key] === 'string') work[key] = item[key] as string;
+  }
+  return { work };
 }
 
 /**
