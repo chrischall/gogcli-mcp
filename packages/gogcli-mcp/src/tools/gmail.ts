@@ -7,6 +7,7 @@ import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
 import { attachmentDetails, attachmentNames, attachmentPreview, bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText, senderPreview } from '../gmail-dispatch-guard.js';
 import { pos } from '../argv.js';
+import { hasCommandWord } from '../dispatch-confirmation.js';
 import { confinePath, confinePaths } from '../file-roots.js';
 
 // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
@@ -271,12 +272,11 @@ export function vetGmailRun(subcommand: string, args: readonly string[]): string
     return `gog gmail ${subcommand} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;
   }
   if (subcommand === 'settings') {
-    // kong lets flags precede the command word, and a global flag can take its
-    // value as the next token (`settings --color never filters ...`), so the
-    // word is not necessarily args[0]. Refuse it wherever it appears; a
-    // legitimate settings call carrying one of these words as a value is rare
-    // and has a dedicated tool anyway.
-    const blocked = args.find((a) => GMAIL_RUN_BLOCKED_SETTINGS.has(a.toLowerCase()));
+    // A global flag can take its value as the next token (`settings --color
+    // never filters ...`), so the word is not necessarily args[0]. Refuse it
+    // wherever it appears; a legitimate settings call carrying one of these
+    // words as a value is rare and has a dedicated tool anyway.
+    const blocked = hasCommandWord(args, GMAIL_RUN_BLOCKED_SETTINGS);
     if (blocked) {
       return `gog gmail settings ${blocked} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;
     }
