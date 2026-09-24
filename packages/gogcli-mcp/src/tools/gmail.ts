@@ -7,7 +7,7 @@ import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
 import { attachmentDetails, attachmentNames, attachmentPreview, bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText, senderPreview } from '../gmail-dispatch-guard.js';
 import { pos } from '../argv.js';
-import { hasCommandWord } from '../dispatch-confirmation.js';
+import { gatedElsewhere, hasCommandWord, hasTrueFlag } from '../dispatch-confirmation.js';
 import { confinePath, confinePaths } from '../file-roots.js';
 
 // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
@@ -264,6 +264,40 @@ async function sendReply(
 // `gog schema`, but they reach Google), so both spellings are refused.
 const GMAIL_RUN_BLOCKED_SETTINGS = new Set(['forwarding', 'autoforward', 'filters', 'delegates']);
 
+// Fleet audit 2026-09-24 SEC-6: a batch delete bypasses the Trash, a send-as
+// alias makes Google email the target and gives the account a new sending
+// identity, and an enabled vacation responder auto-replies to every sender.
+// Each has a dedicated tool that asks; gog accepts sendas and vacation both
+// under `settings` and one level up. Aliases per `gog schema` 0.41.0.
+const GMAIL_DELETE_WORDS = new Set(['delete', 'rm', 'del', 'remove']);
+const GMAIL_CREATE_WORDS = new Set(['create', 'add', 'new']);
+const GMAIL_UPDATE_WORDS = new Set(['update', 'edit', 'set']);
+const SENDAS = new Set(['sendas']);
+const VACATION = new Set(['vacation']);
+
+function vetGmailGatedRun(sub: string, args: readonly string[]): string | undefined {
+  if (sub === 'batch') {
+    const word = hasCommandWord(args, GMAIL_DELETE_WORDS);
+    return word
+      ? gatedElsewhere(`gog gmail batch ${word.toLowerCase()}`, 'gog_gmail_run', 'deletes mail for good, bypassing the Trash', 'gog_gmail_batch_delete')
+      : undefined;
+  }
+  if (sub !== 'settings' && sub !== 'sendas' && sub !== 'vacation') return undefined;
+  const words = sub === 'settings' ? args : [sub, ...args];
+  if (hasCommandWord(words, SENDAS)) {
+    const word = hasCommandWord(args, GMAIL_CREATE_WORDS);
+    if (word) {
+      return gatedElsewhere(`gog gmail sendas ${word.toLowerCase()}`, 'gog_gmail_run',
+        'makes Google email the address and adds a sending identity', 'gog_gmail_sendas_create');
+    }
+  }
+  if (hasCommandWord(words, VACATION) && hasCommandWord(args, GMAIL_UPDATE_WORDS) && hasTrueFlag(args, 'enable')) {
+    return gatedElsewhere('gog gmail vacation update --enable', 'gog_gmail_run',
+      'turns on an auto-reply to every sender', 'gog_gmail_vacation_update');
+  }
+  return undefined;
+}
+
 export function vetGmailRun(subcommand: string, args: readonly string[]): string | undefined {
   if (subcommand === 'autoreply') {
     return 'gog gmail autoreply sends mail and is not available through gog_gmail_run. Use gog_gmail_autoreply, which asks the user to confirm.';
@@ -271,6 +305,8 @@ export function vetGmailRun(subcommand: string, args: readonly string[]): string
   if (GMAIL_RUN_BLOCKED_SETTINGS.has(subcommand)) {
     return `gog gmail ${subcommand} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;
   }
+  const gated = vetGmailGatedRun(subcommand.toLowerCase(), args);
+  if (gated) return gated;
   if (subcommand === 'settings') {
     // A global flag can take its value as the next token (`settings --color
     // never filters ...`), so the word is not necessarily args[0]. Refuse it

@@ -10,6 +10,41 @@ import {
 import { pos } from '../argv.js';
 import { confinePath } from '../file-roots.js';
 import type { GogArg } from '../runner.js';
+import {
+  CONFIRM_FALLBACK_DESCRIPTION,
+  confirmTokenParam,
+  gatedElsewhere,
+  requireDispatchConfirmation,
+  resultText,
+  senderPreview,
+} from '../dispatch-confirmation.js';
+
+/** gog_appscript_run must not execute code that gog_appscript_run_function would ask about. */
+export function vetAppScriptRun(subcommand: string, _args: readonly string[]): string | undefined {
+  return subcommand.toLowerCase() === 'run'
+    ? gatedElsewhere('gog appscript run', 'gog_appscript_run', 'executes code with this account\'s authority', 'gog_appscript_run_function')
+    : undefined;
+}
+
+/**
+ * The project a run executes, for its confirmation prompt: a title the user
+ * recognises beside the opaque id. `updateTime` is kept apart as the token's
+ * revision, so code saved between the two phases is DRAFT_CHANGED. Unreadable
+ * output names nothing rather than throwing.
+ */
+export function projectSnapshot(raw: string, scriptId: string): { scriptId: string; title?: string; updateTime?: string } {
+  let project: { title?: unknown; updateTime?: unknown } | undefined;
+  try {
+    project = (JSON.parse(raw) as { project?: typeof project } | null)?.project;
+  } catch {
+    project = undefined;
+  }
+  return {
+    scriptId,
+    ...(typeof project?.title === 'string' ? { title: project.title } : {}),
+    ...(typeof project?.updateTime === 'string' ? { updateTime: project.updateTime } : {}),
+  };
+}
 
 // Google Apps Script (gog >= 0.38.0 for pull/deployments/versions).
 //
@@ -140,7 +175,9 @@ export function registerAppScriptTools(server: McpServer): void {
       + 'Requires the project to be deployed as an API executable and to share the OAuth client with the calling '
       + 'credentials, otherwise Google refuses regardless of scopes. devMode runs the latest saved code instead of the '
       + 'deployed version, and only works if the account owns the script. '
-      + 'This is NOT the escape hatch — gog_appscript_run is that.' + apiEnableNote,
+      + 'This is NOT the escape hatch — gog_appscript_run is that. Because the wrapper cannot tell what the code will '
+      + 'do, it reads the project and asks the MCP host to show the user a confirmation prompt with the project, the '
+      + 'function and its arguments first; nothing runs unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION + apiEnableNote,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       scriptId: scriptIdParam,
@@ -148,12 +185,14 @@ export function registerAppScriptTools(server: McpServer): void {
       params: z.string().optional().describe('Function parameters as a JSON ARRAY of positional arguments, e.g. \'["a", 1]\' — not an object'),
       devMode: z.boolean().optional().describe('Run the latest saved code rather than the deployed version (owner only)'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ scriptId, functionName, params, devMode, account }) => {
+  }, async ({ scriptId, functionName, params, devMode, account, confirmToken }, ctx) => {
     // gog passes --params through to the API as-is, so a malformed value comes
     // back as a Google error about the request body rather than about the
     // argument the caller actually got wrong. Checking the shape here is what
     // turns "invalid argument" into "params must be a JSON array".
+    let parsedParams: unknown[] | undefined;
     if (params !== undefined) {
       let parsed: unknown;
       try {
@@ -164,7 +203,28 @@ export function registerAppScriptTools(server: McpServer): void {
       if (!Array.isArray(parsed)) {
         throw new Error(`params must be a JSON ARRAY of positional arguments, e.g. '["a", 1]' — Apps Script takes positional arguments, not named ones. Received: ${params}`);
       }
+      parsedParams = parsed;
     }
+    // Read on every call: the prompt names the project, and on the token
+    // fallback's phase 2 this is the re-read the token is checked against.
+    const got = await runOrDiagnose(['appscript', 'get', pos(scriptId)], { account });
+    if (got.isError) return got;
+    const { updateTime, ...project } = projectSnapshot(resultText(got), scriptId);
+    const execution = { project, functionName, params: parsedParams, devMode: Boolean(devMode), runsAs: senderPreview(account) };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'appscript.run-function',
+      message: 'Review and confirm running this Apps Script function with the account\'s full authority:',
+      confirmationLabel: 'Confirm that this code should run now.',
+      details: execution,
+      unsupportedNote: 'Ask the user to run it themselves from the Apps Script editor.',
+      fallback: {
+        tool: 'gog_appscript_run_function',
+        account,
+        confirmToken,
+        subject: () => ({ target: `${scriptId}/${functionName}`, revision: updateTime, payload: execution, preview: execution }),
+      },
+    });
+    if (confirmation) return confirmation;
     const args: GogArg[] = ['appscript', 'run', pos(scriptId), pos(functionName)];
     if (params !== undefined) args.push(`--params=${params}`);
     if (devMode) args.push('--dev-mode');
@@ -174,6 +234,7 @@ export function registerAppScriptTools(server: McpServer): void {
   registerRunTool(server, {
     service: 'appscript',
     examples: '"get", "content", "deployments"',
+    vet: vetAppScriptRun,
     note: 'To execute a function, use gog_appscript_run_function — this tool is the generic escape hatch.',
   });
 }

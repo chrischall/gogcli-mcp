@@ -7,20 +7,39 @@ import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
 import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
 
-// gog's spellings (internal/cmd/calendar.go). The run tool cannot tell whether
-// an event has guests, so it refuses these outright; the dedicated tools ask
-// only when someone else would see the change.
-const CALENDAR_GATED: Record<string, string> = {
-  create: 'gog_calendar_create', add: 'gog_calendar_create', new: 'gog_calendar_create',
-  update: 'gog_calendar_update', edit: 'gog_calendar_update', set: 'gog_calendar_update',
-  respond: 'gog_calendar_respond', rsvp: 'gog_calendar_respond', reply: 'gog_calendar_respond',
+// gog's spellings (internal/cmd/calendar.go; aliases per `gog schema` 0.41.0).
+// The run tool cannot tell whether an event has guests, so it refuses these
+// outright; the dedicated tools ask only when someone else would see the change.
+const GUESTS_SEE = 'can change what guests see';
+const CALENDAR_GATED: Record<string, { does: string; tool: string }> = {
+  create: { does: GUESTS_SEE, tool: 'gog_calendar_create' },
+  add: { does: GUESTS_SEE, tool: 'gog_calendar_create' },
+  new: { does: GUESTS_SEE, tool: 'gog_calendar_create' },
+  update: { does: GUESTS_SEE, tool: 'gog_calendar_update' },
+  edit: { does: GUESTS_SEE, tool: 'gog_calendar_update' },
+  set: { does: GUESTS_SEE, tool: 'gog_calendar_update' },
+  respond: { does: GUESTS_SEE, tool: 'gog_calendar_respond' },
+  rsvp: { does: GUESTS_SEE, tool: 'gog_calendar_respond' },
+  reply: { does: GUESTS_SEE, tool: 'gog_calendar_respond' },
+  // Fleet audit 2026-09-24 SEC-6: --send-updates on a move emails every guest,
+  // out-of-office auto-declines (and notifies) every conflicting organizer by
+  // default, and delete's --scope defaults to the whole recurring series.
+  move: { does: 'can email every guest', tool: 'gog_calendar_move' },
+  transfer: { does: 'can email every guest', tool: 'gog_calendar_move' },
+  'out-of-office': { does: 'declines and notifies conflicting meetings', tool: 'gog_calendar_out_of_office' },
+  ooo: { does: 'declines and notifies conflicting meetings', tool: 'gog_calendar_out_of_office' },
+  delete: { does: 'removes an event from every guest\'s calendar', tool: 'gog_calendar_delete' },
+  del: { does: 'removes an event from every guest\'s calendar', tool: 'gog_calendar_delete' },
+  remove: { does: 'removes an event from every guest\'s calendar', tool: 'gog_calendar_delete' },
+  rm: { does: 'removes an event from every guest\'s calendar', tool: 'gog_calendar_delete' },
+  'delete-calendar': { does: 'deletes a whole calendar', tool: 'gog_calendar_delete_calendar' },
 };
 
-/** gog_calendar_run must not make the changes gog_calendar_create/update/respond would ask about. */
+/** gog_calendar_run must not make the changes the dedicated calendar tools would ask about. */
 export function vetCalendarRun(subcommand: string, _args: readonly string[]): string | undefined {
   const sub = subcommand.toLowerCase();
-  const tool = Object.hasOwn(CALENDAR_GATED, sub) ? CALENDAR_GATED[sub] : undefined;
-  return tool ? gatedElsewhere(`gog calendar ${sub}`, 'gog_calendar_run', 'can change what guests see', tool) : undefined;
+  const gated = Object.hasOwn(CALENDAR_GATED, sub) ? CALENDAR_GATED[sub] : undefined;
+  return gated ? gatedElsewhere(`gog calendar ${sub}`, 'gog_calendar_run', gated.does, gated.tool) : undefined;
 }
 
 // Reminder params, shared by create and update (gog >= 0.38.0 for
@@ -70,11 +89,13 @@ export function eventSnapshot(raw: string): {
   end?: string;
   organizer?: string;
   guests: string[];
+  recurring?: true;
   etag?: string;
 } {
   let event: {
     summary?: unknown; start?: EventTime; end?: EventTime; etag?: unknown;
     organizer?: { email?: unknown }; attendees?: EventAttendee[];
+    recurrence?: unknown; recurringEventId?: unknown;
   } | undefined;
   try {
     event = (JSON.parse(raw) as { event?: typeof event } | null)?.event;
@@ -91,6 +112,10 @@ export function eventSnapshot(raw: string): {
     guests: (Array.isArray(event?.attendees) ? event.attendees : [])
       .filter((a) => a.self !== true && a.resource !== true && typeof a.email === 'string')
       .map((a) => a.email as string),
+    // A series, or one instance of one: gog's delete --scope defaults to all.
+    ...((Array.isArray(event?.recurrence) && event.recurrence.length > 0) || typeof event?.recurringEventId === 'string'
+      ? { recurring: true as const }
+      : {}),
     etag: str(event?.etag),
   };
 }
@@ -357,14 +382,40 @@ export function registerCalendarTools(server: McpServer): void {
   });
 
   server.registerTool('gog_calendar_delete', {
-    description: 'Delete a calendar event.',
+    description: 'Delete a calendar event. It disappears from every guest\'s calendar too, and for a recurring event gog '
+      + 'deletes the WHOLE series, so when the event has guests or recurs this reads it and asks the MCP host to show '
+      + 'the user a confirmation prompt with the event as it stands; a guest-free, one-off event is deleted without asking.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ calendarId, eventId, account }) => {
+  }, async ({ calendarId, eventId, account, confirmToken }, ctx) => {
+    const read = await readEvent(calendarId, eventId, account);
+    if (read.error) return read.error;
+    const { etag, ...event } = read.event;
+    if (event.guests.length > 0 || event.recurring) {
+      const view = { calendarId, eventId, event, scope: event.recurring ? 'the whole recurring series' : 'this event' };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'calendar.delete',
+        message: event.recurring
+          ? 'Review and confirm deleting this ENTIRE recurring series:'
+          : 'Review and confirm deleting this event from every guest\'s calendar:',
+        confirmationLabel: 'Confirm that this event should be deleted now.',
+        details: view,
+        unsupportedNote: 'Ask the user to delete it from Google Calendar.',
+        fallback: {
+          tool: 'gog_calendar_delete',
+          account,
+          confirmToken,
+          subject: () => ({ target: `${calendarId}/${eventId}`, revision: etag, payload: view, preview: view }),
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     // gog gates this delete behind a confirmation; the runner injects
     // --no-input, so without --force it refuses at runtime.
     return runOrDiagnose(['calendar', 'delete', pos(calendarId), pos(eventId), '--force'], { account });

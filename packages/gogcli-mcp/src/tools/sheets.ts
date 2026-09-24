@@ -6,6 +6,21 @@ import { accountParam, runOrDiagnose, registerRunTool, diagnose } from './utils.
 import { expandAnchorRange, countNonEmptyCells } from './sheets-a1.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
+import { gatedElsewhere, hasCommandWord } from '../dispatch-confirmation.js';
+
+// Fleet audit 2026-09-24 SEC-6: each of these starts a BigQuery job billed to
+// --billing-project. Spellings per `gog schema` 0.41.0.
+const DATASOURCE_ALIASES = new Set(['datasource', 'data-source', 'data-sources', 'connected-sheets']);
+const DATASOURCE_BILLED = new Set(['add', 'update', 'refresh']);
+
+/** gog_sheets_run must not start the billed queries gog_sheets_datasource_* would ask about. */
+export function vetSheetsRun(subcommand: string, args: readonly string[]): string | undefined {
+  if (!DATASOURCE_ALIASES.has(subcommand.toLowerCase())) return undefined;
+  const word = hasCommandWord(args, DATASOURCE_BILLED)?.toLowerCase();
+  return word
+    ? gatedElsewhere(`gog sheets datasource ${word}`, 'gog_sheets_run', 'runs a billed BigQuery job', `gog_sheets_datasource_${word}`)
+    : undefined;
+}
 
 // Cell value type: matches what gog sheets --values-json accepts (passed
 // straight to the Sheets API as userEnteredValue). Strings starting with
@@ -144,5 +159,5 @@ export function registerSheetsTools(server: McpServer): void {
     return runOrDiagnose(['sheets', 'find-replace', pos(spreadsheetId), pos(find), pos(replace)], { account });
   });
 
-  registerRunTool(server, { service: 'sheets', examples: '"freeze", "add-tab", "rename-tab"' });
+  registerRunTool(server, { service: 'sheets', examples: '"freeze", "add-tab", "rename-tab"', vet: vetSheetsRun });
 }

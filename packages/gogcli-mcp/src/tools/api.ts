@@ -20,17 +20,38 @@ const GMAIL_API_BLOCKED = /(?:\.send$|forwarding|filters\.create|filters\.update
 // the dedicated tool asks the user, so the raw API method must not be a way
 // around it. Anchored on a `.` or the start so a Discovery id with the API
 // prefix (`chat.spaces.messages.create`) matches too.
+// Fleet audit 2026-09-24 SEC-6 added the methods that notify someone, grant
+// access or run code under the account's authority (moving an event with
+// sendUpdates, roster adds, returning work, posting coursework, comments,
+// send-as aliases, the vacation responder, member-seeded spaces, script runs).
 const DISPATCH_API_BLOCKED: Record<string, Array<{ method: RegExp; does: string; tool: string }>> = {
-  chat: [{ method: /(?:^|\.)spaces\.messages\.create$/i, does: 'posts a Chat message', tool: 'gog_chat_messages_send / gog_chat_dm_send' }],
-  drive: [{ method: /(?:^|\.)permissions\.(?:create|update)$/i, does: 'grants access to a file', tool: 'gog_drive_share' }],
+  chat: [
+    { method: /(?:^|\.)spaces\.messages\.create$/i, does: 'posts a Chat message', tool: 'gog_chat_messages_send / gog_chat_dm_send' },
+    { method: /(?:^|\.)spaces\.(?:setup|members\.create)$/i, does: 'adds people to a space', tool: 'gog_chat_spaces_create' },
+  ],
+  drive: [
+    { method: /(?:^|\.)permissions\.(?:create|update)$/i, does: 'grants access to a file', tool: 'gog_drive_share' },
+    { method: /(?:^|\.)comments\.create$/i, does: 'notifies the file\'s owner and anyone it mentions', tool: 'gog_drive_comments_add / gog_docs_comments_add' },
+    { method: /(?:^|\.)replies\.create$/i, does: 'notifies the comment thread', tool: 'gog_drive_comments_reply / gog_docs_comments_reply' },
+  ],
   classroom: [
     { method: /(?:^|\.)courses\.announcements\.create$/i, does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
     { method: /(?:^|\.)invitations\.create$/i, does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
+    { method: /(?:^|\.)courses\.students\.create$/i, does: 'adds someone to a class', tool: 'gog_classroom_students_add' },
+    { method: /(?:^|\.)courses\.teachers\.create$/i, does: 'gives someone teacher access to a class', tool: 'gog_classroom_teachers_add' },
+    { method: /(?:^|\.)courses\.coursework\.create$/i, does: 'posts coursework to a class', tool: 'gog_classroom_coursework_create' },
+    { method: /(?:^|\.)studentsubmissions\.return$/i, does: 'returns work to a student', tool: 'gog_classroom_submissions_return' },
   ],
   calendar: [
     { method: /(?:^|\.)events\.(?:insert|import|quickadd)$/i, does: 'can put an event on guests\' calendars', tool: 'gog_calendar_create' },
     { method: /(?:^|\.)events\.(?:update|patch)$/i, does: 'can change what guests see', tool: 'gog_calendar_update / gog_calendar_respond' },
+    { method: /(?:^|\.)events\.move$/i, does: 'can email every guest', tool: 'gog_calendar_move' },
   ],
+  gmail: [
+    { method: /(?:^|\.)settings\.sendas\.create$/i, does: 'makes Google email the address and adds a sending identity', tool: 'gog_gmail_sendas_create' },
+    { method: /(?:^|\.)settings\.updatevacation$/i, does: 'can turn on an auto-reply to every sender', tool: 'gog_gmail_vacation_update' },
+  ],
+  script: [{ method: /(?:^|\.)scripts\.run$/i, does: 'executes code with this account\'s authority', tool: 'gog_appscript_run_function' }],
 };
 
 export function refusedApiCall(api: string, method: string): string | undefined {
