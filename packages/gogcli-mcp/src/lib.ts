@@ -26,13 +26,19 @@ export type { ReplyFlags } from './tools/gmail.js';
 // gmail sub-package's send-side forward/autoreply tools reuse these directly
 // rather than re-declaring the gate; the draft-side twins never import them.
 export {
+  attachmentDetails,
   attachmentNames,
+  attachmentPreview,
   bodyPreview,
+  CONFIRM_FALLBACK_DESCRIPTION,
+  confirmTokenParam,
   extractEmails,
   logGmailDispatch,
   requireGmailDispatchConfirmation,
   resultText,
+  senderPreview,
 } from './gmail-dispatch-guard.js';
+export type { AttachmentDetail, DispatchTokenFallback, TokenSubject } from './gmail-dispatch-guard.js';
 export { run, runBinary, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
 // Sub-package tools that read gog JSON through bare `run()` (rather than the
 // `runOrDiagnose` seam) must still apply this, or their timestamps skip the

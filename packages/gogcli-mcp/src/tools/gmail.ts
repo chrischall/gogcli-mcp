@@ -5,7 +5,7 @@ import { finalizeGmailSearch, fetchGmailPages } from '../gmail-results.js';
 import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
-import { attachmentNames, bodyPreview, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText } from '../gmail-dispatch-guard.js';
+import { attachmentDetails, attachmentNames, attachmentPreview, bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText, senderPreview } from '../gmail-dispatch-guard.js';
 import { pos } from '../argv.js';
 import { confinePath, confinePaths } from '../file-roots.js';
 
@@ -98,8 +98,9 @@ export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
 // The send-side reply/reply-all schema, distinct from the shared replySchema
 // above. gog_gmail_drafts_reply / _reply_all (gogcli-mcp-gmail) reuse
 // replySchema verbatim and must never gain a send-confirmation input — draft
-// tools stage mail, while send tools request confirmation through MCP.
-const sendReplySchema = z.object(replySchema);
+// tools stage mail, while send tools request confirmation (through MCP, or the
+// opt-in confirmToken fallback, which is why only THIS schema carries it).
+const sendReplySchema = z.object({ ...replySchema, confirmToken: confirmTokenParam });
 
 // gog's own `reply`/`reply-all` response never echoes the resolved
 // recipients when replying to a single message (the common case: gog only
@@ -148,6 +149,62 @@ export function computeReplyRecipients(
   return emails;
 }
 
+/** `message.threadId` out of `gog gmail get --format=metadata --json`, if present. */
+export function metadataThreadId(raw: string): string | undefined {
+  try {
+    const threadId = (JSON.parse(raw) as { message?: { threadId?: unknown } } | null)?.message?.threadId;
+    return typeof threadId === 'string' ? threadId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// The token fallback's preview and bound payload for a reply. To/Cc/Bcc are the
+// same approximation computeReplyRecipients makes (gog composes the final list),
+// split by field so the user can see who is on Bcc.
+function replyTokenSubject(
+  kind: 'reply' | 'reply-all',
+  messageId: string,
+  account: string | undefined,
+  headers: Record<string, string>,
+  threadId: string | undefined,
+  flags: ReplyFlags,
+) {
+  const removed = new Set(extractEmails(...(flags.remove ?? [])));
+  const keep = (emails: string[]) => emails.filter((e) => !removed.has(e));
+  const to = keep(extractEmails(headers.from, ...(kind === 'reply-all' ? [headers.to] : []), ...(flags.to ?? [])));
+  const cc = keep(extractEmails(...(kind === 'reply-all' ? [headers.cc] : []), ...(flags.cc ?? [])));
+  const bcc = keep(extractEmails(...(flags.bcc ?? [])));
+  const attachments = attachmentDetails(flags.attach, flags.attachInline);
+  const subject = flags.subject || (headers.subject ? `Re: ${headers.subject}` : undefined);
+  const from = flags.from ?? (flags.autoFromAddressedAlias ? 'the send-as alias the original was addressed to' : senderPreview(account));
+  const localFiles = attachmentDetails([flags.bodyHtmlFile, flags.signatureFile].filter((p): p is string => Boolean(p)), undefined);
+  return {
+    target: messageId,
+    payload: {
+      kind, to, cc, bcc, subject, from,
+      body: flags.body, bodyHtml: flags.bodyHtml, localFiles,
+      signature: Boolean(flags.signature), signatureFrom: flags.signatureFrom,
+      attachments, quote: !flags.noQuote,
+      threadId, inReplyTo: headers.message_id, references: headers.references,
+    },
+    preview: {
+      from, to, cc, bcc, subject,
+      body: flags.body,
+      ...(flags.bodyHtml ? { bodyHtml: flags.bodyHtml } : {}),
+      ...(flags.bodyHtmlFile ? { bodyHtmlFile: flags.bodyHtmlFile } : {}),
+      ...(flags.signature || flags.signatureFrom || flags.signatureFile
+        ? { signature: flags.signatureFile ?? flags.signatureFrom ?? 'the Gmail signature of the sending address' }
+        : {}),
+      quotesOriginal: !flags.noQuote,
+      attachments: attachmentPreview(attachments),
+      replyingToMessageId: messageId,
+      threadId,
+      inReplyTo: headers.message_id,
+    },
+  };
+}
+
 // Shared by gog_gmail_reply and gog_gmail_reply_all: fetch the target
 // message's headers (always — the prompt needs them and so does the audit
 // log on the accepted path), then confirm and send.
@@ -161,12 +218,14 @@ async function sendReply(
   account: string | undefined,
   flags: ReplyFlags,
   ctx: ServerContext,
+  confirmToken?: string,
 ) {
   const metaResult = await runOrDiagnose(['gmail', 'get', pos(messageId), '--format=metadata'], { account });
   if (metaResult.isError) return metaResult;
-  const headers = parseMetadataHeaders(resultText(metaResult));
+  const metaText = resultText(metaResult);
+  const headers = parseMetadataHeaders(metaText);
   const recipients = computeReplyRecipients(kind, headers, flags);
-  const confirmation = requireGmailDispatchConfirmation(ctx, replyDispatchOp(kind), {
+  const confirmation = await requireGmailDispatchConfirmation(ctx, replyDispatchOp(kind), {
     messageId,
     recipients,
     recipientCount: recipients.length,
@@ -177,6 +236,13 @@ async function sendReply(
     bodyHtmlFile: flags.bodyHtmlFile,
     attachmentCount: (flags.attach?.length ?? 0) + (flags.attachInline?.length ?? 0),
     attachments: attachmentNames(flags.attach, flags.attachInline),
+  }, {
+    tool: toolName,
+    account,
+    confirmToken,
+    // The metadata read above IS the phase-2 re-read: it runs on every call,
+    // so the original's Message-ID/References are fresh here.
+    subject: () => replyTokenSubject(kind, messageId, account, headers, metadataThreadId(metaText), flags),
   });
   if (confirmation) return confirmation;
   const args: GogArg[] = ['gmail', kind, pos(messageId)];
@@ -291,7 +357,8 @@ export function registerGmailTools(server: McpServer): void {
       + 'and byte sizes — check it to confirm the files were embedded. '
       + 'NOT the tool for answering a message: replyToMessageId only files this in the right thread — the '
       + 'subject, recipients and body are entirely yours, and the original is not quoted unless you set '
-      + 'quote. Use gog_gmail_reply / gog_gmail_reply_all instead, which inherit all three.',
+      + 'quote. Use gog_gmail_reply / gog_gmail_reply_all instead, which inherit all three.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       to: z.string().describe('Recipient(s), comma-separated'),
@@ -305,8 +372,9 @@ export function registerGmailTools(server: McpServer): void {
       attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       attachInline: attachInlineParam,
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, account }, ctx) => {
+  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, account, confirmToken }, ctx) => {
     confinePaths(attach, 'attach');
     // Built (and validated — inlineAttachmentArgs throws on bad base64 or an
     // oversize file) BEFORE the confirmation request, on both paths: a prompt that
@@ -334,7 +402,7 @@ export function registerGmailTools(server: McpServer): void {
     args.push(...inline);
 
     const recipients = extractEmails(to, cc, bcc);
-    const confirmation = requireGmailDispatchConfirmation(ctx, 'gmail.send', {
+    const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.send', {
       to, cc, bcc, recipients, recipientCount: recipients.length, subject,
       bodyLength: body.length,
       bodyPreview: bodyPreview(body),
@@ -342,6 +410,27 @@ export function registerGmailTools(server: McpServer): void {
       quoting: Boolean(quote),
       attachmentCount: (attach?.length ?? 0) + (attachInline?.length ?? 0),
       attachments: attachmentNames(attach, attachInline),
+    }, {
+      tool: 'gog_gmail_send',
+      account,
+      confirmToken,
+      // Nothing is stored between the phases: the payload IS the arguments,
+      // so phase 2 must repeat them and any difference is a changed send.
+      subject: () => {
+        const attachments = attachmentDetails(attach, attachInline);
+        const from = senderPreview(account);
+        return {
+          target: replyToMessageId ?? threadId ?? '',
+          payload: { from, to, cc, bcc, subject, body, attachments, threadId, inReplyTo: replyToMessageId, quote: Boolean(quote) },
+          preview: {
+            from, to, cc, bcc, subject, body,
+            attachments: attachmentPreview(attachments),
+            threadId,
+            inReplyTo: replyToMessageId,
+            quotesOriginal: Boolean(quote),
+          },
+        };
+      },
     });
     if (confirmation) return confirmation;
     const result = await runOrDiagnose(args, { account });
@@ -376,13 +465,14 @@ export function registerGmailTools(server: McpServer): void {
       + 'brand-new message, with the original nowhere in it. To answer every participant use gog_gmail_reply_all. '
       + 'The gogcli-mcp-gmail package adds two more routes with the same composition: gog_gmail_autoreply to reply '
       + 'across every message matching a query, and gog_gmail_drafts_reply to stage this exact reply as a draft '
-      + 'instead of sending it.',
+      + 'instead of sending it.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: sendReplySchema,
-  }, async ({ messageId, account, ...flags }, ctx) => {
+  }, async ({ messageId, account, confirmToken, ...flags }, ctx) => {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', flags.bodyHtml, flags.bodyHtmlFile);
     confineReplyPaths(flags);
-    return sendReply('reply', 'gog_gmail_reply', messageId, account, flags, ctx);
+    return sendReply('reply', 'gog_gmail_reply', messageId, account, flags, ctx, confirmToken);
   });
 
   server.registerTool('gog_gmail_reply_all', {
@@ -393,13 +483,14 @@ export function registerGmailTools(server: McpServer): void {
       + 'confirmation. '
       + 'Reply to all participants of a Gmail message (the sender plus every To/Cc recipient). Same inherited "Re:" '
       + 'subject and quoted original as gog_gmail_reply. Use the remove flag to drop specific recipients from the '
-      + 'reply-all.',
+      + 'reply-all.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: sendReplySchema,
-  }, async ({ messageId, account, ...flags }, ctx) => {
+  }, async ({ messageId, account, confirmToken, ...flags }, ctx) => {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', flags.bodyHtml, flags.bodyHtmlFile);
     confineReplyPaths(flags);
-    return sendReply('reply-all', 'gog_gmail_reply_all', messageId, account, flags, ctx);
+    return sendReply('reply-all', 'gog_gmail_reply_all', messageId, account, flags, ctx, confirmToken);
   });
 
   registerRunTool(server, {
