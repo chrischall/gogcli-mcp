@@ -73,7 +73,7 @@
     },
     {
       "name": "gog_api_call",
-      "description": "Call any Discovery-described Google API method (escape hatch; write opt-in + dry-run)."
+      "description": "Call any Discovery-described Google API method (escape hatch; every write asks the user to confirm; dry-run available)."
     },
     {
       "name": "gog_auth_add",
