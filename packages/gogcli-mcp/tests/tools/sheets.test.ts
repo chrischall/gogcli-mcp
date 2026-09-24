@@ -27,13 +27,13 @@ describe('gog_sheets_get', () => {
     expect(runner.run).toHaveBeenCalledWith(['sheets', 'get', pos('sid'), pos('A1')], { account: 'other@gmail.com' });
   });
 
-  it('appends auth list on failure when auth list succeeds', async () => {
+  it('appends the account list only on an auth failure', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Spreadsheet not found'))
-      .mockResolvedValueOnce('user@gmail.com');
+      .mockRejectedValueOnce(new Error('Spreadsheet not found'));
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_sheets_get', { spreadsheetId: 'bad', range: 'A1' });
-    expect(result.content[0].text).toBe('Error: Spreadsheet not found\n\nConfigured accounts:\nuser@gmail.com');
+    expect(result.content[0].text).toBe('Error: Spreadsheet not found');
+    expect(runner.run).toHaveBeenCalledTimes(1);
   });
 
   it('returns plain error text when auth list also fails', async () => {
@@ -45,8 +45,7 @@ describe('gog_sheets_get', () => {
 
   it('handles non-Error rejection', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce('raw error string')
-      .mockRejectedValueOnce(new Error('auth list failed'));
+      .mockRejectedValueOnce('raw error string');
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_sheets_get', { spreadsheetId: 'bad', range: 'A1' });
     expect(result.content[0].text).toBe('raw error string');
@@ -162,17 +161,17 @@ describe('gog_sheets_update fail_if_not_empty guard', () => {
 
   it('aborts without writing and diagnoses the error when the verification read fails', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('read boom')) // the verification get
-      .mockResolvedValueOnce('{"accounts":[{"email":"u@x.com"}]}'); // diagnose -> auth list
+      .mockRejectedValueOnce(new Error('read boom')); // the verification get
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_sheets_update', {
       spreadsheetId: 'sid', range: 'A1', values: [['new']], fail_if_not_empty: true,
     });
-    // get + auth list (for diagnosis), but the update is never attempted
-    expect(runner.run).toHaveBeenCalledTimes(2);
+    // the get only — the update is never attempted, and a non-auth failure
+    // does not consult `auth list` (PRIV-1)
+    expect(runner.run).toHaveBeenCalledTimes(1);
     expect(vi.mocked(runner.run).mock.calls.some((c) => c[0][1] === 'update')).toBe(false);
     expect(result.content[0].text).toContain('Error: read boom');
-    expect(result.content[0].text).toContain('Configured accounts:');
+    expect(result.content[0].text).not.toContain('Configured accounts:');
   });
 
   it('surfaces the re-auth hint when the verification read fails with an auth error', async () => {

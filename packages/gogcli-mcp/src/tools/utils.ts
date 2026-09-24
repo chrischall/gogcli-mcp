@@ -302,10 +302,11 @@ export function formatAccountList(raw: string): string {
 
 // Turn a thrown error into a diagnosed error result (`isError: true`): the
 // error text, an actionable hint when the failure class is recognised (auth /
-// transient / off-grid write), and the list of configured accounts. Callers
-// that need to surface a failure without going through runOrDiagnose (e.g. a
-// pre-write verification read that must abort) can reuse this so the error
-// keeps the same diagnostic quality as everywhere else.
+// transient / off-grid write), and — on an auth failure only — the list of
+// configured accounts. Callers that need to surface a failure without going
+// through runOrDiagnose (e.g. a pre-write verification read that must abort)
+// can reuse this so the error keeps the same diagnostic quality as everywhere
+// else.
 export async function diagnose(err: unknown): Promise<CallToolResult> {
   const errText = errorText(err);
 
@@ -333,6 +334,11 @@ export async function diagnose(err: unknown): Promise<CallToolResult> {
         : isGridLimitError
           ? GRID_LIMIT_HINT
           : '';
+  // The account list answers one question — WHICH account is signed in — so it
+  // is appended only when the failure is about that (PRIV-1, fleet-audit
+  // #1012). Every other error used to echo every identity on the host to the
+  // model, and spawn a `gog auth list`, for nothing.
+  if (!isAuthError && !isInvalidGrant) return errorResult(`${errText}${hint}`);
   try {
     const accounts = formatAccountList(await run(['auth', 'list']));
     return errorResult(`${errText}\n\nConfigured accounts:\n${accounts || '(none)'}${hint}`);

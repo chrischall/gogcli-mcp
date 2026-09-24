@@ -94,7 +94,7 @@ describe('logGmailDispatch', () => {
     logGmailDispatch('gog_gmail_reply', ['me@example.com', 'outside@other.com'], 'me@example.com');
     const event = loggedEvent();
     expect(event.hasExternalRecipients).toBe(true);
-    expect(event.externalRecipients).toEqual(['outside@other.com']);
+    expect(event.externalDomains).toEqual(['other.com']);
     expect(event.externalRecipientCount).toBe(1);
   });
 
@@ -102,34 +102,34 @@ describe('logGmailDispatch', () => {
     process.env.GOG_ACCOUNT = 'me@example.com';
     logGmailDispatch('gog_gmail_send', ['me@example.com', 'outside@other.com']);
     const event = loggedEvent();
-    expect(event.externalRecipients).toEqual(['outside@other.com']);
+    expect(event.externalDomains).toEqual(['other.com']);
   });
 
   it('adds every domain in GOG_GMAIL_TRUSTED_DOMAINS on top of the account domain', () => {
     process.env.GOG_GMAIL_TRUSTED_DOMAINS = 'law-firm.example, partner.example';
     logGmailDispatch('gog_gmail_reply_all', ['counsel@law-firm.example', 'stranger@random.example'], 'me@example.com');
     const event = loggedEvent();
-    expect(event.externalRecipients).toEqual(['stranger@random.example']);
+    expect(event.externalDomains).toEqual(['random.example']);
   });
 
   it('reports no external recipients when every address is trusted', () => {
     logGmailDispatch('gog_gmail_forward', ['me@example.com'], 'me@example.com');
     const event = loggedEvent();
     expect(event.hasExternalRecipients).toBe(false);
-    expect(event.externalRecipients).toEqual([]);
+    expect(event.externalDomains).toEqual([]);
   });
 
   it('treats an account with no @ as contributing no trusted domain', () => {
     logGmailDispatch('gog_gmail_send', ['a@example.com'], 'not-an-email');
     const event = loggedEvent();
-    expect(event.externalRecipients).toEqual(['a@example.com']);
+    expect(event.externalDomains).toEqual(['example.com']);
   });
 
   it('ignores an empty segment in GOG_GMAIL_TRUSTED_DOMAINS (e.g. a trailing comma)', () => {
     process.env.GOG_GMAIL_TRUSTED_DOMAINS = 'law-firm.example,,';
     logGmailDispatch('gog_gmail_send', ['counsel@law-firm.example'], 'me@example.com');
     const event = loggedEvent();
-    expect(event.externalRecipients).toEqual([]);
+    expect(event.externalDomains).toEqual([]);
   });
 
   it('treats unresolved desktop placeholders as unset env vars', () => {
@@ -137,13 +137,29 @@ describe('logGmailDispatch', () => {
     process.env.GOG_ACCOUNT = '${user_config.account}';
     logGmailDispatch('gog_gmail_send', ['person@user_config.trusted_domains']);
     const event = loggedEvent();
-    expect(event.externalRecipients).toEqual(['person@user_config.trusted_domains']);
+    expect(event.externalDomains).toEqual(['user_config.trusted_domains']);
   });
 
   it('treats a recipient with no @ as external, not a crash', () => {
     logGmailDispatch('gog_gmail_send', ['not-an-email'], 'me@example.com');
     const event = loggedEvent();
-    expect(event.externalRecipients).toEqual(['not-an-email']);
+    expect(event.externalRecipientCount).toBe(1);
+    expect(event.externalDomains).toEqual(['(no domain)']);
+  });
+
+  // PRIV-1 (fleet-audit #1012): on mcp-host this line is host log data the user
+  // never sees, so it names domains, never addresses — the count and the
+  // domain are what the audit purpose needs (an unexpected law firm, a
+  // wrong-number alias), the local part is a third party's identity.
+  it('never writes a recipient address to stderr', () => {
+    logGmailDispatch('gog_gmail_reply_all', ['me@example.com', 'counsel@law-firm.example', 'second@law-firm.example', 'Kid@School.example'], 'me@example.com');
+    const line = writeSpy.mock.calls[0][0] as string;
+    expect(line).not.toMatch(/@/);
+    expect(line).not.toContain('externalRecipients');
+    const event = loggedEvent();
+    expect(event.recipientCount).toBe(4);
+    expect(event.externalRecipientCount).toBe(3);
+    expect(event.externalDomains).toEqual(['law-firm.example', 'school.example']);
   });
 });
 

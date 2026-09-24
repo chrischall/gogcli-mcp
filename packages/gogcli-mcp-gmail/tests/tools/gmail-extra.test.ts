@@ -2815,7 +2815,8 @@ describe('gog_gmail_filters_create — forwarding needs confirmation', () => {
     );
     const event = JSON.parse((writeSpy.mock.calls.at(-1)?.[0] as string).trim());
     expect(event.tool).toBe('gog_gmail_filters_create');
-    expect(event.externalRecipients).toEqual(['x@evil.example']);
+    expect(event.externalDomains).toEqual(['evil.example']);
+    expect(JSON.stringify(event)).not.toContain('x@evil.example');
     writeSpy.mockRestore();
   });
 

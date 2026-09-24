@@ -217,8 +217,7 @@ describe('runOrDiagnose', () => {
   // mask, and retrying it would just spend a second call to fail identically.
   it('does NOT retry an error that is not a rejected mask', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('File not found'))
-      .mockResolvedValueOnce('user@gmail.com');
+      .mockRejectedValueOnce(new Error('File not found'));
     const result = await runOrDiagnose(['drive', 'ls'], { fieldsMask: 'files(id)' });
     expect(result.isError).toBe(true);
     expect(runner.run).not.toHaveBeenNthCalledWith(2, ['drive', 'ls'], expect.anything());
@@ -260,34 +259,35 @@ describe('runOrDiagnose', () => {
     expect(result.content[0].text).toBe('user@gmail.com');
   });
 
-  it('appends auth list on non-auth failure', async () => {
-    vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Doc not found'))
-      .mockResolvedValueOnce('user@gmail.com');
+  // PRIV-1 (fleet-audit #1012): the account list is PII and only helps when
+  // the failure is about WHICH account is signed in. A "Doc not found" told the
+  // model every identity on the host for nothing — and cost a `gog auth list`
+  // spawn on every error path.
+  it('omits the account list on a non-auth failure and does not spawn auth list', async () => {
+    vi.mocked(runner.run).mockRejectedValueOnce(new Error('Doc not found'));
     const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
-    expect(result.content[0].text).toBe(
-      'Error: Doc not found\n\nConfigured accounts:\nuser@gmail.com',
-    );
+    expect(result.content[0].text).toBe('Error: Doc not found');
     // mcp-utils errorResult flags diagnosed failures for the client.
     expect(result.isError).toBe(true);
     expect(result.content[0].text).not.toContain('gog_auth_add');
+    expect(runner.run).toHaveBeenCalledTimes(1);
   });
 
   it('redacts scopes/subject/timestamps from the configured-accounts block', async () => {
     const authListJson = JSON.stringify({
       accounts: [{
-        email: 'chris.c.hall@gmail.com',
+        email: 'user@example.com',
         subject: '109876543210987654321',
         scopes: ['https://www.googleapis.com/auth/gmail.modify'],
         created_at: '2026-01-02T03:04:05Z',
       }],
     });
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('refusing to delete gmail draft r123 without --force (non-interactive)'))
+      .mockRejectedValueOnce(new Error('Google API error (401 authError): invalid credentials'))
       .mockResolvedValueOnce(authListJson);
     const result = await runOrDiagnose(['gmail', 'drafts', 'delete', pos('r123')], {});
     const text = result.content[0].text;
-    expect(text).toContain('Configured accounts:\nchris.c.hall@gmail.com');
+    expect(text).toContain('Configured accounts:\nuser@example.com');
     expect(text).not.toContain('scopes');
     expect(text).not.toContain('gmail.modify');
     expect(text).not.toContain('109876543210987654321');
@@ -296,10 +296,19 @@ describe('runOrDiagnose', () => {
 
   it('shows (none) when no accounts are configured', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Doc not found'))
+      .mockRejectedValueOnce(new Error('Request failed with status 401'))
       .mockResolvedValueOnce('{"accounts":[]}');
     const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
-    expect(result.content[0].text).toBe('Error: Doc not found\n\nConfigured accounts:\n(none)');
+    expect(result.content[0].text).toContain('Error: Request failed with status 401\n\nConfigured accounts:\n(none)');
+  });
+
+  it('appends the account list on a dead refresh token even when a transient signal is present', async () => {
+    vi.mocked(runner.run)
+      .mockRejectedValueOnce(new Error('503: token has been expired or revoked'))
+      .mockResolvedValueOnce('user@example.com');
+    const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
+    expect(result.content[0].text).toContain('Configured accounts:\nuser@example.com');
+    expect(result.content[0].text).toContain('invalid_grant');
   });
 
   it('appends re-auth hint on 401 error', async () => {
@@ -345,8 +354,7 @@ describe('runOrDiagnose', () => {
     // `invalid_grant` is exempt from this and stays auth (below) — it is the
     // one signal that definitively means the refresh token is dead.
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('429 rateLimitExceeded: the access token expired mid-request, retry'))
-      .mockResolvedValueOnce('user@gmail.com');
+      .mockRejectedValueOnce(new Error('429 rateLimitExceeded: the access token expired mid-request, retry'));
     const result = await runOrDiagnose(['sheets', 'get', pos('A1')], {});
     const text = result.content[0].text as string;
     expect(text).toContain('often transient');
@@ -374,8 +382,7 @@ describe('runOrDiagnose', () => {
       // exercised — and gog's real errors are frequently one long line.
       .mockRejectedValueOnce(
         new Error('page token accepted; the requested export link has expired and must be regenerated'),
-      )
-      .mockResolvedValueOnce('user@gmail.com');
+      );
     const result = await runOrDiagnose(['drive', pos('export'), pos('abc')], {});
     expect(result.content[0].text).not.toContain('gog_auth_add');
   });
@@ -415,10 +422,9 @@ describe('runOrDiagnose', () => {
     expect(result.content[0].text).not.toContain('Configured accounts');
   });
 
-  it('returns plain error when auth list also fails on non-auth error', async () => {
+  it('returns plain error on a non-auth error (auth list is never consulted)', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Doc not found'))
-      .mockRejectedValueOnce(new Error('auth list failed'));
+      .mockRejectedValueOnce(new Error('Doc not found'));
     const result = await runOrDiagnose(['docs', 'cat', pos('abc')], {});
     expect(result.content[0].text).toBe('Error: Doc not found');
     expect(result.isError).toBe(true);
@@ -427,8 +433,7 @@ describe('runOrDiagnose', () => {
 
   it('appends transient-retry hint on 429 error', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Request failed with status 429'))
-      .mockResolvedValueOnce('user@gmail.com');
+      .mockRejectedValueOnce(new Error('Request failed with status 429'));
     const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).toContain('transient');
     expect(result.content[0].text).toContain('Retry');
@@ -438,8 +443,7 @@ describe('runOrDiagnose', () => {
     for (const status of [500, 502, 503, 504]) {
       vi.clearAllMocks();
       vi.mocked(runner.run)
-        .mockRejectedValueOnce(new Error(`Request failed with status ${status}`))
-        .mockResolvedValueOnce('user@gmail.com');
+        .mockRejectedValueOnce(new Error(`Request failed with status ${status}`));
       const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
       expect(result.content[0].text, `status ${status}`).toContain('transient');
     }
@@ -449,8 +453,7 @@ describe('runOrDiagnose', () => {
     for (const msg of ['Quota exceeded', 'rateLimitExceeded', 'userRateLimitExceeded']) {
       vi.clearAllMocks();
       vi.mocked(runner.run)
-        .mockRejectedValueOnce(new Error(msg))
-        .mockResolvedValueOnce('user@gmail.com');
+        .mockRejectedValueOnce(new Error(msg));
       const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
       expect(result.content[0].text, msg).toContain('transient');
     }
@@ -458,16 +461,14 @@ describe('runOrDiagnose', () => {
 
   it('appends transient-retry hint on DEADLINE_EXCEEDED error', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('DEADLINE_EXCEEDED: context deadline exceeded'))
-      .mockResolvedValueOnce('user@gmail.com');
+      .mockRejectedValueOnce(new Error('DEADLINE_EXCEEDED: context deadline exceeded'));
     const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).toContain('transient');
   });
 
   it('does not append transient hint on 404 error', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Request failed with status 404'))
-      .mockResolvedValueOnce('user@gmail.com');
+      .mockRejectedValueOnce(new Error('Request failed with status 404'));
     const result = await runOrDiagnose(['sheets', 'get', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).not.toContain('transient');
   });
@@ -481,10 +482,9 @@ describe('runOrDiagnose', () => {
     expect(result.content[0].text).not.toContain('transient');
   });
 
-  it('keeps transient hint when auth list also fails', async () => {
+  it('keeps the transient hint and names no accounts on a transient failure', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Request failed with status 503'))
-      .mockRejectedValueOnce(new Error('auth list failed'));
+      .mockRejectedValueOnce(new Error('Request failed with status 503'));
     const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).toContain('transient');
     expect(result.content[0].text).not.toContain('Configured accounts');
@@ -492,8 +492,7 @@ describe('runOrDiagnose', () => {
 
   it('appends grid-limit hint pointing at gog_sheets_insert', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Range (Sheet1!AP1:AW1) exceeds grid limits. Max rows: 1000, max columns: 41'))
-      .mockResolvedValueOnce('user@gmail.com');
+      .mockRejectedValueOnce(new Error('Range (Sheet1!AP1:AW1) exceeds grid limits. Max rows: 1000, max columns: 41'));
     const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('AP1')], {});
     expect(result.content[0].text).toContain('exceeds grid limits');
     expect(result.content[0].text).toContain('gog_sheets_insert');
@@ -501,16 +500,14 @@ describe('runOrDiagnose', () => {
 
   it('does not append grid-limit hint on unrelated errors', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Spreadsheet not found'))
-      .mockResolvedValueOnce('user@gmail.com');
+      .mockRejectedValueOnce(new Error('Spreadsheet not found'));
     const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).not.toContain('gog_sheets_insert');
   });
 
-  it('keeps grid-limit hint when auth list also fails', async () => {
+  it('keeps the grid-limit hint and names no accounts on a grid failure', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('exceeds grid limits. Max rows: 1000, max columns: 41'))
-      .mockRejectedValueOnce(new Error('auth list failed'));
+      .mockRejectedValueOnce(new Error('exceeds grid limits. Max rows: 1000, max columns: 41'));
     const result = await runOrDiagnose(['sheets', 'update', pos('abc'), pos('A1')], {});
     expect(result.content[0].text).toContain('gog_sheets_insert');
     expect(result.content[0].text).not.toContain('Configured accounts');

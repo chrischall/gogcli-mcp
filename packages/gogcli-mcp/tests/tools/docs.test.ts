@@ -19,13 +19,13 @@ describe('gog_docs_info', () => {
     expect(result.content[0].text).toContain('My Doc');
   });
 
-  it('appends auth list on failure when auth list succeeds', async () => {
+  it('appends the account list only on an auth failure', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce(new Error('Doc not found'))
-      .mockResolvedValueOnce('user@gmail.com');
+      .mockRejectedValueOnce(new Error('Doc not found'));
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_docs_info', { docId: 'bad' });
-    expect(result.content[0].text).toBe('Error: Doc not found\n\nConfigured accounts:\nuser@gmail.com');
+    expect(result.content[0].text).toBe('Error: Doc not found');
+    expect(runner.run).toHaveBeenCalledTimes(1);
   });
 
   it('returns plain error text when auth list also fails', async () => {
@@ -37,8 +37,7 @@ describe('gog_docs_info', () => {
 
   it('handles non-Error rejection', async () => {
     vi.mocked(runner.run)
-      .mockRejectedValueOnce('raw error string')
-      .mockRejectedValueOnce(new Error('auth list failed'));
+      .mockRejectedValueOnce('raw error string');
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_docs_info', { docId: 'bad' });
     expect(result.content[0].text).toBe('raw error string');
