@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
+import { vetCommentsRun } from '../dispatch-confirmation.js';
+
+/** gog_docs_run must not post the comments gog_docs_comments_add / _reply would ask about. */
+export function vetDocsRun(subcommand: string, args: readonly string[]): string | undefined {
+  return vetCommentsRun('docs', subcommand, args);
+}
 
 export function registerDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_info', {
@@ -106,5 +112,5 @@ export function registerDocsTools(server: McpServer): void {
     return runOrDiagnose(['docs', 'structure', pos(docId)], { account });
   });
 
-  registerRunTool(server, { service: 'docs', examples: '"copy", "clear", "insert", "sed", "export"' });
+  registerRunTool(server, { service: 'docs', examples: '"copy", "clear", "insert", "sed", "export"', vet: vetDocsRun });
 }

@@ -149,7 +149,7 @@
     },
     {
       "name": "gog_calendar_delete",
-      "description": "Delete a calendar event"
+      "description": "Delete a calendar event (asks the user to confirm when it has guests or recurs)"
     },
     {
       "name": "gog_calendar_respond",
@@ -209,7 +209,7 @@
     },
     {
       "name": "gog_classroom_submissions_return",
-      "description": "Return a graded submission"
+      "description": "Return a graded submission (asks the user to confirm)"
     },
     {
       "name": "gog_classroom_submissions_turn_in",
@@ -293,7 +293,7 @@
     },
     {
       "name": "gog_drive_delete",
-      "description": "Move a file to trash"
+      "description": "Move a file to trash (a permanent delete asks the user to confirm)"
     },
     {
       "name": "gog_drive_share",
@@ -449,7 +449,7 @@
     },
     {
       "name": "gog_chat_spaces_create",
-      "description": "Create a named Chat space, optionally seeding its membership"
+      "description": "Create a named Chat space, optionally seeding its membership (with members, asks the user to confirm)"
     },
     {
       "name": "gog_chat_threads_list",
@@ -517,7 +517,7 @@
     },
     {
       "name": "gog_appscript_run_function",
-      "description": "Execute a function in a deployed Apps Script project"
+      "description": "Execute a function in a deployed Apps Script project (asks the user to confirm)"
     },
     {
       "name": "gog_appscript_run",

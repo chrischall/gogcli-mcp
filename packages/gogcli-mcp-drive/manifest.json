@@ -130,7 +130,7 @@
     },
     {
       "name": "gog_drive_delete",
-      "description": "Delete a file (trash by default, or permanent=true for irreversible delete)"
+      "description": "Delete a file (trash by default, or permanent=true for irreversible delete) (a permanent delete asks the user to confirm)"
     },
     {
       "name": "gog_drive_share",
@@ -182,7 +182,7 @@
     },
     {
       "name": "gog_drive_comments_add",
-      "description": "Add a new comment"
+      "description": "Add a new comment (asks the user to confirm)"
     },
     {
       "name": "gog_drive_comments_update",
@@ -194,7 +194,7 @@
     },
     {
       "name": "gog_drive_comments_reply",
-      "description": "Reply to an existing comment (optionally resolve/reopen the parent atomically via action)"
+      "description": "Reply to an existing comment (optionally resolve/reopen the parent atomically via action) (asks the user to confirm)"
     },
     {
       "name": "gog_drive_comments_resolve",

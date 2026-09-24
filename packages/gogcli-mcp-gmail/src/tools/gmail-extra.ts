@@ -2,11 +2,14 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, senderPreview, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, senderPreview, requireDispatchConfirmation, parseMetadataHeaders, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
 // other shape (an error result is still a text block, so it parses below).
+// How many messages a forced batch delete names in its prompt; every id is still bound.
+export const BATCH_DELETE_PREVIEW_MAX = 25;
+
 function resultText(result: CallToolResult): string | undefined {
   const first = result.content[0];
   return first?.type === 'text' ? first.text : undefined;
@@ -2873,16 +2876,48 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_batch_delete', {
-    description: 'Permanently delete multiple messages (requires the broader Gmail scope; not reversible — messages bypass Trash). Requires force:true to delete non-interactively. Use gog_gmail_trash for normal deletes.',
+    description: 'Permanently delete multiple messages (requires the broader Gmail scope; not reversible — messages bypass Trash). Requires force:true to delete non-interactively. Use gog_gmail_trash for normal deletes. '
+      + 'Because `force` is only the model\'s say-so, a forced delete also reads each message and asks the MCP host to '
+      + `show the user a confirmation prompt listing them (sender, subject, date; the first ${BATCH_DELETE_PREVIEW_MAX} by name) `
+      + 'first; nothing is deleted unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       messageIds: z.array(z.string()).min(1).describe('Message IDs to permanently delete'),
       force: z.boolean().optional().describe('Required to delete in this non-interactive context — without it the delete is refused as a safety guard.'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ messageIds, force, account }) => {
+  }, async ({ messageIds, force, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['gmail', 'batch', 'delete', ...messageIds.map(pos)];
-    if (force) args.push('--force');
+    // Without --force gog refuses on its own (the runner injects --no-input),
+    // so only a forced delete can destroy anything and only it asks.
+    if (force) {
+      const messages: Array<Record<string, string>> = [];
+      for (const id of messageIds.slice(0, BATCH_DELETE_PREVIEW_MAX)) {
+        const got = await runOrDiagnose(['gmail', 'get', pos(id), '--format=metadata'], { account });
+        if (got.isError) return got;
+        const { from, subject, date } = parseMetadataHeaders(String(resultText(got)));
+        messages.push({ id, ...(from ? { from } : {}), ...(subject ? { subject } : {}), ...(date ? { date } : {}) });
+      }
+      const more = messageIds.length - messages.length;
+      const view = { count: messageIds.length, messages, ...(more > 0 ? { notShown: more } : {}) };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'gmail.batch-delete',
+        message: `Review and confirm PERMANENTLY deleting ${messageIds.length} message(s) — they skip the Trash and cannot be recovered:`,
+        confirmationLabel: 'Confirm that these messages should be permanently deleted now.',
+        details: view,
+        unsupportedNote: 'Move them to the Trash with gog_gmail_trash instead; the user can empty it from Gmail.',
+        fallback: {
+          tool: 'gog_gmail_batch_delete',
+          account,
+          confirmToken,
+          // Every id is bound, not only the ones shown by name.
+          subject: () => ({ target: messageIds.join(','), payload: { ...view, messageIds }, preview: view }),
+        },
+      });
+      if (confirmation) return confirmation;
+      args.push('--force');
+    }
     return runOrDiagnose(args, { account });
   });
 
@@ -3937,10 +3972,13 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_vacation_update', {
-    description: 'Update the vacation responder. Pass enable (with subject/body) to turn it on, or disable to turn it off; optional start/end RFC3339 times and contactsOnly/domainOnly scoping.',
+    description: 'Update the vacation responder. Pass enable (with subject/body) to turn it on, or disable to turn it off; optional start/end RFC3339 times and contactsOnly/domainOnly scoping. '
+      + 'An enabled responder auto-replies to every sender in scope, so enable asks the MCP host to show the user a '
+      + 'confirmation prompt with the subject, the text, the window and who gets it first; disabling does not ask.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
-      enable: z.boolean().optional().describe('Enable the vacation responder'),
+      enable: z.boolean().optional().describe('Enable the vacation responder (asks the user first)'),
       disable: z.boolean().optional().describe('Disable the vacation responder'),
       subject: z.string().optional().describe('Subject line for the auto-reply'),
       body: z.string().optional().describe('HTML body of the auto-reply message'),
@@ -3949,8 +3987,9 @@ export function registerExtraGmailTools(server: McpServer): void {
       contactsOnly: z.boolean().optional().describe('Only respond to contacts'),
       domainOnly: z.boolean().optional().describe('Only respond to senders in the same domain'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ enable, disable, subject, body, start, end, contactsOnly, domainOnly, account }) => {
+  }, async ({ enable, disable, subject, body, start, end, contactsOnly, domainOnly, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['gmail', 'settings', 'vacation', 'update'];
     if (enable) args.push('--enable');
     if (disable) args.push('--disable');
@@ -3962,6 +4001,32 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (end) args.push(`--end=${end}`);
     if (contactsOnly) args.push('--contacts-only');
     if (domainOnly) args.push('--domain-only');
+    if (enable) {
+      const responder = {
+        from: senderPreview(account),
+        subject,
+        start,
+        end,
+        repliesTo: contactsOnly ? 'your contacts' : domainOnly ? 'senders in your domain' : 'every sender',
+      };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'gmail.vacation-enable',
+        message: 'Review and confirm turning on this auto-reply:',
+        confirmationLabel: 'Confirm that this auto-reply should be switched on now.',
+        details: { ...responder, bodyPreview: bodyPreview(body) },
+        unsupportedNote: 'Ask the user to turn on the vacation responder from Gmail settings.',
+        fallback: {
+          tool: 'gog_gmail_vacation_update',
+          account,
+          confirmToken,
+          subject: () => {
+            const view = { ...responder, body };
+            return { target: responder.from, payload: view, preview: view };
+          },
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 
@@ -4076,7 +4141,10 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_sendas_create', {
-    description: 'Create a send-as alias. Newly added aliases generally require email verification before they can be used (see gog_gmail_sendas_verify).',
+    description: 'Create a send-as alias. Newly added aliases generally require email verification before they can be used (see gog_gmail_sendas_verify). '
+      + 'Google emails the address and the account gains a new identity to send as, so this asks the MCP host to show '
+      + 'the user a confirmation prompt with the address, name and reply-to first; nothing is created unless they accept.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       email: z.string().describe('Email address of the new send-as alias'),
@@ -4085,13 +4153,32 @@ export function registerExtraGmailTools(server: McpServer): void {
       signature: z.string().optional().describe('HTML signature for emails sent from this alias'),
       treatAsAlias: z.boolean().optional().describe('Treat as alias (replies sent from Gmail web)'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ email, displayName, replyTo, signature, treatAsAlias, account }) => {
+  }, async ({ email, displayName, replyTo, signature, treatAsAlias, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['gmail', 'settings', 'sendas', 'create', pos(email)];
     if (displayName) args.push(`--display-name=${displayName}`);
     if (replyTo) args.push(`--reply-to=${replyTo}`);
     if (signature) args.push(`--signature=${signature}`);
     if (treatAsAlias) args.push('--treat-as-alias');
+    const alias = { account: senderPreview(account), email, displayName, replyTo, treatAsAlias: Boolean(treatAsAlias) };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'gmail.sendas-create',
+      message: 'Review and confirm adding this send-as address — Google emails it a verification request:',
+      confirmationLabel: 'Confirm that this address should be added as a sending identity now.',
+      details: { ...alias, signaturePreview: bodyPreview(signature) },
+      unsupportedNote: 'Ask the user to add it from Gmail settings (Accounts > Send mail as).',
+      fallback: {
+        tool: 'gog_gmail_sendas_create',
+        account,
+        confirmToken,
+        subject: () => {
+          const view = { ...alias, signature };
+          return { target: email, payload: view, preview: view };
+        },
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(args, { account });
   });
 

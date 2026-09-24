@@ -349,15 +349,15 @@
     },
     {
       "name": "gog_sheets_datasource_add",
-      "description": "Add a BigQuery Connected Sheets data source (custom SQL or a native table)"
+      "description": "Add a BigQuery Connected Sheets data source (custom SQL or a native table) (billed; asks the user to confirm)"
     },
     {
       "name": "gog_sheets_datasource_update",
-      "description": "Repoint a Connected Sheets data source's SQL, table or billing project"
+      "description": "Repoint a Connected Sheets data source's SQL, table or billing project (billed; asks the user to confirm)"
     },
     {
       "name": "gog_sheets_datasource_refresh",
-      "description": "Re-run a Connected Sheets data source against current BigQuery data"
+      "description": "Re-run a Connected Sheets data source against current BigQuery data (billed; asks the user to confirm)"
     },
     {
       "name": "gog_sheets_datasource_delete",

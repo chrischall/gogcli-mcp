@@ -167,7 +167,9 @@ there — use their dedicated tools.
 
 ## Confirmation prompts, and clients without them
 
-Tools that reach another person ask the user to confirm a preview first, through an MCP elicitation prompt:
+Tools that reach another person, grant access, run code, bill a project or delete for good ask the user to confirm a
+preview first, through an MCP elicitation prompt. The preview names what is acted on — the file, event, class,
+student, spreadsheet or messages — rather than an opaque id:
 
 | Service | Tools | Asks when |
 |---|---|---|
@@ -179,6 +181,23 @@ Tools that reach another person ask the user to confirm a preview first, through
 | Calendar | `gog_calendar_create` | only with attendees (the event lands on their calendars; no invitation email is sent) |
 | Calendar | `gog_calendar_update` | only for a change guests can see, on an event that has or gains guests (reminder-only changes never ask) |
 | Calendar | `gog_calendar_respond` | always (the organizer sees it) |
+| Calendar | `gog_calendar_delete` | only when the event has guests or recurs (gog deletes the whole series by default) |
+| Calendar | `gog_calendar_move` | only with `sendUpdates` `all` or `externalOnly` (Google emails the guests) |
+| Calendar | `gog_calendar_out_of_office` | unless `autoDecline` is `none` (gog's default declines every conflicting meeting and notifies its organizer) |
+| Calendar | `gog_calendar_delete_calendar` | always (the calendar and every event on it) |
+| Chat | `gog_chat_spaces_create` | only with `members` (they are added and notified) |
+| Classroom | `gog_classroom_students_add` | unless `userId` is `me` |
+| Classroom | `gog_classroom_teachers_add` | always (a co-teacher sees every student's work) |
+| Classroom | `gog_classroom_coursework_create` | unless `state` is `DRAFT` |
+| Classroom | `gog_classroom_submissions_return` | always (the student is notified and sees the grade) |
+| Classroom | `gog_classroom_courses_delete`, `gog_classroom_coursework_delete` | always (submissions go with them) |
+| Drive / Docs | `gog_drive_comments_add`, `_reply`, `gog_docs_comments_add`, `_reply` | always (the owner, the thread and anyone +mentioned are notified) |
+| Drive | `gog_drive_delete` | only with `permanent: true` (moving to trash never asks) |
+| Gmail | `gog_gmail_batch_delete` | only with `force: true` (the messages bypass Trash) |
+| Gmail | `gog_gmail_vacation_update` | only with `enable` (the auto-reply goes to every sender in scope) |
+| Gmail | `gog_gmail_sendas_create` | always (Google emails the address; the account gains a sending identity) |
+| Sheets | `gog_sheets_datasource_add`, `_update`, `_refresh` | always (each starts a BigQuery job billed to the billing project) |
+| Apps Script | `gog_appscript_run_function` | always (arbitrary code with the account's authority) |
 
 A Gmail forwarding filter (`gog_gmail_filters_create` with `forward`) asks too, but never takes the fallback below.
 
@@ -244,8 +263,8 @@ npm run typecheck  # typecheck all packages
 - `GOG_ACCESS_TOKEN` is stripped from the child process environment to prevent stale token auth
 - Server-side paths are confined to `GOG_FILE_ROOTS` (resolved through symlinks), in the structured tools and the escape hatches alike, so a prompt-injected agent cannot attach `~/.ssh` or gog's own credentials to an email, or write attachment bytes over `~/.zshrc`; escape-hatch flags that make gog run a local command (`--on-change`, `--on-new`, `--mmdc`) are refused
 - Escape-hatch tools (`gog_<service>_run`, `gog_api_call`) refuse args that would override safety flags (`--readonly=false`, `--disable-commands=`, `--account`, a bare `--`, …); `gog_auth_run` cannot export tokens
-- The escape hatches cannot skip a confirmation: every action a dedicated tool asks about (a Gmail send, a Chat post, a Drive share, a Classroom announcement or invitation, a Calendar create/update/respond) is refused by `gog_<service>_run` under each of gog's aliases for it, and by `gog_api_call` as the raw API method
-- Every tool that reaches another person asks the user to confirm a preview first: every Gmail send path and a forwarding filter, Chat posts and DMs, Drive shares, published Classroom announcements and invitations, and Calendar changes that guests will see. On a client without elicitation, a two-step preview and a single-use token take the place of that prompt (`MCP_CONFIRM_MODE`: `ask-user` by default, `auto` or `refuse`) ([details](#confirmation-prompts-and-clients-without-them)). A forwarding filter never takes that path
+- The escape hatches cannot skip a confirmation: every action a dedicated tool asks about (see [the table](#confirmation-prompts-and-clients-without-them)) is refused by `gog_<service>_run` under each of gog's aliases for it — `gog_docs_run`, `gog_sheets_run` and `gog_appscript_run` included — and the ones that notify, grant access or run code are refused by `gog_api_call` as the raw API method
+- Every tool that reaches another person, grants access, runs code, bills a project or deletes for good asks the user to confirm a preview first: every Gmail send path and a forwarding filter, Chat posts, DMs and member-seeded spaces, Drive shares and comments, Classroom posts, invitations, roster adds and returns, Calendar changes that guests will see, Apps Script runs, billed Connected Sheets queries, and permanent deletes ([the full list](#confirmation-prompts-and-clients-without-them)). On a client without elicitation, a two-step preview and a single-use token take the place of that prompt (`MCP_CONFIRM_MODE`: `ask-user` by default, `auto` or `refuse`) ([details](#confirmation-prompts-and-clients-without-them)). A forwarding filter never takes that path
 - Attachment downloads land in a private per-user temp directory (mode 0700) and are deleted after delivery or swept after 24 hours
 
 ## License
