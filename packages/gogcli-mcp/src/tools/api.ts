@@ -6,6 +6,7 @@ import { assertSafeForwardedArgs } from '../arg-guard.js';
 import { confineAtFile } from '../file-roots.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
+import { gatedElsewhere } from '../dispatch-confirmation.js';
 
 // Gmail methods gog_api_call refuses outright (audit SEC-2). `allowWrite` is a
 // boolean the MODEL sets, so it cannot stand in for the user's confirmation of
@@ -15,12 +16,32 @@ import type { GogArg } from '../runner.js';
 // the same reason. --gmail-no-send is pinned on as a runtime backstop too.
 const GMAIL_API_BLOCKED = /(?:\.send$|forwarding|filters\.create|filters\.update|delegates\.create)/i;
 
+// The same reasoning for every other action the dispatch rail gates (#400):
+// the dedicated tool asks the user, so the raw API method must not be a way
+// around it. Anchored on a `.` or the start so a Discovery id with the API
+// prefix (`chat.spaces.messages.create`) matches too.
+const DISPATCH_API_BLOCKED: Record<string, Array<{ method: RegExp; does: string; tool: string }>> = {
+  chat: [{ method: /(?:^|\.)spaces\.messages\.create$/i, does: 'posts a Chat message', tool: 'gog_chat_messages_send / gog_chat_dm_send' }],
+  drive: [{ method: /(?:^|\.)permissions\.(?:create|update)$/i, does: 'grants access to a file', tool: 'gog_drive_share' }],
+  classroom: [
+    { method: /(?:^|\.)courses\.announcements\.create$/i, does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
+    { method: /(?:^|\.)invitations\.create$/i, does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
+  ],
+  calendar: [
+    { method: /(?:^|\.)events\.(?:insert|import|quickadd)$/i, does: 'can put an event on guests\' calendars', tool: 'gog_calendar_create' },
+    { method: /(?:^|\.)events\.(?:update|patch)$/i, does: 'can change what guests see', tool: 'gog_calendar_update / gog_calendar_respond' },
+  ],
+};
+
 export function refusedApiCall(api: string, method: string): string | undefined {
-  if (api.trim().toLowerCase() === 'gmail' && GMAIL_API_BLOCKED.test(method.trim())) {
+  const name = api.trim().toLowerCase();
+  const m = method.trim();
+  if (name === 'gmail' && GMAIL_API_BLOCKED.test(m)) {
     return `gmail ${method} is not available through gog_api_call: it sends or forwards mail. `
       + 'Use gog_gmail_send / gog_gmail_drafts_send (which ask the user to confirm) or the dedicated gog_gmail_* tool.';
   }
-  return undefined;
+  const hit = (Object.hasOwn(DISPATCH_API_BLOCKED, name) ? DISPATCH_API_BLOCKED[name] : [])!.find((b) => b.method.test(m));
+  return hit ? gatedElsewhere(`${name} ${m}`, 'gog_api_call', hit.does, hit.tool) : undefined;
 }
 
 // Generic Google Discovery API access (gog 0.31). gog_api_list / gog_api_describe
@@ -57,7 +78,7 @@ export function registerApiTools(server: McpServer): void {
   });
 
   server.registerTool('gog_api_call', {
-    description: 'Call any Discovery-described Google API method directly — an escape hatch for endpoints gog has no dedicated tool for. Find the exact api/version/method/params with gog_api_describe first. Read methods (GET/LIST) run as-is. Mutating methods (POST/PUT/PATCH/DELETE) are refused unless you set allowWrite=true — keep it false to preview, or set dryRun=true to print the intended request without sending it. Gmail send and forwarding methods (users.messages.send, users.drafts.send, forwarding/auto-forwarding, filters, delegates) are refused — use the dedicated gog_gmail_* tools, which ask the user to confirm.',
+    description: 'Call any Discovery-described Google API method directly — an escape hatch for endpoints gog has no dedicated tool for. Find the exact api/version/method/params with gog_api_describe first. Read methods (GET/LIST) run as-is. Mutating methods (POST/PUT/PATCH/DELETE) are refused unless you set allowWrite=true — keep it false to preview, or set dryRun=true to print the intended request without sending it. Gmail send and forwarding methods (users.messages.send, users.drafts.send, forwarding/auto-forwarding, filters, delegates) are refused — use the dedicated gog_gmail_* tools, which ask the user to confirm. So are the other methods a dedicated tool asks about: Chat spaces.messages.create, Drive permissions.create/update, Classroom courses.announcements.create and invitations.create, and Calendar events.insert/import/quickAdd/update/patch.',
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       api: z.string().describe('Discovery API name (e.g. drive, gmail, calendar)'),

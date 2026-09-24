@@ -3,7 +3,27 @@ import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
-import { bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+import { bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, hasCommandWord, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+
+// gog's spellings (internal/cmd/classroom.go, classroom_announcements.go, classroom_invitations.go).
+const CLASSROOM_CREATE_WORDS = new Set(['create', 'add', 'new']);
+const CLASSROOM_GATED: Record<string, { does: string; tool: string }> = {
+  announcements: { does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
+  announcement: { does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
+  ann: { does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
+  invitations: { does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
+  invitation: { does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
+  invites: { does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
+};
+
+/** gog_classroom_run must not post or invite what the dedicated tools would ask about. */
+export function vetClassroomRun(subcommand: string, args: readonly string[]): string | undefined {
+  const sub = subcommand.toLowerCase();
+  const gated = Object.hasOwn(CLASSROOM_GATED, sub) ? CLASSROOM_GATED[sub] : undefined;
+  if (!gated) return undefined;
+  const word = hasCommandWord(args, CLASSROOM_CREATE_WORDS);
+  return word ? gatedElsewhere(`gog classroom ${sub} ${word.toLowerCase()}`, 'gog_classroom_run', gated.does, gated.tool) : undefined;
+}
 
 /**
  * The course a Classroom dispatch reaches, for its confirmation prompt: a user
@@ -471,6 +491,7 @@ export function registerClassroomTools(server: McpServer): void {
   registerRunTool(server, {
     service: 'classroom',
     examples: '"guardians", "materials", "guardian-invitations"',
+    vet: vetClassroomRun,
     note: 'Covers anything not wrapped by the dedicated tools (guardians, guardian-invitations, materials, coursework assignees, announcement assignees, etc.).',
   });
 }

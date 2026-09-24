@@ -5,7 +5,23 @@ import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAlias
 import { annotateTruncatedList } from '../pagination.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
-import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+
+// gog's spellings (internal/cmd/calendar.go). The run tool cannot tell whether
+// an event has guests, so it refuses these outright; the dedicated tools ask
+// only when someone else would see the change.
+const CALENDAR_GATED: Record<string, string> = {
+  create: 'gog_calendar_create', add: 'gog_calendar_create', new: 'gog_calendar_create',
+  update: 'gog_calendar_update', edit: 'gog_calendar_update', set: 'gog_calendar_update',
+  respond: 'gog_calendar_respond', rsvp: 'gog_calendar_respond', reply: 'gog_calendar_respond',
+};
+
+/** gog_calendar_run must not make the changes gog_calendar_create/update/respond would ask about. */
+export function vetCalendarRun(subcommand: string, _args: readonly string[]): string | undefined {
+  const sub = subcommand.toLowerCase();
+  const tool = Object.hasOwn(CALENDAR_GATED, sub) ? CALENDAR_GATED[sub] : undefined;
+  return tool ? gatedElsewhere(`gog calendar ${sub}`, 'gog_calendar_run', 'can change what guests see', tool) : undefined;
+}
 
 // Reminder params, shared by create and update (gog >= 0.38.0 for
 // --no-reminders). An event's reminders are one of THREE states, and the two
@@ -391,5 +407,5 @@ export function registerCalendarTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  registerRunTool(server, { service: 'calendar', examples: '"calendars", "freebusy"' });
+  registerRunTool(server, { service: 'calendar', examples: '"calendars", "freebusy"', vet: vetCalendarRun });
 }
