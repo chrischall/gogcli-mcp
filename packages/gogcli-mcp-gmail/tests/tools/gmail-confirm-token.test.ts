@@ -22,10 +22,10 @@ let harness: TestHarness;
 beforeEach(async () => {
   vi.clearAllMocks();
   process.env = { ...ORIGINAL_ENV };
-  process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+  process.env.MCP_CONFIRM_MODE = 'ask-user';
   process.env.GOG_ACCOUNT = 'me@example.com';
-  delete process.env.GOG_CONFIRM_TTL_SECONDS;
-  delete process.env.GOG_CONFIRM_SECRET;
+  delete process.env.MCP_CONFIRM_TTL_SECONDS;
+  delete process.env.MCP_CONFIRM_SECRET;
   resetConfirmTokenState();
   vi.mocked(lib.diagnose).mockResolvedValue(errorResult('diagnosed'));
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
@@ -80,12 +80,13 @@ describe('gog_gmail_drafts_send — token fallback', () => {
     for (const r of responses) m.mockResolvedValueOnce(rawTextResult(r));
   };
 
-  it('unsupported + env unset: keeps the refusal, with the hint', async () => {
-    delete process.env.GOG_SEND_CONFIRM_FALLBACK;
+  it('unsupported + MCP_CONFIRM_MODE=refuse: keeps the refusal, naming the switch', async () => {
+
+    process.env.MCP_CONFIRM_MODE = 'refuse';
     stub(draft());
     const body = json(await harness.callTool('gog_gmail_drafts_send', { draftId: 'd1' }));
     expect(body.reason).toBe('confirmation-unsupported');
-    expect(body.note).toContain('GOG_SEND_CONFIRM_FALLBACK=token');
+    expect(body.note).toContain('MCP_CONFIRM_MODE=ask-user');
     expect(calls('send')).toHaveLength(0);
   });
 

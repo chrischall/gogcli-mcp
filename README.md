@@ -182,14 +182,18 @@ Tools that reach another person ask the user to confirm a preview first, through
 
 A Gmail forwarding filter (`gog_gmail_filters_create` with `forward`) asks too, but never takes the fallback below.
 
-Some clients, claude.ai chat among them, cannot show the prompt, and by default these tools refuse there
-(`"reason": "confirmation-unsupported"`). To use them from such a client, opt in to a two-step fallback:
+Some clients, claude.ai chat and Claude Desktop among them, cannot show the prompt. There, by default, these
+tools use a two-step flow instead. `MCP_CONFIRM_MODE` (the same setting every chrischall MCP server uses) decides
+what happens:
 
-```json
-"env": { "GOG_ACCOUNT": "you@gmail.com", "GOG_SEND_CONFIRM_FALLBACK": "token" }
-```
+| `MCP_CONFIRM_MODE` | On a client that cannot show a prompt |
+|---|---|
+| `ask-user` (**default**) | Two steps (below). The first call returns the preview and a token, and tells the model to show it to you and continue only after you approve in chat. |
+| `auto` | The same two steps, but the model may use the token after reviewing the preview itself. |
+| `refuse` | Refused (`"reason": "confirmation-unsupported"`). |
 
-It applies only when the client declares no elicitation support; a client that can prompt keeps the prompt.
+A client that can show prompts (Claude Code) always gets the real prompt, whatever the mode. An unrecognised
+value is treated as `refuse`.
 
 1. **Phase 1**: the tool is called without `confirmToken`. Nothing is sent or changed. It returns
    `"status": "confirmation-required"`, the full preview, a `confirmToken`, and the instruction to show the preview
@@ -214,9 +218,9 @@ sends nothing and returns an error:
 
 | variable | default | |
 |---|---|---|
-| `GOG_SEND_CONFIRM_FALLBACK` | unset (off) | `token` enables the two-step flow |
-| `GOG_CONFIRM_TTL_SECONDS` | `600` | token lifetime |
-| `GOG_CONFIRM_SECRET` | random per process | HMAC key; set it only if tokens must survive a server restart. Used tokens are remembered in memory, per process, so with a fixed secret a token that was already used is accepted again after a restart (or by another instance with the same secret) until it expires. Leave it unset unless you need that. |
+| `MCP_CONFIRM_MODE` | `ask-user` | see the table above |
+| `MCP_CONFIRM_TTL_SECONDS` | `600` | token lifetime |
+| `MCP_CONFIRM_SECRET` | random per process | HMAC key; set it only if tokens must survive a server restart. Used tokens are remembered in memory, per process, so with a fixed secret a token that was already used is accepted again after a restart (or by another instance with the same secret) until it expires. Leave it unset unless you need that. |
 
 **What this does not do.** With elicitation, the host asks the user and the model never sees the approval. With
 the fallback, the approval is a tool argument, so the check that the user really approved is the model following
@@ -241,7 +245,7 @@ npm run typecheck  # typecheck all packages
 - Server-side paths are confined to `GOG_FILE_ROOTS` (resolved through symlinks), in the structured tools and the escape hatches alike, so a prompt-injected agent cannot attach `~/.ssh` or gog's own credentials to an email, or write attachment bytes over `~/.zshrc`; escape-hatch flags that make gog run a local command (`--on-change`, `--on-new`, `--mmdc`) are refused
 - Escape-hatch tools (`gog_<service>_run`, `gog_api_call`) refuse args that would override safety flags (`--readonly=false`, `--disable-commands=`, `--account`, a bare `--`, …); `gog_auth_run` cannot export tokens
 - The escape hatches cannot skip a confirmation: every action a dedicated tool asks about (a Gmail send, a Chat post, a Drive share, a Classroom announcement or invitation, a Calendar create/update/respond) is refused by `gog_<service>_run` under each of gog's aliases for it, and by `gog_api_call` as the raw API method
-- Every tool that reaches another person asks the user to confirm a preview first: every Gmail send path and a forwarding filter, Chat posts and DMs, Drive shares, published Classroom announcements and invitations, and Calendar changes that guests will see. On a client without elicitation, the opt-in `GOG_SEND_CONFIRM_FALLBACK=token` replaces that prompt with a two-step preview and a single-use token ([details](#confirmation-prompts-and-clients-without-them)). A forwarding filter never takes that path
+- Every tool that reaches another person asks the user to confirm a preview first: every Gmail send path and a forwarding filter, Chat posts and DMs, Drive shares, published Classroom announcements and invitations, and Calendar changes that guests will see. On a client without elicitation, a two-step preview and a single-use token take the place of that prompt (`MCP_CONFIRM_MODE`: `ask-user` by default, `auto` or `refuse`) ([details](#confirmation-prompts-and-clients-without-them)). A forwarding filter never takes that path
 - Attachment downloads land in a private per-user temp directory (mode 0700) and are deleted after delivery or swept after 24 hours
 
 ## License

@@ -24,9 +24,9 @@ const ORIGINAL_ENV = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
   process.env = { ...ORIGINAL_ENV };
-  delete process.env.GOG_SEND_CONFIRM_FALLBACK;
-  delete process.env.GOG_CONFIRM_TTL_SECONDS;
-  delete process.env.GOG_CONFIRM_SECRET;
+  delete process.env.MCP_CONFIRM_MODE;
+  delete process.env.MCP_CONFIRM_TTL_SECONDS;
+  delete process.env.MCP_CONFIRM_SECRET;
   process.env.GOG_ACCOUNT = 'me@example.com';
   resetConfirmTokenState();
 });
@@ -75,15 +75,17 @@ describe('gog_chat_messages_send / gog_chat_dm_send', () => {
   });
 
   it('refuses a client that cannot be prompted, naming the fallback switch', async () => {
+
+    process.env.MCP_CONFIRM_MODE = 'refuse';
     const harness = await unprompted(registerChatTools);
     const r = json(await harness.callTool('gog_chat_messages_send', { space: 'spaces/AAA', text: 'x' }));
     expect(r).toMatchObject({ reason: 'confirmation-unsupported', action: 'chat.message-send' });
-    expect(r.note).toContain('GOG_SEND_CONFIRM_FALLBACK=token');
+    expect(r.note).toContain('MCP_CONFIRM_MODE=ask-user');
     expect(runner.run).not.toHaveBeenCalled();
   });
 
   it('token fallback: previews in full, posts on phase 2, refuses a changed text', async () => {
-    process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
     stubReads({});
     const harness = await unprompted(registerChatTools);
     const args = { space: 'spaces/AAA', text: 'Ship it', attachInline: [{ filename: 'a.txt', contentBase64: Buffer.from('hey').toString('base64') }] };
@@ -137,15 +139,17 @@ describe('gog_drive_share', () => {
   });
 
   it('refuses a client that cannot be prompted, and says how the user can share it', async () => {
+
+    process.env.MCP_CONFIRM_MODE = 'refuse';
     stubReads({ 'drive get': FILE });
     const harness = await unprompted(registerDriveTools);
     const r = json(await harness.callTool('gog_drive_share', { fileId: 'f1', to: 'domain', domain: 'example.com' }));
     expect(r.note).toMatch(/share it themselves from Google Drive/);
-    expect(r.note).toContain('GOG_SEND_CONFIRM_FALLBACK=token');
+    expect(r.note).toContain('MCP_CONFIRM_MODE=ask-user');
   });
 
   it('token fallback: binds the file as read — a renamed file is DRAFT_CHANGED', async () => {
-    process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
     stubReads({ 'drive get': FILE });
     const harness = await unprompted(registerDriveTools);
     const args = { fileId: 'f1', to: 'anyone' as const };
@@ -189,6 +193,8 @@ describe('gog_classroom_announcements_create', () => {
   });
 
   it('refuses a client that cannot be prompted, pointing at DRAFT', async () => {
+
+    process.env.MCP_CONFIRM_MODE = 'refuse';
     stubReads({ 'classroom courses get': COURSE });
     const harness = await unprompted(registerClassroomTools);
     const r = json(await harness.callTool('gog_classroom_announcements_create', { courseId: 'c1', text: 'x' }));
@@ -197,7 +203,7 @@ describe('gog_classroom_announcements_create', () => {
   });
 
   it('token fallback: phase 1 previews, phase 2 posts', async () => {
-    process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
     stubReads({ 'classroom courses get': COURSE });
     const harness = await unprompted(registerClassroomTools);
     const p1 = json(await harness.callTool('gog_classroom_announcements_create', { courseId: 'c1', text: 'Quiz Friday' }));
@@ -264,6 +270,8 @@ describe('calendar', () => {
     });
 
     it('refuses a client that cannot be prompted, pointing at a guest-free create', async () => {
+
+      process.env.MCP_CONFIRM_MODE = 'refuse';
       const harness = await unprompted(registerCalendarTools);
       const r = json(await harness.callTool('gog_calendar_create', { calendarId: 'primary', summary: 'Sync', from: 'a', to: 'b', attendees: 'alice@example.com' }));
       expect(r.note).toMatch(/without attendees/);
@@ -271,7 +279,7 @@ describe('calendar', () => {
     });
 
     it('token fallback: previews, then creates on phase 2', async () => {
-      process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+      process.env.MCP_CONFIRM_MODE = 'ask-user';
       stubReads({});
       const harness = await unprompted(registerCalendarTools);
       const args = { calendarId: 'primary', summary: 'Sync', from: 'a', to: 'b', attendees: 'alice@example.com' };
@@ -335,7 +343,7 @@ describe('calendar', () => {
     });
 
     it('token fallback: an event edited elsewhere between the phases (etag rotated) is DRAFT_CHANGED', async () => {
-      process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+      process.env.MCP_CONFIRM_MODE = 'ask-user';
       stubReads({ 'calendar event': EVENT() });
       const harness = await unprompted(registerCalendarTools);
       const args = { calendarId: 'primary', eventId: 'e1', summary: 'Budget review (moved)' };
@@ -358,6 +366,8 @@ describe('calendar', () => {
     });
 
     it('refuses a client that cannot be prompted', async () => {
+
+      process.env.MCP_CONFIRM_MODE = 'refuse';
       stubReads({ 'calendar event': EVENT() });
       const harness = await unprompted(registerCalendarTools);
       const r = json(await harness.callTool('gog_calendar_respond', { calendarId: 'primary', eventId: 'e1', status: 'accepted' }));
@@ -372,7 +382,7 @@ describe('calendar', () => {
     });
 
     it('token fallback: phase 2 records the response', async () => {
-      process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+      process.env.MCP_CONFIRM_MODE = 'ask-user';
       stubReads({ 'calendar event': EVENT() });
       const harness = await unprompted(registerCalendarTools);
       const args = { calendarId: 'primary', eventId: 'e1', status: 'tentative' as const };

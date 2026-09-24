@@ -23,9 +23,9 @@ let fileRoot: string;
 beforeEach(() => {
   vi.clearAllMocks();
   process.env = { ...ORIGINAL_ENV };
-  delete process.env.GOG_SEND_CONFIRM_FALLBACK;
-  delete process.env.GOG_CONFIRM_TTL_SECONDS;
-  delete process.env.GOG_CONFIRM_SECRET;
+  delete process.env.MCP_CONFIRM_MODE;
+  delete process.env.MCP_CONFIRM_TTL_SECONDS;
+  delete process.env.MCP_CONFIRM_SECRET;
   process.env.GOG_ACCOUNT = 'me@example.com';
   fileRoot = mkdtempSync(join(tmpdir(), 'gct-roots-'));
   process.env.GOG_FILE_ROOTS = fileRoot;
@@ -58,7 +58,7 @@ const sendCalls = () => vi.mocked(runner.run).mock.calls.filter(([args]) => args
 
 describe('gog_gmail_send — token fallback', () => {
   it('elicitation supported: unchanged — prompts and sends, confirmToken or not', async () => {
-    process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
     vi.mocked(runner.run).mockResolvedValue(SENT);
     const harness = await withElicitation();
     const result = await harness.callTool('gog_gmail_send', { ...SEND_ARGS, confirmToken: 'not-a-real-token' });
@@ -66,16 +66,18 @@ describe('gog_gmail_send — token fallback', () => {
     expect(sendCalls()).toHaveLength(1);
   });
 
-  it('unsupported + env unset: refuses, with the new hint', async () => {
+  it('unsupported + MCP_CONFIRM_MODE=refuse: refuses, naming the switch', async () => {
+
+    process.env.MCP_CONFIRM_MODE = 'refuse';
     const harness = await noElicitation();
     const body = json(await harness.callTool('gog_gmail_send', SEND_ARGS));
     expect(body).toMatchObject({ confirmed: false, dispatched: false, reason: 'confirmation-unsupported' });
-    expect(body.note).toContain('set GOG_SEND_CONFIRM_FALLBACK=token to enable two-step confirmation');
+    expect(body.note).toContain('Set MCP_CONFIRM_MODE=ask-user');
     expect(runner.run).not.toHaveBeenCalled();
   });
 
-  describe('unsupported + GOG_SEND_CONFIRM_FALLBACK=token', () => {
-    beforeEach(() => { process.env.GOG_SEND_CONFIRM_FALLBACK = 'token'; });
+  describe('unsupported + MCP_CONFIRM_MODE=ask-user', () => {
+    beforeEach(() => { process.env.MCP_CONFIRM_MODE = 'ask-user'; });
 
     it('phase 1 previews everything (Bcc included, full body) and sends nothing', async () => {
       const long = `${'x'.repeat(5000)}END`;
@@ -185,7 +187,7 @@ describe.each([
   });
   const replyCalls = () => vi.mocked(runner.run).mock.calls.filter(([args]) => args[1] === subcommand);
 
-  beforeEach(() => { process.env.GOG_SEND_CONFIRM_FALLBACK = 'token'; });
+  beforeEach(() => { process.env.MCP_CONFIRM_MODE = 'ask-user'; });
 
   it('phase 1 previews the resolved recipients, Bcc, full body and In-Reply-To; nothing sent', async () => {
     vi.mocked(runner.run).mockResolvedValue(metadata());
