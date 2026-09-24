@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.5.0](https://github.com/chrischall/gogcli-mcp/compare/v4.4.0...v4.5.0) (2026-09-24)
+
+
+### Features
+
+* use the fleet-wide MCP_CONFIRM_MODE settings and default to asking the user ([#406](https://github.com/chrischall/gogcli-mcp/issues/406)) ([e605d4f](https://github.com/chrischall/gogcli-mcp/commit/e605d4f8ecd0e40358072d916c56a6b3bfd9d203))
+
+
+### Bug Fixes
+
+* **deps:** use mcp-utils' shared confirm-token fallback ([#404](https://github.com/chrischall/gogcli-mcp/issues/404)) ([e9d3637](https://github.com/chrischall/gogcli-mcp/commit/e9d363778c40ab87c4e5f525626a14478231e51c))
+
 ## [4.4.0](https://github.com/chrischall/gogcli-mcp/compare/v4.3.0...v4.4.0) (2026-09-24)
 
 
