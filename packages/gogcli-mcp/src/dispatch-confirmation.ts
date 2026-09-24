@@ -209,6 +209,20 @@ async function tokenConfirmation(op: string, fallback: DispatchTokenFallback): P
   return rejection({ error: verdict.error, action: op, note: TOKEN_ERROR_NOTE[verdict.error] });
 }
 
+/**
+ * The refusal an escape hatch (`gog_<service>_run`, `gog_api_call`) gives for an
+ * action a dedicated tool gates. Without it, the run tool is a way around the
+ * rail: the model forwards the same subcommand and nobody is asked (#400).
+ */
+export function gatedElsewhere(what: string, via: string, does: string, tool: string): string {
+  return `${what} ${does} and is not available through ${via}. Use ${tool}, which asks the user to confirm.`;
+}
+
+/** True when any forwarded token is one of `words` (kong lets flags precede the command word). */
+export function hasCommandWord(args: readonly string[], words: ReadonlySet<string>): string | undefined {
+  return args.find((a) => words.has(a.toLowerCase()));
+}
+
 export interface DispatchConfirmationOptions {
   /** Stable id of the dispatch, echoed in every result (`gmail.send`, `drive.share`, …). */
   action: string;

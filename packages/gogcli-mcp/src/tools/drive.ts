@@ -8,7 +8,14 @@ import { run, runBinary } from '../runner.js';
 import { accountParam, diagnose, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
-import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+
+/** gog_drive_run must not grant access that gog_drive_share would ask about. */
+export function vetDriveRun(subcommand: string, _args: readonly string[]): string | undefined {
+  return subcommand.toLowerCase() === 'share'
+    ? gatedElsewhere('gog drive share', 'gog_drive_run', 'grants access to a file', 'gog_drive_share')
+    : undefined;
+}
 
 // A native Google Doc exports to text directly; anything else (PDF, image,
 // docx, …) is first copied WITH conversion to this type, which makes Drive run
@@ -359,5 +366,5 @@ export function registerDriveTools(server: McpServer): void {
     }
   });
 
-  registerRunTool(server, { service: 'drive', examples: '"copy", "download", "permissions"' });
+  registerRunTool(server, { service: 'drive', examples: '"copy", "download", "permissions"', vet: vetDriveRun });
 }

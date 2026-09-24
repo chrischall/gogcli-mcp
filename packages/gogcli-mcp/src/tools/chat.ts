@@ -18,9 +18,24 @@ import {
   bodyPreview,
   CONFIRM_FALLBACK_DESCRIPTION,
   confirmTokenParam,
+  gatedElsewhere,
+  hasCommandWord,
   requireDispatchConfirmation,
   senderPreview,
 } from '../dispatch-confirmation.js';
+
+// gog's spellings of `send` under `messages` and `dm` (internal/cmd/chat_messages.go, chat_dm.go).
+const CHAT_SEND_WORDS = new Set(['send', 'create', 'post']);
+
+/** gog_chat_run must not post what gog_chat_messages_send / gog_chat_dm_send would ask about. */
+export function vetChatRun(subcommand: string, args: readonly string[]): string | undefined {
+  const sub = subcommand.toLowerCase();
+  if (sub !== 'messages' && sub !== 'dm') return undefined;
+  const word = hasCommandWord(args, CHAT_SEND_WORDS);
+  if (!word) return undefined;
+  return gatedElsewhere(`gog chat ${sub} ${word.toLowerCase()}`, 'gog_chat_run', 'posts a message',
+    sub === 'dm' ? 'gog_chat_dm_send' : 'gog_chat_messages_send');
+}
 
 // A Chat post lands in other people's view the moment it is sent and cannot be
 // unsent here, so both send tools go through the dispatch rail like Gmail does.
@@ -348,6 +363,7 @@ export function registerChatTools(server: McpServer): void {
   registerRunTool(server, {
     service: 'chat',
     examples: '"spaces", "messages", "dm"',
+    vet: vetChatRun,
     note: 'Google Chat has no API for consumer accounts: every chat subcommand fails on an @gmail.com account regardless of scopes.',
   });
 }
