@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerExtraClassroomTools } from '../../src/tools/classroom-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
 import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test';
@@ -14,6 +14,9 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
 });
 
 let harness: TestHarness;
+
+// MCP_CONFIRM_MODE is read per call; a test that sets it must not leak it.
+afterEach(() => { delete process.env.MCP_CONFIRM_MODE; });
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -269,6 +272,8 @@ describe('gog_classroom_invitations_create', () => {
   });
 
   it('refuses a client that cannot be prompted', async () => {
+
+    process.env.MCP_CONFIRM_MODE = 'refuse';
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(COURSE);
     const h = await createTestHarness(registerExtraClassroomTools);
     const r = JSON.parse((await h.callTool('gog_classroom_invitations_create', { courseId: 'c1', userId: 'u1', role: 'STUDENT' })).content[0]!.text as string);
@@ -278,7 +283,7 @@ describe('gog_classroom_invitations_create', () => {
 
   it('token fallback: phase 1 previews, phase 2 invites', async () => {
     const ORIGINAL = { ...process.env };
-    process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
     try {
       vi.mocked(lib.runOrDiagnose).mockResolvedValue(COURSE);
       const h = await createTestHarness(registerExtraClassroomTools);

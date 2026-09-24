@@ -298,7 +298,7 @@ describe('attachmentDetails', () => {
 });
 
 // ============================================================================
-// THE TOKEN FALLBACK (GOG_SEND_CONFIRM_FALLBACK=token). Elicitation stays the
+// THE TOKEN FALLBACK (MCP_CONFIRM_MODE, default ask-user). Elicitation stays the
 // primary rail; this only replaces the REFUSAL a client that cannot be prompted
 // would otherwise get.
 // ============================================================================
@@ -308,9 +308,9 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
 
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV };
-    delete process.env.GOG_SEND_CONFIRM_FALLBACK;
-    delete process.env.GOG_CONFIRM_TTL_SECONDS;
-    delete process.env.GOG_CONFIRM_SECRET;
+    delete process.env.MCP_CONFIRM_MODE;
+    delete process.env.MCP_CONFIRM_TTL_SECONDS;
+    delete process.env.MCP_CONFIRM_SECRET;
     process.env.GOG_ACCOUNT = 'me@example.com';
     resetConfirmTokenState();
   });
@@ -341,37 +341,56 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
     return parse(r);
   }
 
-  it('with the env unset, keeps the refusal and names the switch', async () => {
+  it('with MCP_CONFIRM_MODE=refuse, keeps the refusal and names the switch', async () => {
+
+    process.env.MCP_CONFIRM_MODE = 'refuse';
     const fb = fallback();
     const r = parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, fb));
     expect(r.reason).toBe('confirmation-unsupported');
-    expect(r.note).toContain('set GOG_SEND_CONFIRM_FALLBACK=token to enable two-step confirmation');
+    expect(r.note).toContain('Set MCP_CONFIRM_MODE=ask-user');
     expect(r.note).toContain('still saved');
     expect(fb.subject).not.toHaveBeenCalled();
   });
 
   it('names the switch even for an op with no other note (autoreply)', async () => {
+
+    process.env.MCP_CONFIRM_MODE = 'refuse';
     const r = parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.autoreply', {}, fallback()));
-    expect(r.note).toContain('GOG_SEND_CONFIRM_FALLBACK=token');
+    expect(r.note).toContain('MCP_CONFIRM_MODE=ask-user');
   });
 
   it('never offers the switch to a caller that passed no fallback (a forwarding filter)', async () => {
-    process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
     const r = parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.filter-forward', {}));
     expect(r.reason).toBe('confirmation-unsupported');
-    expect(r.note).not.toContain('GOG_SEND_CONFIRM_FALLBACK');
+    expect(r.note).not.toContain('MCP_CONFIRM_MODE');
   });
 
   it('leaves elicitation untouched even with the env set and a token passed', async () => {
-    process.env.GOG_SEND_CONFIRM_FALLBACK = 'token';
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
     const fb = fallback('not-a-real-token');
     expect(await requireGmailDispatchConfirmation(CAN_BE_ASKED, 'gmail.drafts-send', {}, fb))
       .toMatchObject({ resultType: 'input_required' });
     expect(fb.subject).not.toHaveBeenCalled();
   });
 
-  describe('with GOG_SEND_CONFIRM_FALLBACK=token', () => {
-    beforeEach(() => { process.env.GOG_SEND_CONFIRM_FALLBACK = 'token'; });
+  // The fleet default: with MCP_CONFIRM_MODE unset, a client that cannot be
+  // prompted gets the two-step flow rather than a refusal.
+  it('with MCP_CONFIRM_MODE unset, runs the two-step flow (ask-user is the default)', async () => {
+    const r = parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, fallback()));
+    expect(r).toMatchObject({ status: 'confirmation-required', instruction: CONFIRM_INSTRUCTION });
+  });
+
+  it('with MCP_CONFIRM_MODE=auto, tells the model it may proceed after reviewing the preview', async () => {
+    process.env.MCP_CONFIRM_MODE = 'auto';
+    const r = parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, fallback()));
+    expect(r.status).toBe('confirmation-required');
+    expect(r.instruction).toMatch(/MCP_CONFIRM_MODE=auto/);
+    expect(r.instruction).not.toBe(CONFIRM_INSTRUCTION);
+  });
+
+  describe('with MCP_CONFIRM_MODE=ask-user', () => {
+    beforeEach(() => { process.env.MCP_CONFIRM_MODE = 'ask-user'; });
 
     it('phase 1 returns the full preview, a token and the instruction, and does not proceed', async () => {
       const r = await phaseOne();
@@ -422,7 +441,7 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
     });
 
     it('TOKEN_EXPIRED after the TTL', async () => {
-      process.env.GOG_CONFIRM_TTL_SECONDS = '60';
+      process.env.MCP_CONFIRM_TTL_SECONDS = '60';
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-09-24T10:00:00Z'));
       const { confirmToken } = await phaseOne();

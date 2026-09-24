@@ -3,16 +3,12 @@ import { readFileSync } from 'node:fs';
 import type { CallToolResult, InputRequiredResult, ServerContext } from '@modelcontextprotocol/server';
 import {
   CONFIRM_TOKEN_INSTRUCTION,
+  confirmationFromEnv,
   readEnvVar,
   requireConfirmationWithFallback,
   type ConfirmSubject,
 } from '@chrischall/mcp-utils';
-import {
-  confirmSpentStore,
-  confirmTokenKey,
-  confirmTokenTtlSeconds,
-  sendConfirmFallbackEnabled,
-} from './send-confirm-token.js';
+import { confirmSpentStore } from './send-confirm-token.js';
 
 // ============================================================================
 // THE DISPATCH RAIL, service-neutral: every tool that reaches another person
@@ -21,11 +17,11 @@ import {
 //
 // Elicitation is primary: the host shows the preview and the model never holds
 // the approval. On a client that declares no elicitation (claude.ai, measured),
-// the call is refused — unless the call site supplies a `DispatchTokenFallback`
-// and the server opted in with GOG_SEND_CONFIRM_FALLBACK=token, in which case
-// the two-phase preview + confirmToken flow (mcp-utils'
-// requireConfirmationWithFallback; this server's env config is in
-// send-confirm-token.ts) runs instead.
+// the call site's `DispatchTokenFallback` runs the two-phase preview +
+// confirmToken flow instead (mcp-utils' confirmationFromEnv +
+// requireConfirmationWithFallback), as the fleet's MCP_CONFIRM_MODE says:
+// ask-user (default), auto, or refuse. A call site with no fallback (the
+// forwarding filter) is always refused on such a client.
 // ============================================================================
 
 // Bound on the body text shown in a confirmation prompt. Enough to read what is
@@ -105,16 +101,14 @@ export const CONFIRM_SEND_INSTRUCTION =
 /** The same instruction for a dispatch that is not mail (a share, an invitation, a post). */
 export const CONFIRM_ACTION_INSTRUCTION = CONFIRM_TOKEN_INSTRUCTION;
 
-const FALLBACK_HINT = 'Or set GOG_SEND_CONFIRM_FALLBACK=token to enable two-step confirmation.';
-
 /** Appended to each gated tool's description. */
 export const CONFIRM_FALLBACK_DESCRIPTION =
-  ' If the client cannot show that prompt (no MCP elicitation, e.g. claude.ai) and the server sets '
-  + 'GOG_SEND_CONFIRM_FALLBACK=token, a two-step flow applies instead: call WITHOUT confirmToken and nothing is '
-  + 'sent or changed — the result has status "confirmation-required", the full preview and a confirmToken. Show that preview '
-  + 'to the user verbatim; only after they explicitly approve it in chat, call again with the SAME arguments plus '
-  + 'confirmToken. The tool re-reads what it would act on and refuses (DRAFT_CHANGED, with a fresh preview and token) '
-  + 'if it changed; TOKEN_EXPIRED / TOKEN_REUSED / TOKEN_INVALID also do nothing.';
+  ' If the client cannot show that prompt (no MCP elicitation, e.g. claude.ai), a two-step flow applies instead: call '
+  + 'WITHOUT confirmToken and nothing is sent or changed — the result has status "confirmation-required", the full '
+  + 'preview and a confirmToken. Follow its instruction (by default: show the preview to the user verbatim and only '
+  + 'after they explicitly approve it in chat, call again with the SAME arguments plus confirmToken). The tool re-reads '
+  + 'what it would act on and refuses (DRAFT_CHANGED, with a fresh preview and token) if it changed; TOKEN_EXPIRED / '
+  + 'TOKEN_REUSED / TOKEN_INVALID also do nothing. A server set to MCP_CONFIRM_MODE=refuse refuses instead.';
 
 // The schema input every gated tool adds: mcp-utils' own, so its wording and
 // the helper that reads it cannot drift apart.
@@ -171,39 +165,33 @@ export interface DispatchConfirmationOptions {
  * Ask the user before a dispatch. `undefined` means proceed; anything else is
  * the result to return unchanged.
  *
- * Elicitation stays the primary path and is untouched. Only when the caller
- * declares it cannot be prompted AND a `fallback` is supplied AND
- * GOG_SEND_CONFIRM_FALLBACK=token does the two-phase token flow run instead of
- * the refusal; with the env unset, the refusal names that switch.
+ * Elicitation stays the primary path and is untouched. When the caller
+ * declares it cannot be prompted AND a `fallback` is supplied, MCP_CONFIRM_MODE
+ * decides: ask-user (default) or auto run the two-phase token flow; refuse
+ * refuses and names the switch. Without a fallback it is always refused.
  */
 export async function requireDispatchConfirmation(
   ctx: ServerContext,
   options: DispatchConfirmationOptions,
 ): Promise<InputRequiredResult | CallToolResult | undefined> {
   const { action, fallback } = options;
-  const enabled = fallback !== undefined && sendConfirmFallbackEnabled();
-  const note = fallback && !enabled
-    ? [options.unsupportedNote, FALLBACK_HINT].filter(Boolean).join(' ')
-    : options.unsupportedNote;
-  return requireConfirmationWithFallback(ctx, {
+  const confirmation = {
     action,
     message: options.message,
     details: options.details,
     confirmationLabel: options.confirmationLabel,
-    ...(note ? { unsupportedNote: note } : {}),
-    ...(enabled ? {
-      tokenFallback: {
-        key: confirmTokenKey(),
-        tool: fallback.tool,
-        account: fallback.account ?? readEnvVar('GOG_ACCOUNT') ?? '',
-        confirmToken: fallback.confirmToken,
-        subject: fallback.subject,
-        ttlSeconds: confirmTokenTtlSeconds(),
-        instruction: fallback.instruction ?? CONFIRM_ACTION_INSTRUCTION,
-        spent: confirmSpentStore(),
-      },
-    } : {}),
-  });
+    ...(options.unsupportedNote ? { unsupportedNote: options.unsupportedNote } : {}),
+  };
+  if (!fallback) return requireConfirmationWithFallback(ctx, confirmation);
+  return requireConfirmationWithFallback(ctx, confirmationFromEnv({
+    ...confirmation,
+    tool: fallback.tool,
+    account: fallback.account ?? readEnvVar('GOG_ACCOUNT') ?? '',
+    confirmToken: fallback.confirmToken,
+    subject: fallback.subject,
+    instruction: fallback.instruction ?? CONFIRM_ACTION_INSTRUCTION,
+    spent: confirmSpentStore(),
+  }));
 }
 
 // The single place a CallToolResult's text is pulled back out, for the tools

@@ -75,9 +75,9 @@ GOG_READONLY=1        # block all mutating gog API requests (injects gog's --rea
 DISPLAY_TZ=<IANA>     # zone for *Display fields and for interpreting naive gog values; defaults to America/New_York
 GOG_TIMEZONE=<IANA>   # zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge
 GOG_GMAIL_TRUSTED_DOMAINS=<csv> # additional domains excluded from external-recipient audit alerts
-GOG_SEND_CONFIRM_FALLBACK=token # opt-in two-phase preview + confirmToken for gated dispatches on clients with no elicitation
-GOG_CONFIRM_TTL_SECONDS=<n>     # confirmToken lifetime (default 600)
-GOG_CONFIRM_SECRET=<secret>     # confirmToken HMAC key (default: random per process); stripped from gog's env by the _SECRET rule
+MCP_CONFIRM_MODE=<mode>         # fleet-wide: ask-user (default) | auto | refuse — what a gated dispatch does on a client with no elicitation
+MCP_CONFIRM_TTL_SECONDS=<n>     # fleet-wide: confirmToken lifetime (default 600)
+MCP_CONFIRM_SECRET=<secret>     # fleet-wide: confirmToken HMAC key (default: random per process); stripped from gog's env by the _SECRET rule
 GOG_FILE_ROOTS=<dirs>  # ':'-separated dirs every server-side path param (attach/localPath/file/out/outDir/dir) must resolve inside; default ~/gogcli-mcp-files
 GOG_CLIENT_ID=<id>          # startup auth bootstrap: OAuth client id, imported into gog's keyring
 GOG_CLIENT_SECRET=<secret>  # startup auth bootstrap: OAuth client secret
@@ -103,8 +103,10 @@ missing and skips.
 tool that reaches another person goes through: Gmail (via the `requireGmailDispatchConfirmation` wrapper in
 `src/gmail-dispatch-guard.ts`), Chat send and DM, Drive share, Classroom announcement and invitation, and
 guest-visible Calendar create/update/respond. A new tool that posts, shares, invites or notifies belongs on it. Its escape hatches must refuse the same action: a `vet` on the service's `registerRunTool` covering every gog alias (`vetChatRun`, `vetCalendarRun`, …), and an entry in `DISPATCH_API_BLOCKED` (`src/tools/api.ts`) for the raw API method; otherwise the model forwards the subcommand and nobody is asked (#400).
-Elicitation is primary. Only when the client declares none AND the call site passes a `DispatchTokenFallback`
-AND `GOG_SEND_CONFIRM_FALLBACK=token` does it run the two-phase flow, which is mcp-utils' `requireConfirmationWithFallback` (the token mechanism lives there); `src/send-confirm-token.ts` only holds this server's env config, key and spent-token store. The fallback's `subject()` is called lazily, so an extra read there
+Elicitation is primary. When the client declares none AND the call site passes a `DispatchTokenFallback`,
+`MCP_CONFIRM_MODE` decides (ask-user by default, auto, or refuse), through mcp-utils' `confirmationFromEnv` +
+`requireConfirmationWithFallback`. The token mechanism and the env layer both live there, shared with the whole
+fleet; `src/send-confirm-token.ts` only holds this server's spent-token store. The fallback's `subject()` is called lazily, so an extra read there
 (`gog_gmail_forward` fetches the original) never touches the elicitation path. It must rebuild the payload from a
 **fresh** read on every call, because phase 2 is only as good as that re-read. A draft binds its messageId and an
 event binds its etag as the token's `revision`. The forwarding-filter call site deliberately passes no fallback.

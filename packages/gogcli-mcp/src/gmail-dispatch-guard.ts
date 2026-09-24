@@ -32,11 +32,11 @@ export type { AttachmentDetail, DispatchTokenFallback, TokenSubject } from './di
 // user's accepted confirmation dispatches. The confirmation is never a tool
 // argument, so a model cannot bypass the user by setting a boolean itself.
 //
-// The one exception is OPT-IN: with GOG_SEND_CONFIRM_FALLBACK=token, a client
-// that cannot be prompted gets a two-phase preview + confirmToken instead of a
-// refusal (`DispatchTokenFallback`; mcp-utils' requireConfirmationWithFallback). There the approval
-// IS a tool argument; see that file for exactly what the token does and does
-// not guarantee.
+// The one exception: a client that cannot be prompted gets a two-phase preview
+// + confirmToken instead of a refusal (`DispatchTokenFallback`; mcp-utils'
+// confirmationFromEnv), unless the server sets MCP_CONFIRM_MODE=refuse. There
+// the approval IS a tool argument; see mcp-utils' confirm-token module for
+// exactly what the token does and does not guarantee.
 //
 // A CLIENT THAT CANNOT SHOW THAT PROMPT gets a sentence rather than a prompt
 // it will refuse to deliver (`unsupportedNote`, mcp-utils `requireConfirmation`).
@@ -123,10 +123,10 @@ const UNSUPPORTED_NOTE: Partial<Record<GmailDispatchOp, string>> = {
 /**
  * Apply the shared stateless confirmation flow with Gmail-specific copy.
  *
- * Elicitation stays the primary path and is untouched. Only when the caller
- * declares it cannot be prompted AND a `fallback` is supplied AND
- * GOG_SEND_CONFIRM_FALLBACK=token does the two-phase token flow run instead of
- * the refusal; with the env unset, the refusal names that switch.
+ * Elicitation stays the primary path and is untouched. When the caller
+ * declares it cannot be prompted AND a `fallback` is supplied, MCP_CONFIRM_MODE
+ * decides: ask-user (default) or auto run the two-phase token flow; refuse
+ * refuses and names the switch.
  */
 export async function requireGmailDispatchConfirmation(
   ctx: ServerContext,
