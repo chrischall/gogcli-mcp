@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.4.0](https://github.com/chrischall/gogcli-mcp/compare/v4.3.0...v4.4.0) (2026-09-24)
+
+
+### Features
+
+* ask before Chat posts, Drive shares, Classroom announcements and invitations, and guest-visible Calendar changes ([#399](https://github.com/chrischall/gogcli-mcp/issues/399)) ([f1bea9b](https://github.com/chrischall/gogcli-mcp/commit/f1bea9ba9b37be40b61e8abaff889e3866883d9d))
+* **gmail:** opt-in two-step confirmToken fallback for sends on clients without elicitation ([#396](https://github.com/chrischall/gogcli-mcp/issues/396)) ([0b11031](https://github.com/chrischall/gogcli-mcp/commit/0b11031124dc660cd85637fd2ea8f2cb2a6951a4))
+
+
+### Bug Fixes
+
+* **security:** stop the run and api_call escape hatches from skipping the new confirmations ([#401](https://github.com/chrischall/gogcli-mcp/issues/401)) ([34424c1](https://github.com/chrischall/gogcli-mcp/commit/34424c16146928988dc0eba524881666910718fb))
+
+
+### Refactor
+
+* **gmail:** reuse hasCommandWord in vetGmailRun ([#403](https://github.com/chrischall/gogcli-mcp/issues/403)) ([12893c7](https://github.com/chrischall/gogcli-mcp/commit/12893c7b65c8790c964d6b6b2809da14badacb10))
+
 ## [4.3.0](https://github.com/chrischall/gogcli-mcp/compare/v4.2.5...v4.3.0) (2026-09-23)
 
 
