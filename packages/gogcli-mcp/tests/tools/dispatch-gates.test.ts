@@ -192,6 +192,16 @@ describe('gog_classroom_announcements_create', () => {
     expect(callsTo('classroom', 'announcements', 'create')).toHaveLength(1);
   });
 
+  // A scheduled item is a DRAFT that publishes itself at that time, so a
+  // DRAFT with a schedule reaches the class too and asks like any other.
+  it('asks for a scheduled DRAFT, which publishes itself', async () => {
+    stubReads({ 'classroom courses get': COURSE });
+    const { harness, details } = await prompted(registerClassroomTools, { action: 'decline' });
+    await harness.callTool('gog_classroom_announcements_create', { courseId: 'c1', text: 'Quiz Friday', state: 'DRAFT', scheduled: '2026-09-25T08:00:00Z' });
+    expect(details()).toMatchObject({ publishes: 'at 2026-09-25T08:00:00Z', textPreview: 'Quiz Friday' });
+    expect(callsTo('classroom', 'announcements', 'create')).toHaveLength(0);
+  });
+
   it('refuses a client that cannot be prompted, pointing at DRAFT', async () => {
 
     process.env.MCP_CONFIRM_MODE = 'refuse';
@@ -239,10 +249,13 @@ describe('gog_classroom_announcements_create', () => {
       expect(runner.run).toHaveBeenCalledWith(['classroom', 'announcements', 'get', pos('c1'), pos('a1')], { account: 'me@example.com' });
     });
 
-    it('reads coursework: title, state and updateTime', async () => {
-      vi.mocked(runner.run).mockResolvedValue(JSON.stringify({ courseWork: { id: 'w1', title: 'Problem set', state: 'PUBLISHED', updateTime: '2026-09-21T10:00:00Z' } }));
+    // gog 0.41.0 writes `{"coursework": …}` (internal/cmd/classroom_coursework.go),
+    // not the API's `courseWork`: reading the wrong key named nothing and left
+    // the token fallback without a revision to bind.
+    it('reads coursework under gog\'s key: title, description, state and updateTime', async () => {
+      vi.mocked(runner.run).mockResolvedValue(JSON.stringify({ coursework: { id: 'w1', title: 'Problem set', description: 'Work problems 1-20', state: 'PUBLISHED', updateTime: '2026-09-21T10:00:00Z' } }));
       expect(await readClassroomWork('coursework', 'c1', 'w1', undefined)).toEqual({
-        work: { id: 'w1', title: 'Problem set', state: 'PUBLISHED', updateTime: '2026-09-21T06:00:00-04:00' },
+        work: { id: 'w1', title: 'Problem set', description: 'Work problems 1-20', state: 'PUBLISHED', updateTime: '2026-09-21T06:00:00-04:00' },
       });
       expect(runner.run).toHaveBeenCalledWith(['classroom', 'coursework', 'get', pos('c1'), pos('w1')], { account: undefined });
     });

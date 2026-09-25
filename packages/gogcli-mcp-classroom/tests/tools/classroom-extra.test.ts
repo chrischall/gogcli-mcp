@@ -228,7 +228,8 @@ describe('gog_classroom_announcements_update', () => {
 
 const COURSE_JSON = JSON.stringify({ course: { id: 'c1', name: 'Algebra II', section: 'Period 3' } });
 const ANNOUNCEMENT_JSON = JSON.stringify({ announcement: { id: 'a1', text: 'Homework is due Friday', state: 'DRAFT', updateTime: '2026-09-20T10:00:00Z' } });
-const COURSEWORK_JSON = JSON.stringify({ courseWork: { id: 'w1', title: 'Chapter 4 problem set', state: 'DRAFT', updateTime: '2026-09-21T10:00:00Z' } });
+// gog 0.41.0 nests coursework under `coursework` (not the API's `courseWork`).
+const COURSEWORK_JSON = JSON.stringify({ coursework: { id: 'w1', title: 'Chapter 4 problem set', description: 'Problems 1-20, show your work', state: 'DRAFT', updateTime: '2026-09-21T10:00:00Z' } });
 
 /** Answer reads with `reads[<joined command words>]`, everything else with `{}`. */
 function stubReads(reads: Record<string, string>) {
@@ -348,7 +349,7 @@ describe('gog_classroom_announcements_update — publishing asks', () => {
 describe('gog_classroom_coursework_update — publishing asks', () => {
   beforeEach(() => stubReads({ 'classroom courses get': COURSE_JSON, 'classroom coursework get': COURSEWORK_JSON }));
 
-  it('reads the course and the coursework, prompts with the class and the CURRENT title, then publishes once accepted', async () => {
+  it('reads the course and the coursework, prompts with the class and the CURRENT title and description, then publishes once accepted', async () => {
     const { h, details, messages } = await prompted();
     await h.callTool('gog_classroom_coursework_update', { courseId: 'c1', courseworkId: 'w1', state: 'PUBLISHED', maxPoints: 100 });
     expect(messages[0]).toMatch(/publish/i);
@@ -356,6 +357,7 @@ describe('gog_classroom_coursework_update — publishing asks', () => {
       course: { id: 'c1', name: 'Algebra II', section: 'Period 3' },
       coursework: { id: 'w1', title: 'Chapter 4 problem set', state: 'DRAFT' },
       publishes: 'immediately',
+      descriptionPreview: 'Problems 1-20, show your work',
     });
     expect(calls('classroom', 'courses', 'get').length).toBeGreaterThanOrEqual(1);
     expect(calls('classroom', 'coursework', 'get').length).toBeGreaterThanOrEqual(1);
@@ -364,10 +366,10 @@ describe('gog_classroom_coursework_update — publishing asks', () => {
       ['classroom', 'coursework', 'update', pos('c1'), pos('w1'), '--state=PUBLISHED', '--max-points=100'], { account: undefined });
   });
 
-  it('previews the NEW title when the same call renames it, and a schedule as when it publishes', async () => {
+  it('previews the NEW title and description when the same call replaces them, and a schedule as when it publishes', async () => {
     const { h, details } = await prompted({ action: 'decline' });
-    await h.callTool('gog_classroom_coursework_update', { courseId: 'c1', courseworkId: 'w1', title: 'Chapter 5 problem set', scheduled: '2026-10-01T12:00:00Z' });
-    expect(details()).toMatchObject({ coursework: { id: 'w1', title: 'Chapter 5 problem set', state: 'DRAFT' }, publishes: 'at 2026-10-01T12:00:00Z' });
+    await h.callTool('gog_classroom_coursework_update', { courseId: 'c1', courseworkId: 'w1', title: 'Chapter 5 problem set', description: 'Odd problems only', scheduled: '2026-10-01T12:00:00Z' });
+    expect(details()).toMatchObject({ coursework: { id: 'w1', title: 'Chapter 5 problem set', state: 'DRAFT' }, publishes: 'at 2026-10-01T12:00:00Z', descriptionPreview: 'Odd problems only' });
     expect(calls('classroom', 'coursework', 'update')).toHaveLength(0);
   });
 
@@ -391,7 +393,11 @@ describe('gog_classroom_coursework_update — publishing asks', () => {
     const h = await createTestHarness(registerExtraClassroomTools);
     const args = { courseId: 'c1', courseworkId: 'w1', state: 'PUBLISHED' as const };
     const p1 = json(await h.callTool('gog_classroom_coursework_update', args));
-    expect(p1).toMatchObject({ status: 'confirmation-required', preview: { coursework: { id: 'w1', title: 'Chapter 4 problem set', state: 'DRAFT' }, publishes: 'immediately' } });
+    expect(p1).toMatchObject({ status: 'confirmation-required', preview: { coursework: { id: 'w1', title: 'Chapter 4 problem set', state: 'DRAFT' }, publishes: 'immediately', descriptionPreview: 'Problems 1-20, show your work' } });
+    // The teacher edits the coursework between the phases (updateTime rotates): the approval no longer names it.
+    stubReads({ 'classroom courses get': COURSE_JSON, 'classroom coursework get': COURSEWORK_JSON.replace('2026-09-21T10:00:00Z', '2026-09-22T08:00:00Z') });
+    expect(json(await h.callTool('gog_classroom_coursework_update', { ...args, confirmToken: p1.confirmToken }))).toMatchObject({ error: 'DRAFT_CHANGED' });
+    stubReads({ 'classroom courses get': COURSE_JSON, 'classroom coursework get': COURSEWORK_JSON });
     await h.callTool('gog_classroom_coursework_update', { ...args, confirmToken: p1.confirmToken });
     expect(calls('classroom', 'coursework', 'update')).toHaveLength(1);
   });
