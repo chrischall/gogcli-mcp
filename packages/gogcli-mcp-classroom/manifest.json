@@ -171,7 +171,7 @@
     },
     {
       "name": "gog_classroom_coursework_create",
-      "description": "Create coursework (assignment/question) (asks the user to confirm unless DRAFT)"
+      "description": "Create coursework (assignment/question) (asks the user to confirm unless an unscheduled DRAFT)"
     },
     {
       "name": "gog_classroom_coursework_update",

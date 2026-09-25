@@ -170,17 +170,19 @@ export interface ClassroomWork {
   id: string;
   text?: string;
   title?: string;
+  description?: string;
   state?: string;
   updateTime?: string;
 }
 
 /**
  * The announcement or coursework a publish reaches students with, for its
- * confirmation prompt (the text or title: a user approving "publish a1" cannot
- * tell what a1 says) and as the token fallback's revision (updateTime rotates
- * on every edit, so an approval never publishes text it did not name). Read on
- * every call. gog nests the payload under the API resource name; unreadable
- * output names nothing rather than throwing.
+ * confirmation prompt (the text, or the title and description: a user
+ * approving "publish a1" cannot tell what a1 says) and as the token fallback's
+ * revision (updateTime rotates on every edit, so an approval never publishes
+ * text it did not name). Read on every call. gog 0.41.0 nests the payload
+ * under `announcement` or `coursework` (internal/cmd/classroom_*.go; not the
+ * API's `courseWork`); unreadable output names nothing rather than throwing.
  */
 export async function readClassroomWork(
   kind: ClassroomWorkKind,
@@ -192,17 +194,11 @@ export async function readClassroomWork(
 ): Promise<{ error: Awaited<ReturnType<typeof runOrDiagnose>>; work?: undefined } | { error?: undefined; work: ClassroomWork }> {
   const got = await runner(['classroom', kind, 'get', pos(courseId), pos(itemId)], { account });
   if (got.isError) return { error: got };
-  let item: Record<string, unknown> | undefined;
-  try {
-    const parsed = JSON.parse(resultText(got)) as Record<string, unknown> | null;
-    const nested = parsed?.announcement ?? parsed?.courseWork ?? parsed;
-    item = typeof nested === 'object' && nested !== null ? nested as Record<string, unknown> : undefined;
-  } catch {
-    item = undefined;
-  }
+  const item = nested(resultText(got), kind === 'announcements' ? 'announcement' : 'coursework');
   const work: ClassroomWork = { id: itemId };
-  for (const key of ['text', 'title', 'state', 'updateTime'] as const) {
-    if (typeof item?.[key] === 'string') work[key] = item[key] as string;
+  for (const key of ['text', 'title', 'description', 'state', 'updateTime'] as const) {
+    const value = str(item?.[key]);
+    if (value !== undefined) work[key] = value;
   }
   return { work };
 }
@@ -586,16 +582,16 @@ export function registerClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_announcements_create', {
-    description: 'Create an announcement in a Google Classroom course. Unless state is DRAFT (which students cannot '
-      + 'see), this reads the course and asks the MCP host to show the user a confirmation prompt with the class, the '
-      + 'full text and when it publishes; nothing is posted unless they accept. To stage one without asking, pass '
-      + 'state DRAFT.' + CONFIRM_FALLBACK_DESCRIPTION,
+    description: 'Create an announcement in a Google Classroom course. Unless state is DRAFT with no scheduled time '
+      + '(which students cannot see; a scheduled draft publishes itself), this reads the course and asks the MCP host to '
+      + 'show the user a confirmation prompt with the class, the full text and when it publishes; nothing is posted '
+      + 'unless they accept. To stage one without asking, pass state DRAFT and no scheduled time.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       text: z.string().describe('Announcement text'),
-      state: z.enum(['PUBLISHED', 'DRAFT']).optional().describe('State (DRAFT is visible only to teachers and needs no confirmation)'),
-      scheduled: z.string().optional().describe('Scheduled publish time'),
+      state: z.enum(['PUBLISHED', 'DRAFT']).optional().describe('State (an unscheduled DRAFT is visible only to teachers and needs no confirmation)'),
+      scheduled: z.string().optional().describe('Scheduled publish time (asks the user to confirm, even for a DRAFT)'),
       account: accountParam,
       confirmToken: confirmTokenParam,
     }),
@@ -603,9 +599,10 @@ export function registerClassroomTools(server: McpServer): void {
     const args: GogArg[] = ['classroom', 'announcements', 'create', pos(courseId), `--text=${text}`];
     if (state) args.push(`--state=${state}`);
     if (scheduled) args.push(`--scheduled=${scheduled}`);
-    // A draft reaches nobody until a teacher publishes it: it is this tool's
-    // own staging twin, so it needs no confirmation.
-    if (state !== 'DRAFT') {
+    // An unscheduled draft reaches nobody until a teacher publishes it: it is
+    // this tool's own staging twin, so it needs no confirmation. A scheduled
+    // one publishes itself.
+    if (state !== 'DRAFT' || scheduled) {
       const read = await readCourse(courseId, account);
       if (read.error) return read.error;
       const publishes = scheduled ? `at ${scheduled}` : 'immediately';

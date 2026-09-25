@@ -176,7 +176,7 @@ student, spreadsheet or messages — rather than an opaque id:
 | Gmail | `gog_gmail_send`, `_reply`, `_reply_all`, `_forward`, `_autoreply`, `_drafts_send` | always |
 | Chat | `gog_chat_messages_send`, `gog_chat_dm_send` | always |
 | Drive | `gog_drive_share` | always (granting access is the risk; gog sends no share email by default) |
-| Classroom | `gog_classroom_announcements_create` | unless `state` is `DRAFT` (students cannot see drafts) |
+| Classroom | `gog_classroom_announcements_create` | unless `state` is `DRAFT` with no `scheduled` time (students cannot see drafts; a scheduled one publishes itself) |
 | Classroom | `gog_classroom_invitations_create` | always |
 | Calendar | `gog_calendar_create` | only with attendees (the event lands on their calendars; no invitation email is sent) |
 | Calendar | `gog_calendar_update` | only for a change guests can see, on an event that has or gains guests (reminder-only changes never ask) |
@@ -188,7 +188,7 @@ student, spreadsheet or messages — rather than an opaque id:
 | Chat | `gog_chat_spaces_create` | only with `members` (they are added and notified) |
 | Classroom | `gog_classroom_students_add` | unless `userId` is `me` |
 | Classroom | `gog_classroom_teachers_add` | always (a co-teacher sees every student's work) |
-| Classroom | `gog_classroom_coursework_create` | unless `state` is `DRAFT` |
+| Classroom | `gog_classroom_coursework_create` | unless `state` is `DRAFT` with no `scheduled` time |
 | Classroom | `gog_classroom_submissions_return` | always (the student is notified and sees the grade) |
 | Classroom | `gog_classroom_courses_delete`, `gog_classroom_coursework_delete` | always (submissions go with them) |
 | Drive / Docs | `gog_drive_comments_add`, `_reply`, `gog_docs_comments_add`, `_reply` | always (the owner, the thread and anyone +mentioned are notified) |

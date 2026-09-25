@@ -252,10 +252,11 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_coursework_create', {
-    description: 'Create a new coursework item (assignment, question, etc.) in a course. Unless state is DRAFT (which '
-      + 'students cannot see), the class is notified, so this reads the course and asks the MCP host to show the user a '
-      + 'confirmation prompt with the class, the title, the text, the due date and when it publishes; nothing is posted '
-      + 'unless they accept. To stage one without asking, pass state DRAFT.' + CONFIRM_FALLBACK_DESCRIPTION,
+    description: 'Create a new coursework item (assignment, question, etc.) in a course. Unless state is DRAFT with no '
+      + 'scheduled time (which students cannot see; a scheduled draft publishes itself), the class is notified, so this '
+      + 'reads the course and asks the MCP host to show the user a confirmation prompt with the class, the title, the '
+      + 'text, the due date and when it publishes; nothing is posted unless they accept. To stage one without asking, '
+      + 'pass state DRAFT and no scheduled time.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
@@ -275,8 +276,9 @@ export function registerExtraClassroomTools(server: McpServer): void {
     if (dueTime) args.push(`--due-time=${dueTime}`);
     if (scheduled) args.push(`--scheduled=${scheduled}`);
     if (topic) args.push(`--topic=${topic}`);
-    // A draft reaches nobody until a teacher publishes it.
-    if (state !== 'DRAFT') {
+    // An unscheduled draft reaches nobody until a teacher publishes it; a
+    // scheduled one publishes itself.
+    if (state !== 'DRAFT' || scheduled) {
       const read = await readCourse(courseId, account, runOrDiagnose);
       if (read.error) return read.error;
       const work = {
@@ -337,10 +339,14 @@ export function registerExtraClassroomTools(server: McpServer): void {
       if (read.error) return read.error;
       const current = await readClassroomWork('coursework', courseId, courseworkId, account, runOrDiagnose);
       if (current.error) return current.error;
+      // What the class will see: the new title/description when this call
+      // replaces them, else what the draft says now.
+      const published = description ?? current.work.description;
       const view = {
         course: read.course,
         coursework: { id: courseworkId, title: title ?? current.work.title, state: current.work.state },
         publishes,
+        descriptionPreview: bodyPreview(published),
       };
       const confirmation = await requireDispatchConfirmation(ctx, {
         action: 'classroom.coursework-publish',
@@ -355,7 +361,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
           subject: () => ({
             target: `${courseId}/${courseworkId}`,
             revision: current.work.updateTime,
-            payload: { course: read.course, courseworkId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic },
+            payload: { course: read.course, courseworkId, title, description: published, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic },
             preview: view,
           }),
         },
