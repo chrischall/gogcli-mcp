@@ -101,10 +101,14 @@ missing and skips.
 
 **Dispatch confirmation.** `requireDispatchConfirmation` (`src/dispatch-confirmation.ts`) is the one rail every
 tool that reaches another person goes through: Gmail (via the `requireGmailDispatchConfirmation` wrapper in
-`src/gmail-dispatch-guard.ts`), Chat send and DM, Drive share, Classroom announcement and invitation (and an
+`src/gmail-dispatch-guard.ts`), Chat send, DM and member-seeded space create, Drive share, Drive/Docs comments,
+Classroom announcement, invitation, roster add, coursework create and submission return (and an
 announcement/coursework update that publishes: state PUBLISHED or a schedule), guest-visible Calendar
-create/update/respond, and every `gog_api_call` write (`allowWrite` without `dryRun`), previewed as the exact
-api/version/method/params/body. A new tool that posts, shares, invites or notifies belongs on it. Its escape hatches must refuse the same action: a `vet` on the service's `registerRunTool` covering every gog alias and every flag spelling (`vetChatRun`, `vetCalendarRun`, …; `flagValue` reads both `--f=v` and `--f v`), and an entry in `DISPATCH_API_BLOCKED` (`src/tools/api.ts`) for the raw API method when a dedicated tool has the better preview; otherwise the model forwards the subcommand and nobody is asked (#400). The run vets also refuse what they cannot preview at all — `drive bulk`, calendar `move`/`delete`/`out-of-office`/`propose-time --decline`/auto-declining `focus-time`, classroom roster adds, submission returns, guardian invitations, publishing materials and widening assignees — pointing at the dedicated tool (`refusedInRun`).
+create/update/respond/move/delete, Out of Office with auto-decline, Gmail vacation enable and send-as create, Apps
+Script run, billed Connected Sheets datasource add/update/refresh, permanent deletes (Drive, Gmail batch,
+calendars, courses, coursework), and every `gog_api_call` write (`allowWrite` without `dryRun`), previewed as the
+exact api/version/method/params/body. A new tool that posts, shares, invites, notifies, runs code, bills or destroys
+data for good belongs on it. Its escape hatches must refuse the same action: a `vet` on the service's `registerRunTool` covering every gog alias and every flag spelling (`vetChatRun`, `vetCalendarRun`, …; `flagValue` reads both `--f=v` and `--f v`), and an entry in `DISPATCH_API_BLOCKED` (`src/tools/api.ts`) for the raw API method when a dedicated tool has the better preview; otherwise the model forwards the subcommand and nobody is asked (#400). The run vets also refuse what they cannot preview at all — `drive bulk`, `drive unshare`, `propose-time --decline`, auto-declining `focus-time`, guardian invitations, publishing materials and widening assignees — pointing at a dedicated tool or at Classroom/Calendar (`refusedInRun`).
 Elicitation is primary. When the client declares none AND the call site passes a `DispatchTokenFallback`,
 `MCP_CONFIRM_MODE` decides (ask-user by default, auto, or refuse), through mcp-utils' `confirmationFromEnv` +
 `requireConfirmationWithFallback`. The token mechanism and the env layer both live there, shared with the whole

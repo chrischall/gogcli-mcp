@@ -27,9 +27,20 @@ import {
 // gog's spellings of `send` under `messages` and `dm` (internal/cmd/chat_messages.go, chat_dm.go).
 const CHAT_SEND_WORDS = new Set(['send', 'create', 'post']);
 
-/** gog_chat_run must not post what gog_chat_messages_send / gog_chat_dm_send would ask about. */
+// gog's spellings of `spaces create` (`gog schema` 0.41.0).
+const CHAT_SPACE_CREATE_WORDS = new Set(['create', 'add', 'new']);
+
+/** gog_chat_run must not post, or add people to a space, where the dedicated tools would ask. */
 export function vetChatRun(subcommand: string, args: readonly string[]): string | undefined {
   const sub = subcommand.toLowerCase();
+  if (sub === 'spaces') {
+    // A member-less space reaches nobody; one seeded with --member adds and notifies them.
+    const word = hasCommandWord(args, CHAT_SPACE_CREATE_WORDS);
+    const withMembers = args.some((a) => /^--members?(?:=|$)/i.test(a));
+    return word && withMembers
+      ? gatedElsewhere(`gog chat spaces ${word.toLowerCase()} --member`, 'gog_chat_run', 'adds people to a space', 'gog_chat_spaces_create')
+      : undefined;
+  }
   if (sub !== 'messages' && sub !== 'dm') return undefined;
   const word = hasCommandWord(args, CHAT_SEND_WORDS);
   if (!word) return undefined;
@@ -114,17 +125,37 @@ export function registerChatTools(server: McpServer): void {
 
   server.registerTool('gog_chat_spaces_create', {
     description:
-      'Create a named Chat space, optionally seeding its membership. Members are added immediately and are notified — this '
-      + 'is visible to other people the moment it runs, so confirm the member list before calling it.' + workspaceOnlyNote,
+      'Create a named Chat space, optionally seeding its membership. Members are added immediately and are notified, so '
+      + 'with members this asks the MCP host to show the user a confirmation prompt with the space name and every member '
+      + 'first; nothing is created unless they accept. A space with no members reaches nobody and is created without '
+      + 'asking.' + CONFIRM_FALLBACK_DESCRIPTION + workspaceOnlyNote,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       displayName: z.string().describe('Display name for the new space'),
       members: z.array(z.string()).optional().describe('Initial members, as email addresses or "users/..." resource names'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ displayName, members, account }) => {
+  }, async ({ displayName, members, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['chat', 'spaces', 'create', pos(displayName)];
     if (members) for (const member of members) args.push(`--member=${member}`);
+    if (members?.length) {
+      const space = { displayName, members };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'chat.space-create',
+        message: 'Review and confirm this Chat space — every member is added and notified:',
+        confirmationLabel: 'Confirm that these people should be added to a new space now.',
+        details: space,
+        unsupportedNote: 'Create the space without members instead; the user can add people from Google Chat.',
+        fallback: {
+          tool: 'gog_chat_spaces_create',
+          account,
+          confirmToken,
+          subject: () => ({ target: displayName, payload: space, preview: space }),
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 

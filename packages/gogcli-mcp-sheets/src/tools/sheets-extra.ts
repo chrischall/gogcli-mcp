@@ -2,7 +2,20 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, errorText, payloadArg, pos, confinePath, confineAtFile } from '../../../gogcli-mcp/src/lib.js';
+import {
+  accountParam,
+  runOrDiagnose,
+  run,
+  diagnose,
+  errorText,
+  payloadArg,
+  pos,
+  confinePath,
+  confineAtFile,
+  CONFIRM_FALLBACK_DESCRIPTION,
+  confirmTokenParam,
+  requireDispatchConfirmation,
+} from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // Pull the text out of a single-text-block tool result; undefined for any
@@ -10,6 +23,44 @@ import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 function resultText(result: CallToolResult): string | undefined {
   const first = result.content[0];
   return first?.type === 'text' ? first.text : undefined;
+}
+
+/** A spreadsheet's title from `gog sheets metadata --select=properties.title`. Unreadable output names nothing. */
+export function spreadsheetTitle(raw: string | undefined): string | undefined {
+  try {
+    const parsed = JSON.parse(String(raw)) as { properties?: { title?: unknown }; spreadsheet?: { properties?: { title?: unknown } } } | null;
+    const title = parsed?.spreadsheet?.properties?.title ?? parsed?.properties?.title;
+    return typeof title === 'string' ? title : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What a data source queries and who pays, from `gog sheets datasource describe`,
+ * for a refresh's prompt. Best effort: only the fields found are named.
+ */
+export function dataSourceSnapshot(raw: string | undefined): { billingProject?: string; query?: string; table?: string } {
+  type BigQuerySpec = {
+    projectId?: unknown;
+    querySpec?: { rawQuery?: unknown };
+    tableSpec?: { tableProjectId?: unknown; datasetId?: unknown; tableId?: unknown };
+  };
+  let bq: BigQuerySpec | undefined;
+  try {
+    const parsed = JSON.parse(String(raw)) as ({ dataSource?: { spec?: { bigQuery?: BigQuerySpec } }; spec?: { bigQuery?: BigQuerySpec } }) | null;
+    bq = (parsed?.dataSource ?? parsed)?.spec?.bigQuery;
+  } catch {
+    bq = undefined;
+  }
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  const t = bq?.tableSpec;
+  const table = [t?.tableProjectId, t?.datasetId, t?.tableId].map(str).filter(Boolean).join('.');
+  return {
+    ...(str(bq?.projectId) ? { billingProject: str(bq?.projectId) } : {}),
+    ...(str(bq?.querySpec?.rawQuery) ? { query: str(bq?.querySpec?.rawQuery) } : {}),
+    ...(table ? { table } : {}),
+  };
 }
 
 // Convert a CSS-style hex color ("#FFF5D9", "#FD9", "FFF5D9") to the
@@ -75,6 +126,42 @@ async function checkDateFormatTarget(
     'day offsets, this is almost certainly not what you want. Pass force:true to suppress ' +
     'this warning, or convert the cells to real dates / strings first.'
   );
+}
+
+/**
+ * Fleet audit 2026-09-24 SEC-6: every datasource add / update / refresh starts
+ * a BigQuery job billed to a project, so each asks first — naming the
+ * spreadsheet by title, what will be queried and who pays.
+ */
+async function confirmBilledExecution(
+  ctx: Parameters<typeof requireDispatchConfirmation>[0],
+  o: {
+    tool: string;
+    action: string;
+    account: string | undefined;
+    confirmToken: string | undefined;
+    spreadsheetId: string;
+    target: string;
+    view: Record<string, unknown>;
+  },
+) {
+  const got = await runOrDiagnose(['sheets', 'metadata', pos(o.spreadsheetId), '--select=properties.title'], { account: o.account });
+  if (got.isError) return got;
+  const title = spreadsheetTitle(resultText(got));
+  const view = { spreadsheet: { id: o.spreadsheetId, ...(title !== undefined ? { title } : {}) }, ...o.view };
+  return requireDispatchConfirmation(ctx, {
+    action: o.action,
+    message: 'Review and confirm starting a BigQuery execution — it is billed to the billing project:',
+    confirmationLabel: 'Confirm that this billed BigQuery query should run now.',
+    details: view,
+    unsupportedNote: 'Ask the user to run it from Google Sheets (Data > Data connectors).',
+    fallback: {
+      tool: o.tool,
+      account: o.account,
+      confirmToken: o.confirmToken,
+      subject: () => ({ target: o.target, payload: view, preview: view }),
+    },
+  });
 }
 
 export function registerExtraSheetsTools(server: McpServer): void {
@@ -1144,7 +1231,9 @@ export function registerExtraSheetsTools(server: McpServer): void {
   const bigQueryChargeNote =
     ' COSTS MONEY AND RUNS ASYNCHRONOUSLY: this starts a BigQuery execution billed to the billing project, and returns ' +
     'once the execution has been REQUESTED — not once it has finished. Poll gog_sheets_datasource_describe until its ' +
-    'dataExecutionStatus state is SUCCEEDED or FAILED before treating the data as current.';
+    'dataExecutionStatus state is SUCCEEDED or FAILED before treating the data as current. Because it bills, it first asks ' +
+    'the MCP host to show the user a confirmation prompt naming the spreadsheet, the query or table and the billing ' +
+    'project; nothing runs unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION;
 
   server.registerTool('gog_sheets_datasource_add', {
     description:
@@ -1162,8 +1251,9 @@ export function registerExtraSheetsTools(server: McpServer): void {
       table: z.string().optional().describe('BigQuery table ID. Requires dataset; mutually exclusive with query.'),
       tableProject: z.string().optional().describe('BigQuery project that owns the table (default: the billing project). Only valid with dataset/table.'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ spreadsheetId, billingProject, query, dataset, table, tableProject, account }) => {
+  }, async ({ spreadsheetId, billingProject, query, dataset, table, tableProject, account, confirmToken }, ctx) => {
     const tableFlags = tableProject !== undefined || dataset !== undefined || table !== undefined;
     if (query !== undefined && tableFlags) {
       throw new Error('query and the table fields (dataset, table, tableProject) are mutually exclusive — a data source is backed by one or the other.');
@@ -1176,6 +1266,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (tableProject) args.push(`--table-project=${tableProject}`);
     if (dataset) args.push(`--dataset=${dataset}`);
     if (table) args.push(`--table=${table}`);
+    const source = query !== undefined ? { query } : { table: [tableProject ?? billingProject, dataset, table].join('.') };
+    const confirmation = await confirmBilledExecution(ctx, {
+      tool: 'gog_sheets_datasource_add', action: 'sheets.datasource-add', account, confirmToken, spreadsheetId,
+      target: spreadsheetId, view: { billingProject, ...source },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(args, { account });
   });
 
@@ -1196,8 +1292,9 @@ export function registerExtraSheetsTools(server: McpServer): void {
       table: z.string().optional().describe('Replacement table ID. Only valid on a table-backed source.'),
       tableProject: z.string().optional().describe('Replacement project owning the table. Only valid on a table-backed source.'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ spreadsheetId, dataSourceId, billingProject, query, dataset, table, tableProject, account }) => {
+  }, async ({ spreadsheetId, dataSourceId, billingProject, query, dataset, table, tableProject, account, confirmToken }, ctx) => {
     const tableFlags = tableProject !== undefined || dataset !== undefined || table !== undefined;
     if (query !== undefined && tableFlags) {
       throw new Error('query and the table fields (dataset, table, tableProject) are mutually exclusive — a data source is backed by one or the other.');
@@ -1211,6 +1308,12 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (tableProject !== undefined) args.push(`--table-project=${tableProject}`);
     if (dataset !== undefined) args.push(`--dataset=${dataset}`);
     if (table !== undefined) args.push(`--table=${table}`);
+    const changes = Object.fromEntries(Object.entries({ billingProject, query, tableProject, dataset, table }).filter(([, v]) => v !== undefined));
+    const confirmation = await confirmBilledExecution(ctx, {
+      tool: 'gog_sheets_datasource_update', action: 'sheets.datasource-update', account, confirmToken, spreadsheetId,
+      target: `${spreadsheetId}/${dataSourceId}`, view: { dataSourceId, changes },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(args, { account });
   });
 
@@ -1240,10 +1343,19 @@ export function registerExtraSheetsTools(server: McpServer): void {
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
       forceRefresh: z.boolean().optional().describe('Refresh even when the previous execution failed'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ spreadsheetId, dataSourceId, forceRefresh, account }) => {
+  }, async ({ spreadsheetId, dataSourceId, forceRefresh, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['sheets', 'datasource', 'refresh', pos(spreadsheetId), pos(dataSourceId)];
     if (forceRefresh) args.push('--force-refresh');
+    const described = await runOrDiagnose(['sheets', 'datasource', 'describe', pos(spreadsheetId), pos(dataSourceId)], { account });
+    if (described.isError) return described;
+    const confirmation = await confirmBilledExecution(ctx, {
+      tool: 'gog_sheets_datasource_refresh', action: 'sheets.datasource-refresh', account, confirmToken, spreadsheetId,
+      target: `${spreadsheetId}/${dataSourceId}`,
+      view: { dataSourceId, ...dataSourceSnapshot(resultText(described)), forceRefresh: Boolean(forceRefresh) },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(args, { account });
   });
 

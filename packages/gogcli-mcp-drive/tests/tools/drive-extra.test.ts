@@ -18,7 +18,10 @@ let harness: TestHarness;
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
-  harness = await createTestHarness(registerExtraDriveTools);
+  // The comment tools ask first (drive-extra-gates.test.ts covers the prompts); here the user accepts.
+  harness = await createTestHarness(registerExtraDriveTools, {
+    elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+  });
 });
 
 describe('gog_drive_download', () => {

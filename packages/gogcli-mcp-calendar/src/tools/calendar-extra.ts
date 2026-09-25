@@ -1,9 +1,37 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken, pos} from '../../../gogcli-mcp/src/lib.js';
+import {
+  accountParam,
+  runOrDiagnose,
+  pageTokenParam,
+  pageAliasParam,
+  resolvePageToken,
+  pos,
+  CONFIRM_FALLBACK_DESCRIPTION,
+  confirmTokenParam,
+  eventSnapshot,
+  requireDispatchConfirmation,
+  resultText,
+} from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 const meetAccess = z.enum(['open', 'trusted', 'restricted']);
+
+/** A calendar by name, for a delete's prompt; `etag` apart as the token's revision. Unreadable output names nothing. */
+export function calendarSnapshot(raw: string, calendarId: string): { id: string; summary?: string; etag?: string } {
+  let cal: { summary?: unknown; etag?: unknown } | undefined;
+  try {
+    const parsed = JSON.parse(raw) as ({ result?: typeof cal } & NonNullable<typeof cal>) | null;
+    cal = parsed?.result ?? parsed ?? undefined;
+  } catch {
+    cal = undefined;
+  }
+  return {
+    id: calendarId,
+    ...(typeof cal?.summary === 'string' ? { summary: cal.summary } : {}),
+    ...(typeof cal?.etag === 'string' ? { etag: cal.etag } : {}),
+  };
+}
 
 // Meet spaces are the conferencing surface attached to calendar events,
 // so they live in the calendar sub-package.
@@ -241,35 +269,63 @@ export function registerExtraCalendarTools(server: McpServer): void {
   });
 
   server.registerTool('gog_calendar_move', {
-    description: 'Move an event from one calendar to another; the destination calendar becomes the organizer.',
+    description: 'Move an event from one calendar to another; the destination calendar becomes the organizer. With '
+      + 'sendUpdates all or externalOnly Google emails the guests, so this reads the event and asks the MCP host to '
+      + 'show the user a confirmation prompt with the event, its guests and the destination first; a move that '
+      + 'notifies nobody (the default) is made without asking.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: false },
     inputSchema: z.object({
       calendarId: z.string().describe('Source calendar ID'),
       eventId: z.string().describe('Event ID'),
       destinationCalendarId: z.string().describe('Destination calendar ID that becomes the event organizer'),
-      sendUpdates: z.enum(['all', 'externalOnly', 'none']).optional().describe('Notification mode (default: none)'),
+      sendUpdates: z.enum(['all', 'externalOnly', 'none']).optional().describe('Notification mode (default: none). all / externalOnly email the guests and ask the user first.'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ calendarId, eventId, destinationCalendarId, sendUpdates, account }) => {
+  }, async ({ calendarId, eventId, destinationCalendarId, sendUpdates, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['calendar', 'move', pos(calendarId), pos(eventId), pos(destinationCalendarId)];
     if (sendUpdates) args.push(`--send-updates=${sendUpdates}`);
+    if (sendUpdates === 'all' || sendUpdates === 'externalOnly') {
+      const got = await runOrDiagnose(['calendar', 'event', pos(calendarId), pos(eventId)], { account });
+      if (got.isError) return got;
+      const { etag, ...event } = eventSnapshot(resultText(got));
+      const view = { calendarId, eventId, event, destinationCalendarId, emails: sendUpdates === 'all' ? 'every guest' : 'guests outside your domain' };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'calendar.move',
+        message: 'Review and confirm moving this event — Google will email the guests:',
+        confirmationLabel: 'Confirm that this event should be moved and the guests notified now.',
+        details: view,
+        unsupportedNote: 'Move it with sendUpdates none instead, which notifies nobody.',
+        fallback: {
+          tool: 'gog_calendar_move',
+          account,
+          confirmToken,
+          subject: () => ({ target: `${calendarId}/${eventId}`, revision: etag, payload: view, preview: view }),
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 
   server.registerTool('gog_calendar_out_of_office', {
-    description: 'Create an Out of Office event that auto-declines invitations during the block.',
+    description: 'Create an Out of Office event that auto-declines invitations during the block. gog auto-declines '
+      + 'EVERY conflicting meeting by default (autoDecline all), and each organizer is notified, so unless autoDecline '
+      + 'is none this asks the MCP host to show the user a confirmation prompt with the window, the decline mode and '
+      + 'the message first; nothing is created unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       from: z.string().describe('Start date or datetime (RFC3339 or YYYY-MM-DD)'),
       to: z.string().describe('End date or datetime (RFC3339 or YYYY-MM-DD)'),
       calendarId: z.string().optional().describe('Calendar ID (default: primary)'),
       summary: z.string().optional().describe('Out of office title (default: "Out of office")'),
-      autoDecline: z.enum(['none', 'all', 'new']).optional().describe('Auto-decline mode (default: all)'),
+      autoDecline: z.enum(['none', 'all', 'new']).optional().describe('Auto-decline mode (default: all — declines existing AND new conflicting meetings; none notifies nobody and does not ask)'),
       declineMessage: z.string().optional().describe('Message for declined invitations'),
       allDay: z.boolean().optional().describe('Create as an all-day event'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ from, to, calendarId, summary, autoDecline, declineMessage, allDay, account }) => {
+  }, async ({ from, to, calendarId, summary, autoDecline, declineMessage, allDay, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['calendar', 'out-of-office'];
     if (calendarId) args.push(pos(calendarId));
     args.push(`--from=${from}`);
@@ -278,6 +334,32 @@ export function registerExtraCalendarTools(server: McpServer): void {
     if (autoDecline) args.push(`--auto-decline=${autoDecline}`);
     if (declineMessage) args.push(`--decline-message=${declineMessage}`);
     if (allDay) args.push('--all-day');
+    if (autoDecline !== 'none') {
+      const mode = autoDecline ?? 'all';
+      const view = {
+        calendarId: calendarId ?? 'primary',
+        from,
+        to,
+        allDay: Boolean(allDay),
+        summary: summary ?? 'Out of office',
+        declines: mode === 'all' ? 'every existing and new conflicting meeting' : 'new conflicting invitations',
+        declineMessage,
+      };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'calendar.out-of-office',
+        message: 'Review and confirm this Out of Office block — conflicting meetings are declined and their organizers notified:',
+        confirmationLabel: 'Confirm that meetings in this window should be auto-declined.',
+        details: view,
+        unsupportedNote: 'Create it with autoDecline none instead; the user can turn on auto-decline in Google Calendar.',
+        fallback: {
+          tool: 'gog_calendar_out_of_office',
+          account,
+          confirmToken,
+          subject: () => ({ target: view.calendarId, payload: view, preview: view }),
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 
@@ -293,13 +375,36 @@ export function registerExtraCalendarTools(server: McpServer): void {
   });
 
   server.registerTool('gog_calendar_delete_calendar', {
-    description: 'Permanently delete an owned secondary calendar and all its events. Cannot delete your primary calendar. To merely remove a calendar you do not own from your list, use gog_calendar_unsubscribe.',
+    description: 'Permanently delete an owned secondary calendar and all its events. Cannot delete your primary calendar. '
+      + 'To merely remove a calendar you do not own from your list, use gog_calendar_unsubscribe. Reads the calendar and '
+      + 'asks the MCP host to show the user a confirmation prompt naming it first; nothing is deleted unless they accept.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Owned secondary calendar ID or alias'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ calendarId, account }) => {
+  }, async ({ calendarId, account, confirmToken }, ctx) => {
+    const got = await runOrDiagnose(
+      ['api', 'call', 'calendar', 'v3', 'calendars.get', `--params=${JSON.stringify({ calendarId })}`], { account });
+    if (got.isError) return got;
+    const { etag, ...calendar } = calendarSnapshot(resultText(got), calendarId);
+    const view = { calendar, deletes: 'the calendar and every event on it, for good' };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'calendar.delete-calendar',
+      message: 'Review and confirm PERMANENTLY deleting this calendar and all of its events:',
+      confirmationLabel: 'Confirm that this calendar should be deleted now.',
+      details: view,
+      unsupportedNote: 'Ask the user to delete it from Google Calendar\'s settings, or use gog_calendar_unsubscribe to only hide it.',
+      fallback: {
+        tool: 'gog_calendar_delete_calendar',
+        account,
+        confirmToken,
+        subject: () => ({ target: calendarId, revision: etag, payload: view, preview: view }),
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(['calendar', 'delete-calendar', pos(calendarId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 

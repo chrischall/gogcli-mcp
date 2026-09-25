@@ -174,6 +174,38 @@ export function flagValue(args: readonly string[], name: string): string | undef
   return undefined;
 }
 
+// gog's spellings of `comments create|reply` under drive and docs (`gog schema` 0.41.0).
+const COMMENT_ADD_WORDS = new Set(['create', 'add', 'new']);
+const COMMENT_REPLY_WORDS = new Set(['reply', 'respond']);
+
+/** True when a forwarded flag list asks for `--<flag>` (bare, or =anything but false). */
+export function hasTrueFlag(args: readonly string[], flag: string): boolean {
+  const name = `--${flag}`;
+  return args.some((a) => {
+    const lower = a.toLowerCase();
+    if (lower === name) return true;
+    return lower.startsWith(`${name}=`) && lower.slice(name.length + 1) !== 'false';
+  });
+}
+
+/**
+ * gog_{drive,docs}_run must not post the comments gog_*_comments_add / _reply
+ * would ask about: a comment notifies the file's owner and everyone it +mentions.
+ */
+export function vetCommentsRun(service: 'drive' | 'docs', subcommand: string, args: readonly string[]): string | undefined {
+  if (subcommand.toLowerCase() !== 'comments') return undefined;
+  const reply = hasCommandWord(args, COMMENT_REPLY_WORDS);
+  if (reply) {
+    return gatedElsewhere(`gog ${service} comments ${reply.toLowerCase()}`, `gog_${service}_run`,
+      'notifies the comment thread', `gog_${service}_comments_reply`);
+  }
+  const add = hasCommandWord(args, COMMENT_ADD_WORDS);
+  return add
+    ? gatedElsewhere(`gog ${service} comments ${add.toLowerCase()}`, `gog_${service}_run`,
+      'notifies the file\'s owner and anyone it mentions', `gog_${service}_comments_add`)
+    : undefined;
+}
+
 export interface DispatchConfirmationOptions {
   /** Stable id of the dispatch, echoed in every result (`gmail.send`, `drive.share`, …). */
   action: string;

@@ -8,12 +8,18 @@ import { run, runBinary } from '../runner.js';
 import { accountParam, diagnose, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
-import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, refusedInRun, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, hasTrueFlag, refusedInRun, requireDispatchConfirmation, vetCommentsRun, resultText } from '../dispatch-confirmation.js';
 
-/** gog_drive_run must not grant access that gog_drive_share would ask about. */
-export function vetDriveRun(subcommand: string, _args: readonly string[]): string | undefined {
+// gog's spellings (internal/cmd/drive*.go; aliases per `gog schema` 0.41.0).
+const DRIVE_DELETE_WORDS = new Set(['delete', 'rm', 'del']);
+
+/** gog_drive_run must not do what gog_drive_share / comments / a permanent delete would ask about. */
+export function vetDriveRun(subcommand: string, args: readonly string[]): string | undefined {
   const sub = subcommand.toLowerCase();
   if (sub === 'share') return gatedElsewhere('gog drive share', 'gog_drive_run', 'grants access to a file', 'gog_drive_share');
+  if (DRIVE_DELETE_WORDS.has(sub) && hasTrueFlag(args, 'permanent')) {
+    return gatedElsewhere(`gog drive ${sub} --permanent`, 'gog_drive_run', 'deletes a file for good, bypassing the trash', 'gog_drive_delete');
+  }
   // `bulk update-role --from=reader --to=writer` (and `bulk remove-public`)
   // rewrites the permissions of every matching file under a folder, with no
   // positional path for the path guard to see and no file for a preview to
@@ -27,7 +33,7 @@ export function vetDriveRun(subcommand: string, _args: readonly string[]): strin
   if (sub === 'unshare') {
     return refusedInRun('gog drive unshare', 'gog_drive_run', "removes someone's access to a file", 'Use gog_drive_unshare.');
   }
-  return undefined;
+  return vetCommentsRun('drive', sub, args);
 }
 
 // A native Google Doc exports to text directly; anything else (PDF, image,
@@ -47,6 +53,36 @@ export function shareTargetMeta(raw: string): { name?: string; mimeType?: string
   } catch {
     return {};
   }
+}
+
+/**
+ * A Drive/Docs comment as a reply's prompt shows it: who wrote it, what it
+ * says and whether it is resolved. Unreadable output names nothing.
+ */
+export function commentSnapshot(raw: string): { author?: string; content?: string; resolved?: boolean } {
+  let comment: { content?: unknown; resolved?: unknown; author?: { displayName?: unknown; emailAddress?: unknown } } | undefined;
+  try {
+    const parsed = JSON.parse(raw) as ({ comment?: typeof comment } & NonNullable<typeof comment>) | null;
+    comment = parsed?.comment ?? parsed ?? undefined;
+  } catch {
+    comment = undefined;
+  }
+  const name = typeof comment?.author?.displayName === 'string' ? comment.author.displayName : undefined;
+  const email = typeof comment?.author?.emailAddress === 'string' ? comment.author.emailAddress : undefined;
+  const author = name && email ? `${name} <${email}>` : name ?? email;
+  return {
+    ...(author ? { author } : {}),
+    ...(typeof comment?.content === 'string' ? { content: comment.content } : {}),
+    ...(typeof comment?.resolved === 'boolean' ? { resolved: comment.resolved } : {}),
+  };
+}
+
+/**
+ * The people a comment's text +mentions (or @mentions) by email — Drive
+ * notifies each of them, so a comment's prompt names them.
+ */
+export function commentMentions(text: string): string[] {
+  return [...new Set(text.match(/(?<=[+@])[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) ?? [])];
 }
 
 function fileMeta(raw: string): { name?: string; mimeType?: string; size?: number } {
@@ -184,16 +220,39 @@ export function registerDriveTools(server: McpServer): void {
   });
 
   server.registerTool('gog_drive_delete', {
-    description: 'Move a Google Drive file to trash, or permanently delete it with permanent=true (irreversible).',
+    description: 'Move a Google Drive file to trash, or permanently delete it with permanent=true (irreversible). A '
+      + 'permanent delete reads the file and asks the MCP host to show the user a confirmation prompt naming it first; '
+      + 'nothing is deleted unless they accept. Moving to trash is recoverable and does not ask.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID to delete'),
-      permanent: z.boolean().optional().describe('Permanently delete instead of moving to trash (irreversible)'),
+      permanent: z.boolean().optional().describe('Permanently delete instead of moving to trash (irreversible; asks the user first)'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ fileId, permanent, account }) => {
+  }, async ({ fileId, permanent, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['drive', 'delete', pos(fileId)];
-    if (permanent) args.push('--permanent');
+    if (permanent) {
+      const got = await runOrDiagnose(['drive', 'get', pos(fileId)], { account });
+      if (got.isError) return got;
+      const target = { file: { id: fileId, ...shareTargetMeta(resultText(got)) }, permanent: true };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'drive.delete-permanent',
+        message: 'Review and confirm PERMANENTLY deleting this file — it skips the trash and cannot be recovered:',
+        confirmationLabel: 'Confirm that this file should be permanently deleted now.',
+        details: target,
+        unsupportedNote: 'Move it to the trash instead (permanent=false); the user can empty the trash from Google Drive.',
+        fallback: {
+          tool: 'gog_drive_delete',
+          account,
+          confirmToken,
+          subject: () => ({ target: fileId, payload: target, preview: target }),
+        },
+      });
+      if (confirmation) return confirmation;
+      args.push('--permanent');
+    }
     // gog gates drive delete behind a confirmation; the runner injects
     // --no-input, so without --force it refuses at runtime.
     args.push('--force');

@@ -19,7 +19,7 @@ export {
 // The reply/reply-all schema and flag builder live in the base package so the
 // gmail sub-package's draft-side twins reuse ONE definition — registering the
 // same tool name from both registrar lists would be a duplicate-name error.
-export { replySchema, appendReplyFlags } from './tools/gmail.js';
+export { replySchema, appendReplyFlags, parseMetadataHeaders } from './tools/gmail.js';
 export type { ReplyFlags } from './tools/gmail.js';
 // The gmail confirmation gate — gog_gmail_reply/send/forward/autoreply are
 // the only tools that dispatch mail irreversibly on the first call. The
@@ -40,8 +40,11 @@ export {
 } from './gmail-dispatch-guard.js';
 // The service-neutral rail for every other tool that reaches another person.
 export { requireDispatchConfirmation } from './dispatch-confirmation.js';
-export { readCourse, readClassroomWork } from './tools/classroom.js';
+export { readCourse, readCoursework, readClassroomWork, studentLabel } from './tools/classroom.js';
 export type { ClassroomWork, ClassroomWorkKind } from './tools/classroom.js';
+// Pure parsers a sub-package's confirmation prompt reuses on its own reads.
+export { eventSnapshot } from './tools/calendar.js';
+export { commentMentions, commentSnapshot, shareTargetMeta } from './tools/drive.js';
 export type { AttachmentDetail, DispatchTokenFallback, TokenSubject } from './gmail-dispatch-guard.js';
 export { run, runBinary, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
 // Sub-package tools that read gog JSON through bare `run()` (rather than the

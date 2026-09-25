@@ -7,6 +7,10 @@ import { pos } from '../../src/argv.js';
 vi.mock('../../src/runner.js');
 
 const setupHandlers = () => createTestHarness(registerAppScriptTools);
+// gog_appscript_run_function asks first (dispatch-gates-more.test.ts covers the prompt itself).
+const acceptingHandlers = () => createTestHarness(registerAppScriptTools, {
+  elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+});
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -114,14 +118,14 @@ describe('gog_appscript_versions', () => {
 describe('gog_appscript_run_function', () => {
   it('runs a deployed function', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const harness = await setupHandlers();
+    const harness = await acceptingHandlers();
     await harness.callTool('gog_appscript_run_function', { scriptId: 'S1', functionName: 'doWork' });
     expect(runner.run).toHaveBeenCalledWith(['appscript', 'run', pos('S1'), pos('doWork')], { account: undefined });
   });
 
   it('passes params and --dev-mode', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
-    const harness = await setupHandlers();
+    const harness = await acceptingHandlers();
     await harness.callTool('gog_appscript_run_function', {
       scriptId: 'S1', functionName: 'doWork', params: '["a",1]', devMode: true,
     });

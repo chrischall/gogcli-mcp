@@ -1,6 +1,25 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, paginationParams, pushPaginationFlags, pageTokenParam, pageAliasParam, resolvePageToken, inlineFileArg, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
+import {
+  accountParam,
+  runOrDiagnose,
+  paginationParams,
+  pushPaginationFlags,
+  pageTokenParam,
+  pageAliasParam,
+  resolvePageToken,
+  inlineFileArg,
+  pos,
+  confinePath,
+  bodyPreview,
+  commentMentions,
+  commentSnapshot,
+  CONFIRM_FALLBACK_DESCRIPTION,
+  confirmTokenParam,
+  requireDispatchConfirmation,
+  resultText,
+  shareTargetMeta,
+} from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDriveTools(server: McpServer): void {
@@ -222,14 +241,39 @@ export function registerExtraDriveTools(server: McpServer): void {
   });
 
   server.registerTool('gog_drive_comments_add', {
-    description: 'Add a new comment to a Drive file.',
+    description: 'Add a new comment to a Drive file. Drive notifies the file\'s owner and everyone the text +mentions, so '
+      + 'this reads the file and asks the MCP host to show the user a confirmation prompt with the file, the text and who '
+      + 'is mentioned first; nothing is posted unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: false },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       content: z.string().describe('Comment text'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ fileId, content, account }) => {
+  }, async ({ fileId, content, account, confirmToken }, ctx) => {
+    const got = await runOrDiagnose(['drive', 'get', pos(fileId)], { account });
+    if (got.isError) return got;
+    const { name } = shareTargetMeta(resultText(got));
+    const file = { id: fileId, ...(name !== undefined ? { name } : {}) };
+    const mentions = commentMentions(content);
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'drive.comment-add',
+      message: 'Review and confirm this comment — the file\'s owner and anyone mentioned are notified:',
+      confirmationLabel: 'Confirm that this comment should be posted now.',
+      details: { file, textPreview: bodyPreview(content), mentions },
+      unsupportedNote: 'Ask the user to comment from Google Drive.',
+      fallback: {
+        tool: 'gog_drive_comments_add',
+        account,
+        confirmToken,
+        subject: () => {
+          const view = { file, text: content, mentions };
+          return { target: fileId, payload: view, preview: view };
+        },
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(['drive', 'comments', 'create', pos(fileId), pos(content)], { account });
   });
 
@@ -259,7 +303,10 @@ export function registerExtraDriveTools(server: McpServer): void {
   });
 
   server.registerTool('gog_drive_comments_reply', {
-    description: 'Reply to an existing comment on a Drive file. Pass `action: "resolve"` or `"reopen"` to atomically flip the parent comment\'s resolved state via the Drive API\'s Reply.action field — avoids the older workaround of deleting the comment (which destroys review-thread context).',
+    description: 'Reply to an existing comment on a Drive file. Pass `action: "resolve"` or `"reopen"` to atomically flip the parent comment\'s resolved state via the Drive API\'s Reply.action field — avoids the older workaround of deleting the comment (which destroys review-thread context). '
+      + 'Everyone on the thread and anyone the reply +mentions is notified, so this reads the file and the comment and '
+      + 'asks the MCP host to show the user a confirmation prompt with both and the reply first; nothing is posted unless '
+      + 'they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: false },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
@@ -267,10 +314,36 @@ export function registerExtraDriveTools(server: McpServer): void {
       content: z.string().describe('Reply text'),
       action: z.enum(['resolve', 'reopen']).optional().describe('Optional action on the parent comment alongside the reply'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ fileId, commentId, content, action, account }) => {
+  }, async ({ fileId, commentId, content, action, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['drive', 'comments', 'reply', pos(fileId), pos(commentId), pos(content)];
     if (action) args.push(`--action=${action}`);
+    const got = await runOrDiagnose(['drive', 'get', pos(fileId)], { account });
+    if (got.isError) return got;
+    const thread = await runOrDiagnose(['drive', 'comments', 'get', pos(fileId), pos(commentId)], { account });
+    if (thread.isError) return thread;
+    const { name } = shareTargetMeta(resultText(got));
+    const file = { id: fileId, ...(name !== undefined ? { name } : {}) };
+    const replyingTo = commentSnapshot(resultText(thread));
+    const mentions = commentMentions(content);
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'drive.comment-reply',
+      message: 'Review and confirm this reply — everyone on the thread and anyone mentioned is notified:',
+      confirmationLabel: 'Confirm that this reply should be posted now.',
+      details: { file, replyingTo, textPreview: bodyPreview(content), mentions, ...(action ? { action } : {}) },
+      unsupportedNote: 'Ask the user to reply from Google Drive.',
+      fallback: {
+        tool: 'gog_drive_comments_reply',
+        account,
+        confirmToken,
+        subject: () => {
+          const view = { file, replyingTo, text: content, mentions, ...(action ? { action } : {}) };
+          return { target: `${fileId}/${commentId}`, payload: view, preview: view };
+        },
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(args, { account });
   });
 

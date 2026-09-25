@@ -5,14 +5,16 @@ import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
 import { bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, flagValue, gatedElsewhere, hasCommandWord, refusedInRun, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
 
-// gog's spellings (internal/cmd/classroom*.go), each alias mapped to the
-// resource it names.
+// gog's spellings (internal/cmd/classroom*.go; aliases per `gog schema` 0.41.0),
+// each alias mapped to the resource it names.
 const CLASSROOM_CREATE_WORDS = new Set(['create', 'add', 'new']);
+const CLASSROOM_DELETE_WORDS = new Set(['delete', 'rm', 'del', 'remove']);
 const CLASSROOM_UPDATE_WORDS = new Set(['update', 'edit', 'set']);
 const CLASSROOM_RETURN_WORDS = new Set(['return', 'send']);
 const CLASSROOM_ASSIGNEE_WORDS = new Set(['assignees', 'assign']);
-type ClassroomGroup = 'announcements' | 'invitations' | 'coursework' | 'materials' | 'students' | 'teachers' | 'submissions' | 'guardian-invitations';
+type ClassroomGroup = 'courses' | 'announcements' | 'invitations' | 'coursework' | 'materials' | 'students' | 'teachers' | 'submissions' | 'guardian-invitations';
 const CLASSROOM_GROUPS: Record<string, ClassroomGroup> = {
+  courses: 'courses', course: 'courses',
   announcements: 'announcements', announcement: 'announcements', ann: 'announcements',
   invitations: 'invitations', invitation: 'invitations', invites: 'invitations',
   coursework: 'coursework', work: 'coursework',
@@ -44,9 +46,11 @@ function widensAssignees(args: readonly string[]): boolean {
 
 /**
  * gog_classroom_run must not post, publish, enrol, return or invite what the
- * dedicated tools would ask about (#400; SEC-3, fleet-audit #932). Publishing
- * through `update --state=PUBLISHED` was the two-step around the create gate
- * that closed for Gmail drafts, so the update words are vetted on their flags.
+ * dedicated tools would ask about (#400; SEC-3, fleet-audit #932; SEC-6).
+ * Publishing through `update --state=PUBLISHED` was the two-step around the
+ * create gate that closed for Gmail drafts, so the update words are vetted on
+ * their flags. Deletes that destroy a course or coursework (and every
+ * submission to it) go to the tools that ask first.
  */
 export function vetClassroomRun(subcommand: string, args: readonly string[]): string | undefined {
   const sub = subcommand.toLowerCase();
@@ -56,6 +60,7 @@ export function vetClassroomRun(subcommand: string, args: readonly string[]): st
   const what = (word: string) => `gog classroom ${sub} ${word.toLowerCase()}`;
   const create = hasCommandWord(args, CLASSROOM_CREATE_WORDS);
   const update = hasCommandWord(args, CLASSROOM_UPDATE_WORDS);
+  const remove = hasCommandWord(args, CLASSROOM_DELETE_WORDS);
   const widenedAssignees = (): string | undefined => {
     const word = hasCommandWord(args, CLASSROOM_ASSIGNEE_WORDS);
     return word && widensAssignees(args)
@@ -63,6 +68,8 @@ export function vetClassroomRun(subcommand: string, args: readonly string[]): st
       : undefined;
   };
   switch (group) {
+    case 'courses':
+      return remove ? gatedElsewhere(what(remove), via, 'deletes a course', 'gog_classroom_courses_delete') : undefined;
     case 'announcements':
       if (create) return gatedElsewhere(what(create), via, 'posts to a class', 'gog_classroom_announcements_create');
       if (update && publishesToStudents(args)) return gatedElsewhere(what(update), via, 'publishes an announcement to a class', 'gog_classroom_announcements_update');
@@ -70,9 +77,10 @@ export function vetClassroomRun(subcommand: string, args: readonly string[]): st
     case 'invitations':
       return create ? gatedElsewhere(what(create), via, 'invites someone to a class', 'gog_classroom_invitations_create') : undefined;
     case 'coursework':
-      if (create && createsVisibleWork(args)) {
-        return refusedInRun(what(create), via, 'publishes work to students', 'Use gog_classroom_coursework_create, or create it with --state=DRAFT and no --scheduled.');
-      }
+      // An unscheduled DRAFT reaches nobody, and gog_classroom_coursework_create
+      // does not ask about one either; publishing it later is the update below.
+      if (create && createsVisibleWork(args)) return gatedElsewhere(what(create), via, 'posts coursework to a class', 'gog_classroom_coursework_create');
+      if (remove) return gatedElsewhere(what(remove), via, 'deletes coursework and every submission to it', 'gog_classroom_coursework_delete');
       if (update && publishesToStudents(args)) return gatedElsewhere(what(update), via, 'publishes work to students', 'gog_classroom_coursework_update');
       return widenedAssignees();
     case 'materials':
@@ -84,16 +92,74 @@ export function vetClassroomRun(subcommand: string, args: readonly string[]): st
       if (update && publishesToStudents(args)) return refusedInRun(what(update), via, 'publishes material to students', 'Ask the user to publish it from Classroom.');
       return undefined;
     case 'students':
-      return create ? refusedInRun(what(create), via, 'enrols someone in a class', 'Use gog_classroom_students_add.') : undefined;
+      return create ? gatedElsewhere(what(create), via, 'enrols someone in a class', 'gog_classroom_students_add') : undefined;
     case 'teachers':
-      return create ? refusedInRun(what(create), via, "gives someone a teacher's access to a class and its roster", 'Use gog_classroom_teachers_add.') : undefined;
+      return create ? gatedElsewhere(what(create), via, "gives someone a teacher's access to a class and its roster", 'gog_classroom_teachers_add') : undefined;
     case 'submissions': {
       const word = hasCommandWord(args, CLASSROOM_RETURN_WORDS);
-      return word ? refusedInRun(what(word), via, 'returns work to a student, who is notified', 'Use gog_classroom_submissions_return.') : undefined;
+      return word ? gatedElsewhere(what(word), via, 'returns work to a student, who is notified', 'gog_classroom_submissions_return') : undefined;
     }
     case 'guardian-invitations':
       return create ? refusedInRun(what(create), via, 'emails a guardian invitation', 'Ask the user to invite the guardian from Classroom.') : undefined;
   }
+}
+
+/**
+ * The course a Classroom dispatch reaches, for its confirmation prompt: a user
+ * approving "post to 123456789" cannot tell which class that is. Read on every
+ * call, so it is also the token fallback's phase-2 re-read. Unreadable output
+ * names nothing rather than throwing.
+ */
+export async function readCourse(
+  courseId: string,
+  account: string | undefined,
+  // A sub-package passes the runOrDiagnose it imported from lib.js, so its own
+  // tests' mock of that seam covers this read too.
+  runner: typeof runOrDiagnose = runOrDiagnose,
+) {
+  const got = await runner(['classroom', 'courses', 'get', pos(courseId)], { account });
+  if (got.isError) return { error: got };
+  let course: { name?: unknown; section?: unknown } | undefined;
+  try {
+    course = (JSON.parse(resultText(got)) as { course?: typeof course } | null)?.course;
+  } catch {
+    course = undefined;
+  }
+  return {
+    course: {
+      id: courseId,
+      ...(typeof course?.name === 'string' ? { name: course.name } : {}),
+      ...(typeof course?.section === 'string' ? { section: course.section } : {}),
+    },
+  };
+}
+
+/** JSON object under `key` in a gog result, or undefined for unreadable output. */
+function nested(raw: string, key: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+    const inner = parsed?.[key];
+    return inner && typeof inner === 'object' ? inner as Record<string, unknown> : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
+
+/** The coursework a Classroom dispatch touches, by title. Same contract as {@link readCourse}. */
+export async function readCoursework(
+  courseId: string,
+  courseworkId: string,
+  account: string | undefined,
+  runner: typeof runOrDiagnose = runOrDiagnose,
+) {
+  const got = await runner(['classroom', 'coursework', 'get', pos(courseId), pos(courseworkId)], { account });
+  if (got.isError) return { error: got };
+  const work = nested(resultText(got), 'coursework');
+  const title = str(work?.title);
+  return { coursework: { id: courseworkId, ...(title !== undefined ? { title } : {}) } };
 }
 
 /** The Classroom items a publish-through-update reaches students with. */
@@ -142,33 +208,55 @@ export async function readClassroomWork(
 }
 
 /**
- * The course a Classroom dispatch reaches, for its confirmation prompt: a user
- * approving "post to 123456789" cannot tell which class that is. Read on every
- * call, so it is also the token fallback's phase-2 re-read. Unreadable output
- * names nothing rather than throwing.
+ * A submission as a return's prompt shows it — whose it is, its state and
+ * grades — plus its `updateTime` apart, as the token fallback's revision: a
+ * submission re-graded between the phases is DRAFT_CHANGED, not returned with a
+ * grade the user never saw.
  */
-export async function readCourse(
+export async function readSubmission(
   courseId: string,
+  courseworkId: string,
+  submissionId: string,
   account: string | undefined,
-  // A sub-package passes the runOrDiagnose it imported from lib.js, so its own
-  // tests' mock of that seam covers this read too.
   runner: typeof runOrDiagnose = runOrDiagnose,
 ) {
-  const got = await runner(['classroom', 'courses', 'get', pos(courseId)], { account });
+  const got = await runner(['classroom', 'submissions', 'get', pos(courseId), pos(courseworkId), pos(submissionId)], { account });
   if (got.isError) return { error: got };
-  let course: { name?: unknown; section?: unknown } | undefined;
-  try {
-    course = (JSON.parse(resultText(got)) as { course?: typeof course } | null)?.course;
-  } catch {
-    course = undefined;
-  }
-  return {
-    course: {
-      id: courseId,
-      ...(typeof course?.name === 'string' ? { name: course.name } : {}),
-      ...(typeof course?.section === 'string' ? { section: course.section } : {}),
-    },
+  const sub = nested(resultText(got), 'submission');
+  const fields = {
+    student: str(sub?.userId),
+    state: str(sub?.state),
+    draftGrade: num(sub?.draftGrade),
+    assignedGrade: num(sub?.assignedGrade),
   };
+  const updateTime = str(sub?.updateTime);
+  return {
+    submission: {
+      id: submissionId,
+      ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)),
+    } as { id: string; student?: string; state?: string; draftGrade?: number; assignedGrade?: number },
+    ...(updateTime !== undefined ? { updateTime } : {}),
+  };
+}
+
+/**
+ * A person on a course roster by name and email, for a prompt that would
+ * otherwise show only a numeric user id. Best effort: an unreadable or failed
+ * read falls back to the id the caller has.
+ */
+export async function studentLabel(
+  courseId: string,
+  userId: string,
+  account: string | undefined,
+  runner: typeof runOrDiagnose = runOrDiagnose,
+): Promise<string> {
+  const got = await runner(['classroom', 'students', 'get', pos(courseId), pos(userId)], { account });
+  if (got.isError) return userId;
+  const profile = nested(resultText(got), 'student')?.profile as { name?: { fullName?: unknown }; emailAddress?: unknown } | undefined;
+  const name = str(profile?.name?.fullName);
+  const email = str(profile?.emailAddress);
+  if (name && email) return `${name} <${email}>`;
+  return name ?? email ?? userId;
 }
 
 export function registerClassroomTools(server: McpServer): void {
@@ -395,15 +483,43 @@ export function registerClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_submissions_return', {
-    description: 'Return a graded submission to the student.',
+    description: 'Return a graded submission to the student, who is notified and sees the grade. Reads the course, the '
+      + 'coursework and the submission and asks the MCP host to show the user a confirmation prompt with the class, the '
+      + 'assignment, the student and the grade being returned; nothing is returned unless they accept.'
+      + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
       submissionId: z.string().describe('Submission ID'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, courseworkId, submissionId, account }) => {
+  }, async ({ courseId, courseworkId, submissionId, account, confirmToken }, ctx) => {
+    const course = await readCourse(courseId, account);
+    if (course.error) return course.error;
+    const work = await readCoursework(courseId, courseworkId, account);
+    if (work.error) return work.error;
+    const sub = await readSubmission(courseId, courseworkId, submissionId, account);
+    if (sub.error) return sub.error;
+    const submission = sub.submission.student
+      ? { ...sub.submission, student: await studentLabel(courseId, sub.submission.student, account) }
+      : sub.submission;
+    const view = { course: course.course, coursework: work.coursework, submission };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'classroom.submission-return',
+      message: 'Review and confirm returning this work — the student is notified and sees the grade:',
+      confirmationLabel: 'Confirm that this submission should be returned to the student now.',
+      details: view,
+      unsupportedNote: 'Ask the user to return it from Classroom.',
+      fallback: {
+        tool: 'gog_classroom_submissions_return',
+        account,
+        confirmToken,
+        subject: () => ({ target: `${courseId}/${courseworkId}/${submissionId}`, revision: sub.updateTime, payload: view, preview: view }),
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(['classroom', 'submissions', 'return', pos(courseId), pos(courseworkId), pos(submissionId)], { account });
   });
 

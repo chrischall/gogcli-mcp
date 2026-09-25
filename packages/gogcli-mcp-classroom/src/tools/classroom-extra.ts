@@ -1,6 +1,17 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, pos, readCourse, readClassroomWork, requireDispatchConfirmation, bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam } from '../../../gogcli-mcp/src/lib.js';
+import {
+  accountParam,
+  runOrDiagnose,
+  pos,
+  readCourse,
+  readCoursework,
+  readClassroomWork,
+  requireDispatchConfirmation,
+  bodyPreview,
+  CONFIRM_FALLBACK_DESCRIPTION,
+  confirmTokenParam,
+} from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 const courseState = z.enum(['ACTIVE', 'ARCHIVED', 'PROVISIONED', 'DECLINED', 'SUSPENDED']);
@@ -95,13 +106,33 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_courses_delete', {
-    description: 'Delete a Google Classroom course.',
+    description: 'Delete a Google Classroom course — its coursework, submissions and grades go with it, for good. Reads '
+      + 'the course and asks the MCP host to show the user a confirmation prompt naming it first; nothing is deleted '
+      + 'unless they accept. gog_classroom_courses_archive is the reversible alternative.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, account }) => {
+  }, async ({ courseId, account, confirmToken }, ctx) => {
+    const read = await readCourse(courseId, account, runOrDiagnose);
+    if (read.error) return read.error;
+    const view = { course: read.course, deletes: 'the course with all of its coursework, submissions and grades, for good' };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'classroom.course-delete',
+      message: 'Review and confirm PERMANENTLY deleting this course:',
+      confirmationLabel: 'Confirm that this course should be deleted now.',
+      details: view,
+      unsupportedNote: 'Archive it with gog_classroom_courses_archive instead, or ask the user to delete it from Classroom.',
+      fallback: {
+        tool: 'gog_classroom_courses_delete',
+        account,
+        confirmToken,
+        subject: () => ({ target: courseId, payload: view, preview: view }),
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(['classroom', 'courses', 'delete', pos(courseId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 
@@ -128,17 +159,39 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_students_add', {
-    description: 'Add a student to a Google Classroom course.',
+    description: 'Add a student to a Google Classroom course. Adding someone else gives them the class stream and '
+      + 'materials, so this reads the course and asks the MCP host to show the user a confirmation prompt with the class '
+      + 'and the student first; enrolling yourself ("me") does not ask.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
-      userId: z.string().describe('Student user ID (or "me")'),
+      userId: z.string().describe('Student user ID or email (or "me")'),
       enrollmentCode: z.string().optional().describe('Enrollment code (required if adding self via code)'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, userId, enrollmentCode, account }) => {
+  }, async ({ courseId, userId, enrollmentCode, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['classroom', 'students', 'add', pos(courseId), pos(userId)];
     if (enrollmentCode) args.push(`--enrollment-code=${enrollmentCode}`);
+    if (userId.toLowerCase() !== 'me') {
+      const read = await readCourse(courseId, account, runOrDiagnose);
+      if (read.error) return read.error;
+      const view = { course: read.course, student: userId };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'classroom.student-add',
+        message: 'Review and confirm adding this student to the class:',
+        confirmationLabel: 'Confirm that this person should be added to the class now.',
+        details: view,
+        unsupportedNote: 'Ask the user to add them from Classroom, or invite them with gog_classroom_invitations_create.',
+        fallback: {
+          tool: 'gog_classroom_students_add',
+          account,
+          confirmToken,
+          subject: () => ({ target: `${courseId}/${userId}`, payload: view, preview: view }),
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 
@@ -155,14 +208,34 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_teachers_add', {
-    description: 'Add a teacher to a Google Classroom course.',
+    description: 'Add a teacher to a Google Classroom course. A co-teacher sees every student\'s work and grades, so '
+      + 'this reads the course and asks the MCP host to show the user a confirmation prompt with the class and the '
+      + 'teacher first; nothing changes unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
-      userId: z.string().describe('Teacher user ID'),
+      userId: z.string().describe('Teacher user ID or email'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, userId, account }) => {
+  }, async ({ courseId, userId, account, confirmToken }, ctx) => {
+    const read = await readCourse(courseId, account, runOrDiagnose);
+    if (read.error) return read.error;
+    const view = { course: read.course, teacher: userId, grants: 'teacher access: every student\'s work, grades and roster' };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'classroom.teacher-add',
+      message: 'Review and confirm giving this person teacher access to the class:',
+      confirmationLabel: 'Confirm that this person should become a teacher of the class now.',
+      details: view,
+      unsupportedNote: 'Ask the user to add them from Classroom, or invite them with gog_classroom_invitations_create.',
+      fallback: {
+        tool: 'gog_classroom_teachers_add',
+        account,
+        confirmToken,
+        subject: () => ({ target: `${courseId}/${userId}`, payload: view, preview: view }),
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(['classroom', 'teachers', 'add', pos(courseId), pos(userId)], { account });
   });
 
@@ -179,15 +252,19 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_coursework_create', {
-    description: 'Create a new coursework item (assignment, question, etc.) in a course.',
+    description: 'Create a new coursework item (assignment, question, etc.) in a course. Unless state is DRAFT (which '
+      + 'students cannot see), the class is notified, so this reads the course and asks the MCP host to show the user a '
+      + 'confirmation prompt with the class, the title, the text, the due date and when it publishes; nothing is posted '
+      + 'unless they accept. To stage one without asking, pass state DRAFT.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       title: z.string().describe('Coursework title'),
       ...courseworkSharedFields,
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account }) => {
+  }, async ({ courseId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['classroom', 'coursework', 'create', pos(courseId), `--title=${title}`];
     if (description) args.push(`--description=${description}`);
     if (type) args.push(`--type=${type}`);
@@ -198,6 +275,36 @@ export function registerExtraClassroomTools(server: McpServer): void {
     if (dueTime) args.push(`--due-time=${dueTime}`);
     if (scheduled) args.push(`--scheduled=${scheduled}`);
     if (topic) args.push(`--topic=${topic}`);
+    // A draft reaches nobody until a teacher publishes it.
+    if (state !== 'DRAFT') {
+      const read = await readCourse(courseId, account, runOrDiagnose);
+      if (read.error) return read.error;
+      const work = {
+        course: read.course,
+        title,
+        type: type ?? 'ASSIGNMENT',
+        publishes: scheduled ? `at ${scheduled}` : 'immediately',
+        due: due ?? ([dueDate, dueTime].filter(Boolean).join(' ') || undefined),
+        maxPoints,
+      };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'classroom.coursework-create',
+        message: 'Review and confirm posting this coursework to the class:',
+        confirmationLabel: 'Confirm that this coursework should be posted to the class.',
+        details: { ...work, descriptionPreview: bodyPreview(description) },
+        unsupportedNote: 'Create it with state DRAFT instead; the user can review and post it from Classroom.',
+        fallback: {
+          tool: 'gog_classroom_coursework_create',
+          account,
+          confirmToken,
+          subject: () => {
+            const view = { ...work, description };
+            return { target: courseId, payload: view, preview: view };
+          },
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 
@@ -259,14 +366,36 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_coursework_delete', {
-    description: 'Delete a coursework item.',
+    description: 'Delete a coursework item — every student submission to it goes too, for good. Reads the course and '
+      + 'the coursework and asks the MCP host to show the user a confirmation prompt naming both first; nothing is '
+      + 'deleted unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, courseworkId, account }) => {
+  }, async ({ courseId, courseworkId, account, confirmToken }, ctx) => {
+    const course = await readCourse(courseId, account, runOrDiagnose);
+    if (course.error) return course.error;
+    const work = await readCoursework(courseId, courseworkId, account, runOrDiagnose);
+    if (work.error) return work.error;
+    const view = { course: course.course, coursework: work.coursework, deletes: 'the coursework and every student submission to it, for good' };
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'classroom.coursework-delete',
+      message: 'Review and confirm PERMANENTLY deleting this coursework and its submissions:',
+      confirmationLabel: 'Confirm that this coursework should be deleted now.',
+      details: view,
+      unsupportedNote: 'Ask the user to delete it from Classroom.',
+      fallback: {
+        tool: 'gog_classroom_coursework_delete',
+        account,
+        confirmToken,
+        subject: () => ({ target: `${courseId}/${courseworkId}`, payload: view, preview: view }),
+      },
+    });
+    if (confirmation) return confirmation;
     return runOrDiagnose(['classroom', 'coursework', 'delete', pos(courseId), pos(courseworkId), '--force'], { account }); // gog gates this op; without --force the runner's --no-input makes it refuse
   });
 

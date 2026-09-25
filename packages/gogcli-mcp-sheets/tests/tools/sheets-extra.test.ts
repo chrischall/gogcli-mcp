@@ -15,7 +15,10 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   };
 });
 
-const setupHandlers = () => createTestHarness(registerExtraSheetsTools);
+// The billed datasource tools ask first (sheets-extra-gates.test.ts covers the prompts); here the user accepts.
+const setupHandlers = () => createTestHarness(registerExtraSheetsTools, {
+  elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+});
 
 beforeEach(() => vi.clearAllMocks());
 

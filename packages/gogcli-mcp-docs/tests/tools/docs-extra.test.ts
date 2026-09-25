@@ -13,7 +13,10 @@ vi.mock('../../../gogcli-mcp/src/lib.js', async (importOriginal) => {
   };
 });
 
-const setupHandlers = () => createTestHarness(registerExtraDocsTools);
+// The comment tools ask first (docs-extra-gates.test.ts covers the prompts); here the user accepts.
+const setupHandlers = () => createTestHarness(registerExtraDocsTools, {
+  elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+});
 
 beforeEach(() => vi.clearAllMocks());
 
