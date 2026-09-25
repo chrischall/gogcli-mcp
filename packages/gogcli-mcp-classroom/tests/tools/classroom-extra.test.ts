@@ -284,6 +284,13 @@ describe('gog_classroom_announcements_update — publishing asks', () => {
     expect(calls('classroom', 'announcements', 'update')).toHaveLength(0);
   });
 
+  it('previews the CURRENT text when text is empty (gog keeps it: an empty --text is never sent)', async () => {
+    const { h, details } = await prompted({ action: 'decline' });
+    await h.callTool('gog_classroom_announcements_update', { courseId: 'c1', announcementId: 'a1', text: '', state: 'PUBLISHED' });
+    expect(details()).toMatchObject({ textPreview: 'Homework is due Friday' });
+    expect(calls('classroom', 'announcements', 'update')).toHaveLength(0);
+  });
+
   it.each([
     ['a text edit', { text: 'fixed typo' }],
     ['unpublishing back to DRAFT', { state: 'DRAFT' as const }],
@@ -371,6 +378,22 @@ describe('gog_classroom_coursework_update — publishing asks', () => {
     await h.callTool('gog_classroom_coursework_update', { courseId: 'c1', courseworkId: 'w1', title: 'Chapter 5 problem set', description: 'Odd problems only', scheduled: '2026-10-01T12:00:00Z' });
     expect(details()).toMatchObject({ coursework: { id: 'w1', title: 'Chapter 5 problem set', state: 'DRAFT' }, publishes: 'at 2026-10-01T12:00:00Z', descriptionPreview: 'Odd problems only' });
     expect(calls('classroom', 'coursework', 'update')).toHaveLength(0);
+  });
+
+  it('previews the CURRENT title and description when they are empty (gog keeps them: empty flags are never sent)', async () => {
+    const { h, details } = await prompted({ action: 'decline' });
+    await h.callTool('gog_classroom_coursework_update', { courseId: 'c1', courseworkId: 'w1', title: '', description: '', state: 'PUBLISHED' });
+    expect(details()).toMatchObject({ coursework: { id: 'w1', title: 'Chapter 4 problem set', state: 'DRAFT' }, descriptionPreview: 'Problems 1-20, show your work' });
+    expect(calls('classroom', 'coursework', 'update')).toHaveLength(0);
+  });
+
+  it('token fallback binds the text students will see, not an ignored empty one', async () => {
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
+    const h = await createTestHarness(registerExtraClassroomTools);
+    const p1 = json(await h.callTool('gog_classroom_coursework_update', { courseId: 'c1', courseworkId: 'w1', title: '', description: '', state: 'PUBLISHED' }));
+    const p2 = json(await h.callTool('gog_classroom_coursework_update', { courseId: 'c1', courseworkId: 'w1', state: 'PUBLISHED' }));
+    expect(p1.preview).toEqual(p2.preview);
+    expect(p1.confirmToken).toBeDefined();
   });
 
   it('does not ask for a due-date change', async () => {

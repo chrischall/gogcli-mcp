@@ -99,7 +99,7 @@ describe('gog_api_call', () => {
     await harness.callTool('gog_api_call', {
       api: 'drive', version: 'v3', method: 'files.create',
       params: '{"fields":"id"}', body: '{"name":"f"}', scope: 'https://www.googleapis.com/auth/drive',
-      allowWrite: true, dryRun: true, account: 'a@b.com',
+      allowWrite: true, dryRun: true, account: 'a@example.com',
     });
     expect(runner.run).toHaveBeenCalledWith(
       [
@@ -107,7 +107,7 @@ describe('gog_api_call', () => {
         '--params={"fields":"id"}', '--body={"name":"f"}',
         '--scope=https://www.googleapis.com/auth/drive', '--allow-write', '--dry-run', '--force',
       ],
-      { account: 'a@b.com', gmailNoSend: true },
+      { account: 'a@example.com', gmailNoSend: true },
     );
   });
 
@@ -136,7 +136,7 @@ describe('gog_api_call', () => {
     it('prompts with the api, version, method, params and body, then runs once accepted', async () => {
       vi.mocked(runner.run).mockResolvedValue('{}');
       const { harness, details, seen } = await prompted();
-      await harness.callTool('gog_api_call', { ...write, body: '{"a":1}', scope: 'https://www.googleapis.com/auth/calendar', allowWrite: true, account: 'a@b.com' });
+      await harness.callTool('gog_api_call', { ...write, body: '{"a":1}', scope: 'https://www.googleapis.com/auth/calendar', allowWrite: true, account: 'a@example.com' });
       expect(seen[0]!.params.message).toMatch(/calendar v3 events\.delete/);
       expect(details()).toEqual({
         api: 'calendar', version: 'v3', method: 'events.delete',
@@ -147,7 +147,7 @@ describe('gog_api_call', () => {
       expect(runner.run).toHaveBeenCalledWith(
         ['api', 'call', pos('calendar'), pos('v3'), pos('events.delete'), `--params=${write.params}`, '--body={"a":1}',
           '--scope=https://www.googleapis.com/auth/calendar', '--allow-write', '--force'],
-        { account: 'a@b.com', gmailNoSend: true },
+        { account: 'a@example.com', gmailNoSend: true },
       );
     });
 
