@@ -16,6 +16,7 @@ import {
   requireDispatchConfirmation,
   resultText,
 } from '../../../gogcli-mcp/src/lib.js';
+import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 /** A Doc's title from `gog docs info`, for a comment's prompt. Unreadable output names nothing. */
 export function docTitle(raw: string): string | undefined {
@@ -27,7 +28,6 @@ export function docTitle(raw: string): string | undefined {
     return undefined;
   }
 }
-import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 export function registerExtraDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_copy', {
