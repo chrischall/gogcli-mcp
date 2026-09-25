@@ -171,11 +171,11 @@
     },
     {
       "name": "gog_classroom_coursework_create",
-      "description": "Create coursework (assignment/question) (asks the user to confirm unless DRAFT)"
+      "description": "Create coursework (assignment/question) (asks the user to confirm unless an unscheduled DRAFT)"
     },
     {
       "name": "gog_classroom_coursework_update",
-      "description": "Update existing coursework"
+      "description": "Update existing coursework (publishing asks the user to confirm)"
     },
     {
       "name": "gog_classroom_coursework_delete",
@@ -219,7 +219,7 @@
     },
     {
       "name": "gog_classroom_announcements_update",
-      "description": "Update an announcement"
+      "description": "Update an announcement (publishing asks the user to confirm)"
     },
     {
       "name": "gog_classroom_announcements_delete",

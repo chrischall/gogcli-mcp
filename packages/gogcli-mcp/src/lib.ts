@@ -40,7 +40,8 @@ export {
 } from './gmail-dispatch-guard.js';
 // The service-neutral rail for every other tool that reaches another person.
 export { requireDispatchConfirmation } from './dispatch-confirmation.js';
-export { readCourse, readCoursework, studentLabel } from './tools/classroom.js';
+export { readCourse, readCoursework, readClassroomWork, studentLabel } from './tools/classroom.js';
+export type { ClassroomWork, ClassroomWorkKind } from './tools/classroom.js';
 // Pure parsers a sub-package's confirmation prompt reuses on its own reads.
 export { eventSnapshot } from './tools/calendar.js';
 export { commentMentions, commentSnapshot, shareTargetMeta } from './tools/drive.js';

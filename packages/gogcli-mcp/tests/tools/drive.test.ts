@@ -433,7 +433,6 @@ describe('gog_drive_extract_text', () => {
       .mockResolvedValueOnce(PDF_META)                              // drive get
       .mockResolvedValueOnce(JSON.stringify({ id: 'tmpDoc3' }))     // files.copy
       .mockRejectedValueOnce(new Error('export exploded'))          // files.export fails
-      .mockResolvedValueOnce('user@x.com')                          // diagnose -> auth list
       .mockResolvedValueOnce('deleted');                            // cleanup delete
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_drive_extract_text', { fileId: 'pdf1' });
@@ -445,8 +444,7 @@ describe('gog_drive_extract_text', () => {
   it('errors clearly when OCR conversion returns no id (and creates nothing to clean up)', async () => {
     vi.mocked(runner.run)
       .mockResolvedValueOnce(PDF_META)               // drive get
-      .mockResolvedValueOnce('{}')                   // files.copy: no id
-      .mockResolvedValueOnce('user@x.com');          // diagnose -> auth list
+      .mockResolvedValueOnce('{}');                  // files.copy: no id
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_drive_extract_text', { fileId: 'pdf1' });
     expect(result.isError).toBe(true);
@@ -560,8 +558,7 @@ describe('gog_drive_read_bytes', () => {
 
   it('surfaces a byte-fetch failure via diagnose', async () => {
     vi.mocked(runner.run)
-      .mockResolvedValueOnce(JSON.stringify({ file: { name: 'a.pdf', mimeType: 'application/pdf' } }))
-      .mockResolvedValueOnce('user@x.com'); // diagnose -> auth list
+      .mockResolvedValueOnce(JSON.stringify({ file: { name: 'a.pdf', mimeType: 'application/pdf' } }));
     vi.mocked(runner.runBinary).mockRejectedValueOnce(new Error('gog exited with code 1'));
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_drive_read_bytes', { fileId: 'f1' });

@@ -5,41 +5,60 @@ import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAlias
 import { annotateTruncatedList } from '../pagination.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
-import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, flagValue, gatedElsewhere, refusedInRun, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
 
 // gog's spellings (internal/cmd/calendar.go; aliases per `gog schema` 0.41.0).
 // The run tool cannot tell whether an event has guests, so it refuses these
-// outright; the dedicated tools ask only when someone else would see the change.
-const GUESTS_SEE = 'can change what guests see';
-const CALENDAR_GATED: Record<string, { does: string; tool: string }> = {
-  create: { does: GUESTS_SEE, tool: 'gog_calendar_create' },
-  add: { does: GUESTS_SEE, tool: 'gog_calendar_create' },
-  new: { does: GUESTS_SEE, tool: 'gog_calendar_create' },
-  update: { does: GUESTS_SEE, tool: 'gog_calendar_update' },
-  edit: { does: GUESTS_SEE, tool: 'gog_calendar_update' },
-  set: { does: GUESTS_SEE, tool: 'gog_calendar_update' },
-  respond: { does: GUESTS_SEE, tool: 'gog_calendar_respond' },
-  rsvp: { does: GUESTS_SEE, tool: 'gog_calendar_respond' },
-  reply: { does: GUESTS_SEE, tool: 'gog_calendar_respond' },
-  // Fleet audit 2026-09-24 SEC-6: --send-updates on a move emails every guest,
-  // out-of-office auto-declines (and notifies) every conflicting organizer by
-  // default, and delete's --scope defaults to the whole recurring series.
-  move: { does: 'can email every guest', tool: 'gog_calendar_move' },
-  transfer: { does: 'can email every guest', tool: 'gog_calendar_move' },
-  'out-of-office': { does: 'declines and notifies conflicting meetings', tool: 'gog_calendar_out_of_office' },
-  ooo: { does: 'declines and notifies conflicting meetings', tool: 'gog_calendar_out_of_office' },
-  delete: { does: 'removes an event from every guest\'s calendar', tool: 'gog_calendar_delete' },
-  del: { does: 'removes an event from every guest\'s calendar', tool: 'gog_calendar_delete' },
-  remove: { does: 'removes an event from every guest\'s calendar', tool: 'gog_calendar_delete' },
-  rm: { does: 'removes an event from every guest\'s calendar', tool: 'gog_calendar_delete' },
-  'delete-calendar': { does: 'deletes a whole calendar', tool: 'gog_calendar_delete_calendar' },
+// outright; the dedicated tools ask only when someone else would see the
+// change. Move, delete, delete-calendar and out-of-office joined in the fleet
+// audit of 2026-09-24 (SEC-4 #933, SEC-6): --send-updates on a move emails
+// every guest, out-of-office auto-declines conflicting invitations by default,
+// and delete's --scope defaults to the whole recurring series.
+const ASKS = (tool: string) => `Use ${tool}, which asks the user to confirm.`;
+const CALENDAR_REFUSED: Record<string, { does: string; instead: string }> = {
+  create: { does: 'can change what guests see', instead: ASKS('gog_calendar_create') },
+  add: { does: 'can change what guests see', instead: ASKS('gog_calendar_create') },
+  new: { does: 'can change what guests see', instead: ASKS('gog_calendar_create') },
+  update: { does: 'can change what guests see', instead: ASKS('gog_calendar_update') },
+  edit: { does: 'can change what guests see', instead: ASKS('gog_calendar_update') },
+  set: { does: 'can change what guests see', instead: ASKS('gog_calendar_update') },
+  respond: { does: 'can change what guests see', instead: ASKS('gog_calendar_respond') },
+  rsvp: { does: 'can change what guests see', instead: ASKS('gog_calendar_respond') },
+  reply: { does: 'can change what guests see', instead: ASKS('gog_calendar_respond') },
+  move: { does: "moves an event off guests' calendars (and can email them)", instead: ASKS('gog_calendar_move') },
+  transfer: { does: "moves an event off guests' calendars (and can email them)", instead: ASKS('gog_calendar_move') },
+  delete: { does: "removes an event from every guest's calendar (the whole series by default)", instead: ASKS('gog_calendar_delete') },
+  del: { does: "removes an event from every guest's calendar (the whole series by default)", instead: ASKS('gog_calendar_delete') },
+  rm: { does: "removes an event from every guest's calendar (the whole series by default)", instead: ASKS('gog_calendar_delete') },
+  remove: { does: "removes an event from every guest's calendar (the whole series by default)", instead: ASKS('gog_calendar_delete') },
+  'delete-calendar': { does: 'deletes a calendar and every event on it', instead: ASKS('gog_calendar_delete_calendar') },
+  'out-of-office': { does: 'auto-declines invitations and notifies their organizers', instead: ASKS('gog_calendar_out_of_office') },
+  ooo: { does: 'auto-declines invitations and notifies their organizers', instead: ASKS('gog_calendar_out_of_office') },
 };
 
-/** gog_calendar_run must not make the changes the dedicated calendar tools would ask about. */
-export function vetCalendarRun(subcommand: string, _args: readonly string[]): string | undefined {
+/** gog_calendar_run must not make the changes gog_calendar_create/update/respond would ask about. */
+export function vetCalendarRun(subcommand: string, args: readonly string[]): string | undefined {
   const sub = subcommand.toLowerCase();
-  const gated = Object.hasOwn(CALENDAR_GATED, sub) ? CALENDAR_GATED[sub] : undefined;
-  return gated ? gatedElsewhere(`gog calendar ${sub}`, 'gog_calendar_run', gated.does, gated.tool) : undefined;
+  const what = `gog calendar ${sub}`;
+  const via = 'gog_calendar_run';
+  if (Object.hasOwn(CALENDAR_REFUSED, sub)) {
+    const { does, instead } = CALENDAR_REFUSED[sub]!;
+    return refusedInRun(what, via, does, instead);
+  }
+  // `propose-time` alone generates a URL. With --decline (or --comment, which
+  // implies it) it declines the event and notifies the organizer — exactly
+  // what gog_calendar_respond asks about (SEC-4, fleet-audit #933).
+  if (sub === 'propose-time' && (flagValue(args, 'decline') !== undefined || flagValue(args, 'comment') !== undefined)) {
+    return gatedElsewhere(`${what} --decline`, via, 'declines the event and notifies the organizer', 'gog_calendar_respond');
+  }
+  // A Focus Time block auto-declines every conflicting invitation by default
+  // (gog's --auto-decline defaults to all) and there is no dedicated tool for
+  // it; one that declines nobody is a private block and passes.
+  if ((sub === 'focus-time' || sub === 'focus') && flagValue(args, 'auto-decline')?.toLowerCase() !== 'none') {
+    return refusedInRun(what, via, 'auto-declines invitations and notifies their organizers (gog defaults --auto-decline to all)',
+      'Pass --auto-decline=none, or ask the user to create it from Google Calendar.');
+  }
+  return undefined;
 }
 
 // Reminder params, shared by create and update (gog >= 0.38.0 for

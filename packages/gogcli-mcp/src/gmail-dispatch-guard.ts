@@ -196,25 +196,32 @@ function trustedDomains(account: string | undefined): Set<string> {
 }
 
 // A distinguishable, greppable event for every mail dispatch — recipient
-// count plus whichever recipients fall outside the trusted-domain list — so an
-// unexpected external send (outside counsel, a wrong-number alias) can be
-// caught after the fact even if the confirmation step above is somehow
-// bypassed by a future caller. stdout is the JSON-RPC channel, so this goes to
-// stderr like every other diagnostic in this repo.
+// count plus the DOMAINS of whichever recipients fall outside the trusted list
+// — so an unexpected external send (outside counsel, a wrong-number alias) can
+// be caught after the fact even if the confirmation step above is somehow
+// bypassed by a future caller. Never the addresses (PRIV-1, fleet-audit
+// #1012): on mcp-host this line is host log data the user never sees or
+// controls, and a third party's address is their identity where their domain
+// is the audit signal. stdout is the JSON-RPC channel, so this goes to stderr
+// like every other diagnostic in this repo.
 export function logGmailDispatch(tool: string, recipients: string[], account?: string): void {
   const domains = trustedDomains(account);
-  const externalRecipients = recipients.filter((recipient) => {
+  const externalDomains = new Set<string>();
+  let externalRecipientCount = 0;
+  for (const recipient of recipients) {
     const at = recipient.indexOf('@');
-    const domain = at > -1 ? recipient.slice(at + 1) : '';
-    return !domain || !domains.has(domain);
-  });
+    const domain = at > -1 ? recipient.slice(at + 1).toLowerCase() : '';
+    if (domain && domains.has(domain)) continue;
+    externalRecipientCount += 1;
+    externalDomains.add(domain || '(no domain)');
+  }
   const event = {
     event: 'gmail_dispatch',
     tool,
     recipientCount: recipients.length,
-    externalRecipientCount: externalRecipients.length,
-    hasExternalRecipients: externalRecipients.length > 0,
-    externalRecipients,
+    externalRecipientCount,
+    hasExternalRecipients: externalRecipientCount > 0,
+    externalDomains: [...externalDomains].sort(),
     timestamp: new Date().toISOString(),
   };
   process.stderr.write(`${JSON.stringify(event)}\n`);

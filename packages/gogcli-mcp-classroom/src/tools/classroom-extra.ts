@@ -6,6 +6,7 @@ import {
   pos,
   readCourse,
   readCoursework,
+  readClassroomWork,
   requireDispatchConfirmation,
   bodyPreview,
   CONFIRM_FALLBACK_DESCRIPTION,
@@ -16,6 +17,27 @@ import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 const courseState = z.enum(['ACTIVE', 'ARCHIVED', 'PROVISIONED', 'DECLINED', 'SUSPENDED']);
 const workState = z.enum(['PUBLISHED', 'DRAFT']);
 const workType = z.enum(['ASSIGNMENT', 'SHORT_ANSWER_QUESTION', 'MULTIPLE_CHOICE_QUESTION']);
+
+// ============================================================================
+// PUBLISHING THROUGH UPDATE is on the dispatch rail (SEC-3, fleet-audit #932).
+// gog_classroom_announcements_create asks unless the state is DRAFT — the
+// draft path is documented as the way through on a client that cannot be
+// prompted — so create-as-DRAFT then update-to-PUBLISHED was the same two-step
+// around a gate that closed for Gmail drafts. An update that publishes (state
+// PUBLISHED, or a schedule: a scheduled item is a draft that publishes itself)
+// reads the course and the item and asks, with the text or title the class
+// will actually see; a text edit, a due date or a return to DRAFT does not.
+// ============================================================================
+
+/** When an update makes work visible to students, in the words the prompt uses; undefined when it does not. */
+function publishesWhen(state: string | undefined, scheduled: string | undefined): string | undefined {
+  if (scheduled) return `at ${scheduled}`;
+  return state === 'PUBLISHED' ? 'immediately' : undefined;
+}
+
+const PUBLISH_DESCRIPTION = ' Publishing it (state PUBLISHED, or a scheduled time) reads the course and the item and asks the MCP host to '
+  + 'show the user a confirmation prompt with the class and what students will see; nothing is published unless they '
+  + 'accept. Other edits, and a return to DRAFT, need no confirmation.' + CONFIRM_FALLBACK_DESCRIPTION;
 
 // Fields shared by courses_create and courses_update. `name` is required on
 // create, optional on update — keep it out of this fragment so each tool can
@@ -230,10 +252,11 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_coursework_create', {
-    description: 'Create a new coursework item (assignment, question, etc.) in a course. Unless state is DRAFT (which '
-      + 'students cannot see), the class is notified, so this reads the course and asks the MCP host to show the user a '
-      + 'confirmation prompt with the class, the title, the text, the due date and when it publishes; nothing is posted '
-      + 'unless they accept. To stage one without asking, pass state DRAFT.' + CONFIRM_FALLBACK_DESCRIPTION,
+    description: 'Create a new coursework item (assignment, question, etc.) in a course. Unless state is DRAFT with no '
+      + 'scheduled time (which students cannot see; a scheduled draft publishes itself), the class is notified, so this '
+      + 'reads the course and asks the MCP host to show the user a confirmation prompt with the class, the title, the '
+      + 'text, the due date and when it publishes; nothing is posted unless they accept. To stage one without asking, '
+      + 'pass state DRAFT and no scheduled time.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
@@ -253,8 +276,9 @@ export function registerExtraClassroomTools(server: McpServer): void {
     if (dueTime) args.push(`--due-time=${dueTime}`);
     if (scheduled) args.push(`--scheduled=${scheduled}`);
     if (topic) args.push(`--topic=${topic}`);
-    // A draft reaches nobody until a teacher publishes it.
-    if (state !== 'DRAFT') {
+    // An unscheduled draft reaches nobody until a teacher publishes it; a
+    // scheduled one publishes itself.
+    if (state !== 'DRAFT' || scheduled) {
       const read = await readCourse(courseId, account, runOrDiagnose);
       if (read.error) return read.error;
       const work = {
@@ -287,7 +311,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_coursework_update', {
-    description: 'Update an existing coursework item.',
+    description: 'Update an existing coursework item.' + PUBLISH_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
@@ -295,8 +319,9 @@ export function registerExtraClassroomTools(server: McpServer): void {
       title: z.string().optional().describe('New title'),
       ...courseworkSharedFields,
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, courseworkId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account }) => {
+  }, async ({ courseId, courseworkId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['classroom', 'coursework', 'update', pos(courseId), pos(courseworkId)];
     if (title) args.push(`--title=${title}`);
     if (description) args.push(`--description=${description}`);
@@ -308,6 +333,44 @@ export function registerExtraClassroomTools(server: McpServer): void {
     if (dueTime) args.push(`--due-time=${dueTime}`);
     if (scheduled) args.push(`--scheduled=${scheduled}`);
     if (topic) args.push(`--topic=${topic}`);
+    const publishes = publishesWhen(state, scheduled);
+    if (publishes) {
+      const read = await readCourse(courseId, account, runOrDiagnose);
+      if (read.error) return read.error;
+      const current = await readClassroomWork('coursework', courseId, courseworkId, account, runOrDiagnose);
+      if (current.error) return current.error;
+      // What the class will see: the new title/description when this call
+      // replaces them, else what the draft says now. `||`, not `??`: an empty
+      // string is never sent (the argv guards above are truthy checks), so gog
+      // keeps the current value and the prompt must show that one.
+      const published = description || current.work.description;
+      const publishedTitle = title || current.work.title;
+      const view = {
+        course: read.course,
+        coursework: { id: courseworkId, title: publishedTitle, state: current.work.state },
+        publishes,
+        descriptionPreview: bodyPreview(published),
+      };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'classroom.coursework-publish',
+        message: 'Review and confirm publishing this Classroom coursework to students:',
+        confirmationLabel: 'Confirm that this coursework should be published to the class.',
+        details: view,
+        unsupportedNote: 'Leave it as a DRAFT; the user can review and publish it from Classroom.',
+        fallback: {
+          tool: 'gog_classroom_coursework_update',
+          account,
+          confirmToken,
+          subject: () => ({
+            target: `${courseId}/${courseworkId}`,
+            revision: current.work.updateTime,
+            payload: { course: read.course, courseworkId, title: publishedTitle, description: published, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic },
+            preview: view,
+          }),
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 
@@ -346,21 +409,58 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_announcements_update', {
-    description: 'Update an existing announcement.',
+    description: 'Update an existing announcement.' + PUBLISH_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       announcementId: z.string().describe('Announcement ID'),
       text: z.string().optional().describe('New text'),
-      state: workState.optional().describe('State'),
-      scheduled: z.string().optional().describe('Scheduled publish time'),
+      state: workState.optional().describe('State (PUBLISHED asks the user to confirm; DRAFT does not)'),
+      scheduled: z.string().optional().describe('Scheduled publish time (asks the user to confirm)'),
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, announcementId, text, state, scheduled, account }) => {
+  }, async ({ courseId, announcementId, text, state, scheduled, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['classroom', 'announcements', 'update', pos(courseId), pos(announcementId)];
     if (text) args.push(`--text=${text}`);
     if (state) args.push(`--state=${state}`);
     if (scheduled) args.push(`--scheduled=${scheduled}`);
+    const publishes = publishesWhen(state, scheduled);
+    if (publishes) {
+      const read = await readCourse(courseId, account, runOrDiagnose);
+      if (read.error) return read.error;
+      const current = await readClassroomWork('announcements', courseId, announcementId, account, runOrDiagnose);
+      if (current.error) return current.error;
+      // The text the class will see: the new one when this call replaces it,
+      // else what the draft says now. `||`, not `??`: an empty --text is never
+      // sent, so gog keeps the current text.
+      const published = text || current.work.text;
+      const view = {
+        course: read.course,
+        announcement: { id: announcementId, state: current.work.state },
+        publishes,
+        textPreview: bodyPreview(published),
+      };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'classroom.announcement-publish',
+        message: 'Review and confirm publishing this Classroom announcement to the class:',
+        confirmationLabel: 'Confirm that this announcement should be published to the class.',
+        details: view,
+        unsupportedNote: 'Leave it as a DRAFT; the user can review and publish it from Classroom.',
+        fallback: {
+          tool: 'gog_classroom_announcements_update',
+          account,
+          confirmToken,
+          subject: () => ({
+            target: `${courseId}/${announcementId}`,
+            revision: current.work.updateTime,
+            payload: { course: read.course, announcementId, text: published, state, scheduled },
+            preview: view,
+          }),
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 

@@ -7,7 +7,7 @@ import { resetConfirmTokenState } from '../../src/send-confirm-token.js';
 import { CONFIRM_ACTION_INSTRUCTION } from '../../src/dispatch-confirmation.js';
 import { registerChatTools } from '../../src/tools/chat.js';
 import { registerDriveTools, shareTargetMeta } from '../../src/tools/drive.js';
-import { registerClassroomTools, readCourse } from '../../src/tools/classroom.js';
+import { registerClassroomTools, readCourse, readClassroomWork } from '../../src/tools/classroom.js';
 import { registerCalendarTools, eventSnapshot, parseAttendees } from '../../src/tools/calendar.js';
 
 vi.mock('../../src/runner.js');
@@ -192,6 +192,16 @@ describe('gog_classroom_announcements_create', () => {
     expect(callsTo('classroom', 'announcements', 'create')).toHaveLength(1);
   });
 
+  // A scheduled item is a DRAFT that publishes itself at that time, so a
+  // DRAFT with a schedule reaches the class too and asks like any other.
+  it('asks for a scheduled DRAFT, which publishes itself', async () => {
+    stubReads({ 'classroom courses get': COURSE });
+    const { harness, details } = await prompted(registerClassroomTools, { action: 'decline' });
+    await harness.callTool('gog_classroom_announcements_create', { courseId: 'c1', text: 'Quiz Friday', state: 'DRAFT', scheduled: '2026-09-25T08:00:00Z' });
+    expect(details()).toMatchObject({ publishes: 'at 2026-09-25T08:00:00Z', textPreview: 'Quiz Friday' });
+    expect(callsTo('classroom', 'announcements', 'create')).toHaveLength(0);
+  });
+
   it('refuses a client that cannot be prompted, pointing at DRAFT', async () => {
 
     process.env.MCP_CONFIRM_MODE = 'refuse';
@@ -224,6 +234,47 @@ describe('gog_classroom_announcements_create', () => {
     expect(await readCourse('c9', undefined)).toEqual({ course: { id: 'c9' } });
     vi.mocked(runner.run).mockResolvedValue('{"course":{"name":7}}');
     expect(await readCourse('c9', undefined)).toEqual({ course: { id: 'c9' } });
+  });
+
+  // The item a publish-through-update reaches students with (SEC-3, fleet-audit
+  // #932): its text or title for the prompt, its updateTime as the token's
+  // revision. gog nests the payload under the API resource name.
+  describe('readClassroomWork', () => {
+    it('reads an announcement: text, state and updateTime', async () => {
+      // runOrDiagnose renders instants in DISPLAY_TZ (America/New_York by default).
+      vi.mocked(runner.run).mockResolvedValue(JSON.stringify({ announcement: { id: 'a1', text: 'Quiz Friday', state: 'DRAFT', updateTime: '2026-09-20T10:00:00Z', creatorUserId: '7' } }));
+      expect(await readClassroomWork('announcements', 'c1', 'a1', 'me@example.com')).toEqual({
+        work: { id: 'a1', text: 'Quiz Friday', state: 'DRAFT', updateTime: '2026-09-20T06:00:00-04:00' },
+      });
+      expect(runner.run).toHaveBeenCalledWith(['classroom', 'announcements', 'get', pos('c1'), pos('a1')], { account: 'me@example.com' });
+    });
+
+    // gog 0.41.0 writes `{"coursework": …}` (internal/cmd/classroom_coursework.go),
+    // not the API's `courseWork`: reading the wrong key named nothing and left
+    // the token fallback without a revision to bind.
+    it('reads coursework under gog\'s key: title, description, state and updateTime', async () => {
+      vi.mocked(runner.run).mockResolvedValue(JSON.stringify({ coursework: { id: 'w1', title: 'Problem set', description: 'Work problems 1-20', state: 'PUBLISHED', updateTime: '2026-09-21T10:00:00Z' } }));
+      expect(await readClassroomWork('coursework', 'c1', 'w1', undefined)).toEqual({
+        work: { id: 'w1', title: 'Problem set', description: 'Work problems 1-20', state: 'PUBLISHED', updateTime: '2026-09-21T06:00:00-04:00' },
+      });
+      expect(runner.run).toHaveBeenCalledWith(['classroom', 'coursework', 'get', pos('c1'), pos('w1')], { account: undefined });
+    });
+
+    it('names nothing for unreadable output or fields of the wrong type', async () => {
+      vi.mocked(runner.run).mockResolvedValue('not json');
+      expect(await readClassroomWork('announcements', 'c1', 'a1', undefined)).toEqual({ work: { id: 'a1' } });
+      vi.mocked(runner.run).mockResolvedValue('{"announcement":{"text":7,"state":null,"updateTime":[]}}');
+      expect(await readClassroomWork('announcements', 'c1', 'a1', undefined)).toEqual({ work: { id: 'a1' } });
+      vi.mocked(runner.run).mockResolvedValue('null');
+      expect(await readClassroomWork('coursework', 'c1', 'w1', undefined)).toEqual({ work: { id: 'w1' } });
+    });
+
+    it('passes a failed read back unchanged', async () => {
+      vi.mocked(runner.run).mockRejectedValue(new Error('not found'));
+      const got = await readClassroomWork('coursework', 'c1', 'w1', undefined);
+      expect(got.error?.isError).toBe(true);
+      expect('work' in got).toBe(false);
+    });
   });
 });
 

@@ -5,11 +5,11 @@ import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
 import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, senderPreview, requireDispatchConfirmation, parseMetadataHeaders, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome } from '../../../gogcli-mcp/src/lib.js';
 
-// Pull the text out of a single-text-block tool result; undefined for any
-// other shape (an error result is still a text block, so it parses below).
 // How many messages a forced batch delete names in its prompt; every id is still bound.
 export const BATCH_DELETE_PREVIEW_MAX = 25;
 
+// Pull the text out of a single-text-block tool result; undefined for any
+// other shape (an error result is still a text block, so it parses below).
 function resultText(result: CallToolResult): string | undefined {
   const first = result.content[0];
   return first?.type === 'text' ? first.text : undefined;

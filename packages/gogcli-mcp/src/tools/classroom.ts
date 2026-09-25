@@ -3,45 +3,105 @@ import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
-import { bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, hasCommandWord, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
+import { bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, flagValue, gatedElsewhere, hasCommandWord, refusedInRun, requireDispatchConfirmation, resultText } from '../dispatch-confirmation.js';
 
-// gog's spellings (internal/cmd/classroom*.go; aliases per `gog schema` 0.41.0).
+// gog's spellings (internal/cmd/classroom*.go; aliases per `gog schema` 0.41.0),
+// each alias mapped to the resource it names.
 const CLASSROOM_CREATE_WORDS = new Set(['create', 'add', 'new']);
 const CLASSROOM_DELETE_WORDS = new Set(['delete', 'rm', 'del', 'remove']);
+const CLASSROOM_UPDATE_WORDS = new Set(['update', 'edit', 'set']);
 const CLASSROOM_RETURN_WORDS = new Set(['return', 'send']);
-type ClassroomGate = { words: ReadonlySet<string>; does: string; tool: string };
-const POST: ClassroomGate = { words: CLASSROOM_CREATE_WORDS, does: 'posts to a class', tool: 'gog_classroom_announcements_create' };
-const INVITE: ClassroomGate = { words: CLASSROOM_CREATE_WORDS, does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' };
-// Fleet audit 2026-09-24 SEC-6: roster adds grant access to the class (a
-// co-teacher sees every student's work), a return notifies the student,
-// coursework is announced to the class, and the deletes destroy submissions.
-const STUDENT: ClassroomGate = { words: CLASSROOM_CREATE_WORDS, does: 'adds someone to a class', tool: 'gog_classroom_students_add' };
-const TEACHER: ClassroomGate = { words: CLASSROOM_CREATE_WORDS, does: 'gives someone teacher access to a class', tool: 'gog_classroom_teachers_add' };
-const RETURN: ClassroomGate = { words: CLASSROOM_RETURN_WORDS, does: 'returns work to a student', tool: 'gog_classroom_submissions_return' };
-const COURSEWORK: ClassroomGate[] = [
-  { words: CLASSROOM_CREATE_WORDS, does: 'posts coursework to a class', tool: 'gog_classroom_coursework_create' },
-  { words: CLASSROOM_DELETE_WORDS, does: 'deletes coursework and every submission to it', tool: 'gog_classroom_coursework_delete' },
-];
-const COURSE: ClassroomGate = { words: CLASSROOM_DELETE_WORDS, does: 'deletes a course', tool: 'gog_classroom_courses_delete' };
-const CLASSROOM_GATED: Record<string, ClassroomGate[]> = {
-  announcements: [POST], announcement: [POST], ann: [POST],
-  invitations: [INVITE], invitation: [INVITE], invites: [INVITE],
-  students: [STUDENT], student: [STUDENT],
-  teachers: [TEACHER], teacher: [TEACHER],
-  submissions: [RETURN], submission: [RETURN],
-  coursework: COURSEWORK, work: COURSEWORK,
-  courses: [COURSE], course: [COURSE],
+const CLASSROOM_ASSIGNEE_WORDS = new Set(['assignees', 'assign']);
+type ClassroomGroup = 'courses' | 'announcements' | 'invitations' | 'coursework' | 'materials' | 'students' | 'teachers' | 'submissions' | 'guardian-invitations';
+const CLASSROOM_GROUPS: Record<string, ClassroomGroup> = {
+  courses: 'courses', course: 'courses',
+  announcements: 'announcements', announcement: 'announcements', ann: 'announcements',
+  invitations: 'invitations', invitation: 'invitations', invites: 'invitations',
+  coursework: 'coursework', work: 'coursework',
+  materials: 'materials', material: 'materials',
+  students: 'students', student: 'students',
+  teachers: 'teachers', teacher: 'teachers',
+  submissions: 'submissions', submission: 'submissions',
+  'guardian-invitations': 'guardian-invitations', 'guardian-invites': 'guardian-invitations',
 };
 
-/** gog_classroom_run must not do what the dedicated classroom tools would ask about. */
+/**
+ * True when forwarded flags publish existing work to students: state
+ * PUBLISHED publishes now; a schedule publishes then (a scheduled item is a
+ * draft that publishes itself). A text edit or a return to DRAFT is neither.
+ */
+function publishesToStudents(args: readonly string[]): boolean {
+  return flagValue(args, 'state')?.toUpperCase() === 'PUBLISHED' || flagValue(args, 'scheduled') !== undefined;
+}
+
+/** True when a create reaches students: anything but an unscheduled DRAFT (gog's default state is PUBLISHED). */
+function createsVisibleWork(args: readonly string[]): boolean {
+  return flagValue(args, 'state')?.toUpperCase() !== 'DRAFT' || flagValue(args, 'scheduled') !== undefined;
+}
+
+/** True when an assignees change shows an item to more students: ALL_STUDENTS or an added student. Removing students only narrows it. */
+function widensAssignees(args: readonly string[]): boolean {
+  return flagValue(args, 'mode')?.toUpperCase() === 'ALL_STUDENTS' || flagValue(args, 'add-student') !== undefined;
+}
+
+/**
+ * gog_classroom_run must not post, publish, enrol, return or invite what the
+ * dedicated tools would ask about (#400; SEC-3, fleet-audit #932; SEC-6).
+ * Publishing through `update --state=PUBLISHED` was the two-step around the
+ * create gate that closed for Gmail drafts, so the update words are vetted on
+ * their flags. Deletes that destroy a course or coursework (and every
+ * submission to it) go to the tools that ask first.
+ */
 export function vetClassroomRun(subcommand: string, args: readonly string[]): string | undefined {
   const sub = subcommand.toLowerCase();
-  const gates = Object.hasOwn(CLASSROOM_GATED, sub) ? CLASSROOM_GATED[sub]! : [];
-  for (const gate of gates) {
-    const word = hasCommandWord(args, gate.words);
-    if (word) return gatedElsewhere(`gog classroom ${sub} ${word.toLowerCase()}`, 'gog_classroom_run', gate.does, gate.tool);
+  if (!Object.hasOwn(CLASSROOM_GROUPS, sub)) return undefined;
+  const group = CLASSROOM_GROUPS[sub]!;
+  const via = 'gog_classroom_run';
+  const what = (word: string) => `gog classroom ${sub} ${word.toLowerCase()}`;
+  const create = hasCommandWord(args, CLASSROOM_CREATE_WORDS);
+  const update = hasCommandWord(args, CLASSROOM_UPDATE_WORDS);
+  const remove = hasCommandWord(args, CLASSROOM_DELETE_WORDS);
+  const widenedAssignees = (): string | undefined => {
+    const word = hasCommandWord(args, CLASSROOM_ASSIGNEE_WORDS);
+    return word && widensAssignees(args)
+      ? refusedInRun(what(word), via, 'shows it to more students', 'Ask the user to change who it is assigned to from Classroom.')
+      : undefined;
+  };
+  switch (group) {
+    case 'courses':
+      return remove ? gatedElsewhere(what(remove), via, 'deletes a course', 'gog_classroom_courses_delete') : undefined;
+    case 'announcements':
+      if (create) return gatedElsewhere(what(create), via, 'posts to a class', 'gog_classroom_announcements_create');
+      if (update && publishesToStudents(args)) return gatedElsewhere(what(update), via, 'publishes an announcement to a class', 'gog_classroom_announcements_update');
+      return widenedAssignees();
+    case 'invitations':
+      return create ? gatedElsewhere(what(create), via, 'invites someone to a class', 'gog_classroom_invitations_create') : undefined;
+    case 'coursework':
+      // An unscheduled DRAFT reaches nobody, and gog_classroom_coursework_create
+      // does not ask about one either; publishing it later is the update below.
+      if (create && createsVisibleWork(args)) return gatedElsewhere(what(create), via, 'posts coursework to a class', 'gog_classroom_coursework_create');
+      if (remove) return gatedElsewhere(what(remove), via, 'deletes coursework and every submission to it', 'gog_classroom_coursework_delete');
+      if (update && publishesToStudents(args)) return gatedElsewhere(what(update), via, 'publishes work to students', 'gog_classroom_coursework_update');
+      return widenedAssignees();
+    case 'materials':
+      // No dedicated tool updates materials, so publishing one is refused
+      // outright rather than sent to a gated tool.
+      if (create && createsVisibleWork(args)) {
+        return refusedInRun(what(create), via, 'publishes material to students', 'Create it with --state=DRAFT and no --scheduled; ask the user to publish it from Classroom.');
+      }
+      if (update && publishesToStudents(args)) return refusedInRun(what(update), via, 'publishes material to students', 'Ask the user to publish it from Classroom.');
+      return undefined;
+    case 'students':
+      return create ? gatedElsewhere(what(create), via, 'enrols someone in a class', 'gog_classroom_students_add') : undefined;
+    case 'teachers':
+      return create ? gatedElsewhere(what(create), via, "gives someone a teacher's access to a class and its roster", 'gog_classroom_teachers_add') : undefined;
+    case 'submissions': {
+      const word = hasCommandWord(args, CLASSROOM_RETURN_WORDS);
+      return word ? gatedElsewhere(what(word), via, 'returns work to a student, who is notified', 'gog_classroom_submissions_return') : undefined;
+    }
+    case 'guardian-invitations':
+      return create ? refusedInRun(what(create), via, 'emails a guardian invitation', 'Ask the user to invite the guardian from Classroom.') : undefined;
   }
-  return undefined;
 }
 
 /**
@@ -100,6 +160,47 @@ export async function readCoursework(
   const work = nested(resultText(got), 'coursework');
   const title = str(work?.title);
   return { coursework: { id: courseworkId, ...(title !== undefined ? { title } : {}) } };
+}
+
+/** The Classroom items a publish-through-update reaches students with. */
+export type ClassroomWorkKind = 'announcements' | 'coursework';
+
+/** What {@link readClassroomWork} names about an item; each field only when gog returned it as a string. */
+export interface ClassroomWork {
+  id: string;
+  text?: string;
+  title?: string;
+  description?: string;
+  state?: string;
+  updateTime?: string;
+}
+
+/**
+ * The announcement or coursework a publish reaches students with, for its
+ * confirmation prompt (the text, or the title and description: a user
+ * approving "publish a1" cannot tell what a1 says) and as the token fallback's
+ * revision (updateTime rotates on every edit, so an approval never publishes
+ * text it did not name). Read on every call. gog 0.41.0 nests the payload
+ * under `announcement` or `coursework` (internal/cmd/classroom_*.go; not the
+ * API's `courseWork`); unreadable output names nothing rather than throwing.
+ */
+export async function readClassroomWork(
+  kind: ClassroomWorkKind,
+  courseId: string,
+  itemId: string,
+  account: string | undefined,
+  // A sub-package passes the runOrDiagnose it imported from lib.js (see readCourse).
+  runner: typeof runOrDiagnose = runOrDiagnose,
+): Promise<{ error: Awaited<ReturnType<typeof runOrDiagnose>>; work?: undefined } | { error?: undefined; work: ClassroomWork }> {
+  const got = await runner(['classroom', kind, 'get', pos(courseId), pos(itemId)], { account });
+  if (got.isError) return { error: got };
+  const item = nested(resultText(got), kind === 'announcements' ? 'announcement' : 'coursework');
+  const work: ClassroomWork = { id: itemId };
+  for (const key of ['text', 'title', 'description', 'state', 'updateTime'] as const) {
+    const value = str(item?.[key]);
+    if (value !== undefined) work[key] = value;
+  }
+  return { work };
 }
 
 /**
@@ -481,16 +582,16 @@ export function registerClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_announcements_create', {
-    description: 'Create an announcement in a Google Classroom course. Unless state is DRAFT (which students cannot '
-      + 'see), this reads the course and asks the MCP host to show the user a confirmation prompt with the class, the '
-      + 'full text and when it publishes; nothing is posted unless they accept. To stage one without asking, pass '
-      + 'state DRAFT.' + CONFIRM_FALLBACK_DESCRIPTION,
+    description: 'Create an announcement in a Google Classroom course. Unless state is DRAFT with no scheduled time '
+      + '(which students cannot see; a scheduled draft publishes itself), this reads the course and asks the MCP host to '
+      + 'show the user a confirmation prompt with the class, the full text and when it publishes; nothing is posted '
+      + 'unless they accept. To stage one without asking, pass state DRAFT and no scheduled time.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       text: z.string().describe('Announcement text'),
-      state: z.enum(['PUBLISHED', 'DRAFT']).optional().describe('State (DRAFT is visible only to teachers and needs no confirmation)'),
-      scheduled: z.string().optional().describe('Scheduled publish time'),
+      state: z.enum(['PUBLISHED', 'DRAFT']).optional().describe('State (an unscheduled DRAFT is visible only to teachers and needs no confirmation)'),
+      scheduled: z.string().optional().describe('Scheduled publish time (asks the user to confirm, even for a DRAFT)'),
       account: accountParam,
       confirmToken: confirmTokenParam,
     }),
@@ -498,9 +599,10 @@ export function registerClassroomTools(server: McpServer): void {
     const args: GogArg[] = ['classroom', 'announcements', 'create', pos(courseId), `--text=${text}`];
     if (state) args.push(`--state=${state}`);
     if (scheduled) args.push(`--scheduled=${scheduled}`);
-    // A draft reaches nobody until a teacher publishes it: it is this tool's
-    // own staging twin, so it needs no confirmation.
-    if (state !== 'DRAFT') {
+    // An unscheduled draft reaches nobody until a teacher publishes it: it is
+    // this tool's own staging twin, so it needs no confirmation. A scheduled
+    // one publishes itself.
+    if (state !== 'DRAFT' || scheduled) {
       const read = await readCourse(courseId, account);
       if (read.error) return read.error;
       const publishes = scheduled ? `at ${scheduled}` : 'immediately';

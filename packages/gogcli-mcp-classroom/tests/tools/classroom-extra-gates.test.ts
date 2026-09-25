@@ -192,6 +192,16 @@ describe('the paths that reach nobody stay unprompted', () => {
     expect(callsTo('classroom', 'coursework', 'create')).toHaveLength(1);
   });
 
+  // A scheduled item is a DRAFT that publishes itself at that time: only an
+  // unscheduled DRAFT reaches nobody.
+  it('a scheduled DRAFT coursework item still asks', async () => {
+    stub();
+    const { harness, details } = await prompted({ action: 'decline' });
+    await harness.callTool('gog_classroom_coursework_create', { courseId: 'c1', title: 'Quiz', state: 'DRAFT', scheduled: '2026-10-01T08:00' });
+    expect(details()).toMatchObject({ course: COURSE_VIEW, title: 'Quiz', publishes: 'at 2026-10-01T08:00' });
+    expect(callsTo('classroom', 'coursework', 'create')).toHaveLength(0);
+  });
+
   it('a scheduled coursework item says when it publishes, and a combined due passes through', async () => {
     stub();
     const { harness, details } = await prompted({ action: 'decline' });

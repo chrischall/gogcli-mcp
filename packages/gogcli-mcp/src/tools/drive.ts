@@ -8,7 +8,7 @@ import { run, runBinary } from '../runner.js';
 import { accountParam, diagnose, runOrDiagnose, registerRunTool, pageTokenParam, pageAliasParam, resolvePageToken} from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
-import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, hasTrueFlag, requireDispatchConfirmation, vetCommentsRun, resultText } from '../dispatch-confirmation.js';
+import { CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, gatedElsewhere, hasTrueFlag, refusedInRun, requireDispatchConfirmation, vetCommentsRun, resultText } from '../dispatch-confirmation.js';
 
 // gog's spellings (internal/cmd/drive*.go; aliases per `gog schema` 0.41.0).
 const DRIVE_DELETE_WORDS = new Set(['delete', 'rm', 'del']);
@@ -16,11 +16,22 @@ const DRIVE_DELETE_WORDS = new Set(['delete', 'rm', 'del']);
 /** gog_drive_run must not do what gog_drive_share / comments / a permanent delete would ask about. */
 export function vetDriveRun(subcommand: string, args: readonly string[]): string | undefined {
   const sub = subcommand.toLowerCase();
-  if (sub === 'share') {
-    return gatedElsewhere('gog drive share', 'gog_drive_run', 'grants access to a file', 'gog_drive_share');
-  }
+  if (sub === 'share') return gatedElsewhere('gog drive share', 'gog_drive_run', 'grants access to a file', 'gog_drive_share');
   if (DRIVE_DELETE_WORDS.has(sub) && hasTrueFlag(args, 'permanent')) {
     return gatedElsewhere(`gog drive ${sub} --permanent`, 'gog_drive_run', 'deletes a file for good, bypassing the trash', 'gog_drive_delete');
+  }
+  // `bulk update-role --from=reader --to=writer` (and `bulk remove-public`)
+  // rewrites the permissions of every matching file under a folder, with no
+  // positional path for the path guard to see and no file for a preview to
+  // name (SEC-1, fleet-audit #930). `permissions` only lists.
+  if (sub === 'bulk') {
+    return gatedElsewhere('gog drive bulk', 'gog_drive_run',
+      'rewrites sharing permissions across every matching file in a tree', 'gog_drive_share (one file at a time)');
+  }
+  // `unshare` removes a collaborator's access; the dedicated tool shows the
+  // host a structured, annotated call rather than an opaque argv.
+  if (sub === 'unshare') {
+    return refusedInRun('gog drive unshare', 'gog_drive_run', "removes someone's access to a file", 'Use gog_drive_unshare.');
   }
   return vetCommentsRun('drive', sub, args);
 }
