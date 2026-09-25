@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.5.1](https://github.com/chrischall/gogcli-mcp/compare/v4.5.0...v4.5.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **dispatch:** confirm before tools that notify, grant access, run code or permanently delete ([#409](https://github.com/chrischall/gogcli-mcp/issues/409)) ([28ed871](https://github.com/chrischall/gogcli-mcp/commit/28ed871e392e53897dfb9466111f42f6fb484b92))
+* **gates:** confirm raw API writes and close escape-hatch routes around confirmation ([#411](https://github.com/chrischall/gogcli-mcp/issues/411)) ([f49a15b](https://github.com/chrischall/gogcli-mcp/commit/f49a15b920f993bbaf736b744b58c2b0757600e3))
+
 ## [4.5.0](https://github.com/chrischall/gogcli-mcp/compare/v4.4.0...v4.5.0) (2026-09-24)
 
 
