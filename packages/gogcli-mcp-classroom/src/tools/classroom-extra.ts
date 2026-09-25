@@ -340,11 +340,14 @@ export function registerExtraClassroomTools(server: McpServer): void {
       const current = await readClassroomWork('coursework', courseId, courseworkId, account, runOrDiagnose);
       if (current.error) return current.error;
       // What the class will see: the new title/description when this call
-      // replaces them, else what the draft says now.
-      const published = description ?? current.work.description;
+      // replaces them, else what the draft says now. `||`, not `??`: an empty
+      // string is never sent (the argv guards above are truthy checks), so gog
+      // keeps the current value and the prompt must show that one.
+      const published = description || current.work.description;
+      const publishedTitle = title || current.work.title;
       const view = {
         course: read.course,
-        coursework: { id: courseworkId, title: title ?? current.work.title, state: current.work.state },
+        coursework: { id: courseworkId, title: publishedTitle, state: current.work.state },
         publishes,
         descriptionPreview: bodyPreview(published),
       };
@@ -361,7 +364,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
           subject: () => ({
             target: `${courseId}/${courseworkId}`,
             revision: current.work.updateTime,
-            payload: { course: read.course, courseworkId, title, description: published, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic },
+            payload: { course: read.course, courseworkId, title: publishedTitle, description: published, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic },
             preview: view,
           }),
         },
@@ -429,8 +432,9 @@ export function registerExtraClassroomTools(server: McpServer): void {
       const current = await readClassroomWork('announcements', courseId, announcementId, account, runOrDiagnose);
       if (current.error) return current.error;
       // The text the class will see: the new one when this call replaces it,
-      // else what the draft says now.
-      const published = text ?? current.work.text;
+      // else what the draft says now. `||`, not `??`: an empty --text is never
+      // sent, so gog keeps the current text.
+      const published = text || current.work.text;
       const view = {
         course: read.course,
         announcement: { id: announcementId, state: current.work.state },
