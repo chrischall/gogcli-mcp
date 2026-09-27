@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.5.2](https://github.com/chrischall/gogcli-mcp/compare/v4.5.1...v4.5.2) (2026-09-27)
+
+
+### Bug Fixes
+
+* **deps:** bump @modelcontextprotocol/server from 2.0.0 to 2.1.0 in the production-dependencies group ([#415](https://github.com/chrischall/gogcli-mcp/issues/415)) ([6d74c4c](https://github.com/chrischall/gogcli-mcp/commit/6d74c4c6a4a5c0db9d3af10498f49c7cbf6e7575))
+* **gmail:** bound inlineMaxBytes at 10 MiB so an attachment fails with its own message under mcp-host's 14 MiB result limit ([#417](https://github.com/chrischall/gogcli-mcp/issues/417)) ([729d6f4](https://github.com/chrischall/gogcli-mcp/commit/729d6f49517cc559865a91d82067fdbb1b79a702))
+
 ## [4.5.1](https://github.com/chrischall/gogcli-mcp/compare/v4.5.0...v4.5.1) (2026-09-25)
 
 
