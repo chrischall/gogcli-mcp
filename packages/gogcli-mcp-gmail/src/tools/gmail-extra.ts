@@ -76,6 +76,23 @@ function trimThread(
 // the flag on every call rather than let GOG_GMAIL_INLINE_MAX_BYTES decide.
 const GOG_DEFAULT_INLINE_MAX_BYTES = 3145728;
 
+// The most a caller may raise inlineMaxBytes to: 10 MiB of raw attachment bytes.
+// mcp-host (the hosted runtime that runs this server for claude.ai) caps any
+// single child result at 14 MiB of serialized JSON-RPC (CHILD_RESULT_MAX_BYTES,
+// chrischall/mcp-host#952) and replaces anything larger with a generic "result
+// too large" tool error; before #952 an oversized result killed the child
+// process outright. 10 MiB raw is ~13.3 MiB as base64, which with the JSON-RPC
+// envelope still fits under 14 MiB — so this bound applies first and the caller
+// gets this tool's own too-large-to-inline answer instead of the host's.
+// claude.ai itself accepts images up to 10 MB each (measured 2026-09-27).
+//
+// A larger request is CLAMPED, not rejected: above the ceiling gog already falls
+// back to writing the file without inline bytes (auto → a file path, inline → a
+// "too large to return inline" error pointing at url/drive), so clamping keeps
+// that behaviour and never fails a drive/url/off call that merely passed a big
+// number. The result carries a note saying the value was clamped.
+export const MAX_INLINE_MAX_BYTES = 10 * 1024 * 1024;
+
 // `gog gmail attachment --inline --json` emits base64 content when the attachment
 // is within gog's inline cap (3 MiB by default, --inline-max-bytes), otherwise
 // just the on-disk path plus a `reason` explaining the size fallback.
@@ -2566,7 +2583,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       'file PATH, readable only when this server runs on your machine (local stdio). On a hosted deployment ' +
       '(e.g. mcp-host) you cannot read that filesystem, so use deliver="url" or deliver="drive" there. ' +
       'deliver="inline" forces the bytes inline as an image or embedded ' +
-      'resource blob (use only if your client consumes resource blobs; errors if over gog\'s 3 MiB cap). ' +
+      'resource blob (use only if your client consumes resource blobs; errors if over inlineMaxBytes — 3 MiB by default, at most 10 MiB). ' +
       'deliver="drive" always uploads to Drive; deliver="off" writes the file server-side and returns ' +
       '{path, fileName, mimeType, bytes}. Drive delivery creates a file in your Drive (blocked when GOG_READONLY is set). ' +
       'deliver="url" returns {url, fileName, mimeType, bytes, expiresAt}: a signed download link you can fetch with ' +
@@ -2581,7 +2598,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       messageId: z.string().describe('Gmail message ID'),
       attachmentId: z.string().optional().describe('The opaque attachment ID from a listing. Legacy addressing: Gmail re-issues a DIFFERENT id for the same part on every API call, so an id copied from an older listing can be stale. Prefer attachmentIndex. Exactly one of attachmentId / attachmentIndex is required.'),
       attachmentIndex: z.number().int().nonnegative().optional().describe('The attachment\'s 0-based position in its message — the `attachmentIndex` field of a listing fetched with useIndexedAttachmentIds. Stable (a message\'s MIME structure does not change), so this is the reliable way to name an attachment. Exactly one of attachmentId / attachmentIndex is required. NOTE: it is per-MESSAGE — in gog_gmail_thread_attachments the array is flattened across the whole thread, so use each row\'s messageId + attachmentIndex, never its position in that flat list.'),
-      inlineMaxBytes: z.number().int().nonnegative().optional().describe('Byte ceiling under which gog embeds the attachment bytes rather than only writing the file. Defaults to gog\'s own 3145728, which this server pins explicitly on every call so an ambient GOG_GMAIL_INLINE_MAX_BYTES cannot change the answer. Raise it to inline something larger, lower it to force the file/Drive path.'),
+      inlineMaxBytes: z.number().int().nonnegative().optional().describe('Byte ceiling under which gog embeds the attachment bytes rather than only writing the file. Defaults to gog\'s own 3145728, which this server pins explicitly on every call so an ambient GOG_GMAIL_INLINE_MAX_BYTES cannot change the answer. Raise it to inline something larger (at most 10485760 = 10 MiB — a larger value is clamped to that, because the hosted runtime cannot return a bigger result), lower it to force the file/Drive path.'),
       deliver: z
         .enum(['auto', 'inline', 'drive', 'url', 'off'])
         .optional()
@@ -2684,7 +2701,15 @@ export function registerExtraGmailTools(server: McpServer): void {
       // this flag env:"GOG_GMAIL_INLINE_MAX_BYTES" (gmail_attachment.go:27), so an ambient
       // value in the host env would silently decide whether contentBase64 comes back at
       // all. Restating gog's own default keeps the arg array the single authority.
-      args.push(`--inline-max-bytes=${inlineMaxBytes ?? GOG_DEFAULT_INLINE_MAX_BYTES}`);
+      // BOUNDED at MAX_INLINE_MAX_BYTES (see its comment): clamped, with a note.
+      const inlineCeiling = Math.min(inlineMaxBytes ?? GOG_DEFAULT_INLINE_MAX_BYTES, MAX_INLINE_MAX_BYTES);
+      if (inlineMaxBytes !== undefined && inlineMaxBytes > MAX_INLINE_MAX_BYTES) {
+        notes.push(
+          `inlineMaxBytes ${inlineMaxBytes} was clamped to ${MAX_INLINE_MAX_BYTES} (10 MiB), the most this tool ` +
+          'returns inline: a larger result would exceed the hosted runtime\'s 14 MiB result limit.',
+        );
+      }
+      args.push(`--inline-max-bytes=${inlineCeiling}`);
       args.push(`--out=${outPath}`, `--name=${filename ?? 'attachment'}`);
       // `contentBase64` is exempt from redaction: it is the attachment's own
       // bytes, and a base64 blob large enough will eventually spell a token
@@ -2759,7 +2784,8 @@ export function registerExtraGmailTools(server: McpServer): void {
           );
         }
         return errorResult(
-          `Attachment is too large to return inline (${info.reason ?? "exceeds gog's inline size limit, 3 MiB by default — raise inlineMaxBytes"}). ` +
+          `Attachment is too large to return inline (${info.reason ?? "exceeds gog's inline size limit, 3 MiB by default — raise inlineMaxBytes"}; ` +
+          `inlineMaxBytes allows at most 10 MiB, and this request used ${inlineCeiling} bytes). ` +
           'Use deliver="url" for a signed download link (hosted) or deliver="drive" for a Google Drive link.',
         );
       }
