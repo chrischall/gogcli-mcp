@@ -3451,6 +3451,48 @@ describe('gog_gmail_attachment pins --inline-max-bytes', () => {
   });
 });
 
+// mcp-host caps one child result at 14 MiB of serialized JSON-RPC
+// (CHILD_RESULT_MAX_BYTES, chrischall/mcp-host#952). 10 MiB raw is ~13.3 MiB
+// base64, which fits with the envelope — so a caller's inlineMaxBytes is
+// CLAMPED to 10 MiB (gog then falls back to the file path exactly as it does
+// for any attachment over the ceiling) and the result says so.
+describe('gog_gmail_attachment bounds inlineMaxBytes at 10 MiB', () => {
+  const TEN_MIB = 10 * 1024 * 1024;
+  const args = () => vi.mocked(lib.run).mock.calls[0]![0] as string[];
+  const texts = (res: { content: unknown[] }) =>
+    res.content.map((c) => (c as { text?: string }).text ?? '').join('\n');
+
+  it('allows exactly 10 MiB, unchanged and without a note', async () => {
+    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ bytes: 10, contentBase64: 'AAAA', mimeType: 'image/png', filename: 'a.png' }));
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', deliver: 'inline', inlineMaxBytes: TEN_MIB });
+    expect(args()).toContain(`--inline-max-bytes=${TEN_MIB}`);
+    expect(texts(res)).not.toMatch(/clamped/i);
+  });
+
+  it('clamps a larger request to 10 MiB and notes it in the result', async () => {
+    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ bytes: 10, contentBase64: 'AAAA', mimeType: 'image/png', filename: 'a.png' }));
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', deliver: 'inline', inlineMaxBytes: 50 * 1024 * 1024 });
+    expect(args()).toContain(`--inline-max-bytes=${TEN_MIB}`);
+    expect(res.isError).toBeFalsy();
+    expect(texts(res)).toMatch(/inlineMaxBytes .*clamped to 10485760/i);
+  });
+
+  it('names the 10 MiB maximum when a clamped inline request is still too large', async () => {
+    vi.mocked(lib.run).mockResolvedValue(JSON.stringify({ path: '/tmp/x.pdf', bytes: 12 * 1024 * 1024, reason: 'exceeds inline max bytes' }));
+    const res = await harness.callTool('gog_gmail_attachment', { messageId: 'm1', attachmentId: 'a1', deliver: 'inline', name: 'x.pdf', inlineMaxBytes: 50 * 1024 * 1024 });
+    expect(res.isError).toBe(true);
+    expect(texts(res)).toMatch(/10 MiB/);
+    expect(texts(res)).toMatch(/deliver="url"/);
+  });
+
+  it('tells the model about the bound in the schema description', async () => {
+    const { tools } = await harness.client.listTools();
+    const props = tools.find((t) => t.name === 'gog_gmail_attachment')!.inputSchema.properties as Record<string, { description?: string }>;
+    expect(props.inlineMaxBytes!.description).toMatch(/10 MiB/);
+    expect(props.inlineMaxBytes!.description).toMatch(/10485760/);
+  });
+});
+
 // ===========================================================================
 // REQUIREMENT 4 — VERIFY (and repair) THREADING ON AN UPDATE.
 //
