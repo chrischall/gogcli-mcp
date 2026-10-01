@@ -362,6 +362,18 @@
     {
       "name": "gog_sheets_datasource_delete",
       "description": "Delete a Connected Sheets data source and its linked sheet"
+    },
+    {
+      "name": "gog_sheets_batch_request",
+      "description": "Submit an atomic array of Google Sheets structural requests after confirmation."
+    },
+    {
+      "name": "gog_sheets_batch_begin",
+      "description": "Open a revision-locked Sheets request batch."
+    },
+    {
+      "name": "gog_sheets_batch_end",
+      "description": "Review and atomically submit a Sheets request batch after confirmation."
     }
   ],
   "compatibility": {

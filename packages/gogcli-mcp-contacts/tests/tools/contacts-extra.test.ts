@@ -120,6 +120,73 @@ describe('gog_contacts_delete', () => {
   });
 });
 
+describe('native batched Contacts tools', () => {
+  it('fetches exact resource names in one command', async () => {
+    await harness.callTool('gog_contacts_batch_get', { resourceNames: ['people/a', 'people/b'] });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['contacts', 'batch', 'get', pos('people/a'), pos('people/b')], { account: undefined });
+  });
+
+  it('materializes a validated create array as a JSON file argument', async () => {
+    const peopleJson = '[{"names":[{"givenName":"Ada"}]}]';
+    await harness.callTool('gog_contacts_batch_create', { peopleJson });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith([
+      'contacts', 'batch', 'create', { kind: 'file', flag: 'from-file', contents: peopleJson, ext: 'json' },
+    ], { account: undefined });
+  });
+
+  it('rejects invalid create JSON before invoking gog', async () => {
+    const result = await harness.callTool('gog_contacts_batch_create', { peopleJson: '{' });
+    expect(result.isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty or non-array create payload', async () => {
+    expect((await harness.callTool('gog_contacts_batch_create', { peopleJson: '{}' })).isError).toBe(true);
+    expect((await harness.callTool('gog_contacts_batch_create', { peopleJson: '[]' })).isError).toBe(true);
+    expect((await harness.callTool('gog_contacts_batch_create', { peopleJson: JSON.stringify(Array(201).fill({})) })).isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('materializes an update map and preserves the account', async () => {
+    const peopleByResourceName = '{"people/a":{"etag":"x"}}';
+    await harness.callTool('gog_contacts_batch_update', { peopleByResourceName, account: 'a@b.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith([
+      'contacts', 'batch', 'update', { kind: 'file', flag: 'from-file', contents: peopleByResourceName, ext: 'json' },
+    ], { account: 'a@b.com' });
+  });
+
+  it('rejects invalid or empty update maps', async () => {
+    expect((await harness.callTool('gog_contacts_batch_update', { peopleByResourceName: '{' })).isError).toBe(true);
+    expect((await harness.callTool('gog_contacts_batch_update', { peopleByResourceName: '[]' })).isError).toBe(true);
+    expect((await harness.callTool('gog_contacts_batch_update', { peopleByResourceName: '{}' })).isError).toBe(true);
+    const tooMany = Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`people/${i}`, {}]));
+    expect((await harness.callTool('gog_contacts_batch_update', { peopleByResourceName: JSON.stringify(tooMany) })).isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('requires confirmation and then forces the guarded permanent delete', async () => {
+    const confirmed = await createTestHarness(registerExtraContactsTools, {
+      elicitation: async () => ({ action: 'accept', content: { confirmed: true } }),
+    });
+    await confirmed.callTool('gog_contacts_batch_delete', { resourceNames: ['people/a', 'people/b'] });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith([
+      'contacts', 'batch', 'delete', pos('people/a'), pos('people/b'), '--force',
+    ], { account: undefined });
+  });
+
+  it('allows an unprompted client to confirm the exact batch with a one-time token', async () => {
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
+    const unprompted = await createTestHarness(registerExtraContactsTools);
+    const args = { resourceNames: ['people/a'] };
+    const prompt = await unprompted.callTool('gog_contacts_batch_delete', args);
+    const payload = JSON.parse(prompt.content[0].text);
+    await unprompted.callTool('gog_contacts_batch_delete', { ...args, confirmToken: payload.confirmToken });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['contacts', 'batch', 'delete', pos('people/a'), '--force'], { account: undefined });
+    delete process.env.MCP_CONFIRM_MODE;
+  });
+});
+
 describe('gog_contacts_export', () => {
   it('calls runOrDiagnose with no options', async () => {
     await harness.callTool('gog_contacts_export', {});
