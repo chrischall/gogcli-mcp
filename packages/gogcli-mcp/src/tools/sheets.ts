@@ -15,6 +15,14 @@ const DATASOURCE_BILLED = new Set(['add', 'update', 'refresh']);
 
 /** gog_sheets_run must not start the billed queries gog_sheets_datasource_* would ask about. */
 export function vetSheetsRun(subcommand: string, args: readonly string[]): string | undefined {
+  // An atomic structural batch (delete tabs, rewrite ranges) is confirmed by
+  // gog_sheets_batch_request; forwarded here with --force nobody is asked
+  // (#418 review). gog 0.43.0 gives it no alias. Its --batch=<id> append is
+  // refused too: the dedicated tool covers it, and an append is only half of
+  // an end the run tool cannot reach.
+  if (subcommand.toLowerCase() === 'batch-request') {
+    return gatedElsewhere('gog sheets batch-request', 'gog_sheets_run', 'applies structural changes to a spreadsheet', 'gog_sheets_batch_request');
+  }
   if (!DATASOURCE_ALIASES.has(subcommand.toLowerCase())) return undefined;
   const word = hasCommandWord(args, DATASOURCE_BILLED)?.toLowerCase();
   return word

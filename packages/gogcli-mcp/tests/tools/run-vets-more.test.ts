@@ -8,6 +8,7 @@ import { registerCalendarTools, vetCalendarRun } from '../../src/tools/calendar.
 import { registerGmailTools, vetGmailRun } from '../../src/tools/gmail.js';
 import { registerDocsTools, vetDocsRun } from '../../src/tools/docs.js';
 import { registerSheetsTools, vetSheetsRun } from '../../src/tools/sheets.js';
+import { registerContactsTools, vetContactsRun } from '../../src/tools/contacts.js';
 import { registerAppScriptTools, vetAppScriptRun } from '../../src/tools/appscript.js';
 import { refusedApiCall } from '../../src/tools/api.js';
 
@@ -192,6 +193,12 @@ describe('vetSheetsRun — billed Connected Sheets executions', () => {
     ['data-sources', ['update', 'sid', 'ds1'], 'gog_sheets_datasource_update'],
     ['datasource', ['refresh', 'sid', 'ds1'], 'gog_sheets_datasource_refresh'],
     ['connected-sheets', ['REFRESH', 'sid', 'ds1'], 'gog_sheets_datasource_refresh'],
+    // #418 review: an atomic structural batch is confirmed by its dedicated
+    // tool; forwarding it with --force would skip that prompt. gog 0.43.0
+    // gives `batch-request` no alias; `batch` is `batch-update`'s (values).
+    ['batch-request', ['sid', '--requests-json=[{"deleteSheet":{"sheetId":1}}]', '--force'], 'gog_sheets_batch_request'],
+    ['BATCH-REQUEST', ['sid', '--requests-json', '[]'], 'gog_sheets_batch_request'],
+    ['batch-request', ['sid', '--requests-json=[]', '--batch=b1'], 'gog_sheets_batch_request'],
   ])('refuses %s %j in favour of %s', (sub, args, tool) => {
     expect(vetSheetsRun(sub, args)).toMatch(new RegExp(`${tool}.*asks the user`));
   });
@@ -203,8 +210,30 @@ describe('vetSheetsRun — billed Connected Sheets executions', () => {
     ['datasource', ['table', 'read', 'sid', 'A1']],
     ['freeze', ['sid', '--rows=1']],
     ['add-tab', ['sid', 'Data']],
+    ['batch-update', ['sid', '--data-json=[]']],
+    ['batch', ['sid', '--data-json=[]']],
   ])('allows %s %j', (sub, args) => {
     expect(vetSheetsRun(sub, args)).toBeUndefined();
+  });
+});
+
+describe('vetContactsRun — permanent batch deletion (#418 review)', () => {
+  it.each([
+    ['batch', ['delete', 'people/c1', '--force']],
+    ['BATCH', ['DELETE', 'people/c1']],
+    ['batch', ['--force', 'delete', 'people/c1']],
+  ])('refuses %s %j in favour of gog_contacts_batch_delete', (sub, args) => {
+    expect(vetContactsRun(sub, args)).toMatch(/gog_contacts_batch_delete.*asks the user/);
+  });
+
+  it.each([
+    ['batch', ['get', 'people/c1']],
+    ['batch', ['create', '--from-file=x.json']],
+    ['update', ['people/c1', '--given=A']],
+    ['delete', ['people/c1']],
+    ['directory', ['list']],
+  ])('allows %s %j', (sub, args) => {
+    expect(vetContactsRun(sub, args)).toBeUndefined();
   });
 });
 
@@ -227,6 +256,8 @@ describe('the vets are wired into the run tools', () => {
     [registerGmailTools, 'gog_gmail_run', { subcommand: 'batch', args: ['delete', 'm1'] }],
     [registerDocsTools, 'gog_docs_run', { subcommand: 'comments', args: ['add', 'd1', 'hi'] }],
     [registerSheetsTools, 'gog_sheets_run', { subcommand: 'datasource', args: ['refresh', 'sid', 'ds1'] }],
+    [registerSheetsTools, 'gog_sheets_run', { subcommand: 'batch-request', args: ['sid', '--requests-json=[]', '--force'] }],
+    [registerContactsTools, 'gog_contacts_run', { subcommand: 'batch', args: ['delete', 'people/c1', '--force'] }],
     [registerAppScriptTools, 'gog_appscript_run', { subcommand: 'run', args: ['S1', 'doWork'] }],
   ] as const)('%#: %s refuses without spawning gog', async (register, tool, args) => {
     const harness = await createTestHarness(register);

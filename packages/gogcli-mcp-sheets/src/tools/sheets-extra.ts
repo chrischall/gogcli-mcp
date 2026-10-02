@@ -166,6 +166,37 @@ async function confirmBilledExecution(
 
 export function registerExtraSheetsTools(server: McpServer): void {
 
+  server.registerTool('gog_sheets_batch_begin', {
+    description: 'Open a persisted, revision-locked Sheets request batch. Pass its returned batchId to gog_sheets_batch_request using batch=<id>; no spreadsheet changes are submitted until gog_sheets_batch_end.',
+    annotations: { destructiveHint: false },
+    inputSchema: z.object({ spreadsheetId: z.string().describe('Spreadsheet ID the batch is locked to'), name: z.string().optional().describe('Optional batch label'), account: accountParam }),
+  }, async ({ spreadsheetId, name, account }) => {
+    const args: GogArg[] = ['batch', 'begin', `--service=sheets`, `--spreadsheet=${spreadsheetId}`];
+    if (name) args.push(`--name=${name}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_batch_end', {
+    description: 'Submit a persisted Sheets request batch atomically against its locked revision. The queued requests are shown for review and require confirmation before they are applied.',
+    annotations: { destructiveHint: true },
+    inputSchema: z.object({ batchId: z.string().describe('Batch ID returned by gog_sheets_batch_begin'), account: accountParam, confirmToken: confirmTokenParam }),
+  }, async ({ batchId, account, confirmToken }, ctx) => {
+    const previewResult = await runOrDiagnose(['batch', 'show', pos(batchId)], { account });
+    if (previewResult.isError) return previewResult;
+    const preview = resultText(previewResult);
+    if (preview === undefined) throw new Error('gog returned no queued batch preview; refusing to submit an unreviewed batch.');
+    if (Buffer.byteLength(preview, 'utf8') > 100_000) throw new Error('The queued batch is too large to review safely through this tool; inspect and submit it with gog directly.');
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'sheets.batch-end',
+      message: 'Review and confirm applying the queued Sheets requests:',
+      confirmationLabel: 'Confirm applying this atomic Sheets batch.',
+      details: { batchId, queuedBatch: preview },
+      fallback: { tool: 'gog_sheets_batch_end', account, confirmToken, subject: () => ({ target: batchId, payload: { queuedBatch: preview }, preview: { batchId, queuedBatch: preview } }) },
+    });
+    if (confirmation) return confirmation;
+    return runOrDiagnose(['batch', 'end', pos(batchId), '--force'], { account });
+  });
+
   server.registerTool('gog_sheets_list_tabs', {
     description: 'List tabs (sheets) in a spreadsheet with their titles, sheetIds, and indices. A friendlier view than gog_sheets_metadata when you only need the tab list — useful for restructuring a workbook over a long agent session without losing track of names.',
     annotations: { readOnlyHint: true },
@@ -731,6 +762,49 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (includeValuesInResponse) args.push('--include-values-in-response');
     if (responseRender) args.push(`--response-render=${responseRender}`);
     if (responseDateTimeRender) args.push(`--response-date-time-render=${responseDateTimeRender}`);
+    return runOrDiagnose(args, { account });
+  });
+
+  server.registerTool('gog_sheets_batch_request', {
+    description: 'Submit a Google Sheets API structural request array atomically (for example addDimension, repeatCell, mergeCells, or updateSheetProperties). requestsJson must be a JSON array of Sheets API Request objects. Requests are previewed and require confirmation before submission. Use batch=<id> to append these requests to a persisted Sheets batch instead of submitting immediately.',
+    annotations: { destructiveHint: true },
+    inputSchema: z.object({
+      spreadsheetId: z.string().describe('Spreadsheet ID'),
+      requestsJson: z.string().describe('JSON array of Google Sheets API Request objects, e.g. [{"addSheet":{"properties":{"title":"Archive"}}}]'),
+      batch: z.string().optional().describe('Persisted Sheets batch ID; append requests without submitting yet'),
+      account: accountParam,
+      confirmToken: confirmTokenParam,
+    }),
+  }, async ({ spreadsheetId, requestsJson, batch, account, confirmToken }, ctx) => {
+    confineAtFile(requestsJson, 'requestsJson');
+    let requests: unknown;
+    try { requests = JSON.parse(requestsJson); } catch { throw new Error('requestsJson must be valid JSON'); }
+    if (!Array.isArray(requests) || requests.length === 0) throw new Error('requestsJson must be a non-empty JSON array');
+    if (Buffer.byteLength(requestsJson, 'utf8') > 100_000) throw new Error('requestsJson exceeds the 100 KB inline limit; split the requests across persisted batches');
+    const args: GogArg[] = ['sheets', 'batch-request', pos(spreadsheetId), `--requests-json=${requestsJson}`];
+    if (batch) {
+      args.push(`--batch=${batch}`);
+      return runOrDiagnose(args, { account });
+    }
+    const got = await runOrDiagnose(['sheets', 'metadata', pos(spreadsheetId), '--select=properties.title'], { account });
+    if (got.isError) return got;
+    const title = spreadsheetTitle(resultText(got));
+    const confirmation = await requireDispatchConfirmation(ctx, {
+      action: 'sheets.batch-request',
+      message: 'Review and confirm these structural changes to the spreadsheet:',
+      confirmationLabel: 'Confirm submitting this atomic Sheets request batch.',
+      details: {
+        spreadsheet: { id: spreadsheetId, ...(title !== undefined ? { title } : {}) },
+        requestCount: requests.length,
+        requests,
+      },
+      fallback: {
+        tool: 'gog_sheets_batch_request', account, confirmToken,
+        subject: () => ({ target: spreadsheetId, payload: { requests }, preview: { requestCount: requests.length, requests } }),
+      },
+    });
+    if (confirmation) return confirmation;
+    args.push('--force');
     return runOrDiagnose(args, { account });
   });
 

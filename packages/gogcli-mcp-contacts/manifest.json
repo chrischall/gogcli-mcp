@@ -160,6 +160,22 @@
     {
       "name": "gog_contacts_other_search",
       "description": "Search auto-collected other contacts"
+    },
+    {
+      "name": "gog_contacts_batch_get",
+      "description": "Fetch exact Contacts in native People API batches."
+    },
+    {
+      "name": "gog_contacts_batch_create",
+      "description": "Create Contacts in native People API batches."
+    },
+    {
+      "name": "gog_contacts_batch_update",
+      "description": "Update Contacts in native People API batches with etag guards."
+    },
+    {
+      "name": "gog_contacts_batch_delete",
+      "description": "Permanently delete Contacts in native People API batches after confirmation."
     }
   ],
   "compatibility": {

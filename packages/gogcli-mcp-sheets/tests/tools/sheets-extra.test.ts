@@ -894,6 +894,121 @@ describe('gog_sheets_batch_update', () => {
   });
 });
 
+describe('gog_sheets_batch_request', () => {
+  it('opens a revision-locked Sheets batch', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_batch_begin', { spreadsheetId: 'sid', name: 'quarterly' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['batch', 'begin', '--service=sheets', '--spreadsheet=sid', '--name=quarterly'], { account: undefined });
+    await harness.callTool('gog_sheets_batch_begin', { spreadsheetId: 'sid' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['batch', 'begin', '--service=sheets', '--spreadsheet=sid'], { account: undefined });
+  });
+
+  it('shows and confirms the queued requests before ending a batch', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{"requests":[{"addSheet":{}}]}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_batch_end', { batchId: 'batch-1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['batch', 'show', pos('batch-1')], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['batch', 'end', pos('batch-1'), '--force'], { account: undefined });
+  });
+
+  it('does not end a batch when the preview fails or is too large', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue({ isError: true, content: [{ type: 'text', text: 'failed' }] });
+    const harness = await setupHandlers();
+    expect((await harness.callTool('gog_sheets_batch_end', { batchId: 'batch-1' })).isError).toBe(true);
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('x'.repeat(100_001)));
+    expect((await harness.callTool('gog_sheets_batch_end', { batchId: 'batch-1' })).isError).toBe(true);
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses to submit when gog returns no batch preview', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue({ content: [] });
+    const harness = await setupHandlers();
+    expect((await harness.callTool('gog_sheets_batch_end', { batchId: 'batch-1' })).isError).toBe(true);
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms an unprompted client using a one-time token bound to the queued requests', async () => {
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{"requests":[{"addSheet":{}}]}'));
+    const harness = await createTestHarness(registerExtraSheetsTools);
+    const preview = await harness.callTool('gog_sheets_batch_end', { batchId: 'batch-1' });
+    const payload = JSON.parse(preview.content[0]!.text!);
+    await harness.callTool('gog_sheets_batch_end', { batchId: 'batch-1', confirmToken: payload.confirmToken });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(['batch', 'end', pos('batch-1'), '--force'], { account: undefined });
+    delete process.env.MCP_CONFIRM_MODE;
+  });
+
+  it('confirms and submits a structural request array atomically', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{"properties":{"title":"Plan"}}'));
+    const harness = await setupHandlers();
+    const requestsJson = '[{"addSheet":{"properties":{"title":"Archive"}}}]';
+    await harness.callTool('gog_sheets_batch_request', { spreadsheetId: 'sid', requestsJson });
+    expect(lib.runOrDiagnose).toHaveBeenNthCalledWith(1,
+      ['sheets', 'metadata', pos('sid'), '--select=properties.title'], { account: undefined });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'batch-request', pos('sid'), `--requests-json=${requestsJson}`, '--force'], { account: undefined });
+  });
+
+  it('appends requests to a persisted batch without submitting or prompting', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    const requestsJson = '[{"addSheet":{"properties":{"title":"Archive"}}}]';
+    await harness.callTool('gog_sheets_batch_request', { spreadsheetId: 'sid', requestsJson, batch: 'batch-1' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'batch-request', pos('sid'), `--requests-json=${requestsJson}`, '--batch=batch-1'], { account: undefined });
+  });
+
+  it('rejects malformed or empty request arrays before calling gog', async () => {
+    const harness = await setupHandlers();
+    const malformed = await harness.callTool('gog_sheets_batch_request', { spreadsheetId: 'sid', requestsJson: '{' });
+    expect(malformed.isError).toBe(true);
+    const empty = await harness.callTool('gog_sheets_batch_request', { spreadsheetId: 'sid', requestsJson: '[]' });
+    expect(empty.isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('rejects request payloads that exceed the safe argv size', async () => {
+    const harness = await setupHandlers();
+    const result = await harness.callTool('gog_sheets_batch_request', {
+      spreadsheetId: 'sid', requestsJson: JSON.stringify([{ updateCells: { userEnteredValue: { stringValue: 'x'.repeat(100_001) } } }]),
+    });
+    expect(result.isError).toBe(true);
+    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('does not submit if the title lookup fails', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue({ isError: true, content: [{ type: 'text', text: 'failed' }] });
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_batch_request', { spreadsheetId: 'sid', requestsJson: '[{"addSheet":{}}]' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms by spreadsheet ID when metadata has no title', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
+    const harness = await setupHandlers();
+    await harness.callTool('gog_sheets_batch_request', { spreadsheetId: 'sid', requestsJson: '[{"addSheet":{}}]' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'batch-request', pos('sid'), '--requests-json=[{"addSheet":{}}]', '--force'], { account: undefined });
+  });
+
+  it('uses a one-time token when the client cannot prompt', async () => {
+    process.env.MCP_CONFIRM_MODE = 'ask-user';
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{"properties":{"title":"Plan"}}'));
+    const harness = await createTestHarness(registerExtraSheetsTools);
+    const args = { spreadsheetId: 'sid', requestsJson: '[{"addSheet":{"properties":{"title":"Archive"}}}]' };
+    const preview = await harness.callTool('gog_sheets_batch_request', args);
+    const payload = JSON.parse(preview.content[0]!.text!);
+    await harness.callTool('gog_sheets_batch_request', { ...args, confirmToken: payload.confirmToken });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['sheets', 'batch-request', pos('sid'), `--requests-json=${args.requestsJson}`, '--force'], { account: undefined });
+    delete process.env.MCP_CONFIRM_MODE;
+  });
+});
+
 // 24. reorder-tab (gog 0.18.0)
 describe('gog_sheets_reorder_tab', () => {
   it('passes --tab and --to', async () => {

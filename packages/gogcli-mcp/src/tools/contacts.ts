@@ -3,6 +3,16 @@ import { z } from 'zod';
 import { accountParam, runOrDiagnose, registerRunTool } from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
+import { gatedElsewhere, hasCommandWord } from '../dispatch-confirmation.js';
+
+// `contacts batch delete` has no alias in gog 0.43.0.
+const BATCH_DELETE = new Set(['delete']);
+
+/** gog_contacts_run must not permanently delete what gog_contacts_batch_delete would ask about (#418 review). */
+export function vetContactsRun(subcommand: string, args: readonly string[]): string | undefined {
+  if (subcommand.toLowerCase() !== 'batch' || !hasCommandWord(args, BATCH_DELETE)) return undefined;
+  return gatedElsewhere('gog contacts batch delete', 'gog_contacts_run', 'deletes contacts for good, with no Trash to restore them from', 'gog_contacts_batch_delete');
+}
 
 export function registerContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_search', {
@@ -59,5 +69,5 @@ export function registerContactsTools(server: McpServer): void {
     return runOrDiagnose(args, { account });
   });
 
-  registerRunTool(server, { service: 'contacts', examples: '"update", "delete", "directory"' });
+  registerRunTool(server, { service: 'contacts', examples: '"update", "delete", "directory"', vet: vetContactsRun });
 }
