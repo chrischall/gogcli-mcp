@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.0](https://github.com/chrischall/gogcli-mcp/compare/v4.5.2...v4.6.0) (2026-10-02)
+
+
+### Features
+
+* **gogcli:** expose 0.43 batch operations ([#418](https://github.com/chrischall/gogcli-mcp/issues/418)) ([f14e0f7](https://github.com/chrischall/gogcli-mcp/commit/f14e0f79ad814c3a7a9e4eed1303ccc25472acfb))
+
 ## [4.5.2](https://github.com/chrischall/gogcli-mcp/compare/v4.5.1...v4.5.2) (2026-09-27)
 
 
