@@ -753,6 +753,15 @@ describe('run', () => {
     expect(out).toContain('[REDACTED]');
   });
 
+  // Full mode is now mcp-utils' redactSecrets alone, which carries the Google
+  // OAuth2 shapes with the same left boundary (fleet-audit#1160). It also asks
+  // for 8+ token characters, so version-like prose stays readable.
+  it('full mode leaves version-like prose (ya29.1, 1//2) visible', async () => {
+    const spawner = makeSpawner(0, 'gog built against ya29.1 with ratio 1//2', '');
+    const out = await run(['version'], { spawner });
+    expect(out).toBe('gog built against ya29.1 with ratio 1//2');
+  });
+
   it("redactMode 'tokens' also catches the form-encoded spelling", async () => {
     // This path runs ONLY redactGoogleTokens, so the anchor is the whole defence.
     const spawner = makeSpawner(0, 'refresh_token=1//0eTOKENS-MODE-LEAK', '');
