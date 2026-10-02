@@ -202,18 +202,17 @@ function sanitizedEnv(): NodeJS.ProcessEnv {
 // occur in base64url (which has no `/`), so neither alphabet needs them.
 const TOKEN_LEFT_BOUNDARY = '(?<![A-Za-z0-9+/])';
 
-// Redact bearer/refresh-token patterns from error text before surfacing
-// it back to the MCP client. If gog ever emits a token in stderr (e.g.
-// from a verbose log mode), this prevents it from leaking to the model.
-// The shared mcp-utils redactSecrets covers Bearer/Basic headers, JWTs,
-// cookies, well-known key shapes (incl. Google AIza… API keys), and secret
-// query params — but not Google's OAuth2 token shapes, so those stay here.
+// Strip only Google's OAuth2 token shapes — for `redactMode: 'tokens'`, which
+// must leave an OAuth consent URL (client_id, scope names, state,
+// code_challenge) untouched, so the full shared redactor cannot be used there.
+// mcp-utils exports no Google-only pass, so this one stays local; it matches
+// the same shapes behind the same left boundary as the shared redactor, and
+// with any token length (the shared one wants 8+ characters) because this is
+// the ONLY defence on that path.
 const GOOGLE_TOKEN_PATTERNS: RegExp[] = [
   new RegExp(`${TOKEN_LEFT_BOUNDARY}ya29\\.[A-Za-z0-9._\\-]+`, 'g'),  // OAuth2 access tokens
   new RegExp(`${TOKEN_LEFT_BOUNDARY}1//[A-Za-z0-9._\\-]+`, 'g'),      // OAuth2 refresh tokens
 ];
-// Strip only Google's OAuth2 token shapes. Precise enough to leave an OAuth
-// consent URL (client_id, scope names, state, code_challenge) untouched.
 export function redactGoogleTokens(text: string): string {
   let redacted = text;
   for (const re of GOOGLE_TOKEN_PATTERNS) {
@@ -221,9 +220,14 @@ export function redactGoogleTokens(text: string): string {
   }
   return redacted;
 }
-export function redactSecrets(text: string): string {
-  return redactGoogleTokens(redactSharedSecrets(text));
-}
+
+// Redact secrets from output and error text before surfacing it back to the
+// MCP client. If gog ever emits a token in stderr (e.g. from a verbose log
+// mode), this prevents it from leaking to the model. Since mcp-utils 2.12 the
+// shared redactSecrets covers Google's OAuth2 shapes (`ya29.…` / `1//…`) with
+// the left boundary described above, upstreamed from here (fleet-audit#1160),
+// alongside Bearer/Basic headers, JWTs, cookies, key shapes and secret params.
+export const redactSecrets: (text: string) => string = redactSharedSecrets;
 
 // A JSON string value that is ENTIRELY standard/URL-safe base64 (plus padding),
 // and long enough to be a payload rather than a flag. Anything else — a path, a
