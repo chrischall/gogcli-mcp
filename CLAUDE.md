@@ -64,7 +64,7 @@ packages/gogcli-mcp-<service>/
 
 Sub-packages import from `gogcli-mcp/src/lib.js` (NOT the published `gogcli-mcp/lib`) — `tsconfig.json` includes `../gogcli-mcp/src/**/*` so esbuild bundles the source directly. There is no inter-package build dependency.
 
-`runner.ts` always injects `--json --no-input --color=never`, strips `GOG_ACCESS_TOKEN` and other ambient `*_TOKEN`/`*_SECRET`/`*_KEY`/`*_CREDENTIALS` env vars from the child, augments PATH with Homebrew/`~/.local/bin`/`~/go/bin`, and redacts bearer/refresh-token patterns from any error text surfaced to the MCP client (mcp-utils `redactSecrets` plus Google-specific `ya29.`/`1//` token shapes). Default timeout: 30 s.
+`runner.ts` always injects `--json --no-input --color=never`, strips `GOG_ACCESS_TOKEN` and other ambient `*_TOKEN`/`*_SECRET`/`*_KEY`/`*_CREDENTIALS` env vars from the child, augments PATH with Homebrew/`~/.local/bin`/`~/go/bin`, and redacts secrets from output and error text surfaced to the MCP client with mcp-utils `redactSecrets` alone (which covers Google's `ya29.`/`1//` token shapes since 2.12); the local `redactGoogleTokens` runs only for `redactMode: 'tokens'`, which must leave an OAuth consent URL intact. Default timeout: 30 s.
 
 ## Environment
 
