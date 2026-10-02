@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken, pos, confinePath, confineAtFile, confirmTokenParam, requireDispatchConfirmation } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, pageTokenParam, pageAliasParam, resolvePageToken, pos, confinePath, confirmTokenParam, requireDispatchConfirmation } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 // People is the richer API behind Google Contacts: Workspace directory
@@ -115,10 +115,10 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_batch_create', {
     description: 'Create Google Contacts in native People API batches (up to 200). peopleJson is a JSON array of People API Person resources. The payload is materialized in a temporary file on the gog host.',
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    // Same kind of write as gog_contacts_create, so the same annotation.
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({ peopleJson: z.string().describe('JSON array of People API Person resources, up to 200 contacts'), account: accountParam }),
   }, async ({ peopleJson, account }) => {
-    confineAtFile(peopleJson, 'peopleJson');
     let people: unknown;
     try { people = JSON.parse(peopleJson); } catch { throw new Error('peopleJson must be valid JSON'); }
     if (!Array.isArray(people) || people.length === 0 || people.length > 200) throw new Error('peopleJson must be a non-empty array with at most 200 contacts');
@@ -127,10 +127,10 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_batch_update', {
     description: 'Update Google Contacts in native People API batches. peopleByResourceName is a JSON object keyed by People resource name; each value must include the CONTACT source metadata and etag returned by a prior read. gog preserves those etag guards and reports partial progress.',
-    annotations: { readOnlyHint: false, destructiveHint: false },
+    // Overwrites fields like gog_contacts_update, so the same annotation.
+    annotations: { readOnlyHint: false, destructiveHint: true },
     inputSchema: z.object({ peopleByResourceName: z.string().describe('JSON object keyed by people/... resource name, with Person resources including CONTACT source metadata and etag'), account: accountParam }),
   }, async ({ peopleByResourceName, account }) => {
-    confineAtFile(peopleByResourceName, 'peopleByResourceName');
     let people: unknown;
     try { people = JSON.parse(peopleByResourceName); } catch { throw new Error('peopleByResourceName must be valid JSON'); }
     if (!people || typeof people !== 'object' || Array.isArray(people) || Object.keys(people).length === 0 || Object.keys(people).length > 200) throw new Error('peopleByResourceName must be a JSON object with between 1 and 200 contacts');

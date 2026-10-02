@@ -105,7 +105,8 @@ tool that reaches another person goes through: Gmail (via the `requireGmailDispa
 Classroom announcement, invitation, roster add, coursework create and submission return (and an
 announcement/coursework update that publishes: state PUBLISHED or a schedule), guest-visible Calendar
 create/update/respond/move/delete, Out of Office with auto-decline, Gmail vacation enable and send-as create, Apps
-Script run, billed Connected Sheets datasource add/update/refresh, permanent deletes (Drive, Gmail batch,
+Script run, billed Connected Sheets datasource add/update/refresh, atomic Sheets structural batches
+(`gog_sheets_batch_request`, `gog_sheets_batch_end`), permanent deletes (Drive, Gmail batch, Contacts batch,
 calendars, courses, coursework), and every `gog_api_call` write (`allowWrite` without `dryRun`), previewed as the
 exact api/version/method/params/body. A new tool that posts, shares, invites, notifies, runs code, bills or destroys
 data for good belongs on it. Its escape hatches must refuse the same action: a `vet` on the service's `registerRunTool` covering every gog alias and every flag spelling (`vetChatRun`, `vetCalendarRun`, …; `flagValue` reads both `--f=v` and `--f v`), and an entry in `DISPATCH_API_BLOCKED` (`src/tools/api.ts`) for the raw API method when a dedicated tool has the better preview; otherwise the model forwards the subcommand and nobody is asked (#400). The run vets also refuse what they cannot preview at all — `drive bulk`, `drive unshare`, `propose-time --decline`, auto-declining `focus-time`, guardian invitations, publishing materials and widening assignees — pointing at a dedicated tool or at Classroom/Calendar (`refusedInRun`).
