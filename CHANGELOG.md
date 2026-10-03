@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.6.1](https://github.com/chrischall/gogcli-mcp/compare/v4.6.0...v4.6.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** bump @chrischall/mcp-utils to 2.13.0 ([#425](https://github.com/chrischall/gogcli-mcp/issues/425)) ([f12d498](https://github.com/chrischall/gogcli-mcp/commit/f12d498d61ecebedae798c1b65194b6361a0b20c))
+
+
+### Documentation
+
+* describe full-mode redaction as the shared redactor alone ([#423](https://github.com/chrischall/gogcli-mcp/issues/423)) ([f98ca2c](https://github.com/chrischall/gogcli-mcp/commit/f98ca2c5dfe93429a20b3b91b757ee63e028ca67))
+
 ## [4.6.0](https://github.com/chrischall/gogcli-mcp/compare/v4.5.2...v4.6.0) (2026-10-02)
 
 
