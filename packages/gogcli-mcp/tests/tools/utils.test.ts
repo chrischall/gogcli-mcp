@@ -547,6 +547,21 @@ describe('formatAuthHealth', () => {
     expect(out).toContain('In production');
   });
 
+  it('does not warn a valid token that has already outlived the 7-day testing cliff', () => {
+    // Authorized 16.5 days before NOW and still refreshing live: a Testing-mode
+    // consent screen would have killed it at day 7, so the limit does not apply
+    // and a warning dated in the past would be a false alarm on every check.
+    const raw = JSON.stringify({
+      accounts: [{ email: 'a@x.com', created_at: '2026-07-08T00:00:00.000Z', valid: true }],
+    });
+    const out = formatAuthHealth(raw, NOW);
+    expect(out).toContain('✓ a@x.com: token valid');
+    expect(out).toContain('Authorized 16.5 day(s) ago');
+    expect(out).not.toContain('⚠');
+    expect(out).not.toContain('Approaching the 7-day');
+    expect(out).toContain('not subject to the 7-day');
+  });
+
   it('does not warn a freshly authorized valid token', () => {
     const raw = JSON.stringify({
       accounts: [{ email: 'a@x.com', created_at: '2026-07-23T12:00:00.000Z', valid: true }],
