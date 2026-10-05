@@ -8,15 +8,17 @@
 // But mcp-host stores that as an ALLOWLIST of every other name, so the policy
 // "hide two tools" is written as "show these 53", and the inverted form is what
 // rots: ship a new tool and it is absent from a list nobody edited, so it is
-// silently unreachable over the connector while working fine on stdio.
+// unreachable over the connector while working fine on stdio.
 //
-// mcp-host will not catch this for us, by design. `--follow` moves the version
-// pin and carries `enabledTools` across untouched (auto-update.ts), and the
-// daily mint-manifest check lists `tools.enable` among its DELIBERATE silences:
-// "A NARROWING. A registration that ignores it serves more, not less." That is
-// the right default for a host reading an unverified file out of a tarball, and
-// it is the exact blind spot our policy sits in — we narrow on purpose, so only
-// we can tell a deliberate narrowing from a stale one.
+// mcp-host no longer lets this rot SILENTLY. When an allowlisted
+// registration's child newly lists a tool, the host still withholds it (the
+// allowlist means what it says) but flags it: the registration shows
+// `newTools`, ranks under "Needs you" in the portal and apps, and a
+// `tools_awaiting_review` alert opens until the owner re-saves the allowlist.
+// What it cannot do is make the decision — the host sees an allowlist, not our
+// policy "everything except `*_run`". For these registrations that decision is
+// mechanical, so this script is the derived, no-clicks answer: it computes the
+// list and acknowledges what it reviewed in the same PUT.
 //
 // The list is DERIVED, never authored: GET /registrations/{id}/tools returns
 // what the running child offers, unnarrowed by the allowlist, so the desired
@@ -124,7 +126,9 @@ for (const reg of ours) {
   if (stale.length) console.log(`  allowlisted but not served: ${stale.join(', ')}`);
 
   if (APPLY) {
-    await api('PUT', `/api/v1/registrations/${reg.id}`, { enabledTools: desired });
+    // reviewedTools = the whole served menu we just judged (the `*_run` names
+    // included, deliberately kept off), so the host acknowledges exactly that.
+    await api('PUT', `/api/v1/registrations/${reg.id}`, { enabledTools: desired, reviewedTools: all });
     console.log(`  -> updated to ${desired.length} tools`);
   }
 }

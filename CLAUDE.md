@@ -265,23 +265,30 @@ in the keyring on the data dir and survives restarts, because the bootstrap only
 re-imports when the *secret* changes; the next secret rotation then overrides
 it.
 
-**The `enabledTools` allowlist rots, and only we can see it.** Its whole job is
-to withhold the two `*_run` escape hatches — arbitrary `gog` subcommand
-execution is not something a hosted connector should offer — but mcp-host stores
-that as an allowlist of *every other name*. So "hide two tools" is written as
-"show these 53", and shipping a new tool leaves it absent from a list nobody
-edited: fine on stdio, silently unreachable over the connector. mcp-host will
-not catch it. `--follow` moves the version pin and carries `enabledTools` across
-untouched, and the daily mint check lists `tools.enable` among its *deliberate*
-silences — "a narrowing; a registration that ignores it serves more, not less."
-That is the right default for a host reading an unverified file, and it is
-exactly the blind spot we sit in, because we narrow on purpose.
+**The `enabledTools` allowlist rots — no longer silently, but it still needs a
+decision.** Its whole job is to withhold the two `*_run` escape hatches —
+arbitrary `gog` subcommand execution is not something a hosted connector should
+offer — but mcp-host stores that as an allowlist of *every other name*. So "hide
+two tools" is written as "show these 53", and shipping a new tool leaves it
+absent from a list nobody edited: fine on stdio, withheld over the connector.
+`--follow` moves the version pin and carries `enabledTools` across untouched,
+and the daily mint check still lists `tools.enable` among its *deliberate*
+silences ("a narrowing; a registration that ignores it serves more, not less").
+But mcp-host itself now **flags** the new tool: it stays withheld, the
+registration shows `newTools` and ranks under "New tools" / "Needs you" in the
+web portal and the apps, and a `tools_awaiting_review` alert (push/email) opens
+until the owner re-saves the allowlist in the UI (the Admin picker, or Simple's
+"Turn them on" / "Keep them off"). What the host cannot do is make the call — it
+sees an allowlist, not our policy "everything except `*_run`" — and for these
+six registrations that call is mechanical.
 
-`scripts/sync-mcp-host-tools.mjs` closes it. The list is **derived, never
-authored**: `GET /registrations/{id}/tools` returns what the running child
-serves, unnarrowed, so the correct allowlist is that set minus `*_run`. It reads
-nothing from this checkout, which is what lets it judge whatever version each
-registration has actually followed to.
+`scripts/sync-mcp-host-tools.mjs` is still the fastest correct answer. The list
+is **derived, never authored**: `GET /registrations/{id}/tools` returns what the
+running child serves, unnarrowed, so the correct allowlist is that set minus
+`*_run` — no one ticking boxes. It reads nothing from this checkout, which is
+what lets it judge whatever version each registration has actually followed to.
+`--apply` sends `reviewedTools` (the whole served menu it judged, `*_run`
+included) beside `enabledTools`, so the same PUT clears the host's flag.
 
 ```sh
 npm run check:mcp-host-tools     # report drift, exit 1 if any
@@ -326,9 +333,10 @@ When adding a tool, ask: does a user opening the all-services base package want 
 6. Annotations: **every tool declares one — "unannotated" is not neutral**, and the answer is MEASURED rather than judged. `destructiveHint` defaults to TRUE in the spec, so leaving a tool unannotated (which this list used to tell you to do) publishes it as destructive, and a client that must raise the same alarm for `gog_gmail_drafts_forward` as for `gog_gmail_send` has told the reader nothing. **The oracle is `gogcli/safety-profiles/`**, whose two profiles classify gog's own subcommands: `readonly: true` → `readOnlyHint: true`; `readonly: false` + `agent-safe: true` → `destructiveHint: false`; `agent-safe: false` → `destructiveHint: true`. The middle bucket is RECOVERABILITY, not "only additive" — `drive rename`, `calendar move`, `sheets rename-tab` and `gmail drafts update` relocate or overwrite and are still `false`, because the question this field answers is *should the client stop and ask a human*, and "can this be undone" is the better test of that than "does it only append". Anything the profiles do not classify EXACTLY stays as it is: a PARENT entry never classifies its children (`sheets.links: true` is the read, not `sheets links set` — that shipped as a write marked read-only, #381), a service-root `false` is a blanket block rather than a verdict (`classroom: false`), and an existing `readOnlyHint: true` is never downgraded. Verify what you actually published by reading `tools/list` off the BUILT server — the source is easy to mis-grep, an annotation may come from a shared registrar, and a handler that reads before it writes must be classified by its most dangerous call, not its first.
 7. Gated deletes need `--force`: if the `gog` subcommand prompts for confirmation, append `--force` to the args — the runner always injects `--no-input`, so without it gog refuses (`refusing to delete … without --force (non-interactive)`). Not every delete is gated; confirm against a real `gog` (the mocked tests can't catch a missing `--force`). See [Gotchas](#gotchas).
 8. Add the new tool to the sub-package's `manifest.json`.
-9. After the release ships **and mcp-host has followed to it** (~04:17Z the next day), run
-   `npm run sync:mcp-host-tools` — a new tool is absent from the hosted `enabledTools`
-   allowlist until someone pushes it. See [Hosted registrations](#hosted-registrations-mcp-host).
+9. After the release ships **and mcp-host has followed to it** (~04:17Z the next day), the
+   hosted registration shows the new tool as "New tools to review" — withheld from the
+   `enabledTools` allowlist until someone decides. Run `npm run sync:mcp-host-tools` (or
+   accept it in the mcp-host UI). See [Hosted registrations](#hosted-registrations-mcp-host).
 
 ## Auth & re-auth
 
