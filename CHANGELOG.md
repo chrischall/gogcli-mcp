@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.3](https://github.com/chrischall/gogcli-mcp/compare/v4.6.2...v4.6.3) (2026-10-05)
+
+
+### Bug Fixes
+
+* **auth:** stop warning of a 7-day expiry for a token that has already outlived it ([#431](https://github.com/chrischall/gogcli-mcp/issues/431)) ([fec6182](https://github.com/chrischall/gogcli-mcp/commit/fec61825c91a1fc3bdc4218f42906f927b40383b))
+
 ## [4.6.2](https://github.com/chrischall/gogcli-mcp/compare/v4.6.1...v4.6.2) (2026-10-05)
 
 
