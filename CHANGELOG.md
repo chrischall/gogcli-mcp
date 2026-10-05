@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.6.2](https://github.com/chrischall/gogcli-mcp/compare/v4.6.1...v4.6.2) (2026-10-05)
+
+
+### Bug Fixes
+
+* **deps:** bump @modelcontextprotocol/server from 2.1.0 to 2.2.0 in the production-dependencies group ([#428](https://github.com/chrischall/gogcli-mcp/issues/428)) ([53a3089](https://github.com/chrischall/gogcli-mcp/commit/53a3089b040253ab034304fb42f97618caaa0e11))
+* **deps:** require @chrischall/mcp-utils 2.14.0 and MCP SDK 2.3.0 ([#430](https://github.com/chrischall/gogcli-mcp/issues/430)) ([60ffa91](https://github.com/chrischall/gogcli-mcp/commit/60ffa917c7a2d47c13706440a77d703076a7e3ee))
+
 ## [4.6.1](https://github.com/chrischall/gogcli-mcp/compare/v4.6.0...v4.6.1) (2026-10-03)
 
 
