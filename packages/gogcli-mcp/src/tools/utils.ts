@@ -493,7 +493,13 @@ function formatOneAccountHealth(a: AuthHealthAccount, now: number): string {
 
   if (a.valid === true) {
     let line = `✓ ${email}: token valid.${ageStr}`;
-    if (age !== null && age >= HEALTH_WARN_AGE_DAYS) {
+    // Past the cliff and STILL refreshing is proof the limit does not apply: a
+    // Testing-mode consent screen kills the token 7 days after issuance whether
+    // or not it is rotated. Warning anyway predicts an expiry already in the
+    // past, on every check, for an app that was published long ago.
+    if (age !== null && age > REFRESH_TOKEN_TESTING_TTL_DAYS) {
+      line += ` It has outlived the 7-day "Testing" limit, so this OAuth app is not subject to the 7-day expiry.`;
+    } else if (age !== null && age >= HEALTH_WARN_AGE_DAYS) {
       const est = new Date(Date.parse(a.created_at as string) + REFRESH_TOKEN_TESTING_TTL_DAYS * MS_PER_DAY)
         .toISOString()
         .slice(0, 10);
