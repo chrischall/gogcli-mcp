@@ -4,6 +4,7 @@ import type { CallToolResult, InputRequiredResult, ServerContext } from '@modelc
 import {
   CONFIRM_TOKEN_INSTRUCTION,
   confirmationFromEnv,
+  readConfirmElicitation,
   readEnvVar,
   requireConfirmationWithFallback,
   type ConfirmSubject,
@@ -242,7 +243,18 @@ export async function requireDispatchConfirmation(
     confirmationLabel: options.confirmationLabel,
     ...(options.unsupportedNote ? { unsupportedNote: options.unsupportedNote } : {}),
   };
-  if (!fallback) return requireConfirmationWithFallback(ctx, confirmation);
+  if (!fallback) {
+    // No token rail (a forwarding filter): MCP_CONFIRM_ELICITATION=off must
+    // refuse rather than prompt a client that would never show the prompt —
+    // the same switch confirmationFromEnv honours for every other gate.
+    if (readConfirmElicitation() !== 'off') return requireConfirmationWithFallback(ctx, confirmation);
+    const offNote = 'MCP_CONFIRM_ELICITATION=off on the server turns confirmation prompts off.';
+    return requireConfirmationWithFallback(ctx, {
+      ...confirmation,
+      elicitation: false,
+      unsupportedNote: confirmation.unsupportedNote ? `${offNote} ${confirmation.unsupportedNote}` : offNote,
+    });
+  }
   return requireConfirmationWithFallback(ctx, confirmationFromEnv({
     ...confirmation,
     tool: fallback.tool,

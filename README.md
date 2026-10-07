@@ -241,7 +241,7 @@ sends nothing and returns an error:
 | variable | default | |
 |---|---|---|
 | `MCP_CONFIRM_MODE` | `ask-user` | see the table above |
-| `MCP_CONFIRM_ELICITATION` | `on` | `off` never sends a confirmation prompt, so every client gets the `MCP_CONFIRM_MODE` path. Set it for a client that declares it can show prompts but never does (the gated call hangs — opencode 2.0.x). A Gmail forwarding filter, which never takes the fallback, still asks through the prompt. Any other value stays `on`, with a stderr warning. |
+| `MCP_CONFIRM_ELICITATION` | `on` | `off` never sends a confirmation prompt, so every client gets the `MCP_CONFIRM_MODE` path. Set it for a client that declares it can show prompts but never does (the gated call hangs — opencode 2.0.x). A gate with no token fallback (such as a Gmail forwarding filter) is refused instead. Any other value stays `on`, with a stderr warning. |
 | `MCP_CONFIRM_TTL_SECONDS` | `600` | token lifetime |
 | `MCP_CONFIRM_SECRET` | random per process | HMAC key; set it only if tokens must survive a server restart. Used tokens are remembered in memory, per process, so with a fixed secret a token that was already used is accepted again after a restart (or by another instance with the same secret) until it expires. Leave it unset unless you need that. |
 
