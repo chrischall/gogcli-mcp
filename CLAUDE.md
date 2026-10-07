@@ -76,6 +76,7 @@ DISPLAY_TZ=<IANA>     # zone for *Display fields and for interpreting naive gog 
 GOG_TIMEZONE=<IANA>   # zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge
 GOG_GMAIL_TRUSTED_DOMAINS=<csv> # additional domains excluded from external-recipient audit alerts
 MCP_CONFIRM_MODE=<mode>         # fleet-wide: ask-user (default) | auto | refuse — what a gated dispatch does on a client with no elicitation
+MCP_CONFIRM_ELICITATION=off     # fleet-wide: never prompt; every fallback-capable gate takes the MCP_CONFIRM_MODE path (clients whose prompt never shows, e.g. opencode 2.0.x)
 MCP_CONFIRM_TTL_SECONDS=<n>     # fleet-wide: confirmToken lifetime (default 600)
 MCP_CONFIRM_SECRET=<secret>     # fleet-wide: confirmToken HMAC key (default: random per process); stripped from gog's env by the _SECRET rule
 GOG_FILE_ROOTS=<dirs>  # ':'-separated dirs every server-side path param (attach/localPath/file/out/outDir/dir) must resolve inside; default ~/gogcli-mcp-files
