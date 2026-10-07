@@ -5,6 +5,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resetConfirmTokenState } from '../src/send-confirm-token.js';
+import { requireDispatchConfirmation } from '../src/dispatch-confirmation.js';
 import {
   GMAIL_DISPATCH_OPS,
   BODY_PREVIEW_MAX,
@@ -327,6 +328,7 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
     delete process.env.MCP_CONFIRM_MODE;
     delete process.env.MCP_CONFIRM_TTL_SECONDS;
     delete process.env.MCP_CONFIRM_SECRET;
+    delete process.env.MCP_CONFIRM_ELICITATION;
     process.env.GOG_ACCOUNT = 'me@example.com';
     resetConfirmTokenState();
   });
@@ -380,6 +382,47 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
     const r = parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.filter-forward', {}));
     expect(r.reason).toBe('confirmation-unsupported');
     expect(r.note).not.toContain('MCP_CONFIRM_MODE');
+  });
+
+  // MCP_CONFIRM_ELICITATION=off is for a client that declares elicitation but
+  // never shows the prompt (opencode 2.0.x), so a prompt would hang the call.
+  // A forwarding filter has no token rail, so off must REFUSE it rather than
+  // prompt — and say which switch did it.
+  it('with MCP_CONFIRM_ELICITATION=off, refuses a forwarding filter instead of prompting a client that declares elicitation', async () => {
+    process.env.MCP_CONFIRM_ELICITATION = 'off';
+    const r = parse(await requireGmailDispatchConfirmation(CAN_BE_ASKED, 'gmail.filter-forward', {}));
+    expect(r.reason).toBe('confirmation-unsupported');
+    expect(r.note).toContain('MCP_CONFIRM_ELICITATION=off');
+    expect(r.note).not.toContain('MCP_CONFIRM_MODE');
+  });
+
+  it('with MCP_CONFIRM_ELICITATION=off, gives a fallback-capable op the token flow even on a client that declares elicitation', async () => {
+    process.env.MCP_CONFIRM_ELICITATION = 'off';
+    const fb = fallback();
+    const r = parse(await requireGmailDispatchConfirmation(CAN_BE_ASKED, 'gmail.drafts-send', {}, fb));
+    expect(r.confirmToken).toEqual(expect.any(String));
+    expect(fb.subject).toHaveBeenCalled();
+  });
+
+  it('with MCP_CONFIRM_ELICITATION=off, refuses any no-fallback gate, naming the switch even without a note of its own', async () => {
+    process.env.MCP_CONFIRM_ELICITATION = 'off';
+    const r = parse(await requireDispatchConfirmation(CAN_BE_ASKED, {
+      action: 'calendar.notify', message: 'Confirm', confirmationLabel: 'Confirm', details: {},
+    }));
+    expect(r.reason).toBe('confirmation-unsupported');
+    expect(r.note).toContain('MCP_CONFIRM_ELICITATION=off');
+  });
+
+  it('with MCP_CONFIRM_ELICITATION=off, keeps a no-fallback gate\'s own way forward after naming the switch', async () => {
+    process.env.MCP_CONFIRM_ELICITATION = 'off';
+    const r = parse(await requireGmailDispatchConfirmation(CAN_BE_ASKED, 'gmail.forward', {}));
+    expect(r.reason).toBe('confirmation-unsupported');
+    expect(r.note).toMatch(/MCP_CONFIRM_ELICITATION=off .*Stage it with/);
+  });
+
+  it('with MCP_CONFIRM_ELICITATION unset, still prompts a forwarding filter on a client that declares elicitation', async () => {
+    expect(await requireGmailDispatchConfirmation(CAN_BE_ASKED, 'gmail.filter-forward', {}))
+      .toMatchObject({ resultType: 'input_required' });
   });
 
   it('leaves elicitation untouched even with the env set and a token passed', async () => {
