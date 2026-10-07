@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.7.0](https://github.com/chrischall/gogcli-mcp/compare/v4.6.3...v4.7.0) (2026-10-07)
+
+
+### Features
+
+* **deps:** support MCP_CONFIRM_ELICITATION=off via mcp-utils 2.15.0 ([#435](https://github.com/chrischall/gogcli-mcp/issues/435)) ([10e22e4](https://github.com/chrischall/gogcli-mcp/commit/10e22e45a9a285ab1483452d203c1950f929e34f))
+
+
+### Bug Fixes
+
+* **gmail:** refuse a forwarding filter instead of hanging when MCP_CONFIRM_ELICITATION=off ([#437](https://github.com/chrischall/gogcli-mcp/issues/437)) ([3bb1b2a](https://github.com/chrischall/gogcli-mcp/commit/3bb1b2afd19c932e28fcd5c8e15a88f32248ca5e))
+
+
+### Documentation
+
+* document MCP_CONFIRM_ELICITATION ([#436](https://github.com/chrischall/gogcli-mcp/issues/436)) ([5812848](https://github.com/chrischall/gogcli-mcp/commit/58128482957476e9d1a2235bd099c4926f60c8d7))
+* **hosting:** mcp-host now flags new tools on the allowlisted registrations ([#433](https://github.com/chrischall/gogcli-mcp/issues/433)) ([67694ca](https://github.com/chrischall/gogcli-mcp/commit/67694caa4e694dce05ddcd02b4da1bf522bc6811))
+
 ## [4.6.3](https://github.com/chrischall/gogcli-mcp/compare/v4.6.2...v4.6.3) (2026-10-05)
 
 
