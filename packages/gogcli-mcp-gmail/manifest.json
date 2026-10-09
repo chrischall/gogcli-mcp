@@ -39,7 +39,11 @@
       "env": {
         "GOG_ACCOUNT": "${user_config.gog_account}",
         "GOG_PATH": "${user_config.gog_path}",
-        "GOG_FILE_ROOTS": "${user_config.gog_file_roots}"
+        "GOG_FILE_ROOTS": "${user_config.gog_file_roots}",
+        "DISPLAY_TZ": "${user_config.display_tz}",
+        "GOG_GMAIL_TRUSTED_DOMAINS": "${user_config.gog_gmail_trusted_domains}",
+        "GOG_READONLY": "${user_config.gog_readonly}",
+        "GOG_TIMEZONE": "${user_config.gog_timezone}"
       }
     }
   },
@@ -60,6 +64,30 @@
       "type": "string",
       "title": "Allowed file directories",
       "description": "Directories tools may read files from (attachments, uploads) or write files to (exports, downloads), separated by ':' (';' on Windows). Optional — defaults to ~/gogcli-mcp-files",
+      "required": false
+    },
+    "display_tz": {
+      "type": "string",
+      "title": "Display time zone",
+      "description": "zone for *Display fields and for interpreting naive gog values; defaults to America/New_York",
+      "required": false
+    },
+    "gog_gmail_trusted_domains": {
+      "type": "string",
+      "title": "Trusted Gmail domains",
+      "description": "additional domains excluded from external-recipient audit alerts",
+      "required": false
+    },
+    "gog_readonly": {
+      "type": "string",
+      "title": "Read-only mode",
+      "description": "block all mutating gog API requests (injects gog's --readonly); set to 0/false/no/off (or unset) to allow writes",
+      "required": false
+    },
+    "gog_timezone": {
+      "type": "string",
+      "title": "gog time zone",
+      "description": "zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge",
       "required": false
     }
   },

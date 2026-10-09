@@ -258,7 +258,7 @@ export async function studentLabel(
 export function registerClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_list', {
     description: 'List Google Classroom courses.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       state: z.string().optional().describe('Comma-separated course states (ACTIVE, ARCHIVED, PROVISIONED, DECLINED, SUSPENDED)'),
       teacher: z.string().optional().describe('Filter by teacher user ID'),
@@ -283,7 +283,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_courses_get', {
     description: 'Get a single Google Classroom course by ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       account: accountParam,
@@ -294,7 +294,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_students_list', {
     description: 'List students enrolled in a Google Classroom course.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       max: z.number().optional().describe('Max results per page'),
@@ -314,7 +314,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_students_get', {
     description: 'Get a specific student enrolled in a course.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Student user ID'),
@@ -326,7 +326,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_teachers_list', {
     description: 'List teachers in a Google Classroom course.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       max: z.number().optional().describe('Max results per page'),
@@ -346,7 +346,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_teachers_get', {
     description: 'Get a specific teacher in a course.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Teacher user ID'),
@@ -358,7 +358,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_roster', {
     description: 'List the full roster (students and/or teachers) of a Google Classroom course. Omit both flags to return both groups.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       students: z.boolean().optional().describe('Include students only'),
@@ -382,7 +382,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_coursework_list', {
     description: 'List coursework (assignments, questions, materials) for a course.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       state: z.string().optional().describe('Filter by coursework state (PUBLISHED, DRAFT, DELETED)'),
@@ -410,7 +410,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_coursework_get', {
     description: 'Get a single coursework item by ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
@@ -422,7 +422,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_submissions_list', {
     description: 'List student submissions for a coursework item.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
@@ -449,7 +449,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_submissions_get', {
     description: 'Get a single submission by ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
@@ -462,7 +462,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_submissions_grade', {
     description: 'Grade a student submission. Set draft and/or assigned grade values.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
@@ -483,7 +483,7 @@ export function registerClassroomTools(server: McpServer): void {
       + 'coursework and the submission and asks the MCP host to show the user a confirmation prompt with the class, the '
       + 'assignment, the student and the grade being returned; nothing is returned unless they accept.'
       + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
@@ -522,7 +522,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_submissions_turn_in', {
     description: 'Turn in a student submission (student action).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
@@ -535,7 +535,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_submissions_reclaim', {
     description: 'Reclaim a turned-in submission (student action to edit a submission).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
@@ -548,7 +548,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_announcements_list', {
     description: 'List announcements in a Google Classroom course.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       state: z.string().optional().describe('Filter by announcement state'),
@@ -572,7 +572,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_announcements_get', {
     description: 'Get a single announcement by ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       announcementId: z.string().describe('Announcement ID'),
@@ -587,7 +587,7 @@ export function registerClassroomTools(server: McpServer): void {
       + '(which students cannot see; a scheduled draft publishes itself), this reads the course and asks the MCP host to '
       + 'show the user a confirmation prompt with the class, the full text and when it publishes; nothing is posted '
       + 'unless they accept. To stage one without asking, pass state DRAFT and no scheduled time.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       text: z.string().describe('Announcement text'),
@@ -631,7 +631,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_topics_list', {
     description: 'List topics in a Google Classroom course.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       max: z.number().optional().describe('Max results per page'),
@@ -651,7 +651,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_topics_get', {
     description: 'Get a single topic by ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       topicId: z.string().describe('Topic ID'),
@@ -663,7 +663,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_invitations_list', {
     description: 'List Google Classroom invitations.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       course: z.string().optional().describe('Filter by course ID'),
       user: z.string().optional().describe('Filter by user ID'),
@@ -686,7 +686,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_invitations_get', {
     description: 'Get a single invitation by ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       invitationId: z.string().describe('Invitation ID'),
       account: accountParam,
@@ -697,7 +697,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_invitations_accept', {
     description: 'Accept a Google Classroom invitation.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       invitationId: z.string().describe('Invitation ID'),
       account: accountParam,
@@ -708,7 +708,7 @@ export function registerClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_profile_get', {
     description: 'Get a Google Classroom user profile. Omit userId to fetch the authenticated user.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       userId: z.string().optional().describe('User ID (omit for self)'),
       account: accountParam,

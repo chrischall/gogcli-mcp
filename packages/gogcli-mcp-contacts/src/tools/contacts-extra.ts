@@ -8,7 +8,7 @@ import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_people_me', {
     description: 'Show your own People profile (people/me).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       account: accountParam,
     }),
@@ -18,7 +18,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_people_get', {
     description: 'Get a People profile by resource name.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       userId: z.string().describe('Person resource name (people/...) or email'),
       account: accountParam,
@@ -29,7 +29,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_people_search', {
     description: 'Search the Google Workspace directory (covers internal users, unlike contacts search which is limited to your personal contacts).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       query: z.string().describe('Search query (name, email, etc.)'),
       max: z.number().optional().describe('Max results (default: 50)'),
@@ -49,7 +49,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_people_relations', {
     description: 'Get relations (manager, reports, etc.) for a user. Defaults to self when userId is omitted.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       userId: z.string().optional().describe('Person resource name (defaults to self when omitted)'),
       type: z.string().optional().describe('Filter to a specific relation type (e.g. "manager")'),
@@ -64,7 +64,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_update', {
     description: 'Update an existing Google Contact. Empty string clears a field; repeatable fields (url/address/custom/relation) take comma/semicolon-separated lists.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       resourceName: z.string().describe('Contact resource name (people/...)'),
       given: z.string().optional().describe('Given (first) name'),
@@ -98,7 +98,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_delete', {
     description: 'Delete a Google Contact by resource name.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       resourceName: z.string().describe('Contact resource name (people/...)'),
       account: accountParam,
@@ -109,14 +109,14 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_batch_get', {
     description: 'Fetch exact Google Contacts by People resource name in native API batches (up to 200).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({ resourceNames: z.array(z.string().min(1)).min(1).max(200).describe('Exact resource names such as people/c123; maximum 200'), account: accountParam }),
   }, async ({ resourceNames, account }) => runOrDiagnose(['contacts', 'batch', 'get', ...resourceNames.map(pos)], { account }));
 
   server.registerTool('gog_contacts_batch_create', {
     description: 'Create Google Contacts in native People API batches (up to 200). peopleJson is a JSON array of People API Person resources. The payload is materialized in a temporary file on the gog host.',
     // Same kind of write as gog_contacts_create, so the same annotation.
-    annotations: { readOnlyHint: false, destructiveHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({ peopleJson: z.string().describe('JSON array of People API Person resources, up to 200 contacts'), account: accountParam }),
   }, async ({ peopleJson, account }) => {
     let people: unknown;
@@ -128,7 +128,7 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_batch_update', {
     description: 'Update Google Contacts in native People API batches. peopleByResourceName is a JSON object keyed by People resource name; each value must include the CONTACT source metadata and etag returned by a prior read. gog preserves those etag guards and reports partial progress.',
     // Overwrites fields like gog_contacts_update, so the same annotation.
-    annotations: { readOnlyHint: false, destructiveHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({ peopleByResourceName: z.string().describe('JSON object keyed by people/... resource name, with Person resources including CONTACT source metadata and etag'), account: accountParam }),
   }, async ({ peopleByResourceName, account }) => {
     let people: unknown;
@@ -139,7 +139,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_batch_delete', {
     description: 'Permanently delete exact Google Contacts in native People API batches (up to 500). Requires explicit user confirmation; deleted contacts cannot be restored from Trash.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({ resourceNames: z.array(z.string().min(1)).min(1).max(500).describe('Exact People resource names; maximum 500'), account: accountParam, confirmToken: confirmTokenParam }),
   }, async ({ resourceNames, account, confirmToken }, ctx) => {
     const confirmation = await requireDispatchConfirmation(ctx, {
@@ -156,7 +156,7 @@ export function registerExtraContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_export', {
     description: 'Export contacts as vCard (.vcf). Provide a selector (resource name, email, or name), or use query / all to export multiple.',
     // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
-    annotations: { readOnlyHint: false, destructiveHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       selector: z.string().optional().describe('Contact resource name (people/...), email, or name'),
       query: z.string().optional().describe('Search query to export (max 30 results)'),
@@ -182,7 +182,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_dedupe', {
     description: 'Find likely duplicate personal contacts. Defaults to a read-only preview of the merge plan; set apply to actually merge each duplicate group and delete the redundant contacts (etag-checked, with ambiguous or unmergeable groups refused). Scope a risky apply with resource. Always preview first.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       match: z.string().optional().describe('Match fields, comma-separated from email,phone,name (default: email,phone)'),
       max: z.number().optional().describe('Max contacts to scan (0 = all). Mutually exclusive with resource — gog rejects passing both.'),
@@ -204,7 +204,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_directory_list', {
     description: 'List people from the Google Workspace directory (domain shared contacts).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       max: z.number().optional().describe('Max results (default: 50)'),
       pageToken: pageTokenParam,
@@ -223,7 +223,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_other_list', {
     description: 'List "other contacts" — auto-collected addresses (e.g. people you have emailed) that are not in your saved contacts.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       max: z.number().optional().describe('Max results (default: 100)'),
       pageToken: pageTokenParam,
@@ -242,7 +242,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_other_search', {
     description: 'Search "other contacts" — auto-collected addresses not in your saved contacts.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       query: z.string().describe('Search query'),
       max: z.number().optional().describe('Max results (default: 50)'),
@@ -256,7 +256,7 @@ export function registerExtraContactsTools(server: McpServer): void {
 
   server.registerTool('gog_people_raw', {
     description: 'Dump the raw People API response as JSON (lossless; for scripting and LLM consumption).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       userId: z.string().describe('Person resource name (people/...) or email'),
       personFields: z.string().optional().describe('People API personFields mask (default: broad set)'),

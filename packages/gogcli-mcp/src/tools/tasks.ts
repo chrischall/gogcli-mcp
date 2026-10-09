@@ -7,7 +7,7 @@ import type { GogArg } from '../runner.js';
 export function registerTasksTools(server: McpServer): void {
   server.registerTool('gog_tasks_lists', {
     description: 'List all Google Task lists.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       account: accountParam,
     }),
@@ -17,7 +17,7 @@ export function registerTasksTools(server: McpServer): void {
 
   server.registerTool('gog_tasks_list', {
     description: 'List tasks in a Google Task list.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       tasklistId: z.string().describe('Task list ID (use gog_tasks_lists to find IDs)'),
       account: accountParam,
@@ -28,7 +28,7 @@ export function registerTasksTools(server: McpServer): void {
 
   server.registerTool('gog_tasks_get', {
     description: 'Get a specific task by ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       tasklistId: z.string().describe('Task list ID'),
       taskId: z.string().describe('Task ID'),
@@ -40,7 +40,7 @@ export function registerTasksTools(server: McpServer): void {
 
   server.registerTool('gog_tasks_add', {
     description: 'Add a task to a Google Task list.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       tasklistId: z.string().describe('Task list ID'),
       title: z.string().describe('Task title'),
@@ -57,7 +57,7 @@ export function registerTasksTools(server: McpServer): void {
 
   server.registerTool('gog_tasks_done', {
     description: 'Mark a task as completed.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       tasklistId: z.string().describe('Task list ID'),
       taskId: z.string().describe('Task ID'),
@@ -69,7 +69,7 @@ export function registerTasksTools(server: McpServer): void {
 
   server.registerTool('gog_tasks_delete', {
     description: 'Delete a task.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       tasklistId: z.string().describe('Task list ID'),
       taskId: z.string().describe('Task ID'),

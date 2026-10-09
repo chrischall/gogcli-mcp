@@ -93,7 +93,7 @@ export function registerChatTools(server: McpServer): void {
       'List the Google Chat spaces the account belongs to — named rooms and DMs alike — with their resource names. '
       + 'Start here when you do not yet have a space name; gog_chat_spaces_find is faster when you know the room\'s title.'
       + workspaceOnlyNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       ...paginationParams,
       account: accountParam,
@@ -109,7 +109,7 @@ export function registerChatTools(server: McpServer): void {
       'Find spaces whose display name matches. Substring and case-insensitive by default, which is what you want when the '
       + 'user names a room approximately ("the launch room"); pass exact=true to require the whole title. DMs have no '
       + 'display name — use gog_chat_dm_space to reach a person.' + workspaceOnlyNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       displayName: z.string().describe('Space display name, or part of one'),
       exact: z.boolean().optional().describe('Require an exact (still case-insensitive) match on the whole display name'),
@@ -129,7 +129,7 @@ export function registerChatTools(server: McpServer): void {
       + 'with members this asks the MCP host to show the user a confirmation prompt with the space name and every member '
       + 'first; nothing is created unless they accept. A space with no members reaches nobody and is created without '
       + 'asking.' + CONFIRM_FALLBACK_DESCRIPTION + workspaceOnlyNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       displayName: z.string().describe('Display name for the new space'),
       members: z.array(z.string()).optional().describe('Initial members, as email addresses or "users/..." resource names'),
@@ -164,7 +164,7 @@ export function registerChatTools(server: McpServer): void {
     description:
       'List the threads in a space, so a reply can be targeted at an existing conversation rather than starting a new one. '
       + 'Pass a thread name from here as `thread` to gog_chat_messages_send.' + workspaceOnlyNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       space: spaceParam,
       ...paginationParams,
@@ -183,7 +183,7 @@ export function registerChatTools(server: McpServer): void {
       + 'unread=true returns only what arrived after the account last read the space — the cheap way to answer "what did I '
       + 'miss". Newest-first needs an explicit order="createTime desc"; Chat\'s own default is oldest-first.'
       + workspaceOnlyNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       space: spaceParam,
       thread: threadParam,
@@ -212,7 +212,7 @@ export function registerChatTools(server: McpServer): void {
       + 'mute setting; read state works on an ordinary chat grant, but the mute setting needs chat.users.spacesettings, '
       + 'which gog\'s chat scope set does NOT request (re-auth with extraScopes to get it). Missing metadata is OMITTED '
       + 'rather than defaulted, so an absent `read` means unknown while an explicit false means unread.' + workspaceOnlyNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       query: z.string().describe('Google Chat filter-syntax query — keywords, or filters such as "from:alice@example.com budget"'),
       order: z.enum(['create_time desc', 'relevance desc']).optional().describe(
@@ -245,7 +245,7 @@ export function registerChatTools(server: McpServer): void {
       + 'Chat\'s markdown-ish formatting (*bold*, _italic_, `code`). Asks the MCP host to show the user a confirmation '
       + 'prompt with the space, thread, text and attachments first; nothing is posted unless they accept.'
       + CONFIRM_FALLBACK_DESCRIPTION + workspaceOnlyNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       space: spaceParam,
       text: z.string().optional().describe('Message text. Optional only when an attachment is supplied.'),
@@ -301,7 +301,7 @@ export function registerChatTools(server: McpServer): void {
       + 'immediately and cannot be unsent through this tool. For a room rather than a person, use gog_chat_messages_send. '
       + 'Asks the MCP host to show the user a confirmation prompt with the recipient and text first; nothing is sent '
       + 'unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION + workspaceOnlyNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       email: z.string().describe('Recipient email address'),
       text: z.string().describe('Message text'),
@@ -335,7 +335,7 @@ export function registerChatTools(server: McpServer): void {
     description:
       'Resolve the DM space for an email address — the bridge from a person to the "spaces/..." name the message tools '
       + 'want. Creates the space if none exists yet, which is silent: it does not message the person.' + workspaceOnlyNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       email: z.string().describe('The other person\'s email address'),
       account: accountParam,
@@ -349,7 +349,7 @@ export function registerChatTools(server: McpServer): void {
       'List the emoji reactions on one message, with who reacted. gog_chat_messages_list already returns a reaction '
       + 'SUMMARY per message; come here when you need the individual reactors, or the reaction resource names that '
       + 'gog_chat_reactions_delete takes.' + workspaceOnlyNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       message: z.string().describe('Message resource name ("spaces/AAAA/messages/BBBB"), or a bare message ID together with `space`'),
       space: z.string().optional().describe('Space resource name — required only when `message` is a bare ID'),
@@ -367,7 +367,7 @@ export function registerChatTools(server: McpServer): void {
     description:
       'React to a message with an emoji. Visible to the space immediately. Pass the emoji itself ("👍"), not a :shortcode:.'
       + workspaceOnlyNote,
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       message: z.string().describe('Message resource name ("spaces/AAAA/messages/BBBB"), or a bare message ID together with `space`'),
       emoji: z.string().describe('The emoji character to react with, e.g. "👍"'),
@@ -385,7 +385,7 @@ export function registerChatTools(server: McpServer): void {
       'Remove one emoji reaction. Takes the REACTION\'s own resource name ("spaces/.../messages/.../reactions/..."), not '
       + 'the message\'s and not the emoji — get it from gog_chat_reactions_list. An account can only remove its own reaction.'
       + workspaceOnlyNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       reaction: z.string().describe('Reaction resource name, e.g. "spaces/AAAA/messages/BBBB/reactions/CCCC"'),
       account: accountParam,

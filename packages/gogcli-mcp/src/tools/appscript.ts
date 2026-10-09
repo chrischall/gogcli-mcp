@@ -72,7 +72,7 @@ export function registerAppScriptTools(server: McpServer): void {
     description:
       'Get an Apps Script project\'s metadata: title, creator, create/update times, and the parent Drive file when the '
       + 'project is bound to a Sheet, Doc or Form. Use gog_appscript_content to read the actual code.' + apiEnableNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       scriptId: scriptIdParam,
       account: accountParam,
@@ -86,7 +86,7 @@ export function registerAppScriptTools(server: McpServer): void {
       'Read a project\'s source — every .gs file and its appsscript.json manifest — INLINE in the response. This is the '
       + 'tool to reach for when the question is "what does this script do"; it needs no filesystem, so it works the same '
       + 'on a hosted deployment as it does locally, unlike gog_appscript_pull.' + apiEnableNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       scriptId: scriptIdParam,
       account: accountParam,
@@ -103,7 +103,7 @@ export function registerAppScriptTools(server: McpServer): void {
       + 'reach them. Use gog_appscript_content there instead — it returns the same source in the response. Existing files '
       + 'are left alone unless overwrite is set. Read-only as far as Google is concerned: nothing is pushed back.'
       + apiEnableNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       scriptId: scriptIdParam,
       dir: z.string().describe('Destination directory, resolved on the machine where gog runs; must be inside the server\'s GOG_FILE_ROOTS directories'),
@@ -122,7 +122,7 @@ export function registerAppScriptTools(server: McpServer): void {
       'Create a new, empty Apps Script project. Pass parentId to bind it to a Drive file (a Sheet, Doc or Form), which is '
       + 'what makes the script a container-bound script with access to that document; omit it for a standalone project. '
       + 'gog cannot upload code, so the project starts empty either way.' + apiEnableNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       title: z.string().describe('Project title'),
       parentId: z.string().optional().describe('Drive file ID to bind the project to (Sheet, Doc or Form). Omit for a standalone project.'),
@@ -139,7 +139,7 @@ export function registerAppScriptTools(server: McpServer): void {
       'List a project\'s deployments — the published web apps, add-ons and API executables, each pinned to a version. A '
       + 'deployment ID from here is what gog_appscript_run_function needs when a script is not running in dev mode.'
       + apiEnableNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       scriptId: scriptIdParam,
       ...paginationParams,
@@ -155,7 +155,7 @@ export function registerAppScriptTools(server: McpServer): void {
     description:
       'List a project\'s saved versions — the immutable snapshots deployments point at, with their numbers and '
       + 'descriptions. Useful for answering "what is actually deployed" next to gog_appscript_deployments.' + apiEnableNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       scriptId: scriptIdParam,
       ...paginationParams,
@@ -178,7 +178,7 @@ export function registerAppScriptTools(server: McpServer): void {
       + 'This is NOT the escape hatch — gog_appscript_run is that. Because the wrapper cannot tell what the code will '
       + 'do, it reads the project and asks the MCP host to show the user a confirmation prompt with the project, the '
       + 'function and its arguments first; nothing runs unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION + apiEnableNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       scriptId: scriptIdParam,
       functionName: z.string().describe('Name of the function to call, e.g. "doWork"'),

@@ -67,7 +67,7 @@ const courseworkSharedFields = {
 export function registerExtraClassroomTools(server: McpServer): void {
   server.registerTool('gog_classroom_courses_create', {
     description: 'Create a new Google Classroom course.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       name: z.string().describe('Course name'),
       ...courseSharedFields,
@@ -86,7 +86,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_courses_update', {
     description: 'Update an existing Google Classroom course.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       name: z.string().optional().describe('Course name'),
@@ -109,7 +109,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
     description: 'Delete a Google Classroom course — its coursework, submissions and grades go with it, for good. Reads '
       + 'the course and asks the MCP host to show the user a confirmation prompt naming it first; nothing is deleted '
       + 'unless they accept. gog_classroom_courses_archive is the reversible alternative.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       account: accountParam,
@@ -139,7 +139,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_courses_archive', {
     description: 'Archive a Google Classroom course.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       account: accountParam,
@@ -150,7 +150,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_courses_unarchive', {
     description: 'Unarchive a Google Classroom course (restore to ACTIVE).',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       account: accountParam,
@@ -163,7 +163,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
     description: 'Add a student to a Google Classroom course. Adding someone else gives them the class stream and '
       + 'materials, so this reads the course and asks the MCP host to show the user a confirmation prompt with the class '
       + 'and the student first; enrolling yourself ("me") does not ask.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Student user ID or email (or "me")'),
@@ -199,7 +199,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_students_remove', {
     description: 'Remove a student from a Google Classroom course.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Student user ID'),
@@ -213,7 +213,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
     description: 'Add a teacher to a Google Classroom course. A co-teacher sees every student\'s work and grades, so '
       + 'this reads the course and asks the MCP host to show the user a confirmation prompt with the class and the '
       + 'teacher first; nothing changes unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Teacher user ID or email'),
@@ -244,7 +244,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_teachers_remove', {
     description: 'Remove a teacher from a Google Classroom course.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('Teacher user ID'),
@@ -260,7 +260,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       + 'reads the course and asks the MCP host to show the user a confirmation prompt with the class, the title, the '
       + 'text, the due date and when it publishes; nothing is posted unless they accept. To stage one without asking, '
       + 'pass state DRAFT and no scheduled time.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       title: z.string().describe('Coursework title'),
@@ -316,7 +316,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_coursework_update', {
     description: 'Update an existing coursework item.' + PUBLISH_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
@@ -383,7 +383,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
     description: 'Delete a coursework item — every student submission to it goes too, for good. Reads the course and '
       + 'the coursework and asks the MCP host to show the user a confirmation prompt naming both first; nothing is '
       + 'deleted unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       courseworkId: z.string().describe('Coursework ID'),
@@ -416,7 +416,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_announcements_update', {
     description: 'Update an existing announcement.' + PUBLISH_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       announcementId: z.string().describe('Announcement ID'),
@@ -473,7 +473,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_announcements_delete', {
     description: 'Delete an announcement.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       announcementId: z.string().describe('Announcement ID'),
@@ -485,7 +485,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_topics_create', {
     description: 'Create a topic in a Google Classroom course.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       name: z.string().describe('Topic name'),
@@ -497,7 +497,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_topics_update', {
     description: 'Rename an existing topic.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       topicId: z.string().describe('Topic ID'),
@@ -510,7 +510,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_topics_delete', {
     description: 'Delete a topic.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       topicId: z.string().describe('Topic ID'),
@@ -524,7 +524,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
     description: 'Create an invitation to a Google Classroom course — Classroom emails the invitee. Reads the course '
       + 'and asks the MCP host to show the user a confirmation prompt with the class, the invitee and the role; '
       + 'nothing is sent unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       userId: z.string().describe('User ID to invite'),
@@ -558,7 +558,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
 
   server.registerTool('gog_classroom_invitations_delete', {
     description: 'Delete (revoke) a Google Classroom invitation.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       invitationId: z.string().describe('Invitation ID'),
       account: accountParam,

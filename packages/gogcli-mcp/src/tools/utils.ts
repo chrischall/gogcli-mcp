@@ -176,7 +176,7 @@ export function registerRunTool(
   }
   server.registerTool(`gog_${service}_run`, {
     description,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object(inputSchema),
   }, async (rawArgs) => {
     const { subcommand, args, account } = rawArgs as { subcommand: string; args: string[]; account?: string };
