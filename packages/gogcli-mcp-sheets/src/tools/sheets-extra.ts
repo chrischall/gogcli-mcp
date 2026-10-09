@@ -138,6 +138,8 @@ async function confirmBilledExecution(
   o: {
     tool: string;
     action: string;
+    /** The tool's arguments, bound into the confirmation (mcp-utils 3.0). */
+    args: object;
     account: string | undefined;
     confirmToken: string | undefined;
     spreadsheetId: string;
@@ -156,6 +158,7 @@ async function confirmBilledExecution(
     details: view,
     unsupportedNote: 'Ask the user to run it from Google Sheets (Data > Data connectors).',
     fallback: {
+      args: o.args,
       tool: o.tool,
       account: o.account,
       confirmToken: o.confirmToken,
@@ -191,7 +194,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       message: 'Review and confirm applying the queued Sheets requests:',
       confirmationLabel: 'Confirm applying this atomic Sheets batch.',
       details: { batchId, queuedBatch: preview },
-      fallback: { tool: 'gog_sheets_batch_end', account, confirmToken, subject: () => ({ target: batchId, payload: { queuedBatch: preview }, preview: { batchId, queuedBatch: preview } }) },
+      fallback: { args: { batchId, account }, tool: 'gog_sheets_batch_end', account, confirmToken, subject: () => ({ target: batchId, payload: { queuedBatch: preview }, preview: { batchId, queuedBatch: preview } }) },
     });
     if (confirmation) return confirmation;
     return runOrDiagnose(['batch', 'end', pos(batchId), '--force'], { account });
@@ -799,6 +802,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
         requests,
       },
       fallback: {
+        args: { spreadsheetId, requestsJson, batch, account },
         tool: 'gog_sheets_batch_request', account, confirmToken,
         subject: () => ({ target: spreadsheetId, payload: { requests }, preview: { requestCount: requests.length, requests } }),
       },
@@ -1342,6 +1346,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (table) args.push(`--table=${table}`);
     const source = query !== undefined ? { query } : { table: [tableProject ?? billingProject, dataset, table].join('.') };
     const confirmation = await confirmBilledExecution(ctx, {
+      args: { spreadsheetId, billingProject, query, dataset, table, tableProject, account },
       tool: 'gog_sheets_datasource_add', action: 'sheets.datasource-add', account, confirmToken, spreadsheetId,
       target: spreadsheetId, view: { billingProject, ...source },
     });
@@ -1384,6 +1389,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     if (table !== undefined) args.push(`--table=${table}`);
     const changes = Object.fromEntries(Object.entries({ billingProject, query, tableProject, dataset, table }).filter(([, v]) => v !== undefined));
     const confirmation = await confirmBilledExecution(ctx, {
+      args: { spreadsheetId, dataSourceId, billingProject, query, dataset, table, tableProject, account },
       tool: 'gog_sheets_datasource_update', action: 'sheets.datasource-update', account, confirmToken, spreadsheetId,
       target: `${spreadsheetId}/${dataSourceId}`, view: { dataSourceId, changes },
     });
@@ -1425,6 +1431,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     const described = await runOrDiagnose(['sheets', 'datasource', 'describe', pos(spreadsheetId), pos(dataSourceId)], { account });
     if (described.isError) return described;
     const confirmation = await confirmBilledExecution(ctx, {
+      args: { spreadsheetId, dataSourceId, forceRefresh, account },
       tool: 'gog_sheets_datasource_refresh', action: 'sheets.datasource-refresh', account, confirmToken, spreadsheetId,
       target: `${spreadsheetId}/${dataSourceId}`,
       view: { dataSourceId, ...dataSourceSnapshot(resultText(described)), forceRefresh: Boolean(forceRefresh) },

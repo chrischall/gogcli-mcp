@@ -147,7 +147,7 @@ export function registerExtraContactsTools(server: McpServer): void {
       message: 'Review and confirm permanent deletion of these Google Contacts:',
       confirmationLabel: 'Confirm permanent deletion of the listed contacts.',
       details: { resourceNames },
-      fallback: { tool: 'gog_contacts_batch_delete', account, confirmToken, subject: () => ({ target: 'contacts', payload: { resourceNames }, preview: { resourceNames } }) },
+      fallback: { args: { resourceNames, account }, tool: 'gog_contacts_batch_delete', account, confirmToken, subject: () => ({ target: 'contacts', payload: { resourceNames }, preview: { resourceNames } }) },
     });
     if (confirmation) return confirmation;
     return runOrDiagnose(['contacts', 'batch', 'delete', ...resourceNames.map(pos), '--force'], { account });

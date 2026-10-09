@@ -2934,6 +2934,7 @@ export function registerExtraGmailTools(server: McpServer): void {
         details: view,
         unsupportedNote: 'Move them to the Trash with gog_gmail_trash instead; the user can empty it from Gmail.',
         fallback: {
+          args: { messageIds, force, account },
           tool: 'gog_gmail_batch_delete',
           account,
           confirmToken,
@@ -3616,6 +3617,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.drafts-send', { draftId, ...preview }, {
       tool: 'gog_gmail_drafts_send',
       account,
+      args: { draftId, account },
       confirmToken,
       subject: () => storedDraftTokenSubject(raw, draftId, account),
     });
@@ -3684,6 +3686,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     }, {
       tool: 'gog_gmail_forward',
       account,
+      args: { messageId, to, cc, bcc, note, from, skipAttachments, account },
       confirmToken,
       // Fallback only: read what is being forwarded, so the user sees whose
       // message and which attachments leave, and phase 2 re-reads it.
@@ -3837,6 +3840,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     }, {
       tool: 'gog_gmail_autoreply',
       account,
+      args: { query, max, subject, body, bodyHtml, from, replyTo, label, archive, markRead, skipBulk, allowSelf, account },
       confirmToken,
       // The search above runs on every call; binding its matches means a
       // different set of messages on phase 2 is DRAFT_CHANGED, not a surprise.
@@ -4010,6 +4014,7 @@ export function registerExtraGmailTools(server: McpServer): void {
         details: { ...responder, bodyPreview: bodyPreview(body) },
         unsupportedNote: 'Ask the user to turn on the vacation responder from Gmail settings.',
         fallback: {
+          args: { enable, disable, subject, body, start, end, contactsOnly, domainOnly, account },
           tool: 'gog_gmail_vacation_update',
           account,
           confirmToken,
@@ -4163,6 +4168,8 @@ export function registerExtraGmailTools(server: McpServer): void {
       details: { ...alias, signaturePreview: bodyPreview(signature) },
       unsupportedNote: 'Ask the user to add it from Gmail settings (Accounts > Send mail as).',
       fallback: {
+        // treatAsAlias as the call means it: an omitted flag and false are the same alias.
+        args: { email, displayName, replyTo, signature, treatAsAlias: Boolean(treatAsAlias), account },
         tool: 'gog_gmail_sendas_create',
         account,
         confirmToken,

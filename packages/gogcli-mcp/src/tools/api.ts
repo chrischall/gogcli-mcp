@@ -161,6 +161,7 @@ export function registerApiTools(server: McpServer): void {
         details: view,
         unsupportedNote: 'Set dryRun=true to see the request gog would send without sending it, or use the dedicated gog_* tool for this operation.',
         fallback: {
+          args: { api, version, method, params, body, scope, allowWrite, dryRun, account },
           tool: 'gog_api_call',
           account,
           confirmToken,

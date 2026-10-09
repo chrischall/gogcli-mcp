@@ -297,6 +297,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
         details: view,
         unsupportedNote: 'Move it with sendUpdates none instead, which notifies nobody.',
         fallback: {
+          args: { calendarId, eventId, destinationCalendarId, sendUpdates, account },
           tool: 'gog_calendar_move',
           account,
           confirmToken,
@@ -352,6 +353,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
         details: view,
         unsupportedNote: 'Create it with autoDecline none instead; the user can turn on auto-decline in Google Calendar.',
         fallback: {
+          args: { from, to, calendarId, summary, autoDecline, declineMessage, allDay, account },
           tool: 'gog_calendar_out_of_office',
           account,
           confirmToken,
@@ -398,6 +400,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       details: view,
       unsupportedNote: 'Ask the user to delete it from Google Calendar\'s settings, or use gog_calendar_unsubscribe to only hide it.',
       fallback: {
+        args: { calendarId, account },
         tool: 'gog_calendar_delete_calendar',
         account,
         confirmToken,

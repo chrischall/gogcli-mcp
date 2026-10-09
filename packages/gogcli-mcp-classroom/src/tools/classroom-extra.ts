@@ -126,6 +126,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       details: view,
       unsupportedNote: 'Archive it with gog_classroom_courses_archive instead, or ask the user to delete it from Classroom.',
       fallback: {
+        args: { courseId, account },
         tool: 'gog_classroom_courses_delete',
         account,
         confirmToken,
@@ -184,6 +185,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
         details: view,
         unsupportedNote: 'Ask the user to add them from Classroom, or invite them with gog_classroom_invitations_create.',
         fallback: {
+          args: { courseId, userId, enrollmentCode, account },
           tool: 'gog_classroom_students_add',
           account,
           confirmToken,
@@ -229,6 +231,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       details: view,
       unsupportedNote: 'Ask the user to add them from Classroom, or invite them with gog_classroom_invitations_create.',
       fallback: {
+        args: { courseId, userId, account },
         tool: 'gog_classroom_teachers_add',
         account,
         confirmToken,
@@ -296,6 +299,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
         details: { ...work, descriptionPreview: bodyPreview(description) },
         unsupportedNote: 'Create it with state DRAFT instead; the user can review and post it from Classroom.',
         fallback: {
+          args: { courseId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account },
           tool: 'gog_classroom_coursework_create',
           account,
           confirmToken,
@@ -358,6 +362,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
         details: view,
         unsupportedNote: 'Leave it as a DRAFT; the user can review and publish it from Classroom.',
         fallback: {
+          args: { courseId, courseworkId, title, description, type, state, maxPoints, due, dueDate, dueTime, scheduled, topic, account },
           tool: 'gog_classroom_coursework_update',
           account,
           confirmToken,
@@ -398,6 +403,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       details: view,
       unsupportedNote: 'Ask the user to delete it from Classroom.',
       fallback: {
+        args: { courseId, courseworkId, account },
         tool: 'gog_classroom_coursework_delete',
         account,
         confirmToken,
@@ -448,6 +454,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
         details: view,
         unsupportedNote: 'Leave it as a DRAFT; the user can review and publish it from Classroom.',
         fallback: {
+          args: { courseId, announcementId, text, state, scheduled, account },
           tool: 'gog_classroom_announcements_update',
           account,
           confirmToken,
@@ -538,6 +545,7 @@ export function registerExtraClassroomTools(server: McpServer): void {
       details: invitation,
       unsupportedNote: 'Ask the user to invite them from Classroom.',
       fallback: {
+        args: { courseId, userId, role, account },
         tool: 'gog_classroom_invitations_create',
         account,
         confirmToken,

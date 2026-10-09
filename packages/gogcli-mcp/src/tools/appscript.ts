@@ -218,6 +218,7 @@ export function registerAppScriptTools(server: McpServer): void {
       details: execution,
       unsupportedNote: 'Ask the user to run it themselves from the Apps Script editor.',
       fallback: {
+        args: { scriptId, functionName, params, devMode, account },
         tool: 'gog_appscript_run_function',
         account,
         confirmToken,
