@@ -23,5 +23,5 @@
     "teachers"
   ],
   "skills": "./SKILL.md",
-  "mcp": "./.mcp.json"
+  "mcpServers": "./.mcp.json"
 }
