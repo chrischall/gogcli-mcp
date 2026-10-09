@@ -1,5 +1,22 @@
 # Changelog
 
+## [4.7.1](https://github.com/chrischall/gogcli-mcp/compare/v4.7.0...v4.7.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* annotate tools truthfully and sync manifests with the served tools ([#443](https://github.com/chrischall/gogcli-mcp/issues/443)) ([674a084](https://github.com/chrischall/gogcli-mcp/commit/674a084d1b11eefa93e369217b864edc8202c739))
+* declare the plugin MCP config under the mcpServers key Claude Code reads ([#444](https://github.com/chrischall/gogcli-mcp/issues/444)) ([ba0cdf2](https://github.com/chrischall/gogcli-mcp/commit/ba0cdf248b22f66a38dbc3e3c7df7fdee48ea87e))
+* **deps:** bump source-map-js from 1.2.1 to 1.2.2 in the security group across 1 directory ([#442](https://github.com/chrischall/gogcli-mcp/issues/442)) ([84d525f](https://github.com/chrischall/gogcli-mcp/commit/84d525fb49fe255b29a7544c827a53cc6c707b43))
+* **deps:** update @chrischall/mcp-utils to 3.0.0 ([#441](https://github.com/chrischall/gogcli-mcp/issues/441)) ([062cf37](https://github.com/chrischall/gogcli-mcp/commit/062cf37ae307734d3a710a93b77bd3781d5b33cb))
+* harden gog_auth_run and trim dead Gmail inputs ([#438](https://github.com/chrischall/gogcli-mcp/issues/438)) ([b43f45f](https://github.com/chrischall/gogcli-mcp/commit/b43f45f2742801fed6379065d741bc1191ff00a0))
+* point plugin skills at the plugin root so Claude Code loads them ([#445](https://github.com/chrischall/gogcli-mcp/issues/445)) ([6cda1ca](https://github.com/chrischall/gogcli-mcp/commit/6cda1ca57bb91911390ec0f505ace897adf34202))
+
+
+### Documentation
+
+* remove the stale Sheets-only skill copy from the gogcli-mcp package ([#446](https://github.com/chrischall/gogcli-mcp/issues/446)) ([5e344ed](https://github.com/chrischall/gogcli-mcp/commit/5e344edc221689e9b1f34f58588a79c19ab5f244))
+
 ## [4.7.0](https://github.com/chrischall/gogcli-mcp/compare/v4.6.3...v4.7.0) (2026-10-07)
 
 
