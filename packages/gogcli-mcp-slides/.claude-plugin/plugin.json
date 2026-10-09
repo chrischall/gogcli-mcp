@@ -21,6 +21,6 @@
     "pdf",
     "pptx"
   ],
-  "skills": "./SKILL.md",
+  "skills": ".",
   "mcpServers": "./.mcp.json"
 }

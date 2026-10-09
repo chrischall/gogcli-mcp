@@ -20,6 +20,6 @@
     "gogcli",
     "gog"
   ],
-  "skills": "./SKILL.md",
+  "skills": ".",
   "mcpServers": "./.mcp.json"
 }

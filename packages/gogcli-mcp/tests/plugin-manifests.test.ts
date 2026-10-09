@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Claude Code reads a plugin's MCP config from `mcpServers`. The key `mcp` is
 // not part of the plugin schema: `claude plugin validate` reports
 // "Unknown field 'mcp'" and the plugin installs with NO MCP server at all.
+// Likewise every `skills` entry must name a DIRECTORY holding a SKILL.md:
+// validate rejects a path to the SKILL.md file itself ("Path is a file;
+// skills entries must be directories containing SKILL.md").
 // Every plugin.json in the repo (root and each workspace) is checked here.
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -33,6 +36,19 @@ describe('.claude-plugin/plugin.json', () => {
 
     it('points mcpServers at a file that exists', () => {
       expect(existsSync(join(dir, manifest.mcpServers as string))).toBe(true);
+    });
+
+    it('points every skills entry at a directory containing SKILL.md', () => {
+      const skills = manifest.skills;
+      if (skills === undefined) return;
+      const entries = Array.isArray(skills) ? skills : [skills];
+      expect(entries.length).toBeGreaterThan(0);
+      for (const entry of entries) {
+        expect(typeof entry).toBe('string');
+        const skillDir = join(dir, entry as string);
+        expect(existsSync(skillDir) && statSync(skillDir).isDirectory(), `${entry} is not a directory`).toBe(true);
+        expect(existsSync(join(skillDir, 'SKILL.md')), `${entry} has no SKILL.md`).toBe(true);
+      }
     });
   });
 });

@@ -20,6 +20,6 @@
     "formatting",
     "named-ranges"
   ],
-  "skills": "./SKILL.md",
+  "skills": ".",
   "mcpServers": "./.mcp.json"
 }
