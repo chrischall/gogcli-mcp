@@ -21,6 +21,6 @@
     "comments",
     "shared-drives"
   ],
-  "skills": "./SKILL.md",
+  "skills": ".",
   "mcpServers": "./.mcp.json"
 }

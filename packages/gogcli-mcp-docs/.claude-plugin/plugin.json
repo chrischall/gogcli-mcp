@@ -19,6 +19,6 @@
     "comments",
     "export"
   ],
-  "skills": "./SKILL.md",
+  "skills": ".",
   "mcpServers": "./.mcp.json"
 }
