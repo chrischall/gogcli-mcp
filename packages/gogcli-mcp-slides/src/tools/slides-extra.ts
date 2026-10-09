@@ -27,7 +27,7 @@ import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 export function registerExtraSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_create_from_markdown', {
     description: 'Create a new Google Slides presentation from markdown content (inline or from a file).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       title: z.string().describe('Presentation title'),
       content: z.string().optional().describe('Inline markdown content'),
@@ -48,7 +48,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_create_from_template', {
     description: 'Create a new Google Slides presentation from a template, with optional placeholder replacements.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       templateId: z.string().describe('Template presentation ID'),
       title: z.string().describe('New presentation title'),
@@ -74,7 +74,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_add_slide', {
     description: 'Add a new slide to a presentation from a local image, with optional speaker notes.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       image: z.string().describe('Path to the local image file'),
@@ -95,7 +95,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_insert_image', {
     description: 'Place an image on an existing slide at a given size and position, from a local file (image) or a public HTTPS URL (url — no Drive upload or sharing required). Unlike gog_slides_add_slide (which creates a new full-bleed image slide), this inserts onto a slide you already have. width is required; omit height to keep aspect ratio when using a local file (gog requires both width and height when using url).',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID (object ID of the target slide)'),
@@ -123,7 +123,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_delete_slide', {
     description: 'Delete a slide from a Google Slides presentation.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID to delete'),
@@ -147,7 +147,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
       'Skip a slide during presentation — it stays in the deck at its current position but is not shown when presenting '
       + '(and is left out of a PDF export). Use this instead of gog_slides_delete_slide when a slide should be omitted from '
       + 'a talk without losing it. Reverse with gog_slides_unskip_slide; gog_slides_list_slides reports which slides are skipped.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID to skip (from gog_slides_list_slides)'),
@@ -160,7 +160,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_unskip_slide', {
     description:
       'Include a previously skipped slide again when the deck is presented. Safe to call on a slide that was never skipped.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID to unskip (from gog_slides_list_slides)'),
@@ -172,7 +172,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_update_notes', {
     description: 'Update the speaker notes on a slide (inline text or from a file).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID'),
@@ -190,7 +190,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_replace_slide', {
     description: 'Replace the image content of an existing slide, from a local file (image) or a public HTTPS URL (url — no Drive upload or sharing required), with optional speaker notes.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID to replace'),
@@ -215,7 +215,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_raw', {
     description: 'Dump the raw Google Slides API response (Presentations.Get) as JSON — lossless presentation metadata including every page, element, and style. Use gog_slides_read_slide for a friendlier per-slide view.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       pretty: z.boolean().optional().describe('Pretty-print the JSON (default: compact single line)'),
@@ -230,7 +230,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_locate', {
     description: 'Locate literal text in a presentation\'s shapes and table cells, returning the containing element object IDs and UTF-16 ranges needed for gog_slides_style_text / gog_slides_link / gog_slides_bullets / gog_slides_insert_text. Read-only.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       text: z.string().describe('Literal text to locate'),
@@ -254,7 +254,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_thumbnail', {
     description: 'Get or download a rendered thumbnail image for a single slide.',
     // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
-    annotations: { readOnlyHint: false, destructiveHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide object ID'),
@@ -278,7 +278,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_new_slide', {
     description: 'Create a new native themed slide with a predefined layout (default BLANK) or an exact presentation layout object ID, at a zero-based insertion index.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       layout: z.enum(['BIG_NUMBER', 'BLANK', 'CAPTION_ONLY', 'MAIN_POINT', 'ONE_COLUMN_TEXT', 'SECTION_HEADER', 'SECTION_TITLE_AND_DESCRIPTION', 'TITLE', 'TITLE_AND_BODY', 'TITLE_AND_TWO_COLUMNS', 'TITLE_ONLY']).optional().describe('Predefined slide layout (default: BLANK). Mutually exclusive with layoutId.'),
@@ -296,7 +296,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_duplicate_slide', {
     description: 'Duplicate a slide by object ID, optionally placing the copy at a zero-based insertion index.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide object ID to duplicate'),
@@ -311,7 +311,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_move_slide', {
     description: 'Move a slide to a zero-based insertion index within the presentation.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide object ID to move'),
@@ -326,7 +326,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_insert_text', {
     description: 'Insert text into an existing page element (shape or table cell) by object ID. Target a table cell with zero-based row + col. Use replace=true to clear the element\'s existing text first.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectId: z.string().describe('Object ID of the target shape or table'),
@@ -348,7 +348,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_style_text', {
     description: 'Apply range-scoped text styling to one page element. range is a UTF-16 start:end span (use gog_slides_locate to find it). Boolean flags set the attribute; the no* flags clear it.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectId: z.string().describe('Object ID of the shape or table cell containing the text'),
@@ -380,7 +380,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_link', {
     description: 'Apply or clear a hyperlink on a UTF-16 text range in one page element. Provide url to set the link, or clear=true to remove it.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectId: z.string().describe('Object ID of the shape or table cell containing the text'),
@@ -398,7 +398,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_bullets', {
     description: 'Turn paragraph bullets on or off for a UTF-16 paragraph range in one page element. Use on (optionally with a preset glyph) or off.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectId: z.string().describe('Object ID of the shape or table cell containing the paragraphs'),
@@ -418,7 +418,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_replace_text', {
     description: 'Find-and-replace text within an explicit scope. You MUST choose a scope — restrict to a single shape (object), one or more slides (pages), or the entire presentation (all=true). There is no whole-deck default; gog rejects the call if no scope is given.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       find: z.string().describe('Text to find'),
@@ -442,7 +442,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_element_create_shape', {
     description: 'Create a native shape on a slide. type is a Slides shape type (e.g. RECTANGLE, TEXT_BOX, ELLIPSE, ROUND_RECTANGLE). Position/size are in unit (default PT).',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide object ID to create the shape on'),
@@ -469,7 +469,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_element_create_line', {
     description: 'Create a native line on a slide. category is the connector routing (STRAIGHT, BENT, CURVED). Start position and extent are in unit (default PT).',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide object ID to create the line on'),
@@ -496,7 +496,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_element_style', {
     description: 'Style a shape fill/outline or a line. Set kind to shape or line. Colors are #RGB or #RRGGBB.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectId: z.string().describe('Object ID of the shape or line'),
@@ -523,7 +523,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_element_transform', {
     description: 'Move, resize, rotate, or shear a page element. apply-mode RELATIVE (default) composes with the existing transform; ABSOLUTE replaces it. Translation is in unit (default PT).',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectId: z.string().describe('Object ID of the element to transform'),
@@ -554,7 +554,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_element_z_order', {
     description: 'Change a page element\'s stacking order.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectId: z.string().describe('Object ID of the element to restack'),
@@ -567,7 +567,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_element_group', {
     description: 'Group two or more page elements into a single group.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectIds: z.array(z.string()).min(2).describe('Two or more element object IDs to group'),
@@ -582,7 +582,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_element_ungroup', {
     description: 'Ungroup one or more element groups back into their constituent elements.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       groupIds: z.array(z.string()).min(1).describe('One or more group object IDs to ungroup'),
@@ -594,7 +594,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_element_alt_text', {
     description: 'Set or clear a page element\'s accessibility title and/or description. Pass an empty string to clear a field.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectId: z.string().describe('Object ID of the element'),
@@ -611,7 +611,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_element_delete', {
     description: 'Delete one page element by object ID.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       objectId: z.string().describe('Object ID of the element to delete'),
@@ -626,7 +626,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_create', {
     description: 'Create an auto-sized native table on a slide with the given row and column counts.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide object ID to create the table on'),
@@ -643,7 +643,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_cell_style', {
     description: 'Style one zero-based table cell: background fill, vertical content alignment, and inline text styling (optionally scoped to a UTF-16 range within the cell). Boolean flags set the attribute; the no* flags clear it.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),
@@ -684,7 +684,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_border_style', {
     description: 'Style borders around or within a zero-based table cell range. position selects which borders are affected; dash sets the line style.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),
@@ -713,7 +713,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_column_insert', {
     description: 'Insert one or more columns relative to a zero-based table column. Inserts to the left by default, or to the right with right=true.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),
@@ -731,7 +731,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_column_delete', {
     description: 'Delete the column containing a zero-based table cell.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),
@@ -744,7 +744,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_column_size', {
     description: 'Set the width of a zero-based table column.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),
@@ -758,7 +758,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_row_insert', {
     description: 'Insert one or more rows relative to a zero-based table row. Inserts above by default, or below with below=true.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),
@@ -776,7 +776,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_row_delete', {
     description: 'Delete the row containing a zero-based table cell.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),
@@ -789,7 +789,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_row_size', {
     description: 'Set the minimum height of a zero-based table row.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),
@@ -803,7 +803,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_merge', {
     description: 'Merge a rectangular table cell range starting at a zero-based cell. Content of non-anchor cells is absorbed by the merge; use gog_slides_table_unmerge to split back.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),
@@ -822,7 +822,7 @@ export function registerExtraSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_table_unmerge', {
     description: 'Unmerge (split) a rectangular range of previously merged cells, starting at a zero-based cell.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       tableObjectId: z.string().describe('Table object ID'),

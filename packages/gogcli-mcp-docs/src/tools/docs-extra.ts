@@ -32,7 +32,7 @@ export function docTitle(raw: string): string | undefined {
 export function registerExtraDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_copy', {
     description: 'Copy a Google Doc to a new document with the given title.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       title: z.string().describe('Title for the new copy'),
@@ -47,7 +47,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_delete', {
     description: 'Delete content within a Google Doc by character index range. To remove the entire document (move to Drive trash), use gog_docs_trash.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       start: z.number().optional().describe('Start index (character position, 1-based). Required unless `at` is set.'),
@@ -76,7 +76,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_trash', {
     description: 'Move an entire Google Doc to Drive trash. Convenience wrapper around `gog drive delete` so docs-only users can clean up without installing gogcli-mcp-drive. The doc remains recoverable from Drive trash for ~30 days.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID to move to trash'),
       account: accountParam,
@@ -87,7 +87,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_edit', {
     description: 'Edit a Google Doc by finding and replacing text (stream-edit style).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       find: z.string().describe('Text to find'),
@@ -103,7 +103,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_read', {
     description: 'Read the content of a Google Doc. Default: plain text body. Use format="json" for the raw Google Docs API response (lossless, includes character indices needed for index-based gog_docs_insert / gog_docs_delete calls). For markdown output, use gog_docs_export with format="md" — it writes to a file. Use gog_docs_structure to see paragraph-by-paragraph layout with indices.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       format: z.enum(['text', 'json']).optional().describe('Output format (default: text)'),
@@ -131,7 +131,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_format', {
     description: 'Apply text or paragraph formatting to a Google Doc. Use `match` to format a specific text occurrence, `matchAll` to format every occurrence, or omit both to format the whole doc. Boolean flags (bold/italic/etc.) set the attribute; negated flags (noBold/noItalic/etc.) clear it.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       match: z.string().optional().describe('Format only the first text match'),
@@ -245,7 +245,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_suggestions_list', {
     description: 'List pending suggestions (suggested text insertions and deletions) in a Google Doc, with exact UTF-16 ranges and segment context. Read-only; does not accept or reject suggestions.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       tab: z.string().optional().describe('Tab title or ID (omit for the first tab)'),
@@ -260,7 +260,7 @@ export function registerExtraDocsTools(server: McpServer): void {
   server.registerTool('gog_docs_export', {
     description: 'Export a Google Doc as PDF, plain text, HTML, DOCX, or other format.',
     // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
-    annotations: { readOnlyHint: false, destructiveHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       format: z.string().optional().describe('Export format: pdf, txt, html, docx, rtf, odt, epub (default: pdf)'),
@@ -279,7 +279,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_insert', {
     description: 'Insert text at a specific character index in a Google Doc. When `index` is omitted, gog defaults to 1 (the very beginning), NOT the end — sequential inserts without an explicit index produce reversed output. To append at the end of the doc, use gog_docs_append (which uses `gog docs write --append` and is the right tool for iterative document construction). To find a valid index for mid-document inserts, call gog_docs_structure or gog_docs_read first.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       content: z.string().optional().describe('Text content to insert'),
@@ -310,7 +310,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_append', {
     description: 'Append text to the end of a Google Doc. This is the right tool for iterative document construction — multiple sequential calls produce content in the order they were called. Use gog_docs_insert only when you need to insert at a specific character position. Known markdown=true limitations (tracked upstream): (a) 3+ tables in one call reorders the trailing punctuation of the paragraph before the 3rd table — split into multiple calls with ≤2 tables each (openclaw/gogcli#607); (b) inline **bold** / *italic* / `code` inside table cells renders as literal characters — pre-format cell text separately or apply formatting after the append via gog_docs_format (openclaw/gogcli#608); (c) tables with an empty header row leak the last data row as literal pipe text — always supply a non-empty header (openclaw/gogcli#609).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Text content to append'),
@@ -331,7 +331,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_list_tabs', {
     description: 'List all tabs in a Google Doc.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       account: accountParam,
@@ -342,7 +342,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_sed', {
     description: 'Stream-edit a Google Doc with sed-like regex expressions (s/find/replace/ syntax).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       expression: z.string().optional().describe('Single sed expression (e.g. "s/old/new/g")'),
@@ -367,7 +367,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_update', {
     description: 'Update a Google Doc — insert or replace text at a specific position.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Text content to write'),
@@ -411,7 +411,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       'Either flag additionally requires the Docs scope; the plain listing needs only Drive. ' +
       'matches[] always spans every tab, so a quote appearing in two tabs is visible as an ambiguity rather than silently resolved. ' +
       'tab keeps only comments with a match in that tab, which drops orphaned comments and comments that quote nothing.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       includeResolved: z.boolean().optional().describe('Include resolved comments (default: false, open only)'),
@@ -433,7 +433,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_comments_get', {
     description: 'Get a single comment by ID, including its replies.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       commentId: z.string().describe('Comment ID'),
@@ -449,7 +449,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       + 'The Doc\'s owner and everyone the text +mentions are notified, so this reads the Doc and asks the MCP host to show '
       + 'the user a confirmation prompt with the Doc, the text and who is mentioned first; nothing is posted unless they '
       + 'accept.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       content: z.string().describe('Comment text'),
@@ -490,7 +490,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     description: 'Reply to an existing comment on a Google Doc. Everyone on the thread and anyone the reply +mentions is '
       + 'notified, so this reads the Doc and the comment and asks the MCP host to show the user a confirmation prompt '
       + 'with both and the reply first; nothing is posted unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       commentId: z.string().describe('Comment ID to reply to'),
@@ -530,7 +530,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_comments_resolve', {
     description: 'Resolve a comment (mark as done). Optionally include a closing message.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       commentId: z.string().describe('Comment ID to resolve'),
@@ -545,7 +545,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_comments_delete', {
     description: 'Delete a comment from a Google Doc. This action is permanent.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       commentId: z.string().describe('Comment ID to delete'),
@@ -558,7 +558,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_comments_reopen', {
     description: 'Reopen a previously resolved comment (flip resolved → open).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       commentId: z.string().describe('Comment ID to reopen'),
@@ -570,7 +570,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_comments_locate', {
     description: 'Locate a comment\'s anchor in a Google Doc — resolves the comment\'s quoted text to its current Docs API index range, or reports the comment as orphaned if the quote can no longer be found (e.g. the anchored text was edited away). Read-only; useful before an index-based edit near a comment.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       commentId: z.string().describe('Comment ID to locate'),
@@ -589,7 +589,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_find_range', {
     description: 'Map literal text in a Google Doc to its Docs API UTF-16 index range(s). Read-only helper for computing the start/end indices that index-based tools (gog_docs_delete, gog_docs_update --replace-range) need. Returns the first match by default; use occurrence to pick a specific one or all to return every match.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().describe('Literal text to locate'),
@@ -619,7 +619,7 @@ export function registerExtraDocsTools(server: McpServer): void {
   // end to submit them atomically against the locked revision.
   server.registerTool('gog_batch_begin', {
     description: 'Open a persisted, revision-locked request batch for a Google Doc. Subsequent docs mutation tools called with batch=<batchId> append their requests locally instead of applying them; gog_batch_end submits everything atomically. Returns the batchId.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: false },
     inputSchema: z.object({
       docId: z.string().describe('Google Doc ID the batch is locked to'),
       name: z.string().optional().describe('Optional batch label'),
@@ -633,7 +633,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_batch_end', {
     description: 'Submit a persisted batch: applies every composed request to the doc in one atomic batchUpdate against the locked revision. Atomic by default — set autoSplit to submit >500-request batches as ordered chunks (non-atomic), or continueOnError to retry individually after an atomic validation failure, retaining failures in the batch.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       batchId: z.string().describe('Batch ID (from gog_batch_begin)'),
       autoSplit: z.boolean().optional().describe('Submit batches over 500 requests as ordered chunks (non-atomic)'),
@@ -649,7 +649,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_batch_abort', {
     description: 'Discard a persisted batch and its composed requests without applying anything to the doc.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: false },
     inputSchema: z.object({
       batchId: z.string().describe('Batch ID to discard'),
       account: accountParam,
@@ -660,7 +660,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_batch_list', {
     description: 'List persisted Docs request batches (id, doc, label, request count, status).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     inputSchema: z.object({
       account: accountParam,
     }),
@@ -670,7 +670,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_batch_show', {
     description: 'Show one persisted batch: its doc, locked revision, and the composed requests awaiting submission.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     inputSchema: z.object({
       batchId: z.string().describe('Batch ID'),
       account: accountParam,
@@ -681,7 +681,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_batch_prune', {
     description: 'Delete stale persisted batches (not updated within olderThan).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: false },
     inputSchema: z.object({
       olderThan: z.string().optional().describe('Delete batches not updated within this duration (e.g. 72h, 7d)'),
       account: accountParam,
@@ -694,7 +694,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_column_width', {
     description: 'Set a fixed width (in points) for a table column, or reset columns to Docs-managed even distribution. Target the table by 1-based index in document order (negative counts from the end) and the column by 1-based number. Pass evenlyDistributed without col to reset every column in the table.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       col: z.number().int().optional().describe('1-based column number. Omit with evenlyDistributed to reset all columns.'),
@@ -722,7 +722,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_row_insert', {
     description: 'Insert a row into a native Google Docs table, optionally populated from a JSON string array. Inserts before the 1-based position given by `at` (negative counts from the end; "end" appends — the default).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       table: tableSelectorParam,
@@ -742,7 +742,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_row_delete', {
     description: 'Delete a row from a native Google Docs table by 1-based row number (negative counts from the end). The row\'s cell content is lost.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       row: z.number().int().describe('1-based row number; negative indexes count from the end'),
@@ -759,7 +759,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_column_insert', {
     description: 'Insert a column into a native Google Docs table. Inserts before the 1-based position given by `at` (negative counts from the end; "end" appends — the default).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       table: tableSelectorParam,
@@ -777,7 +777,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_column_delete', {
     description: 'Delete a column from a native Google Docs table by 1-based column number (negative counts from the end). The column\'s cell content is lost.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       col: z.number().int().describe('1-based column number; negative indexes count from the end'),
@@ -794,7 +794,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_merge', {
     description: 'Merge a rectangular cell range in a native Google Docs table. Content of non-first cells in the range is absorbed/discarded by the merge — use gog_docs_table_unmerge to split back.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       range: z.string().describe('1-based cell range r1,c1:r2,c2 (e.g. "1,1:2,3")'),
@@ -811,7 +811,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_unmerge', {
     description: 'Unmerge (split) the merged region containing a given cell in a native Google Docs table.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       cell: z.string().describe('1-based cell r,c inside the merged region (e.g. "1,1")'),
@@ -828,7 +828,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_named_range_create', {
     description: 'Create a named range — a durable, tab-aware anchor over a span of document text that survives subsequent edits (unlike raw indices). Anchor by literal text (`at`) or explicit UTF-16 start/end indices. Pair with gog_docs_named_range_replace for repeatable templated updates.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       name: z.string().describe('Unique named range name'),
@@ -853,7 +853,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_named_range_list', {
     description: 'List named ranges in a Google Doc, optionally filtered by name.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       name: z.string().optional().describe('Only return ranges with this name'),
@@ -869,7 +869,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_named_range_delete', {
     description: 'Delete a named range (the anchor only — the underlying document text is untouched).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       nameOrId: z.string().describe('Named range name or ID'),
@@ -884,7 +884,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_named_range_replace', {
     description: 'Replace the text inside a named range with new content (inline or from a file), keeping the anchor for future updates — the templated-update workhorse.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       nameOrId: z.string().describe('Named range name or ID'),
@@ -904,7 +904,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_tables_list', {
     description: 'Enumerate the native tables in a Google Doc (dimensions, position) — the index/first-cell-text it reports feeds the `table` selector on the table-row/column/merge tools.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       tab: z.string().optional().describe('Tab title or ID (omit for default)'),
@@ -918,7 +918,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_images_list', {
     description: 'Enumerate inline/positioned images in a Google Doc.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       tab: z.string().optional().describe('Tab title or ID (omit for default)'),
@@ -932,7 +932,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_headings_list', {
     description: 'Enumerate headings in a Google Doc (a lightweight outline view), optionally filtered to one heading level.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       level: z.number().int().optional().describe('Only return this heading level (1-6)'),
@@ -948,7 +948,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_paragraphs_list', {
     description: 'Enumerate paragraphs in a Google Doc with emptiness, text-run ranges, styles, and links — richer than gog_docs_structure when you need per-run detail. Optionally filter to one named style.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       style: z.string().optional().describe('Only return this named style (e.g. NORMAL_TEXT or HEADING_2)'),
@@ -964,7 +964,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_insert_page_break', {
     description: 'Insert a Google Docs page break via InsertPageBreakRequest — the only path for multi-page deliverables (markdown has no page-break construct). Specify `index` for a precise character position, or `atEnd` for end-of-doc.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       index: z.number().int().optional().describe('Character index to insert at (1 = beginning). Omit or use atEnd for end-of-doc.'),
@@ -990,7 +990,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_page_layout', {
     description: 'Toggle the page layout (pageless | pages) of an existing Google Doc. Sibling to the --pageless flag on docs create/write/update for docs that were already created (e.g. by Drive markdown conversion) without the desired layout.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       layout: z.enum(['pageless', 'pages']).optional().describe('Page layout (default: pageless)'),
@@ -1018,7 +1018,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_insert_table', {
     description: 'Insert a native Google Docs table via InsertTableRequest, bypassing the markdown writer. Use this instead of writing a markdown table when you need precise dimensions or to avoid the markdown writer\'s table limitations. `valuesJson` is a JSON 2D string array whose dimensions must match rows x cols.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       rows: z.number().int().min(1).describe('Number of rows (>=1)'),
@@ -1040,7 +1040,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_cell_update', {
     description: 'Replace (or append to) the content of a single table cell, addressed by table / row / column — non-destructive to the rest of the table, unlike index-based edits that shift on every change. Provide content inline or read it from contentFile. Note: row/col/tableIndex are 1-based here; the sibling gog_docs_cell_style uses 0-based addressing.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       row: z.number().int().describe('1-based row number'),
@@ -1080,7 +1080,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_cell_style', {
     description: 'Apply background color and/or inline text styling (bold, italic, underline, colors) to one or more table cells, addressed by 0-based row/column with optional spans. Sibling to gog_docs_cell_update, which changes cell content rather than styling. Note: row/col/tableIndex are 0-based here; gog_docs_cell_update uses 1-based addressing.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       row: z.number().int().describe('0-based row number'),
@@ -1136,7 +1136,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_insert_image', {
     description: 'Insert an image into a Google Doc from a local file or a public HTTPS URL. file: uploaded to Drive, temporarily shared so Docs can fetch it, inserted, then the public permission is revoked. url: inserted directly with no Drive upload or temporary sharing. Replaces placeholder text (at) or appends at end-of-doc.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       file: z.string().optional().describe('Local PNG, JPEG, or GIF image to upload and insert (exactly one of file or url)'),
@@ -1172,7 +1172,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_insert_person', {
     description: 'Insert a native Google Docs person smart chip (the interactive @-mention chip) for an email address, at a character index or end-of-doc.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       email: z.string().describe('Email address for the person chip'),
@@ -1199,7 +1199,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_insert_date_chip', {
     description: 'Insert a native Google Docs date smart chip, at a character index or end-of-doc.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       date: z.string().optional().describe('Date to insert as YYYY-MM-DD (default: today)'),
@@ -1223,7 +1223,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_add_tab', {
     description: 'Add a tab to a Google Doc. Tabs partition a doc into independently-addressable sections (multi-tab docs). Optionally set the title, zero-based position, parent tab (for nesting), and an emoji icon.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       title: z.string().optional().describe('User-visible tab title'),
@@ -1243,7 +1243,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_rename_tab', {
     description: 'Rename a tab in a Google Doc. Identify the existing tab by title or ID and give it a new title.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       tab: z.string().describe('Existing tab title or ID to rename'),
@@ -1257,7 +1257,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_delete_tab', {
     description: 'Delete a tab (and its content) from a Google Doc. Identify the tab by title or ID. This permanently removes the tab and everything in it.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       tab: z.string().describe('Existing tab title or ID to delete'),
@@ -1270,7 +1270,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_clear', {
     description: 'Clear all content from a Google Doc, leaving an empty document. The doc itself is preserved (same ID/URL); only its body content is removed. To delete the whole doc instead, use gog_docs_trash.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       account: accountParam,
@@ -1283,7 +1283,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_insert_footnote', {
     description: 'Insert a footnote at a character index (or end-of-doc) and populate its text. The footnote reference mark is placed in the body; the footnote content goes in the new footnote segment.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Footnote text'),
@@ -1312,7 +1312,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_insert_section_break', {
     description: 'Insert a continuous or next-page section break at a character index (or end-of-doc). Section breaks enable per-section layout such as column counts (see gog_docs_section_columns).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       type: z.enum(['next-page', 'continuous']).optional().describe('Section break type (default: next-page)'),
@@ -1340,7 +1340,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_insert_horizontal_rule', {
     description: 'Insert a horizontal rule (paragraph border) at a character index (or end-of-doc).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       index: z.number().int().optional().describe('Character index to insert at (1 = beginning). Omit or use atEnd for end-of-doc.'),
@@ -1366,7 +1366,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_section_columns', {
     description: 'Set the column count (1-3) for the document section containing the target position. Use count=1 to reset to a single column. Anchor by index, end-of-doc, or literal text.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       count: z.number().int().min(1).max(3).describe('Number of columns (1-3; 1 resets to one column)'),
@@ -1398,7 +1398,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_header_list', {
     description: 'List a Google Doc\'s headers and their segment IDs. Use a segment ID with the segment param on gog_docs_insert / gog_docs_update / gog_docs_delete / gog_docs_format / gog_docs_find_range to edit inside a header.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       tab: z.string().optional().describe('Limit results to a tab title or ID'),
@@ -1412,7 +1412,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_header_create', {
     description: 'Create a header in a Google Doc and optionally populate its initial text. Returns the new header segment ID.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Initial header text'),
@@ -1441,7 +1441,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_header_delete', {
     description: 'Delete a header from a Google Doc by its segment ID (from gog_docs_header_list).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       headerId: z.string().describe('Header segment ID (from gog_docs_header_list)'),
@@ -1457,7 +1457,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_footer_list', {
     description: 'List a Google Doc\'s footers and their segment IDs. Use a segment ID with the segment param on gog_docs_insert / gog_docs_update / gog_docs_delete / gog_docs_format / gog_docs_find_range to edit inside a footer.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       tab: z.string().optional().describe('Limit results to a tab title or ID'),
@@ -1471,7 +1471,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_footer_create', {
     description: 'Create a footer in a Google Doc and optionally populate its initial text. Returns the new footer segment ID.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       text: z.string().optional().describe('Initial footer text'),
@@ -1500,7 +1500,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_footer_delete', {
     description: 'Delete a footer from a Google Doc by its segment ID (from gog_docs_footer_list).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       footerId: z.string().describe('Footer segment ID (from gog_docs_footer_list)'),
@@ -1518,7 +1518,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_replace_image', {
     description: 'Replace an existing image in a Google Doc in place — keeping its position and bounds — with a new image from a local file or public HTTPS URL. Target the image by exact object ID (from gog_docs_images_list), by alt-text substring, or leave both off to replace the only image in the doc/tab.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       file: z.string().optional().describe('Local PNG, JPEG, or GIF image to upload and use (exactly one of file or url)'),
@@ -1546,7 +1546,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_row_pin_header', {
     description: 'Pin (or unpin) leading rows of a native Google Docs table as repeating header rows. rows=N pins the first N rows; rows=0 unpins all header rows.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       rows: z.number().int().min(0).describe('Number of leading rows to pin as headers; 0 unpins all header rows'),
@@ -1563,7 +1563,7 @@ export function registerExtraDocsTools(server: McpServer): void {
 
   server.registerTool('gog_docs_table_row_style', {
     description: 'Set native table row height and page-overflow behaviour. Target a 1-based row (negative counts from the end) or omit row to style every row in the table.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
       row: z.number().int().optional().describe('1-based row number; negative indexes count from the end; omit to style all rows'),

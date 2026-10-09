@@ -116,7 +116,7 @@ export const DRIVE_LS_COMPACT_FIELDS =
 export function registerDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_ls', {
     description: 'List files in a Google Drive folder (default: root).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       folderId: z.string().optional().describe('Folder ID to list (default: root)'),
       max: z.number().optional().describe('Max results (default: 20)'),
@@ -147,7 +147,7 @@ export function registerDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_search', {
     description: 'Search Google Drive files by full-text query.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       query: z.string().describe('Search query'),
       // gog's `drive search` accepts no --fields mask, so unlike gog_drive_ls
@@ -165,7 +165,7 @@ export function registerDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_get', {
     description: 'Get metadata for a Google Drive file.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       // A --fields mask saves only 7% here: the default set is already narrow,
@@ -186,7 +186,7 @@ export function registerDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_mkdir', {
     description: 'Create a new folder in Google Drive.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       name: z.string().describe('Folder name'),
       account: accountParam,
@@ -197,7 +197,7 @@ export function registerDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_rename', {
     description: 'Rename a file or folder in Google Drive.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File or folder ID'),
       newName: z.string().describe('New name'),
@@ -209,7 +209,7 @@ export function registerDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_move', {
     description: 'Move a file to a different folder in Google Drive.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID to move'),
       parentId: z.string().describe('Destination folder ID'),
@@ -224,7 +224,7 @@ export function registerDriveTools(server: McpServer): void {
       + 'permanent delete reads the file and asks the MCP host to show the user a confirmation prompt naming it first; '
       + 'nothing is deleted unless they accept. Moving to trash is recoverable and does not ask.'
       + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID to delete'),
       permanent: z.boolean().optional().describe('Permanently delete instead of moving to trash (irreversible; asks the user first)'),
@@ -265,7 +265,7 @@ export function registerDriveTools(server: McpServer): void {
       + 'does not notify by default), so this reads the file and asks the MCP host to show the user a confirmation '
       + 'prompt naming it, who gets access and with what role; nothing is shared unless they accept.'
       + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File or folder ID'),
       to: z.enum(['user', 'anyone', 'domain']).describe('Share target type'),
@@ -326,7 +326,7 @@ export function registerDriveTools(server: McpServer): void {
       'deletes the temp Doc. Operates entirely via the Drive API within the existing drive scope — no ' +
       'host filesystem, no scope widening. For a large file, page through with offset/maxChars.',
     // Creates and deletes a temporary Doc for non-native files, so not read-only.
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('Drive file ID (e.g. the id returned by gog_gmail_attachment)'),
       ocrLanguage: z.string().optional().describe(
@@ -390,7 +390,7 @@ export function registerDriveTools(server: McpServer): void {
       'Fetch a Drive file\'s raw bytes and return them base64-encoded as an embedded resource — the ' +
       'generic fallback for callers that want the file itself (to parse locally) rather than extracted ' +
       'text. Files over 8 MiB are refused (checked before downloading). For readable text from a PDF, prefer gog_drive_extract_text.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('Drive file ID'),
       account: accountParam,

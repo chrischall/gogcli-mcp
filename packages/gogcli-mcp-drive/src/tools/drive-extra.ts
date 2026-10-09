@@ -26,7 +26,7 @@ export function registerExtraDriveTools(server: McpServer): void {
   server.registerTool('gog_drive_download', {
     description: 'Download a Drive file to the local filesystem. For Google Docs formats, specify an export format (pdf, csv, xlsx, pptx, txt, png, docx, md).',
     // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
-    annotations: { readOnlyHint: false, destructiveHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID to download'),
       out: z.string().optional().describe('Output file path (default: gogcli config dir)'),
@@ -55,7 +55,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       'No read tool surfaces the version number: fetch it immediately before uploading with ' +
       'gog_drive_run { subcommand: "raw", args: ["<fileId>", "--fields=version"] } — it comes back as a JSON string, so pass it on as a number. ' +
       'Conditional replacement refuses Google Workspace files (Docs/Sheets/Slides), which have no replaceable binary content.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       localPath: z.string().optional().describe('Path to the file to upload, resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) this path does not exist and the call fails with "no such file or directory" — use content there. Exactly one of localPath / content is required. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       content: z.string().optional().describe('The file\'s bytes, base64-encoded (standard alphabet, with padding) — upload a file you hold without it existing anywhere on the gog server. This is the only route that works when the caller and gog share no filesystem. Requires name (there is no path to take a filename from). Max 8 MiB; for anything larger use localPath from a local deployment. Exactly one of localPath / content is required — supplying both is an error, not a precedence rule.'),
@@ -117,7 +117,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_sync_push', {
     description: 'Recursively push a local directory\'s contents into an existing Drive folder — uploads new files, updates changed ones (matched by name + MD5), and creates missing subfolders. One-way and additive: it never deletes anything on Drive. Use dryRun to preview the planned actions first.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       localPath: z.string().describe('Local directory to push (its contents are mirrored into the parent folder). Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       parent: z.string().describe('Existing destination Drive folder ID'),
@@ -135,7 +135,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_copy', {
     description: 'Copy a Drive file to a new file with the given name.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID to copy'),
       name: z.string().describe('Name for the new copy'),
@@ -150,7 +150,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_url', {
     description: 'Print shareable web URLs for one or more Drive files.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileIds: z.array(z.string()).min(1).describe('One or more file IDs to get URLs for'),
       account: accountParam,
@@ -161,7 +161,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_permissions', {
     description: 'List permissions on a Drive file.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       max: z.number().optional().describe('Max results (default: 100)'),
@@ -179,7 +179,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_unshare', {
     description: 'Remove a permission from a Drive file. Get the permissionId from gog_drive_permissions.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       permissionId: z.string().describe('Permission ID to remove'),
@@ -191,7 +191,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_drives_list', {
     description: 'List shared drives (Team Drives) accessible to the account.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       max: z.number().optional().describe('Max results (default: 100, max allowed: 100)'),
       pageToken: pageTokenParam,
@@ -212,7 +212,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_comments_list', {
     description: 'List comments on a Drive file.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       since: z.string().optional().describe('Only return comments modified at or after this RFC3339 timestamp (e.g. 2026-06-01T00:00:00Z)'),
@@ -230,7 +230,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_comments_get', {
     description: 'Get a single comment on a Drive file by ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       commentId: z.string().describe('Comment ID'),
@@ -244,7 +244,7 @@ export function registerExtraDriveTools(server: McpServer): void {
     description: 'Add a new comment to a Drive file. Drive notifies the file\'s owner and everyone the text +mentions, so '
       + 'this reads the file and asks the MCP host to show the user a confirmation prompt with the file, the text and who '
       + 'is mentioned first; nothing is posted unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       content: z.string().describe('Comment text'),
@@ -280,7 +280,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_comments_update', {
     description: 'Update the text of an existing comment.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       commentId: z.string().describe('Comment ID to update'),
@@ -293,7 +293,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_comments_delete', {
     description: 'Delete a comment from a Drive file.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       commentId: z.string().describe('Comment ID to delete'),
@@ -308,7 +308,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       + 'Everyone on the thread and anyone the reply +mentions is notified, so this reads the file and the comment and '
       + 'asks the MCP host to show the user a confirmation prompt with both and the reply first; nothing is posted unless '
       + 'they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       commentId: z.string().describe('Comment ID to reply to'),
@@ -351,7 +351,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_comments_resolve', {
     description: 'Resolve a comment on a Drive file (mark as done) without posting a reply. To resolve while replying, use gog_drive_comments_reply with action: "resolve".',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       commentId: z.string().describe('Comment ID to resolve'),
@@ -363,7 +363,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_comments_reopen', {
     description: 'Reopen a previously resolved comment on a Drive file. To reopen while replying, use gog_drive_comments_reply with action: "reopen".',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       commentId: z.string().describe('Comment ID to reopen'),
@@ -377,7 +377,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_du', {
     description: 'Summarize Drive folder sizes (disk-usage style) starting from a folder.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       parent: z.string().optional().describe('Folder ID to start from (default: root)'),
       depth: z.number().optional().describe('Depth for folder totals (default: 1)'),
@@ -400,7 +400,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_tree', {
     description: 'Print a read-only folder tree starting from a folder.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       parent: z.string().optional().describe('Folder ID to start from (default: root)'),
       depth: z.number().optional().describe('Max depth (0 = unlimited; default: 2)'),
@@ -419,7 +419,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_changes_start_token', {
     description: 'Get a Drive changes start page token — the cursor you pass to gog_drive_changes_list to enumerate changes since this point.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       drive: z.string().optional().describe('Shared drive ID for a shared-drive change log'),
       account: accountParam,
@@ -432,7 +432,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_changes_list', {
     description: 'List Drive changes since a page token (for sync/automation). Get the initial token from gog_drive_changes_start_token; the response includes a newStartPageToken to persist for the next poll.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       token: z.string().describe('Start page token or next page token'),
       max: z.number().optional().describe('Max results (default: 100)'),
@@ -458,7 +458,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_revisions_list', {
     description: 'List a file\'s revision history — paged revision metadata plus provider export links for each revision.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       ...paginationParams,
@@ -472,7 +472,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_revisions_get', {
     description: 'Get one revision of a Drive file by revision ID (metadata + export links). Find revision IDs with gog_drive_revisions_list.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       revisionId: z.string().describe('Revision ID'),
@@ -484,7 +484,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_shortcut_create', {
     description: 'Create a Drive shortcut to a file or folder inside a destination folder. Shortcuts are classified distinctly in listing/tree output and are never followed by tree scans.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       targetId: z.string().describe('File or folder ID the shortcut points to'),
       parent: z.string().describe('Destination folder ID for the shortcut'),
@@ -499,7 +499,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_labels_list', {
     description: 'List Drive label schemas available to the account.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       language: z.string().optional().describe('BCP-47 language code'),
       view: z.enum(['LABEL_VIEW_BASIC', 'LABEL_VIEW_FULL']).optional().describe('Label view (default: LABEL_VIEW_BASIC)'),
@@ -526,7 +526,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_labels_get', {
     description: 'Get a single Drive label schema by name (e.g. "labels/abc123").',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       name: z.string().describe('Label schema name (e.g. labels/abc123)'),
       language: z.string().optional().describe('BCP-47 language code'),
@@ -544,7 +544,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_labels_file_list', {
     description: 'List labels applied to a Drive file.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       max: z.number().optional().describe('Max results (default: 100)'),
@@ -562,7 +562,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_labels_file_apply', {
     description: 'Apply or update a label on a Drive file, optionally setting field values. Each field flag takes "fieldId=value" entries (repeatable). selection/integer/date/user values may be comma-separated within one entry for multi-valued fields.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       labelId: z.string().describe('Label ID to apply'),
@@ -589,7 +589,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_labels_file_remove', {
     description: 'Remove a label from a Drive file.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       fileId: z.string().describe('File ID'),
       labelId: z.string().describe('Label ID to remove'),
@@ -601,7 +601,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_activity', {
     description: 'Query the Drive Activity API for audit events (edits, creates, deletes, moves, shares, etc.) scoped to a file or folder and/or time range.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       file: z.string().optional().describe('Drive file ID to query'),
       folder: z.string().optional().describe('Drive folder ID; includes descendants'),
@@ -634,7 +634,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_audit_sharing', {
     description: 'Audit Drive sharing without mutation — find public (anyone-with-link) or external permissions across a folder tree or a single file.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       file: z.string().optional().describe('Audit one file ID instead of a folder tree'),
       parent: z.string().optional().describe('Folder ID to scan (default: root)'),
@@ -661,7 +661,7 @@ export function registerExtraDriveTools(server: McpServer): void {
 
   server.registerTool('gog_drive_audit_user', {
     description: 'Audit Drive sharing without mutation — find permissions granted to a specific user across a folder tree or a single file.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       user: z.string().describe('User email to audit permissions for'),
       file: z.string().optional().describe('Audit one file ID instead of a folder tree'),

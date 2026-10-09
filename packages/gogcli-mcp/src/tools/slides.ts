@@ -9,7 +9,7 @@ export function registerSlidesTools(server: McpServer): void {
   server.registerTool('gog_slides_export', {
     description: 'Export a Google Slides presentation to a local file (pdf or pptx). The out path must be inside the server\'s GOG_FILE_ROOTS directories.',
     // Writes a file on the gog host and can overwrite one: not read-only.
-    annotations: { readOnlyHint: false, destructiveHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       out: z.string().optional().describe('Output file path'),
@@ -28,7 +28,7 @@ export function registerSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_info', {
     description: 'Get metadata for a Google Slides presentation (title, ID, slide count, etc.).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       account: accountParam,
@@ -39,7 +39,7 @@ export function registerSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_create', {
     description: 'Create a new Google Slides presentation, optionally in a folder or copying from a template.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       title: z.string().describe('Presentation title'),
       parent: z.string().optional().describe('Destination folder ID'),
@@ -55,7 +55,7 @@ export function registerSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_copy', {
     description: 'Copy a Google Slides presentation to a new presentation with the given title.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID to copy'),
       title: z.string().describe('Title for the new copy'),
@@ -70,7 +70,7 @@ export function registerSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_list_slides', {
     description: 'List slides in a Google Slides presentation.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       account: accountParam,
@@ -81,7 +81,7 @@ export function registerSlidesTools(server: McpServer): void {
 
   server.registerTool('gog_slides_read_slide', {
     description: 'Read the content of a slide (text, shapes, speaker notes). Set detail=true to also include normalized element geometry, styled text runs, paragraphs, table-cell content, and image source URLs.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID to read'),

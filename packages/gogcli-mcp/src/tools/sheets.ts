@@ -49,7 +49,7 @@ const failIfNotEmptyParam = z.boolean().optional().describe(
 export function registerSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_get', {
     description: 'Read values from a Google Sheets range. Returns a JSON object with a "values" array of rows.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       range: z.string().describe('Range in A1 notation, e.g. Sheet1!A1:B10 or a named range'),
@@ -61,7 +61,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_update', {
     description: 'Write values to a Google Sheets range, overwriting existing content. Values may be strings, numbers, booleans, or null. Strings starting with "=" are interpreted as formulas (e.g. "=SUM(A1:A10)").',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       range: z.string().describe('Top-left cell or range in A1 notation, e.g. Sheet1!A1'),
@@ -103,7 +103,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_append', {
     description: 'Append rows to a Google Sheet after the last row with data in the given range. Values may be strings, numbers, booleans, or null. Strings starting with "=" are interpreted as formulas.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       range: z.string().describe('Range indicating which sheet/columns to append to, e.g. Sheet1!A:C'),
@@ -119,7 +119,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_clear', {
     description: 'Clear all values in a Google Sheets range (formatting is preserved).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range in A1 notation to clear'),
@@ -134,7 +134,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_metadata', {
     description: 'Get spreadsheet metadata: title, named ranges, and per-tab properties including grid dimensions (gridProperties.rowCount / columnCount). Use this to learn a sheet\'s current size before writing — a write outside the grid fails.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
@@ -145,7 +145,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_create', {
     description: 'Create a new Google Spreadsheet. Returns JSON with the new spreadsheetId and URL.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       title: z.string().describe('Title for the new spreadsheet'),
       account: accountParam,
@@ -156,7 +156,7 @@ export function registerSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_find_replace', {
     description: 'Find and replace text across an entire Google Spreadsheet.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       find: z.string().describe('Text to find'),

@@ -210,7 +210,7 @@ export function registerCalendarTools(server: McpServer): void {
       + 'today on its own; or from + to; or from + days; or days on its own (a window of that many days starting today). today cannot be combined with from, to or days, and days cannot be combined with to. '
       + 'gog returns only 10 events by default, so a wide date range is USUALLY INCOMPLETE: raise max, or page with pageToken until the response carries no nextPageToken. '
       + 'A response carrying "truncated": true is an incomplete view — never conclude an event does not exist from one.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().optional().describe('Calendar ID (default: primary calendar)'),
       from: z.string().optional().describe('Start time filter (RFC3339, date, or natural language)'),
@@ -262,7 +262,7 @@ export function registerCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_get', {
     description: 'Get a specific calendar event by ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),
@@ -280,7 +280,7 @@ export function registerCalendarTools(server: McpServer): void {
       + 'With attendees, the event lands on other people\'s calendars (no invitation email is sent), so the MCP host is '
       + 'asked to show the user a confirmation prompt with the guests, time and details first; a guest-free event is '
       + 'created without asking.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID (use "primary" for the default calendar)'),
       summary: z.string().describe('Event title'),
@@ -333,7 +333,7 @@ export function registerCalendarTools(server: McpServer): void {
       + 'that has guests — or gains them — reads the event and asks the MCP host to show the user a confirmation prompt '
       + 'with the event as it stands and the change; no invitation email is sent. Reminder-only changes and guest-free '
       + 'events are updated without asking.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),
@@ -407,7 +407,7 @@ export function registerCalendarTools(server: McpServer): void {
       + 'deletes the WHOLE series, so when the event has guests or recurs this reads it and asks the MCP host to show '
       + 'the user a confirmation prompt with the event as it stands; a guest-free, one-off event is deleted without asking.'
       + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),
@@ -447,7 +447,7 @@ export function registerCalendarTools(server: McpServer): void {
     description: 'Respond to a calendar event invitation. The organizer sees the response, so this reads the event and '
       + 'asks the MCP host to show the user a confirmation prompt with the event, organizer, response and comment; '
       + 'nothing is recorded unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       eventId: z.string().describe('Event ID'),

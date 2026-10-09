@@ -87,7 +87,7 @@ export function previewJson(text: string): unknown {
 export function registerApiTools(server: McpServer): void {
   server.registerTool('gog_api_list', {
     description: 'List the Google Discovery APIs available for gog_api_call / gog_api_describe (name + version + title).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       all: z.boolean().optional().describe('Include every Discovery API (including preview/less-common ones) instead of the curated default set'),
       account: accountParam,
@@ -100,7 +100,7 @@ export function registerApiTools(server: McpServer): void {
 
   server.registerTool('gog_api_describe', {
     description: 'Describe a Google Discovery API, or a single method within it — its parameters, request/response schema, and required OAuth scopes. Use this to discover the exact api/version/method and params before calling gog_api_call.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       api: z.string().describe('Discovery API name (e.g. drive, gmail, calendar)'),
       version: z.string().describe('API version (e.g. v3, v1)'),
@@ -115,7 +115,7 @@ export function registerApiTools(server: McpServer): void {
 
   server.registerTool('gog_api_call', {
     description: 'Call any Discovery-described Google API method directly — an escape hatch for endpoints gog has no dedicated tool for. Find the exact api/version/method/params with gog_api_describe first. Read methods (GET/LIST) run as-is. Mutating methods (POST/PUT/PATCH/DELETE) are refused unless you set allowWrite=true, and every write then asks the MCP host to show the user a confirmation prompt with the exact api/version/method/params/body before anything is sent; set dryRun=true to print the intended request without sending it (no prompt, no changes). Gmail send and forwarding methods (users.messages.send, users.drafts.send, forwarding/auto-forwarding, filters, delegates) are refused outright — use the dedicated gog_gmail_* tools, which ask the user to confirm. So are the other methods a dedicated tool asks about with a better preview: Chat spaces.messages.create, Drive permissions.create/update, Classroom courses.announcements.create and invitations.create, and Calendar events.insert/import/quickAdd/update/patch.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       api: z.string().describe('Discovery API name (e.g. drive, gmail, calendar)'),
       version: z.string().describe('API version (e.g. v3, v1)'),

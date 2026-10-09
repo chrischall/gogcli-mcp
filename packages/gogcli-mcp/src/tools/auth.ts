@@ -44,7 +44,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'still works: a signed-out account whose refresh token expired or was revoked is listed here ' +
       'exactly like a healthy one, scopes and all. Use gog_auth_health to check whether an account ' +
       'can actually authenticate.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     inputSchema: z.object({}),
   }, async () => {
     try {
@@ -59,7 +59,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'Show gogcli auth CONFIGURATION: keyring backend, credential files, and auth setup. Despite the ' +
       'name this is not a health check — it reads local setup and does not contact Google, so it says ' +
       'nothing about whether an account can still authenticate. Use gog_auth_health for that.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     inputSchema: z.object({}),
   }, async () => {
     try {
@@ -81,7 +81,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'check that measures Google: a connector showing "connected" or "refreshed" has verified the ' +
       'client\'s connection to the MCP host, and nothing else — the Google credential lives in gog\'s ' +
       'keyring on that host and can be dead while the connection looks perfectly healthy.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({}),
   }, async () => {
     try {
@@ -94,7 +94,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
 
   server.registerTool('gog_auth_services', {
     description: 'List all Google services supported by gogcli and the OAuth scopes each requires.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     inputSchema: z.object({}),
   }, async () => {
     try {
@@ -111,7 +111,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'Blocks for up to 5 minutes waiting for the user to complete authorization. ' +
       'If the browser does not open automatically, a fallback URL is included in the response. ' +
       'Use gog_auth_list to check which accounts are already configured.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       email: z.string().describe('Google account email to authorize'),
       services: z.string().optional().default(defaultServices).describe(servicesDescribe),
@@ -145,7 +145,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'full redirected URL (from the address bar) and you pass it to gog_auth_add_complete. The link is ' +
       'valid for 10 minutes. If you pass a custom `services` here, pass the SAME value to ' +
       'gog_auth_add_complete or the second step will not match this one.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     inputSchema: z.object({
       email: z.string().describe('Google account email to authorize'),
       services: z.string().optional().default(defaultServices).describe(servicesDescribe),
@@ -171,7 +171,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
       'URL the user copied after finishing gog_auth_add_url, exchanges it for a refresh token, and stores ' +
       'it. Use the SAME `services` value you passed to gog_auth_add_url. Must run within 10 minutes of ' +
       'step 1 and against the same gogcli host.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       email: z.string().describe('Google account email being authorized (same as step 1)'),
       redirectUrl: z.string().describe(

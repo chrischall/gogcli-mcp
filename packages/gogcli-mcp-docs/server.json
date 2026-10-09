@@ -28,6 +28,24 @@
           "description": "Override path to the gogcli binary (auto-discovered otherwise)",
           "isRequired": false,
           "format": "string"
+        },
+        {
+          "name": "DISPLAY_TZ",
+          "description": "zone for *Display fields and for interpreting naive gog values; defaults to America/New_York",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOG_READONLY",
+          "description": "block all mutating gog API requests (injects gog's --readonly); set to 0/false/no/off (or unset) to allow writes",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOG_TIMEZONE",
+          "description": "zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge",
+          "isRequired": false,
+          "format": "string"
         }
       ]
     }

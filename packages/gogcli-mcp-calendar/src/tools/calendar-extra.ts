@@ -38,7 +38,7 @@ export function calendarSnapshot(raw: string, calendarId: string): { id: string;
 export function registerExtraCalendarTools(server: McpServer): void {
   server.registerTool('gog_meet_create', {
     description: 'Create a Google Meet space and return its meeting code.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       access: meetAccess.optional().describe('Access type (default: trusted)'),
       open: z.boolean().optional().describe('Open the meeting in a browser after creation'),
@@ -53,7 +53,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_meet_get', {
     description: 'Get a Google Meet space by its meeting code.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       meetingCode: z.string().describe('Meeting code (e.g. abc-defg-hij)'),
       account: accountParam,
@@ -64,7 +64,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_meet_update', {
     description: 'Update a Google Meet space configuration.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       meetingCode: z.string().describe('Meeting code'),
       access: meetAccess.optional().describe('Access type'),
@@ -78,7 +78,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_meet_end', {
     description: 'End the active conference in a Google Meet space.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       meetingCode: z.string().describe('Meeting code'),
       account: accountParam,
@@ -89,7 +89,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_meet_history', {
     description: 'List past calls (conferences) in a Google Meet space.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       meetingCode: z.string().describe('Meeting code'),
       max: z.number().optional().describe('Max results (default: 20)'),
@@ -112,7 +112,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
   // helpers live in the calendar extras alongside meet space management.
   server.registerTool('gog_zoom_auth_setup', {
     description: 'Store Zoom Server-to-Server (S2S) OAuth credentials so calendar events can be attached to Zoom meetings via the --with-zoom flag on gog_calendar_create / gog_calendar_update. Credentials are saved in gogcli\'s keyring under the given alias.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       accountId: z.string().describe('Zoom S2S OAuth account ID'),
       clientId: z.string().describe('Zoom S2S OAuth client ID'),
@@ -132,7 +132,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_zoom_auth_doctor', {
     description: 'Validate stored Zoom S2S OAuth credentials by calling Zoom /users/me.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       alias: z.string().optional().describe('Zoom credential alias to check (default: "default")'),
     }),
@@ -146,7 +146,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_calendars', {
     description: 'List the calendars in your calendar list (id, summary, access role, primary flag).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       max: z.number().optional().describe('Max results (default: 100)'),
       pageToken: pageTokenParam,
@@ -167,7 +167,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
     description: 'Full-text search for events matching a query string, with optional time filters. '
       + 'Describe the window ONE way only (gog >= 0.36.0 rejects the rest as ambiguous instead of discarding a flag): one of today / tomorrow / week on its own, '
       + 'or from + to, or from + days, or days on its own. The fixed presets cannot be combined with from, to or days, and days cannot be combined with to.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       query: z.string().describe('Search query'),
       from: z.string().optional().describe('Start time (RFC3339, date, or relative: now, today, tomorrow, monday)'),
@@ -200,7 +200,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_changed', {
     description: 'List most recently changed events (including cancellations/deletions) across one or more calendars, ordered by last-modification time. Requires gog >= 0.31.1.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().optional().describe('Calendar ID (default: primary)'),
       calendarIds: z.string().optional().describe('Comma-separated calendar IDs, names, or indices'),
@@ -221,7 +221,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_freebusy', {
     description: 'Query free/busy intervals for one or more calendars over a time window.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       from: z.string().describe('Start time (RFC3339, required)'),
       to: z.string().describe('End time (RFC3339, required)'),
@@ -240,7 +240,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_colors', {
     description: 'Show the available calendar and event color palette (color IDs to hex values).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       account: accountParam,
     }),
@@ -250,7 +250,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_acl', {
     description: 'List the access control list (sharing rules) for a calendar.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID'),
       max: z.number().optional().describe('Max results (default: 100)'),
@@ -273,7 +273,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       + 'sendUpdates all or externalOnly Google emails the guests, so this reads the event and asks the MCP host to '
       + 'show the user a confirmation prompt with the event, its guests and the destination first; a move that '
       + 'notifies nobody (the default) is made without asking.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Source calendar ID'),
       eventId: z.string().describe('Event ID'),
@@ -314,7 +314,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       + 'EVERY conflicting meeting by default (autoDecline all), and each organizer is notified, so unless autoDecline '
       + 'is none this asks the MCP host to show the user a confirmation prompt with the window, the decline mode and '
       + 'the message first; nothing is created unless they accept.' + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       from: z.string().describe('Start date or datetime (RFC3339 or YYYY-MM-DD)'),
       to: z.string().describe('End date or datetime (RFC3339 or YYYY-MM-DD)'),
@@ -367,7 +367,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_calendar_unsubscribe', {
     description: 'Remove a calendar from your calendar list (the underlying calendar is not deleted — you can re-subscribe). For deleting a secondary calendar you own, use gog_calendar_delete_calendar.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Calendar ID or alias to remove from your calendar list'),
       account: accountParam,
@@ -381,7 +381,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
       + 'To merely remove a calendar you do not own from your list, use gog_calendar_unsubscribe. Reads the calendar and '
       + 'asks the MCP host to show the user a confirmation prompt naming it first; nothing is deleted unless they accept.'
       + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       calendarId: z.string().describe('Owned secondary calendar ID or alias'),
       account: accountParam,
@@ -413,7 +413,7 @@ export function registerExtraCalendarTools(server: McpServer): void {
 
   server.registerTool('gog_meet_participants', {
     description: 'List participants from the latest (or a specific) Meet call.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       meetingCode: z.string().describe('Meeting code'),
       conference: z.string().optional().describe('Specific conference ID (default: most recent)'),

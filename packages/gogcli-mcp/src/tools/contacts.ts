@@ -17,7 +17,7 @@ export function vetContactsRun(subcommand: string, args: readonly string[]): str
 export function registerContactsTools(server: McpServer): void {
   server.registerTool('gog_contacts_search', {
     description: 'Search personal Google Contacts by name, email, or phone. For searching the Workspace directory (internal users not in your personal contacts), use gog_people_search from gogcli-mcp-contacts.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       query: z.string().describe('Search query (name, email, or phone)'),
       account: accountParam,
@@ -28,7 +28,7 @@ export function registerContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_list', {
     description: 'List all Google Contacts.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       account: accountParam,
     }),
@@ -38,7 +38,7 @@ export function registerContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_get', {
     description: 'Get a contact by resource name.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       resourceName: z.string().describe('Contact resource name (e.g. people/c12345)'),
       account: accountParam,
@@ -49,7 +49,7 @@ export function registerContactsTools(server: McpServer): void {
 
   server.registerTool('gog_contacts_create', {
     description: 'Create a new Google Contact.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       givenName: z.string().describe('Given (first) name'),
       familyName: z.string().optional().describe('Family (last) name'),

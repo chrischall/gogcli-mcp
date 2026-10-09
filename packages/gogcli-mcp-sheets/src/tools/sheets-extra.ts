@@ -171,7 +171,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_batch_begin', {
     description: 'Open a persisted, revision-locked Sheets request batch. Pass its returned batchId to gog_sheets_batch_request using batch=<id>; no spreadsheet changes are submitted until gog_sheets_batch_end.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: false },
     inputSchema: z.object({ spreadsheetId: z.string().describe('Spreadsheet ID the batch is locked to'), name: z.string().optional().describe('Optional batch label'), account: accountParam }),
   }, async ({ spreadsheetId, name, account }) => {
     const args: GogArg[] = ['batch', 'begin', `--service=sheets`, `--spreadsheet=${spreadsheetId}`];
@@ -181,7 +181,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_batch_end', {
     description: 'Submit a persisted Sheets request batch atomically against its locked revision. The queued requests are shown for review and require confirmation before they are applied.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({ batchId: z.string().describe('Batch ID returned by gog_sheets_batch_begin'), account: accountParam, confirmToken: confirmTokenParam }),
   }, async ({ batchId, account, confirmToken }, ctx) => {
     const previewResult = await runOrDiagnose(['batch', 'show', pos(batchId)], { account });
@@ -202,7 +202,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_list_tabs', {
     description: 'List tabs (sheets) in a spreadsheet with their titles, sheetIds, and indices. A friendlier view than gog_sheets_metadata when you only need the tab list — useful for restructuring a workbook over a long agent session without losing track of names.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       account: accountParam,
@@ -217,7 +217,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_add_tab', {
     description: 'Add a new sheet tab to a spreadsheet.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID (from the URL)'),
       tabName: z.string().describe('Name for the new tab'),
@@ -229,7 +229,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_delete_tab', {
     description: 'Delete a sheet tab from a spreadsheet.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tabName: z.string().describe('Name of the tab to delete'),
@@ -241,7 +241,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_rename_tab', {
     description: 'Rename a sheet tab.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       oldName: z.string().describe('Current tab name'),
@@ -254,7 +254,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_copy', {
     description: 'Copy a spreadsheet to a new spreadsheet with the given title.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID to copy'),
       title: z.string().describe('Title for the new copy'),
@@ -270,7 +270,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
   server.registerTool('gog_sheets_export', {
     description: 'Export a spreadsheet as CSV, TSV, or PDF.',
     // Writes a file on the gog host and can overwrite one: not read-only (audit SEC-4).
-    annotations: { readOnlyHint: false, destructiveHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       format: z.string().optional().describe('Export format: csv, tsv, pdf (default: csv)'),
@@ -289,7 +289,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_freeze', {
     description: 'Freeze rows and/or columns in a sheet.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       rows: z.number().optional().describe('Number of rows to freeze'),
@@ -307,7 +307,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_insert', {
     description: 'Insert rows or columns into a sheet. With after:false (default), the new dimension lands at start. With after:true, the new dimension lands at start+1 (the existing dimension at start is preserved).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       sheet: z.string().describe('Sheet tab name'),
@@ -334,7 +334,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_copy_paste', {
     description: 'Copy a source range\'s values/formulas/format to a destination range via the Sheets CopyPasteRequest. A destination larger than the source tiles the source to fill it — the canonical way to fill formulas down or across with relative references adjusted (aliases: fill, copy-range). Use type to control what is pasted (NORMAL pastes everything; FORMULA fills formulas with adjusted references; VALUES/FORMAT/etc. paste only that aspect).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       source: z.string().describe('Source range (e.g. Sheet1!A2:H71)'),
@@ -352,7 +352,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_merge', {
     description: 'Merge cells in a range.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to merge (e.g. Sheet1!A1:C3)'),
@@ -367,7 +367,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_unmerge', {
     description: 'Unmerge previously merged cells in a range.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to unmerge (e.g. Sheet1!A1:C3)'),
@@ -379,7 +379,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_format', {
     description: 'Apply cell formatting to a range. The named flags (bold, italic, backgroundColor, etc.) compose into a Sheets API CellFormat — use them for the 90% case. For full API control, pass formatJson + formatFields (Sheets CellFormat + field mask) directly.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to format (e.g. Sheet1!A1:C3)'),
@@ -468,7 +468,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_number_format', {
     description: 'Set number format on a range (currency, percentage, date, etc.). When type is DATE or DATE_TIME, the target range is peeked first; if every numeric cell is a small integer (< 10000), a warning is prepended to the response because Sheets will render those as 1899/1900 day-serials. Pass force:true to skip the check.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to format (e.g. Sheet1!A1:A10)'),
@@ -494,7 +494,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_read_format', {
     description: 'Read cell formatting for a range.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to read formatting from'),
@@ -509,7 +509,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_resize_columns', {
     description: 'Resize column widths. Use --auto for auto-fit or --width for a specific pixel width.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       columns: z.string().describe('Column range (e.g. A:C, or Sheet1!A:C)'),
@@ -526,7 +526,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_resize_rows', {
     description: 'Resize row heights. Use --auto for auto-fit or --height for a specific pixel height.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       rows: z.string().describe('Row range (e.g. 1:10, or Sheet1!1:10)'),
@@ -543,7 +543,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_notes', {
     description: 'Read cell notes in a range.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to read notes from (e.g. Sheet1!A1:B5)'),
@@ -555,7 +555,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_update_note', {
     description: 'Add, update, or clear a cell note. Pass an empty string to clear the note.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Cell or range to set the note on (e.g. Sheet1!A1)'),
@@ -575,7 +575,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_links', {
     description: 'List hyperlinks in a range.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to scan for hyperlinks (e.g. Sheet1!A1:Z100)'),
@@ -590,7 +590,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'Set cell hyperlinks in a Google Sheet. Three modes: (1) single link — pass cell + url (+ optional text); ' +
       '(2) multi-link cell — pass cell + runsJson, a JSON array of rich-text runs (a run with an empty uri is plain text); ' +
       '(3) batch — pass cellsJson, a JSON array of {cell,url,text} or {cell,runs:[...]} objects written in one request.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       cell: z.string().optional().describe('Target cell in A1 notation (e.g. Sheet1!B2). Used by single-link and runsJson modes; omit for batch (cellsJson).'),
@@ -613,7 +613,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_validation_get', {
     description: 'Read the data-validation rules (dropdowns, checkboxes, number/date conditions, custom formulas) applied to a range.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to inspect (e.g. Sheet1!A1:A10)'),
@@ -625,7 +625,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_validation_set', {
     description: 'Set a data-validation rule on a range — dropdowns (ONE_OF_LIST / ONE_OF_RANGE), checkboxes (BOOLEAN), number/date conditions, or custom formulas. Overwrites any existing rule on the range. Repeat values for list entries or between-bounds.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to apply the rule to (e.g. Sheet1!A1:A10)'),
@@ -649,7 +649,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_validation_clear', {
     description: 'Remove all data-validation rules from a range.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to clear (e.g. Sheet1!A1:A10)'),
@@ -664,7 +664,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_delete_dimension', {
     description: 'Delete a span of rows or columns, table-aware: intersecting table objects are preserved (shrunk) along with their remaining data, instead of being corrupted as with a raw DeleteDimension batch update. Target by A1 range (e.g. Sheet1!5:7 or Sheet1!C:D) or by sheet name plus start/end.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       rangeOrSheet: z.string().describe('A1 range covering the rows/columns to delete, or a sheet name (then start/end are required)'),
@@ -683,7 +683,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_named_ranges_list', {
     description: 'List all named ranges in a spreadsheet.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
@@ -694,7 +694,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_named_ranges_get', {
     description: 'Get a named range by name or ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       nameOrId: z.string().describe('Named range name or ID'),
@@ -706,7 +706,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_named_ranges_add', {
     description: 'Create a new named range.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       name: z.string().describe('Name for the range'),
@@ -719,7 +719,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_named_ranges_update', {
     description: 'Update a named range (change its name, range, or both).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       nameOrId: z.string().describe('Current named range name or ID'),
@@ -736,7 +736,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_named_ranges_delete', {
     description: 'Delete a named range.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       nameOrId: z.string().describe('Named range name or ID to delete'),
@@ -748,7 +748,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_batch_update', {
     description: 'Update values in multiple ranges with one Sheets API request. dataJson is a JSON array of {range, values} objects — pass it inline as a literal JSON string. Atomic — either all ranges update or none do. (The CLI also accepts "@/path/to/file.json", but that file is read on the gog server\'s filesystem, not the caller\'s, so inline JSON is the right form for remote MCP callers.)',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataJson: z.string().describe('Value ranges as an inline JSON array, e.g. [{"range":"Sheet1!A1:B2","values":[["a","b"]]}]. (An "@/path" form is read on the gog server filesystem, not yours — inline the JSON instead.)'),
@@ -770,7 +770,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_batch_request', {
     description: 'Submit a Google Sheets API structural request array atomically (for example addDimension, repeatCell, mergeCells, or updateSheetProperties). requestsJson must be a JSON array of Sheets API Request objects. Requests are previewed and require confirmation before submission. Use batch=<id> to append these requests to a persisted Sheets batch instead of submitting immediately.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       requestsJson: z.string().describe('JSON array of Google Sheets API Request objects, e.g. [{"addSheet":{"properties":{"title":"Archive"}}}]'),
@@ -814,7 +814,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_reorder_tab', {
     description: 'Move a tab to a specific 0-based position. `tab` is the tab name or numeric sheetId; `to=0` is the leftmost slot.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tab: z.string().describe('Target tab by name or numeric sheet ID'),
@@ -832,7 +832,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_chart_list', {
     description: 'List embedded charts in a spreadsheet (chartId, type, position).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
@@ -843,7 +843,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_chart_get', {
     description: 'Get the full definition (spec + position) of a single chart by its numeric chart ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       chartId: z.string().describe('Numeric chart ID (from gog_sheets_chart_list)'),
@@ -855,7 +855,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_chart_create', {
     description: 'Create an embedded chart from a JSON spec. specJson is a Sheets API ChartSpec (or full EmbeddedChart) — inline or @/path/to/file.json. Anchor the chart with sheet + anchor (A1 cell), and optionally size it with width/height pixels.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       specJson: z.string().describe('ChartSpec or EmbeddedChart JSON (inline or @file)'),
@@ -876,7 +876,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_chart_update', {
     description: 'Replace a chart spec by chart ID. specJson is a Sheets API ChartSpec (or full EmbeddedChart) — inline or @/path/to/file.json.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       chartId: z.string().describe('Numeric chart ID to update'),
@@ -892,7 +892,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_chart_delete', {
     description: 'Delete a chart by its numeric chart ID.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       chartId: z.string().describe('Numeric chart ID to delete'),
@@ -906,7 +906,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_table_list', {
     description: 'List Google Sheets tables in a spreadsheet (tableId, name, range).',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
@@ -917,7 +917,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_table_get', {
     description: 'Get a single Google Sheets table (definition + columns) by its table ID.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID (from gog_sheets_table_list)'),
@@ -929,7 +929,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_table_create', {
     description: 'Create a Google Sheets table over a range. columnsJson is a JSON array of column definitions (each {columnName, columnType?}); valid columnType values: TEXT, DOUBLE, BOOLEAN, DATE, DROPDOWN. Inline JSON or @/path/to/file.json.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range the table covers (e.g. Sheet1!A1:D20)'),
@@ -946,7 +946,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_table_append', {
     description: 'Append data rows to a table. valuesJson is a JSON 2D array of row values.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID to append to'),
@@ -962,7 +962,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_table_clear', {
     description: 'Clear all data rows from a table (keeps the table and its columns).',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID to clear'),
@@ -978,7 +978,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'By default this tool prevents that data loss by emulating the Sheets UI\'s "Convert to range": it reads the table\'s cells (values AND formulas) first, deletes the table, then restores the data into the now-plain range. ' +
       'Formatting and banding are still lost; data-validation dropdowns are also not restored automatically, but you can snapshot them first with gog_sheets_validation_get and re-apply with gog_sheets_validation_set. ' +
       'Set keep_data=false to delete the table AND wipe its cell data (the raw destructive behaviour). To preserve everything, snapshot the whole spreadsheet first with gog_sheets_snapshot.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       tableId: z.string().describe('Table ID to delete'),
@@ -1043,7 +1043,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_banding_list', {
     description: 'List alternating-color banded ranges. Optionally scope to a single sheet.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       sheet: z.string().optional().describe('Only list banding from this sheet'),
@@ -1057,7 +1057,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_banding_set', {
     description: 'Apply alternating colors to a range. Provide rowPropertiesJson and/or columnPropertiesJson — each a Sheets API BandingProperties JSON object ({headerColor, firstBandColor, secondBandColor, footerColor}). At least one is required.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to band (e.g. Sheet1!A1:D20)'),
@@ -1074,7 +1074,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_banding_clear', {
     description: 'Remove alternating-color banding. Pass id to remove a single banded range, or all:true with sheet to remove every banding on that sheet.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       id: z.number().optional().describe('Banded range ID to remove'),
@@ -1095,7 +1095,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_filter_set', {
     description: 'Set a basic filter on a range (the filter/sort header Sheets shows on a data range). A sheet can hold one basic filter; replacing an existing one requires replace=true — without it, gog refuses rather than silently overwriting.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range to filter (A1 notation with sheet name, e.g. Sheet1!A1:C100, or a named range name)'),
@@ -1112,7 +1112,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_conditional_format_list', {
     description: 'List conditional formatting rules. Optionally scope to a single sheet.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       sheet: z.string().optional().describe('Only list rules from this sheet'),
@@ -1126,7 +1126,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_conditional_format_add', {
     description: 'Add a conditional formatting rule to a range. Boolean rules: type picks the condition, expr is its value/formula (omit for blank/not-blank), formatJson is the CellFormat to apply when the condition matches (inline or @file); use formatFields to force-send zero/false fields (e.g. backgroundColor,textFormat.bold). Gradient rules (color scales): pass gradientRuleJson instead — a GradientRule JSON with minpoint/maxpoint (and optional midpoint), each {"color":{...},"type":"MIN|MAX|NUMBER|PERCENT|PERCENTILE","value":"..."}. The two modes are mutually exclusive.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       range: z.string().describe('Range the rule applies to (e.g. Sheet1!A1:A100)'),
@@ -1153,7 +1153,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
 
   server.registerTool('gog_sheets_conditional_format_clear', {
     description: 'Remove conditional formatting rules from a sheet. Pass index to remove a single rule by its 0-based index, or all:true to remove every rule on the sheet.',
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       sheet: z.string().describe('Sheet name to clear rules from'),
@@ -1173,7 +1173,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
     description:
       'Make a backup copy of an entire spreadsheet — a one-call safety snapshot to take BEFORE a risky or destructive edit (table delete, bulk clear, large rewrite). ' +
       'Returns the new copy\'s file ID and URL; if the edit goes wrong, restore by copying the backup back or sharing it. The copy is independent — later edits to the original do not affect it.',
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID to back up'),
       name: z.string().describe('Name for the backup copy, e.g. "Budget — backup before table delete"'),
@@ -1211,7 +1211,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'List the Connected Sheets data sources in a spreadsheet (BigQuery or Looker), each joined with its DATA_SOURCE sheet ' +
       'and current execution status. This is the discovery call — start here to get the dataSourceId the describe tool wants. ' +
       'Deliberately does not print custom SQL; use gog_sheets_datasource_describe for that.' + bigQueryScopeNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       account: accountParam,
@@ -1226,7 +1226,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'which gog_sheets_datasource_list withholds), its sheet properties, its DataExecutionStatus and any refresh schedules. ' +
       'Refreshes are asynchronous and this tool cannot start one — poll it until state is SUCCEEDED or FAILED, and read the ' +
       'status error text when it is FAILED.' + bigQueryScopeNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
@@ -1242,7 +1242,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'id of its own in the Sheets API: its definition lives on its top-left cell, so every extract is identified by a ' +
       'sheet-qualified A1 anchor (e.g. "Extracts!B3"). That anchor is what the describe and read tools take. Filter with ' +
       'dataSourceId to see only one source\'s extracts.' + bigQueryScopeNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().optional().describe('Only list tables belonging to this data source ID'),
@@ -1259,7 +1259,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'Describe the data-source table (extract) anchored at an A1 cell: its source, configured columns, sort/filter spec and ' +
       'row limit. Read this before gog_sheets_datasource_table_read when you need to know what the columns MEAN — the read ' +
       'returns values, not the extract\'s definition.' + bigQueryScopeNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       anchor: z.string().describe('Sheet-qualified A1 anchor of the extract\'s top-left cell, e.g. "Extracts!B3". Get it from gog_sheets_datasource_table_list — an extract has no other identifier.'),
@@ -1276,7 +1276,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'configured extract can hold more rows than were returned — treat that exactly like a truncated search, i.e. do not ' +
       'conclude a value is absent from it; raise maxRows or narrow the extract instead. Use render=UNFORMATTED_VALUE for ' +
       'arithmetic (FORMATTED_VALUE returns display strings) or render=FORMULA to see the cell formulas.' + bigQueryScopeNote,
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       anchor: z.string().describe('Sheet-qualified A1 anchor of the extract\'s top-left cell, e.g. "Extracts!B3" (from gog_sheets_datasource_table_list)'),
@@ -1320,7 +1320,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'BigQuery project charged for the query; tableProject only names which project OWNS the table, and defaults to the ' +
       'billing project. Returns the new dataSourceId, which every other datasource tool takes.' +
       bigQueryChargeNote + bigQueryScopeNote,
-    annotations: { destructiveHint: false },
+    annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       billingProject: z.string().describe('Billing-enabled BigQuery project charged for this source\'s queries'),
@@ -1361,7 +1361,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'source between the two kinds — gog refuses SQL on a table source and table fields on a query source — so read ' +
       'gog_sheets_datasource_describe first if you are unsure which kind it is. Replacing the SQL DISCARDS the source\'s ' +
       'current results.' + bigQueryChargeNote + bigQueryScopeNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
@@ -1417,7 +1417,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'Re-run a Connected Sheets data source so its sheet and extracts pick up current BigQuery data. Google refuses to ' +
       'refresh a source whose previous execution FAILED; forceRefresh overrides that, which is what you want after fixing ' +
       'the underlying query or permissions.' + bigQueryChargeNote + bigQueryScopeNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),
@@ -1446,7 +1446,7 @@ export function registerExtraSheetsTools(server: McpServer): void {
       'DATA_SOURCE sheet, and unlinks every extract, chart and pivot table built on it elsewhere in the spreadsheet — ' +
       'objects on other tabs that the caller never named. Take gog_sheets_snapshot first if any of that matters. The ' +
       'BigQuery data itself is untouched; only the spreadsheet\'s connection to it goes away.' + bigQueryScopeNote,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       spreadsheetId: z.string().describe('Spreadsheet ID'),
       dataSourceId: z.string().describe('Data source ID, as reported by gog_sheets_datasource_list'),

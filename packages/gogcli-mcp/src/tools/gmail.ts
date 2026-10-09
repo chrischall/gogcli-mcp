@@ -328,7 +328,7 @@ export function registerGmailTools(server: McpServer): void {
       + 'Results are ALWAYS newest-first by Gmail\'s internalDate — the wrapper sorts them, so the first result is the most recent match and a recent message can never be buried below older ones. '
       + 'IMPORTANT — a response carrying "truncated": true is an INCOMPLETE view of the matches: NEVER report that a message does not exist, or that there is no such mail, on the strength of one. Page through it (pass nextPageToken back as `pageToken`), set maxPages to walk several pages in one call, or narrow the query, and only then draw a conclusion. '
       + 'If you already know the thread, do not search for it at all — read it directly with gog_gmail_thread_get, which returns the whole thread and cannot be truncated or mis-ranked.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       query: z.string().describe('Gmail search query'),
       max: z.number().int().optional().describe('Max results to return (default: 10)'),
@@ -365,7 +365,7 @@ export function registerGmailTools(server: McpServer): void {
 
   server.registerTool('gog_gmail_get', {
     description: 'Get a Gmail message by ID. For a long message, sanitizeContent is the cheapest way to keep it in context: it drops the raw MIME payload and the HTML part, which are usually the bulk of the response.',
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       messageId: z.string().describe('Message ID'),
       format: z.enum(['full', 'metadata', 'raw']).optional().describe('Message format (default: full)'),
@@ -397,7 +397,7 @@ export function registerGmailTools(server: McpServer): void {
       + 'subject, recipients and body are entirely yours, and the original is not quoted unless you set '
       + 'quote. Use gog_gmail_reply / gog_gmail_reply_all instead, which inherit all three.'
       + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       to: z.string().describe('Recipient(s), comma-separated'),
       subject: z.string().describe('Subject line'),
@@ -506,7 +506,7 @@ export function registerGmailTools(server: McpServer): void {
       + 'across every message matching a query, and gog_gmail_drafts_reply to stage this exact reply as a draft '
       + 'instead of sending it.'
       + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: sendReplySchema,
   }, async ({ messageId, account, confirmToken, ...flags }, ctx) => {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', flags.bodyHtml, flags.bodyHtmlFile);
@@ -524,7 +524,7 @@ export function registerGmailTools(server: McpServer): void {
       + 'subject and quoted original as gog_gmail_reply. Use the remove flag to drop specific recipients from the '
       + 'reply-all.'
       + CONFIRM_FALLBACK_DESCRIPTION,
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: sendReplySchema,
   }, async ({ messageId, account, confirmToken, ...flags }, ctx) => {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', flags.bodyHtml, flags.bodyHtmlFile);
