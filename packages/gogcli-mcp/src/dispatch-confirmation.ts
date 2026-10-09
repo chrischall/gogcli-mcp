@@ -127,6 +127,12 @@ export type TokenSubject = ConfirmSubject;
 export interface DispatchTokenFallback {
   tool: string;
   account?: string;
+  /**
+   * The tool's arguments (confirmToken is dropped by mcp-utils). Both rails
+   * bind to them, so an approval for one set of arguments cannot authorise
+   * another — required by mcp-utils 3.0's confirmationFromEnv.
+   */
+  args: object;
   confirmToken?: string;
   /** Phase 1's instruction to the model. Defaults to {@link CONFIRM_ACTION_INSTRUCTION}. */
   instruction?: string;
@@ -259,6 +265,7 @@ export async function requireDispatchConfirmation(
     ...confirmation,
     tool: fallback.tool,
     account: fallback.account ?? readEnvVar('GOG_ACCOUNT') ?? '',
+    args: fallback.args,
     confirmToken: fallback.confirmToken,
     subject: fallback.subject,
     instruction: fallback.instruction ?? CONFIRM_ACTION_INSTRUCTION,

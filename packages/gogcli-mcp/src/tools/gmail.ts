@@ -240,6 +240,8 @@ async function sendReply(
   }, {
     tool: toolName,
     account,
+    // The tool's own arguments (confirmToken aside), rebuilt from the split.
+    args: { messageId, account, ...flags },
     confirmToken,
     // The metadata read above IS the phase-2 re-read: it runs on every call,
     // so the original's Message-ID/References are fresh here.
@@ -449,6 +451,7 @@ export function registerGmailTools(server: McpServer): void {
     }, {
       tool: 'gog_gmail_send',
       account,
+      args: { to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, account },
       confirmToken,
       // Nothing is stored between the phases: the payload IS the arguments,
       // so phase 2 must repeat them and any difference is a changed send.

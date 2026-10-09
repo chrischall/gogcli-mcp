@@ -315,6 +315,7 @@ export function registerCalendarTools(server: McpServer): void {
         details: event,
         unsupportedNote: 'Create it without attendees instead; the user can add the guests in Google Calendar.',
         fallback: {
+          args: { calendarId, summary, from, to, description, location, attendees, allDay, timezone, withZoom, reminders, noReminders, account },
           tool: 'gog_calendar_create',
           account,
           confirmToken,
@@ -386,6 +387,7 @@ export function registerCalendarTools(server: McpServer): void {
           details: view,
           unsupportedNote: 'Ask the user to make this change in Google Calendar.',
           fallback: {
+            args: { calendarId, eventId, summary, from, to, description, location, attendees, addAttendees, attachments, withZoom, regenerateZoom, removeZoom, removeMeet, reminders, noReminders, account },
             tool: 'gog_calendar_update',
             account,
             confirmToken,
@@ -427,6 +429,7 @@ export function registerCalendarTools(server: McpServer): void {
         details: view,
         unsupportedNote: 'Ask the user to delete it from Google Calendar.',
         fallback: {
+          args: { calendarId, eventId, account },
           tool: 'gog_calendar_delete',
           account,
           confirmToken,
@@ -467,6 +470,7 @@ export function registerCalendarTools(server: McpServer): void {
       details: view,
       unsupportedNote: 'Ask the user to respond from Google Calendar.',
       fallback: {
+        args: { calendarId, eventId, status, comment, account },
         tool: 'gog_calendar_respond',
         account,
         confirmToken,

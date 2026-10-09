@@ -244,6 +244,7 @@ export function registerDriveTools(server: McpServer): void {
         details: target,
         unsupportedNote: 'Move it to the trash instead (permanent=false); the user can empty the trash from Google Drive.',
         fallback: {
+          args: { fileId, permanent, account },
           tool: 'gog_drive_delete',
           account,
           confirmToken,
@@ -298,6 +299,7 @@ export function registerDriveTools(server: McpServer): void {
       details: grant,
       unsupportedNote: 'Ask the user to share it themselves from Google Drive.',
       fallback: {
+        args: { fileId, to, email, domain, role, account },
         tool: 'gog_drive_share',
         account,
         confirmToken,

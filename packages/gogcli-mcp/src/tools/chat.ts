@@ -148,6 +148,7 @@ export function registerChatTools(server: McpServer): void {
         details: space,
         unsupportedNote: 'Create the space without members instead; the user can add people from Google Chat.',
         fallback: {
+          args: { displayName, members, account },
           tool: 'gog_chat_spaces_create',
           account,
           confirmToken,
@@ -275,6 +276,7 @@ export function registerChatTools(server: McpServer): void {
       action: 'chat.message-send',
       details: { space, thread, textPreview: bodyPreview(text), attachments: attachmentNames(attach, attachInline) },
       fallback: {
+        args: { space, text, thread, attach, attachInline, account },
         tool: 'gog_chat_messages_send',
         account,
         confirmToken,
@@ -315,6 +317,7 @@ export function registerChatTools(server: McpServer): void {
       action: 'chat.dm-send',
       details: { to: email, thread, textPreview: bodyPreview(text) },
       fallback: {
+        args: { email, text, thread, account },
         tool: 'gog_chat_dm_send',
         account,
         confirmToken,

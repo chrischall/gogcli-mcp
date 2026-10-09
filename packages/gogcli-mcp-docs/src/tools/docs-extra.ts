@@ -472,6 +472,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       details: { doc, textPreview: bodyPreview(content), quoted, mentions },
       unsupportedNote: 'Ask the user to comment from Google Docs.',
       fallback: {
+        args: { docId, content, quoted, account },
         tool: 'gog_docs_comments_add',
         account,
         confirmToken,
@@ -513,6 +514,7 @@ export function registerExtraDocsTools(server: McpServer): void {
       details: { doc, replyingTo, textPreview: bodyPreview(content), mentions },
       unsupportedNote: 'Ask the user to reply from Google Docs.',
       fallback: {
+        args: { docId, commentId, content, account },
         tool: 'gog_docs_comments_reply',
         account,
         confirmToken,

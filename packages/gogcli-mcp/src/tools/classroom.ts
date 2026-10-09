@@ -509,6 +509,7 @@ export function registerClassroomTools(server: McpServer): void {
       details: view,
       unsupportedNote: 'Ask the user to return it from Classroom.',
       fallback: {
+        args: { courseId, courseworkId, submissionId, account },
         tool: 'gog_classroom_submissions_return',
         account,
         confirmToken,
@@ -613,6 +614,7 @@ export function registerClassroomTools(server: McpServer): void {
         details: { course: read.course, publishes, textPreview: bodyPreview(text) },
         unsupportedNote: 'Create it with state DRAFT instead; the user can review and post it from Classroom.',
         fallback: {
+          args: { courseId, text, state, scheduled, account },
           tool: 'gog_classroom_announcements_create',
           account,
           confirmToken,

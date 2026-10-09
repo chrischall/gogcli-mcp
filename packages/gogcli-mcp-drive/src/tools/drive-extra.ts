@@ -264,6 +264,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       details: { file, textPreview: bodyPreview(content), mentions },
       unsupportedNote: 'Ask the user to comment from Google Drive.',
       fallback: {
+        args: { fileId, content, account },
         tool: 'gog_drive_comments_add',
         account,
         confirmToken,
@@ -334,6 +335,7 @@ export function registerExtraDriveTools(server: McpServer): void {
       details: { file, replyingTo, textPreview: bodyPreview(content), mentions, ...(action ? { action } : {}) },
       unsupportedNote: 'Ask the user to reply from Google Drive.',
       fallback: {
+        args: { fileId, commentId, content, action, account },
         tool: 'gog_drive_comments_reply',
         account,
         confirmToken,

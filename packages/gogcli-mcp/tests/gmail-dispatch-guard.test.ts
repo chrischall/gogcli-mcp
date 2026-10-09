@@ -348,6 +348,7 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
 
   const fallback = (confirmToken?: string, subject: TokenSubject | CallToolResult = subjectOf(), tool = 'gog_gmail_drafts_send'): DispatchTokenFallback => ({
     tool,
+    args: {},
     confirmToken,
     subject: vi.fn(() => subject),
   });
@@ -532,6 +533,14 @@ describe('requireGmailDispatchConfirmation — token fallback', () => {
       const issued = parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, { ...fallback(), account: 'other@example.com' }));
       expect(parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, fallback(issued.confirmToken))))
         .toMatchObject({ error: 'TOKEN_INVALID' });
+    });
+
+    it('binds the tool arguments: a token issued for one set is refused for another', async () => {
+      const issued = parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, { ...fallback(), args: { draftId: 'd1' } }));
+      expect(parse(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, { ...fallback(issued.confirmToken), args: { draftId: 'd2' } })))
+        .toMatchObject({ error: expect.stringMatching(/TOKEN_INVALID|DRAFT_CHANGED/) });
+      expect(await requireGmailDispatchConfirmation(CANNOT_BE_ASKED, 'gmail.drafts-send', {}, { ...fallback(issued.confirmToken), args: { draftId: 'd1' } }))
+        .toBeUndefined();
     });
 
     it('binds to an empty account when none is configured', async () => {
