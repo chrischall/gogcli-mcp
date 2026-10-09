@@ -46,7 +46,7 @@ Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 6
 |------|-------------|
 | `gog_gmail_thread_get` | Get a thread with all messages |
 | `gog_gmail_thread_modify` | Modify labels on a thread |
-| `gog_gmail_thread_attachments` | List/download all attachments in a thread |
+| `gog_gmail_thread_attachments` | List all attachments in a thread (fetch each with `gog_gmail_attachment`) |
 
 ### Labels
 | Tool | What it does |

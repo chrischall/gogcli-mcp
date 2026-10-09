@@ -2964,29 +2964,18 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_thread_get', {
-    description: 'Get a Gmail thread with all messages. THIS IS THE CORRECT TOOL WHEN YOU ALREADY KNOW THE threadId — it returns the thread in full, so unlike a search it can never be truncated, mis-ranked, or come back empty because the query missed. Never re-discover a known thread with gog_gmail_search; read it here. For long threads that overflow context, use latestN to fetch only the most recent messages and/or snippetsOnly for a lightweight per-message headers+snippet view; sanitizeContent strips raw payloads/HTML and is the biggest size reducer when you do need bodies. Note each message carries two distinct id concepts: the top-level `id` (the Gmail short hex message id — pass THIS as replyToMessageId to reply) and the `Message-Id` header (the RFC822 `<…@host>` value used in In-Reply-To/References) — don\'t confuse either with the `threadId`. To reply to the thread itself, pass the thread\'s id as replyToThreadId on gog_gmail_drafts_create.',
+    description: 'Get a Gmail thread with all messages. THIS IS THE CORRECT TOOL WHEN YOU ALREADY KNOW THE threadId — it returns the thread in full, so unlike a search it can never be truncated, mis-ranked, or come back empty because the query missed. Never re-discover a known thread with gog_gmail_search; read it here. For long threads that overflow context, use latestN to fetch only the most recent messages and/or snippetsOnly for a lightweight per-message headers+snippet view; sanitizeContent strips raw payloads/HTML and is the biggest size reducer when you do need bodies. Note each message carries two distinct id concepts: the top-level `id` (the Gmail short hex message id — pass THIS as replyToMessageId to reply) and the `Message-Id` header (the RFC822 `<…@host>` value used in In-Reply-To/References) — don\'t confuse either with the `threadId`. To reply to the thread itself, pass the thread\'s id as replyToThreadId on gog_gmail_drafts_create. Read-only: it lists attachments but never downloads them — fetch each one with gog_gmail_attachment.',
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       threadId: z.string().describe('Gmail thread ID'),
-      download: z.boolean().optional().describe('No longer supported (this tool is read-only): passing true is refused. Download attachments one at a time with gog_gmail_attachment.'),
       full: z.boolean().optional().describe('Show full message bodies'),
       sanitizeContent: z.boolean().optional().describe('Strip HTML, remove URLs, omit raw payloads from JSON (largest payload-size reduction)'),
       latestN: z.number().int().positive().optional().describe('Return only the most recent N messages in the thread (wrapper-side trim; avoids overflowing context on long threads)'),
       snippetsOnly: z.boolean().optional().describe('Reduce each message to its id, labels, snippet, and key headers (From/To/Cc/Subject/Date), dropping full bodies'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` within its message instead of an opaque `attachmentId`. The index is stable across calls (a message\'s MIME structure does not change) while the id is not, so this is what you want before calling gog_gmail_attachment.'),
-      outDir: z.string().optional().describe('No longer supported (this tool is read-only): passing it is refused. Use gog_gmail_attachment.'),
       account: accountParam,
     }),
-  }, async ({ threadId, download, full, sanitizeContent, latestN, snippetsOnly, useIndexedAttachmentIds, outDir, account }) => {
-    if (download || outDir) {
-      // A read-only tool must not write files (audit SEC-4): gog would drop every
-      // attachment into a server directory with no confinement and no cleanup.
-      return errorResult(
-        'download/outDir are no longer supported on gog_gmail_thread_get: it is a read-only tool. Fetch each attachment with '
-        + 'gog_gmail_attachment instead (deliver="url" or "drive" on a hosted deployment, deliver="off" for a '
-        + 'server-side file), using the messageId + attachmentIndex this tool lists.',
-      );
-    }
+  }, async ({ threadId, full, sanitizeContent, latestN, snippetsOnly, useIndexedAttachmentIds, account }) => {
     const args: GogArg[] = ['gmail', 'thread', 'get', pos(threadId)];
     if (full) args.push('--full');
     if (sanitizeContent) args.push('--sanitize-content');
@@ -3020,21 +3009,10 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       threadId: z.string().describe('Gmail thread ID'),
-      download: z.boolean().optional().describe('No longer supported (this tool is read-only): passing true is refused. Fetch attachments individually with gog_gmail_attachment.'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId`. Set this before calling gog_gmail_attachment: the index is stable across calls, the id is not. The index counts WITHIN each message, and this listing flattens every message\'s attachments into one array — so pair each row\'s `messageId` with its own `attachmentIndex`; a row\'s position in the flat array is NOT the index.'),
-      outDir: z.string().optional().describe('No longer supported (this tool is read-only): passing it is refused. Use gog_gmail_attachment.'),
       account: accountParam,
     }),
-  }, async ({ threadId, download, useIndexedAttachmentIds, outDir, account }) => {
-    if (download || outDir) {
-      // A read-only tool must not write files (audit SEC-4): gog would drop every
-      // attachment into a server directory with no confinement and no cleanup.
-      return errorResult(
-        'download/outDir are no longer supported on gog_gmail_thread_attachments: it is a read-only tool. Fetch each attachment with '
-        + 'gog_gmail_attachment instead (deliver="url" or "drive" on a hosted deployment, deliver="off" for a '
-        + 'server-side file), using the messageId + attachmentIndex this tool lists.',
-      );
-    }
+  }, async ({ threadId, useIndexedAttachmentIds, account }) => {
     const args: GogArg[] = ['gmail', 'thread', 'attachments', pos(threadId)];
     // PINNED — see gog_gmail_thread_get. This listing is the one place the index is
     // load-bearing: gog concatenates every message's attachments into a single
@@ -3317,24 +3295,14 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_drafts_get', {
-    description: 'Get a Gmail draft by ID.',
+    description: 'Get a Gmail draft by ID. Read-only: it lists attachments but never downloads them — fetch each one with gog_gmail_attachment.',
     annotations: { readOnlyHint: true },
     inputSchema: z.object({
       draftId: z.string().describe('Draft ID'),
-      download: z.boolean().optional().describe('No longer supported (this tool is read-only): passing true is refused. Fetch attachments with gog_gmail_attachment.'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId` (stable across calls, unlike the id).'),
       account: accountParam,
     }),
-  }, async ({ draftId, download, useIndexedAttachmentIds, account }) => {
-    if (download) {
-      // A read-only tool must not write files (audit SEC-4): gog would drop every
-      // attachment into a server directory with no confinement and no cleanup.
-      return errorResult(
-        'download/outDir are no longer supported on gog_gmail_drafts_get: it is a read-only tool. Fetch each attachment with '
-        + 'gog_gmail_attachment instead (deliver="url" or "drive" on a hosted deployment, deliver="off" for a '
-        + 'server-side file), using the messageId + attachmentIndex this tool lists.',
-      );
-    }
+  }, async ({ draftId, useIndexedAttachmentIds, account }) => {
     const args: GogArg[] = ['gmail', 'drafts', 'get', pos(draftId)];
     args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false'); // PINNED — see gog_gmail_thread_get
     return runOrDiagnose(args, { account });

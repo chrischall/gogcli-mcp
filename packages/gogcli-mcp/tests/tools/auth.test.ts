@@ -374,11 +374,11 @@ describe('authToolsFor (least-privilege default services)', () => {
 
 describe('gog_auth_run', () => {
   it('passes subcommand and args to runner', async () => {
-    vi.mocked(runner.run).mockResolvedValue('removed user@gmail.com');
+    vi.mocked(runner.run).mockResolvedValue('aliased');
     const harness = await setupHandlers();
-    const result = await harness.callTool('gog_auth_run', { subcommand: 'remove', args: ['user@gmail.com'] });
-    expect(runner.run).toHaveBeenCalledWith(['auth', 'remove', 'user@gmail.com'], {});
-    expect(result.content[0].text).toBe('removed user@gmail.com');
+    const result = await harness.callTool('gog_auth_run', { subcommand: 'alias', args: ['set', 'work', 'user@gmail.com'] });
+    expect(runner.run).toHaveBeenCalledWith(['auth', 'alias', 'set', 'work', 'user@gmail.com'], {});
+    expect(result.content[0].text).toBe('aliased');
   });
 
   it('works with empty args array', async () => {
@@ -388,7 +388,7 @@ describe('gog_auth_run', () => {
     expect(runner.run).toHaveBeenCalledWith(['auth', 'list'], {});
   });
 
-  it.each(['list', 'status', 'services', 'remove', 'alias'])('allows %s', async (subcommand) => {
+  it.each(['list', 'status', 'services', 'alias'])('allows %s', async (subcommand) => {
     vi.mocked(runner.run).mockResolvedValue('ok');
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_auth_run', { subcommand, args: [] });
@@ -406,6 +406,10 @@ describe('gog_auth_run', () => {
     ['keyring', []],
     ['add', ['me@example.com']],
     ['service-account', ['set']],
+    // SEC-7: `auth remove <email> -y` deletes the stored refresh token — one
+    // hallucinated call signs a hosted connector out until it restarts.
+    ['remove', ['me@example.com', '-y']],
+    ['remove', []],
   ])('refuses auth %s %j', async (subcommand, args) => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_auth_run', { subcommand, args });
@@ -415,9 +419,9 @@ describe('gog_auth_run', () => {
   });
 
   it('returns error text on failure', async () => {
-    vi.mocked(runner.run).mockRejectedValue(new Error('Remove failed'));
+    vi.mocked(runner.run).mockRejectedValue(new Error('List failed'));
     const harness = await setupHandlers();
-    const result = await harness.callTool('gog_auth_run', { subcommand: 'remove', args: ['x@y.com'] });
-    expect(result.content[0].text).toBe('Error: Remove failed');
+    const result = await harness.callTool('gog_auth_run', { subcommand: 'list', args: [] });
+    expect(result.content[0].text).toBe('Error: List failed');
   });
 });

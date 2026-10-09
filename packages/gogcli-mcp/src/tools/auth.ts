@@ -6,8 +6,13 @@ import { errorText, formatAuthHealth, registerRunTool } from './utils.js';
 import { pos } from '../argv.js';
 import type { GogArg } from '../runner.js';
 
-/** The `gog auth` subcommands gog_auth_run may run — account management only. */
-export const AUTH_RUN_SUBCOMMANDS: readonly string[] = ['list', 'status', 'services', 'remove', 'alias'];
+/**
+ * The `gog auth` subcommands gog_auth_run may run — account management only.
+ * `remove` is deliberately absent (audit SEC-7): it deletes the stored refresh
+ * token, so one hallucinated call signs a hosted connector out until it
+ * restarts. Signing an account out is for the user to do with `gog auth remove`.
+ */
+export const AUTH_RUN_SUBCOMMANDS: readonly string[] = ['list', 'status', 'services', 'alias'];
 
 // Register the auth tools with a specific least-privilege default `services`.
 // Kept internal so the exported `registerAuthTools` stays a bare
@@ -198,7 +203,7 @@ function registerAuthToolsWith(server: McpServer, defaultServices: string): void
   // that belongs behind a model-callable escape hatch. `add` has its own tools.
   registerRunTool(server, {
     service: 'auth',
-    examples: '"remove", "alias", "list"',
+    examples: '"alias", "list", "status"',
     omitAccount: true,
     allowedSubcommands: AUTH_RUN_SUBCOMMANDS,
     note: 'For browser-based authorization, use gog_auth_add instead.',

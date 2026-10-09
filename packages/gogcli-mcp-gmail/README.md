@@ -64,7 +64,7 @@ Plus 8 auth tools and 4 base Gmail tools (search, get, send, run) — 61 in all.
 |------|-------------|
 | `gog_gmail_thread_get` | Get a thread with all messages, optionally with sanitized content and attachments |
 | `gog_gmail_thread_modify` | Modify labels on all messages in a thread |
-| `gog_gmail_thread_attachments` | List or download all attachments in a thread |
+| `gog_gmail_thread_attachments` | List all attachments in a thread (fetch each with `gog_gmail_attachment`) |
 
 ### Labels
 

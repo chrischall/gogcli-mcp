@@ -1041,13 +1041,17 @@ describe('gog_gmail_thread_attachments', () => {
   // SEC-4: a read-only listing used to write every attachment in the thread to
   // a caller-chosen server directory. Downloads go through gog_gmail_attachment,
   // which is confined and honestly annotated; the listing stays read-only.
-  it('refuses download/outDir instead of writing files from a read-only tool', async () => {
+  // The dead download/outDir inputs are gone from the schema (QUAL-2); a stale
+  // caller that still sends them gets the plain read-only listing, never a write.
+  it('ignores a stale download/outDir and only lists', async () => {
     for (const args of [{ download: true }, { outDir: '/tmp/atts' }]) {
-      const result = await harness.callTool('gog_gmail_thread_attachments', { threadId: 't1', ...args });
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('gog_gmail_attachment');
+      vi.mocked(lib.runOrDiagnose).mockClear();
+      await harness.callTool('gog_gmail_thread_attachments', { threadId: 't1', ...args });
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['gmail', 'thread', 'attachments', pos('t1'), '--use-indexed-attachment-ids=false'],
+        { account: undefined },
+      );
     }
-    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
   });
 });
 
@@ -1656,11 +1660,12 @@ describe('gog_gmail_drafts_get', () => {
     );
   });
 
-  it('refuses download instead of writing files from a read-only tool', async () => {
-    const result = await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', download: true });
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('gog_gmail_attachment');
-    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  it('ignores a stale download and only reads the draft', async () => {
+    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', download: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'get', pos('d1'), '--use-indexed-attachment-ids=false'],
+      { account: undefined },
+    );
   });
 });
 
@@ -4333,14 +4338,28 @@ describe('server paths and disk writes (SEC-3/SEC-4/SEC-6)', () => {
     },
   );
 
-  it('gog_gmail_thread_get refuses download/outDir', async () => {
+  it('gog_gmail_thread_get ignores a stale download/outDir and only reads', async () => {
     for (const args of [{ download: true }, { outDir: '/tmp/x' }]) {
-      const result = await harness.callTool('gog_gmail_thread_get', { threadId: 't1', ...args });
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('gog_gmail_attachment');
+      vi.mocked(lib.runOrDiagnose).mockClear();
+      await harness.callTool('gog_gmail_thread_get', { threadId: 't1', ...args });
+      expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+        ['gmail', 'thread', 'get', pos('t1'), '--use-indexed-attachment-ids=false'],
+        { account: undefined },
+      );
     }
-    expect(lib.runOrDiagnose).not.toHaveBeenCalled();
   });
+
+  // QUAL-2: always-refused inputs cost schema tokens on every listing and
+  // invite the model to try them.
+  it.each(['gog_gmail_thread_get', 'gog_gmail_thread_attachments', 'gog_gmail_drafts_get'])(
+    '%s advertises no dead download/outDir inputs',
+    async (name) => {
+      const { tools } = await harness.client.listTools();
+      const props = (tools.find((t) => t.name === name)!.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
+      expect(Object.keys(props)).not.toContain('download');
+      expect(Object.keys(props)).not.toContain('outDir');
+    },
+  );
 
   // SEC-6: the default download directory is private and swept, and a staging
   // copy nobody will read again is deleted once delivered.

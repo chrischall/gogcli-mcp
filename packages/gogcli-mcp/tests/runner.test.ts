@@ -647,7 +647,11 @@ describe('run', () => {
   });
 
   it('redacts bearer/refresh tokens and Google API keys from stderr surfaced to the client', async () => {
-    const stderrLeak = 'request failed: Authorization: Bearer ya29.a0Ad52N3-LEAKED-TOKEN-VALUE refresh 1//0eLEAKED-REFRESH key AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI extra';
+    // An obviously synthetic key of the real AIza + 35-char shape, assembled at
+    // runtime so secret scanners never see a real-format literal (audit QUAL-1).
+    const fakeApiKey = 'AIza' + 'FAKE'.repeat(8) + 'KEY';
+    expect(fakeApiKey).toMatch(/^AIza[0-9A-Za-z_-]{35}$/);
+    const stderrLeak = `request failed: Authorization: Bearer ya29.a0Ad52N3-LEAKED-TOKEN-VALUE refresh 1//0eLEAKED-REFRESH key ${fakeApiKey} extra`;
     const spawner = makeSpawner(1, '', stderrLeak);
     try {
       await run(['gmail', 'get', 'm1'], { spawner });
@@ -655,7 +659,7 @@ describe('run', () => {
       const msg = (e as Error).message;
       expect(msg).not.toContain('ya29.a0Ad52N3-LEAKED-TOKEN-VALUE');
       expect(msg).not.toContain('1//0eLEAKED-REFRESH');
-      expect(msg).not.toContain('AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI');
+      expect(msg).not.toContain(fakeApiKey);
       expect(msg).toContain('[REDACTED]');
     }
   });
