@@ -255,7 +255,7 @@ that one tool, account and target. It cannot prove a human said yes. That is why
 ```bash
 npm install        # install all workspace dependencies
 npm run build      # build all packages
-npm test           # test all packages (267 tests, 100% coverage)
+npm test           # test all packages (100% coverage gate)
 npm run typecheck  # typecheck all packages
 ```
 
