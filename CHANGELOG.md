@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.2](https://github.com/chrischall/gogcli-mcp/compare/v4.7.1...v4.7.2) (2026-10-10)
+
+
+### Documentation
+
+* make AGENTS.md a symlink to CLAUDE.md ([#447](https://github.com/chrischall/gogcli-mcp/issues/447)) ([bb10810](https://github.com/chrischall/gogcli-mcp/commit/bb10810ca4d40b3db5eefde859962bc9471f4c6c))
+
 ## [4.7.1](https://github.com/chrischall/gogcli-mcp/compare/v4.7.0...v4.7.1) (2026-10-09)
 
 
