@@ -1,5 +1,22 @@
 # Changelog
 
+## [4.8.0](https://github.com/chrischall/gogcli-mcp/compare/v4.7.1...v4.8.0) (2026-10-12)
+
+
+### Features
+
+* support gog 0.44 — Gmail signatures, Meet settings, search recipients ([#451](https://github.com/chrischall/gogcli-mcp/issues/451)) ([7ea93a9](https://github.com/chrischall/gogcli-mcp/commit/7ea93a9f26e4e1d4710c2a3b86d8d867bad52edb))
+
+
+### Bug Fixes
+
+* **deps:** bump @modelcontextprotocol/server from 2.3.0 to 2.3.1 in the production-dependencies group ([#450](https://github.com/chrischall/gogcli-mcp/issues/450)) ([c29decf](https://github.com/chrischall/gogcli-mcp/commit/c29decf1163a5c1e5306bb677fbf99b3062e1b8e))
+
+
+### Documentation
+
+* make AGENTS.md a symlink to CLAUDE.md ([#447](https://github.com/chrischall/gogcli-mcp/issues/447)) ([bb10810](https://github.com/chrischall/gogcli-mcp/commit/bb10810ca4d40b3db5eefde859962bc9471f4c6c))
+
 ## [4.7.1](https://github.com/chrischall/gogcli-mcp/compare/v4.7.0...v4.7.1) (2026-10-09)
 
 
