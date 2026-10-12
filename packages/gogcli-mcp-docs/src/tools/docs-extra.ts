@@ -68,7 +68,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (at) args.push(`--at=${at}`);
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
-    if (tabId) args.push(`--tab-id=${tabId}`);
+    if (tabId) args.push(`--tab=${tabId}`);
     if (segment) args.push(`--segment=${segment}`);
     if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
@@ -302,7 +302,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (at) args.push(`--at=${at}`);
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
-    if (tabId) args.push(`--tab-id=${tabId}`);
+    if (tabId) args.push(`--tab=${tabId}`);
     if (segment) args.push(`--segment=${segment}`);
     if (batch) args.push(`--batch=${batch}`);
     return runOrDiagnose(args, { account });
@@ -395,7 +395,7 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (at) args.push(`--at=${at}`);
     if (occurrence !== undefined) args.push(`--occurrence=${occurrence}`);
     if (matchCase) args.push('--match-case');
-    if (tabId) args.push(`--tab-id=${tabId}`);
+    if (tabId) args.push(`--tab=${tabId}`);
     if (segment) args.push(`--segment=${segment}`);
     if (pageless) args.push('--pageless');
     if (batch) args.push(`--batch=${batch}`);

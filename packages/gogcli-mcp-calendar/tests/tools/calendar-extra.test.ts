@@ -43,6 +43,18 @@ describe('gog_meet_create', () => {
     await harness.callTool('gog_meet_create', { open: false });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'create'], { account: undefined });
   });
+
+  it('passes each meeting setting as --flag / --no-flag, omitting unset ones', async () => {
+    await harness.callTool('gog_meet_create', {
+      recording: true, transcription: false, smartNotes: true, attendanceReport: false,
+      moderation: true, restrictChat: true, restrictPresent: false, restrictReactions: true, joinAsViewer: false,
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith([
+      'meet', 'create',
+      '--recording', '--no-transcription', '--smart-notes', '--no-attendance-report',
+      '--moderation', '--restrict-chat', '--no-restrict-present', '--restrict-reactions', '--no-join-as-viewer',
+    ], { account: undefined });
+  });
 });
 
 describe('gog_meet_get', () => {
@@ -64,6 +76,14 @@ describe('gog_meet_update', () => {
   it('omits --access when not provided', async () => {
     await harness.callTool('gog_meet_update', { meetingCode: 'abc-defg-hij' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(['meet', 'update', pos('abc-defg-hij')], { account: undefined });
+  });
+
+  it('sends only the settings supplied, so gog leaves the rest untouched', async () => {
+    await harness.callTool('gog_meet_update', { meetingCode: 'abc-defg-hij', recording: false, restrictChat: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['meet', 'update', pos('abc-defg-hij'), '--no-recording', '--restrict-chat'],
+      { account: undefined },
+    );
   });
 });
 

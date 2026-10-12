@@ -79,17 +79,17 @@ describe('gog_docs_delete', () => {
     );
   });
 
-  it('includes --tab-id when provided', async () => {
+  it('includes --tab when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_delete', { docId: 'abc', start: 1, end: 5, tabId: 'tab1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['docs', 'delete', '--start=1', '--end=5', pos('abc'), '--tab-id=tab1'],
+      ['docs', 'delete', '--start=1', '--end=5', pos('abc'), '--tab=tab1'],
       { account: undefined },
     );
   });
 
-  it('omits --tab-id when not provided', async () => {
+  it('omits --tab when not provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_delete', { docId: 'abc', start: 1, end: 5 });
@@ -246,12 +246,12 @@ describe('gog_docs_insert', () => {
     );
   });
 
-  it('includes --tab-id when provided', async () => {
+  it('includes --tab when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_insert', { docId: 'abc', content: 'hi', tabId: 'tab1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['docs', 'insert', pos('abc'), pos('hi'), '--tab-id=tab1'],
+      ['docs', 'insert', pos('abc'), pos('hi'), '--tab=tab1'],
       { account: undefined },
     );
   });
@@ -390,12 +390,12 @@ describe('gog_docs_update', () => {
     );
   });
 
-  it('includes --tab-id when provided', async () => {
+  it('includes --tab when provided', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
     const harness = await setupHandlers();
     await harness.callTool('gog_docs_update', { docId: 'abc', text: 'hi', tabId: 'tab1' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['docs', 'update', pos('abc'), '--text=hi', '--tab-id=tab1'],
+      ['docs', 'update', pos('abc'), '--text=hi', '--tab=tab1'],
       { account: undefined },
     );
   });

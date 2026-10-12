@@ -2,8 +2,8 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, senderPreview, requireDispatchConfirmation, parseMetadataHeaders, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
-import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, signatureSchema, appendSignatureFlags, confineSignatureFile, signaturePreview, attachmentDetails, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, senderPreview, requireDispatchConfirmation, parseMetadataHeaders, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
+import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome, SignatureFlags } from '../../../gogcli-mcp/src/lib.js';
 
 // How many messages a forced batch delete names in its prompt; every id is still bound.
 export const BATCH_DELETE_PREVIEW_MAX = 25;
@@ -3310,9 +3310,9 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   const draftWriteSchema = {
-    to: z.string().optional().describe('Recipients (comma-separated)'),
-    cc: z.string().optional().describe('CC recipients (comma-separated)'),
-    bcc: z.string().optional().describe('BCC recipients (comma-separated)'),
+    to: z.string().optional().describe('Recipients (comma-separated). On gog_gmail_drafts_update: omit to keep the draft\'s current To, pass "" to clear it.'),
+    cc: z.string().optional().describe('CC recipients (comma-separated). On gog_gmail_drafts_update: omit to keep the draft\'s current Cc, pass "" to clear it.'),
+    bcc: z.string().optional().describe('BCC recipients (comma-separated). On gog_gmail_drafts_update: omit to keep the draft\'s current Bcc, pass "" to clear it.'),
     subject: z.string().describe('Subject'),
     body: z.string().describe('Body (plain text). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
     bodyHtml: z.string().optional().describe('Body (HTML; optional). Pass the HTML itself at any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Mutually exclusive with bodyHtmlFile.'),
@@ -3327,6 +3327,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
     omitRecipients: z.boolean().optional().describe('Create the draft with no recipients even if to/cc/bcc are supplied — an accidental-send guard. Populate recipients in a later update before sending.'),
+    ...signatureSchema,
     returnFull: z.boolean().optional().describe('After writing, re-fetch and return the full stored draft (subject, body, recipients) instead of just the write acknowledgement. Costs one extra read.'),
     account: accountParam,
   };
@@ -3349,17 +3350,21 @@ export function registerExtraGmailTools(server: McpServer): void {
     from?: string;
     autoFromAddressedAlias?: boolean;
     omitRecipients?: boolean;
-  };
+  } & SignatureFlags;
 
   function appendDraftFlags(args: GogArg[], f: DraftFlags): void {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
     // Server paths are read on the gog host and mailed out: confined (SEC-3).
     confinePaths(f.attach, 'attach');
     if (f.bodyHtmlFile) confinePath(f.bodyHtmlFile, 'bodyHtmlFile');
+    confineSignatureFile(f);
+    // `!== undefined`, not truthiness: since gog 0.44 `drafts update` keeps an
+    // OMITTED recipient field and clears one passed EMPTY, so '' is a request
+    // that must reach gog. On create an empty flag is simply no recipients.
     if (!f.omitRecipients) {
-      if (f.to) args.push(`--to=${f.to}`);
-      if (f.cc) args.push(`--cc=${f.cc}`);
-      if (f.bcc) args.push(`--bcc=${f.bcc}`);
+      if (f.to !== undefined) args.push(`--to=${f.to}`);
+      if (f.cc !== undefined) args.push(`--cc=${f.cc}`);
+      if (f.bcc !== undefined) args.push(`--bcc=${f.bcc}`);
     }
     args.push(`--subject=${f.subject}`);
     // body is required, so this is an either/or swap rather than an extra push:
@@ -3384,6 +3389,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     // `args` is passed so the size check sees the body, which shares the budget.
     args.push(...inlineAttachmentArgs('attach', f.attachInline, args));
     if (f.from) args.push(`--from=${f.from}`);
+    appendSignatureFlags(args, f);
     // PINNED, not conditional: GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS in the host env
     // silently changes which address the mail goes out FROM, with nothing in the arg
     // array to show for it — and a hosted deployment's env is not the caller's to set.
@@ -3672,10 +3678,13 @@ export function registerExtraGmailTools(server: McpServer): void {
       note: z.string().optional().describe('Introductory text above the forwarded message'),
       from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
       skipAttachments: z.boolean().optional().describe('Do not include original attachments'),
+      ...signatureSchema,
       account: accountParam,
       confirmToken: confirmTokenParam,
     }),
-  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, account, confirmToken }, ctx) => {
+  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, signature, signatureFrom, signatureFile, account, confirmToken }, ctx) => {
+    const sig = { signature, signatureFrom, signatureFile };
+    confineSignatureFile(sig);
     const recipients = extractEmails(to, cc, bcc);
     const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.forward', {
       messageId, to, cc, bcc, recipients, recipientCount: recipients.length,
@@ -3683,10 +3692,11 @@ export function registerExtraGmailTools(server: McpServer): void {
       notePreview: bodyPreview(note),
       skipAttachments: Boolean(skipAttachments),
       attachmentsIncluded: !skipAttachments,
+      ...(signaturePreview(sig) ? { signature: signaturePreview(sig) } : {}),
     }, {
       tool: 'gog_gmail_forward',
       account,
-      args: { messageId, to, cc, bcc, note, from, skipAttachments, account },
+      args: { messageId, to, cc, bcc, note, from, skipAttachments, signature, signatureFrom, signatureFile, account },
       confirmToken,
       // Fallback only: read what is being forwarded, so the user sees whose
       // message and which attachments leave, and phase 2 re-reads it.
@@ -3697,12 +3707,15 @@ export function registerExtraGmailTools(server: McpServer): void {
         const attachments = skipAttachments ? [] : original.attachments;
         const sender = senderPreview(account, from);
         const subject = original.subject ? `Fwd: ${original.subject}` : undefined;
+        // Hashed by content, so an edited signature file is a changed send.
+        const localFiles = attachmentDetails(signatureFile ? [signatureFile] : undefined, undefined);
         return {
           target: messageId,
-          payload: { from: sender, to, cc, bcc, subject, note, attachments, original },
+          payload: { from: sender, to, cc, bcc, subject, note, attachments, original, signature: Boolean(signature), signatureFrom, localFiles },
           preview: {
             from: sender, to, cc, bcc, subject,
             body: note,
+            ...(signaturePreview(sig) ? { signature: signaturePreview(sig) } : {}),
             forwarding: { messageId, from: original.from, subject: original.subject, date: original.date, messageIdHeader: original.messageIdHeader },
             attachments,
             threadId: original.threadId,
@@ -3717,6 +3730,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (note) args.push(payloadArg('note', 'note-file', note));
     if (from) args.push(`--from=${from}`);
     if (skipAttachments) args.push('--skip-attachments');
+    appendSignatureFlags(args, sig);
     const result = await runOrDiagnose(args, { account });
     if (!result.isError) logGmailDispatch('gog_gmail_forward', recipients, account);
     return result;
@@ -3781,10 +3795,13 @@ export function registerExtraGmailTools(server: McpServer): void {
       note: z.string().optional().describe('Introductory text above the forwarded message'),
       from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
       skipAttachments: z.boolean().optional().describe('Do not include original attachments'),
+      ...signatureSchema,
       returnFull: draftWriteSchema.returnFull,
       account: accountParam,
     }),
-  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, returnFull, account }) => {
+  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, signature, signatureFrom, signatureFile, returnFull, account }) => {
+    const sig = { signature, signatureFrom, signatureFile };
+    confineSignatureFile(sig);
     const args: GogArg[] = ['gmail', 'drafts', 'forward', pos(messageId)];
     if (to) args.push(`--to=${to}`);
     if (cc) args.push(`--cc=${cc}`);
@@ -3792,6 +3809,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (note) args.push(payloadArg('note', 'note-file', note));
     if (from) args.push(`--from=${from}`);
     if (skipAttachments) args.push('--skip-attachments');
+    appendSignatureFlags(args, sig);
     return writeDraft(args, account, returnFull);
   });
 
@@ -3910,15 +3928,19 @@ export function registerExtraGmailTools(server: McpServer): void {
       bodyFormat: z.enum(['text', 'html']).optional().describe('Body format preference when includeBody is set'),
       includeAttachments: z.boolean().optional().describe('Include each message\'s attachment metadata (filename, size, mimeType, id or index). NOT a cheap add-on: like includeBody it makes gog fetch every matching message at format=full, so it costs a full per-message read — narrow the query or lower max before turning it on.'),
       useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` within its message instead of an opaque `attachmentId` (stable across calls, unlike the id). Only has an effect alongside includeAttachments or includeBody.'),
+      includeRecipients: z.boolean().optional().describe('Include each message\'s To, Cc and Bcc in the results. Free: read from headers the search already fetches, no extra API calls.'),
+      sanitizeContent: z.boolean().optional().describe('Return agent-oriented sanitized content, as gog_gmail_get does: HTML stripped, HTTP(S) URLs removed, header text sanitized. Shrinks includeBody results; the URL removal is lossy, so omit it when you need to follow a link.'),
       account: accountParam,
     }),
-  }, async ({ query, max, pageToken, page, maxPages, all, includeBody, full, bodyFormat, includeAttachments, useIndexedAttachmentIds, account }) => {
+  }, async ({ query, max, pageToken, page, maxPages, all, includeBody, full, bodyFormat, includeAttachments, useIndexedAttachmentIds, includeRecipients, sanitizeContent, account }) => {
     const args: GogArg[] = ['gmail', 'messages', 'search', pos(query)];
     if (max !== undefined) args.push(`--max=${max}`);
     if (all) args.push('--all');
     if (includeBody) args.push('--include-body');
     if (full) args.push('--full');
     if (bodyFormat) args.push(`--body-format=${bodyFormat}`);
+    if (includeRecipients) args.push('--include-recipients');
+    if (sanitizeContent) args.push('--sanitize-content');
     // Both PINNED: GOG_GMAIL_INCLUDE_ATTACHMENTS and GOG_GMAIL_USE_INDEXED_ATTACHMENT_IDS
     // each change the result shape (and the first also the per-message API cost) with
     // nothing in the arg array to show for it. See gog_gmail_thread_get.

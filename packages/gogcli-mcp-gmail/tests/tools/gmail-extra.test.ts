@@ -1670,6 +1670,16 @@ describe('gog_gmail_drafts_get', () => {
 });
 
 describe('gog_gmail_drafts_create', () => {
+  it('passes the signature flags after from (gog >= 0.44)', async () => {
+    await harness.callTool('gog_gmail_drafts_create', {
+      subject: 'Hi', body: 'Hello', from: 'alias@x.com', signature: true, signatureFrom: 'alias@x.com',
+    });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'create', '--subject=Hi', '--body=Hello', '--from=alias@x.com', '--signature', '--signature-from=alias@x.com', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
   // The draft-side tools never mutate the mailbox irreversibly on their own —
   // saving a draft is always reversible — so unlike gog_gmail_reply/send/
   // forward/autoreply they do not request MCP elicitation and write on the
@@ -1899,6 +1909,24 @@ describe('gmail draft reply threading (native --thread-id)', () => {
 });
 
 describe('gog_gmail_drafts_update', () => {
+  // gog >= 0.44 keeps an omitted To/Cc/Bcc and clears one passed empty, so an
+  // explicit '' must reach gog rather than be dropped as falsy.
+  it('forwards an explicitly empty to/cc/bcc so gog clears that field', async () => {
+    await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B', to: 'a@b.com', cc: '', bcc: '' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'update', pos('d1'), '--to=a@b.com', '--cc=', '--bcc=', '--subject=S', '--body=B', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
+  it('passes signatureFile through after confining it', async () => {
+    await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B', signatureFile: '/tmp/sig.html' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--signature-file=/tmp/sig.html', '--auto-from-addressed-alias=false'],
+      { account: undefined },
+    );
+  });
+
   it('calls runOrDiagnose with draftId and updated fields', async () => {
     await harness.callTool('gog_gmail_drafts_update', {
       draftId: 'd1',
@@ -2132,6 +2160,14 @@ describe('gog_gmail_drafts_send', () => {
 });
 
 describe('gog_gmail_forward', () => {
+  it('appends the signature flags (gog >= 0.44)', async () => {
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', note: 'FYI', signature: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'forward', pos('m1'), '--to=a@b.com', '--note=FYI', '--signature'],
+      { account: undefined },
+    );
+  });
+
   it('calls runOrDiagnose with messageId and required --to', async () => {
     await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -2341,6 +2377,14 @@ describe('gog_gmail_drafts_reply_all', () => {
 });
 
 describe('gog_gmail_drafts_forward', () => {
+  it('appends the signature flags (gog >= 0.44)', async () => {
+    await harness.callTool('gog_gmail_drafts_forward', { messageId: 'm1', signatureFrom: 'alias@x.com' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'forward', pos('m1'), '--signature-from=alias@x.com'],
+      { account: undefined },
+    );
+  });
+
   it('requires no confirmation, unlike gog_gmail_forward', async () => {
     await harness.callTool('gog_gmail_drafts_forward', { messageId: 'm1', to: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -2581,6 +2625,14 @@ describe('gog_gmail_autoreply', () => {
 });
 
 describe('gog_gmail_messages_search', () => {
+  it('passes --include-recipients and --sanitize-content (gog >= 0.44)', async () => {
+    await harness.callTool('gog_gmail_messages_search', { query: 'x', includeRecipients: true, sanitizeContent: true });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'messages', 'search', pos('x'), '--include-recipients', '--sanitize-content', '--include-attachments=false', '--use-indexed-attachment-ids=false'],
+      { account: undefined },
+    );
+  });
+
   it('calls runOrDiagnose with just the query', async () => {
     await harness.callTool('gog_gmail_messages_search', { query: 'from:alice' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
@@ -4315,6 +4367,10 @@ describe('server paths and disk writes (SEC-3/SEC-4/SEC-6)', () => {
     ['gog_gmail_drafts_create', { subject: 's', body: 'b', bodyHtmlFile: '/etc/passwd' }, 'bodyHtmlFile'],
     ['gog_gmail_drafts_reply', { messageId: 'm1', body: 'b', attach: ['/etc/passwd'] }, 'attach'],
     ['gog_gmail_import', { file: '/etc/passwd' }, 'file'],
+    ['gog_gmail_drafts_create', { subject: 's', body: 'b', signatureFile: '/etc/passwd' }, 'signatureFile'],
+    ['gog_gmail_drafts_update', { draftId: 'd1', subject: 's', body: 'b', signatureFile: '/etc/passwd' }, 'signatureFile'],
+    ['gog_gmail_drafts_forward', { messageId: 'm1', signatureFile: '/etc/passwd' }, 'signatureFile'],
+    ['gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', signatureFile: '/etc/passwd' }, 'signatureFile'],
   ] as Array<[string, Record<string, unknown>, string]>)('%s refuses %j outside the roots', async (tool, args, param) => {
     const result = await withFileRoots('/srv/gog-files', () => harness.callTool(tool, args));
     expect(result.isError).toBe(true);

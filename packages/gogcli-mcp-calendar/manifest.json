@@ -184,7 +184,7 @@
     },
     {
       "name": "gog_meet_create",
-      "description": "Create a Google Meet space"
+      "description": "Create a Google Meet space, optionally configuring recording, transcription, smart notes, attendance reports and moderation"
     },
     {
       "name": "gog_meet_get",
@@ -192,7 +192,7 @@
     },
     {
       "name": "gog_meet_update",
-      "description": "Update a Google Meet space configuration"
+      "description": "Update a Google Meet space's access, recording, transcription, smart notes, attendance report and moderation settings"
     },
     {
       "name": "gog_meet_end",

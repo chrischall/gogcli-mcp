@@ -274,6 +274,18 @@ describe('gog_gmail_send', () => {
     );
   });
 
+  it('appends the signature flags when provided', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{}');
+    const harness = await setupHandlers();
+    await harness.callTool('gog_gmail_send', {
+      to: 'bob@example.com', subject: 'Hi', body: 'Hello', signature: true, signatureFrom: 'alias@x.com',
+    });
+    expect(runner.run).toHaveBeenCalledWith(
+      ['gmail', 'send', '--to=bob@example.com', '--subject=Hi', '--body=Hello', '--signature', '--signature-from=alias@x.com'],
+      { account: undefined },
+    );
+  });
+
   // gog's --quote is opt-in on `gmail send` and default-on for `gmail reply`;
   // a threaded send without it arrives with the original nowhere in the body.
   it('appends --quote only when quote is set', async () => {
@@ -1157,6 +1169,16 @@ describe('server paths are confined to GOG_FILE_ROOTS', () => {
       to: 'x@example.com', subject: 's', body: 'b', attach: ['/srv/gog-files/report.pdf'],
     }));
     expect(result.isError).toBeFalsy();
+  });
+
+  it('gog_gmail_send refuses a signatureFile outside the roots before running gog', async () => {
+    const harness = await setupHandlers();
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_gmail_send', {
+      to: 'x@example.com', subject: 's', body: 'b', signatureFile: '/etc/passwd',
+    }));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('signatureFile "/etc/passwd" is outside');
+    expect(runner.run).not.toHaveBeenCalled();
   });
 
   it.each([
