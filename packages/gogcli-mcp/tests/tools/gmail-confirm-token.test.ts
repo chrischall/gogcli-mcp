@@ -143,6 +143,28 @@ describe('gog_gmail_send — token fallback', () => {
       expect(sendCalls()).toHaveLength(0);
     });
 
+    it('previews the signature and binds it: a different signature source is DRAFT_CHANGED', async () => {
+      const harness = await noElicitation();
+      const first = json(await harness.callTool('gog_gmail_send', { ...SEND_ARGS, signature: true }));
+      expect(first.preview.signature).toBe('the Gmail signature of the sending address');
+      const body = json(await harness.callTool('gog_gmail_send', { ...SEND_ARGS, signatureFrom: 'alias@example.com', confirmToken: first.confirmToken }));
+      expect(body).toMatchObject({ error: 'DRAFT_CHANGED', dispatched: false });
+      expect(body.preview.signature).toBe('alias@example.com');
+      expect(sendCalls()).toHaveLength(0);
+    });
+
+    it('binds a signatureFile by content: an edited file is DRAFT_CHANGED', async () => {
+      const path = join(fileRoot, 'sig.txt');
+      writeFileSync(path, 'v1');
+      const harness = await noElicitation();
+      const first = json(await harness.callTool('gog_gmail_send', { ...SEND_ARGS, signatureFile: path }));
+      expect(first.preview.signature).toBe(path);
+      writeFileSync(path, 'v2');
+      const body = json(await harness.callTool('gog_gmail_send', { ...SEND_ARGS, signatureFile: path, confirmToken: first.confirmToken }));
+      expect(body.error).toBe('DRAFT_CHANGED');
+      expect(sendCalls()).toHaveLength(0);
+    });
+
     it('rejects an expired token', async () => {
       vi.useFakeTimers({ toFake: ['Date'] });
       vi.setSystemTime(new Date('2026-09-24T10:00:00Z'));

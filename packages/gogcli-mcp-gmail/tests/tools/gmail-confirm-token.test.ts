@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { registerExtraGmailTools, parseForwardMetadata, storedDraftTokenSubject } from '../../src/tools/gmail-extra.js';
 import * as lib from '../../../gogcli-mcp/src/lib.js';
 import { resetConfirmTokenState } from '../../../gogcli-mcp/src/send-confirm-token.js';
@@ -242,6 +245,34 @@ describe('gog_gmail_forward — token fallback', () => {
     const { confirmToken } = json(await harness.callTool('gog_gmail_forward', ARGS));
     expect(json(await harness.callTool('gog_gmail_forward', { ...ARGS, note: 'changed', confirmToken }))).toMatchObject({ error: 'DRAFT_CHANGED' });
     expect(calls('forward')).toHaveLength(0);
+  });
+
+  it('previews the signature and binds it: adding one on phase 2 is DRAFT_CHANGED', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(META));
+    const first = json(await harness.callTool('gog_gmail_forward', { ...ARGS, signatureFrom: 'alias@example.com' }));
+    expect(first.preview.signature).toBe('alias@example.com');
+    const body = json(await harness.callTool('gog_gmail_forward', { ...ARGS, signatureFrom: 'alias@example.com', signature: true, confirmToken: first.confirmToken }));
+    expect(body).toMatchObject({ error: 'DRAFT_CHANGED' });
+    expect(calls('forward')).toHaveLength(0);
+  });
+
+  it('binds a signatureFile by content: an edited file is DRAFT_CHANGED', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'fwd-sig-'));
+    const prev = process.env.GOG_FILE_ROOTS;
+    process.env.GOG_FILE_ROOTS = root;
+    try {
+      const path = join(root, 'sig.txt');
+      writeFileSync(path, 'v1');
+      vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(META));
+      const first = json(await harness.callTool('gog_gmail_forward', { ...ARGS, signatureFile: path }));
+      expect(first.preview.signature).toBe(path);
+      writeFileSync(path, 'v2');
+      const body = json(await harness.callTool('gog_gmail_forward', { ...ARGS, signatureFile: path, confirmToken: first.confirmToken }));
+      expect(body).toMatchObject({ error: 'DRAFT_CHANGED' });
+      expect(calls('forward')).toHaveLength(0);
+    } finally {
+      process.env.GOG_FILE_ROOTS = prev;
+    }
   });
 
   it('a failed read of the original is returned as-is and nothing is sent', async () => {

@@ -10,6 +10,40 @@ import { pos } from '../argv.js';
 import { gatedElsewhere, hasCommandWord, hasTrueFlag } from '../dispatch-confirmation.js';
 import { confinePath, confinePaths } from '../file-roots.js';
 
+// gog's signature flags, shared by every compose subcommand that takes them
+// (send, reply, reply-all, forward and the drafts create/update/reply/forward
+// twins — the last four since gog 0.44). gog appends the block below the body
+// (between the note and the quoted original on a forward). --signature-file
+// excludes the other two; gog reports that itself.
+export const signatureSchema = {
+  signature: z.boolean().optional().describe('Append the Gmail signature from the active send-as address'),
+  signatureFrom: z.string().optional().describe('Append the Gmail signature from this send-as email address'),
+  signatureFile: z.string().optional().describe('Append a local signature file (plain text or HTML), read on the gog server. Must be inside GOG_FILE_ROOTS. Cannot be combined with signature/signatureFrom.'),
+};
+
+export type SignatureFlags = {
+  signature?: boolean;
+  signatureFrom?: string;
+  signatureFile?: string;
+};
+
+/** The signature file is read on the gog host and mailed out: confined (SEC-3). */
+export function confineSignatureFile(f: SignatureFlags): void {
+  if (f.signatureFile) confinePath(f.signatureFile, 'signatureFile');
+}
+
+export function appendSignatureFlags(args: GogArg[], f: SignatureFlags): void {
+  if (f.signature) args.push('--signature');
+  if (f.signatureFrom) args.push(`--signature-from=${f.signatureFrom}`);
+  if (f.signatureFile) args.push(`--signature-file=${f.signatureFile}`);
+}
+
+/** What a confirmation preview says will be appended, or undefined for none. */
+export function signaturePreview(f: SignatureFlags): string | undefined {
+  if (!f.signature && !f.signatureFrom && !f.signatureFile) return undefined;
+  return f.signatureFile ?? f.signatureFrom ?? 'the Gmail signature of the sending address';
+}
+
 // gmail reply / reply-all share an identical flag set (gog 0.27+); they differ
 // only in the subcommand and default recipient set (reply → sender; reply-all
 // → every participant). Recipient flags are repeatable on the CLI, so they are
@@ -31,9 +65,7 @@ export const replySchema = {
   attachInline: attachInlineParam,
   from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
   autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
-  signature: z.boolean().optional().describe('Append the Gmail signature from the active send-as address'),
-  signatureFrom: z.string().optional().describe('Append the Gmail signature from this send-as email address'),
-  signatureFile: z.string().optional().describe('Append a local signature file (plain text or HTML), read on the gog server'),
+  ...signatureSchema,
   account: accountParam,
 };
 
@@ -51,10 +83,7 @@ export type ReplyFlags = {
   attachInline?: InlineAttachmentInput[];
   from?: string;
   autoFromAddressedAlias?: boolean;
-  signature?: boolean;
-  signatureFrom?: string;
-  signatureFile?: string;
-};
+} & SignatureFlags;
 
 // Every server path a reply/draft names must sit inside GOG_FILE_ROOTS: each is
 // read on the gog host and mailed out, so unconfined it is a file-exfiltration
@@ -62,7 +91,7 @@ export type ReplyFlags = {
 export function confineReplyPaths(f: Pick<ReplyFlags, 'attach' | 'bodyHtmlFile' | 'signatureFile'>): void {
   confinePaths(f.attach, 'attach');
   if (f.bodyHtmlFile) confinePath(f.bodyHtmlFile, 'bodyHtmlFile');
-  if (f.signatureFile) confinePath(f.signatureFile, 'signatureFile');
+  confineSignatureFile(f);
 }
 
 export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
@@ -86,9 +115,7 @@ export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
   // once payloadArg has turned it into a file arg.
   args.push(...inlineAttachmentArgs('attach', f.attachInline, args));
   if (f.from) args.push(`--from=${f.from}`);
-  if (f.signature) args.push('--signature');
-  if (f.signatureFrom) args.push(`--signature-from=${f.signatureFrom}`);
-  if (f.signatureFile) args.push(`--signature-file=${f.signatureFile}`);
+  appendSignatureFlags(args, f);
   // PINNED, not conditional: GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS in the host env
   // silently changes which address the mail goes out FROM, with nothing in the arg
   // array to show for it — and a hosted deployment's env is not the caller's to set.
@@ -194,9 +221,7 @@ function replyTokenSubject(
       body: flags.body,
       ...(flags.bodyHtml ? { bodyHtml: flags.bodyHtml } : {}),
       ...(flags.bodyHtmlFile ? { bodyHtmlFile: flags.bodyHtmlFile } : {}),
-      ...(flags.signature || flags.signatureFrom || flags.signatureFile
-        ? { signature: flags.signatureFile ?? flags.signatureFrom ?? 'the Gmail signature of the sending address' }
-        : {}),
+      ...(signaturePreview(flags) ? { signature: signaturePreview(flags) } : {}),
       quotesOriginal: !flags.noQuote,
       attachments: attachmentPreview(attachments),
       replyingToMessageId: messageId,
@@ -409,11 +434,14 @@ export function registerGmailTools(server: McpServer): void {
       quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or threadId. gog quotes by DEFAULT on gmail reply but never on gmail send, so without this a threaded send arrives with the original nowhere in it.'),
       attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       attachInline: attachInlineParam,
+      ...signatureSchema,
       account: accountParam,
       confirmToken: confirmTokenParam,
     }),
-  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, account, confirmToken }, ctx) => {
+  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, signature, signatureFrom, signatureFile, account, confirmToken }, ctx) => {
+    const sig = { signature, signatureFrom, signatureFile };
     confinePaths(attach, 'attach');
+    confineSignatureFile(sig);
     // Built (and validated — inlineAttachmentArgs throws on bad base64 or an
     // oversize file) BEFORE the confirmation request, on both paths: a prompt that
     // skipped this would tell a caller "looks fine, send it" about an
@@ -438,6 +466,7 @@ export function registerGmailTools(server: McpServer): void {
     // file arg once it passes payloadArg's threshold and spends the same budget.
     const inline = inlineAttachmentArgs('attach', attachInline, args);
     args.push(...inline);
+    appendSignatureFlags(args, sig);
 
     const recipients = extractEmails(to, cc, bcc);
     const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.send', {
@@ -448,21 +477,29 @@ export function registerGmailTools(server: McpServer): void {
       quoting: Boolean(quote),
       attachmentCount: (attach?.length ?? 0) + (attachInline?.length ?? 0),
       attachments: attachmentNames(attach, attachInline),
+      ...(signaturePreview(sig) ? { signature: signaturePreview(sig) } : {}),
     }, {
       tool: 'gog_gmail_send',
       account,
-      args: { to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, account },
+      args: { to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, signature, signatureFrom, signatureFile, account },
       confirmToken,
       // Nothing is stored between the phases: the payload IS the arguments,
       // so phase 2 must repeat them and any difference is a changed send.
       subject: () => {
         const attachments = attachmentDetails(attach, attachInline);
         const from = senderPreview(account);
+        // A signature file is hashed like an attachment, so an edit between
+        // the phases is a changed send rather than a silent swap.
+        const localFiles = attachmentDetails(signatureFile ? [signatureFile] : undefined, undefined);
         return {
           target: replyToMessageId ?? threadId ?? '',
-          payload: { from, to, cc, bcc, subject, body, attachments, threadId, inReplyTo: replyToMessageId, quote: Boolean(quote) },
+          payload: {
+            from, to, cc, bcc, subject, body, attachments, threadId, inReplyTo: replyToMessageId, quote: Boolean(quote),
+            signature: Boolean(signature), signatureFrom, localFiles,
+          },
           preview: {
             from, to, cc, bcc, subject, body,
+            ...(signaturePreview(sig) ? { signature: signaturePreview(sig) } : {}),
             attachments: attachmentPreview(attachments),
             threadId,
             inReplyTo: replyToMessageId,

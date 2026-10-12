@@ -17,6 +17,38 @@ import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
 
 const meetAccess = z.enum(['open', 'trusted', 'restricted']);
 
+// gog >= 0.44: per-space meeting settings. Each is a negatable gog flag
+// (--recording / --no-recording) and tri-state here: true and false are sent,
+// omitted is not, so create falls back to the account default and update
+// leaves that setting alone (gog builds a per-field update mask).
+const MEET_SETTINGS = [
+  ['recording', 'recording', 'Auto-record when someone allowed to record joins'],
+  ['transcription', 'transcription', 'Auto-transcribe when someone allowed to transcribe joins'],
+  ['smartNotes', 'smart-notes', 'Auto-generate Gemini smart notes'],
+  ['attendanceReport', 'attendance-report', 'Generate an attendance report'],
+  ['moderation', 'moderation', 'Host management (moderation)'],
+  ['restrictChat', 'restrict-chat', 'Only hosts can chat (turning it on enables moderation)'],
+  ['restrictPresent', 'restrict-present', 'Only hosts can share their screen (turning it on enables moderation)'],
+  ['restrictReactions', 'restrict-reactions', 'Only hosts can send reactions (turning it on enables moderation)'],
+  ['joinAsViewer', 'join-as-viewer', 'Participants join as viewers by default (turning it on enables moderation)'],
+] as const;
+
+type MeetSettingKey = typeof MEET_SETTINGS[number][0];
+type MeetSettings = Partial<Record<MeetSettingKey, boolean>>;
+
+function meetSettingsSchema(omitted: string) {
+  return Object.fromEntries(MEET_SETTINGS.map(([key, , help]) => [
+    key, z.boolean().optional().describe(`${help}. true turns it on, false turns it off, omit to ${omitted}.`),
+  ])) as Record<MeetSettingKey, z.ZodOptional<z.ZodBoolean>>;
+}
+
+function appendMeetSettings(args: GogArg[], settings: MeetSettings): void {
+  for (const [key, flag] of MEET_SETTINGS) {
+    const value = settings[key];
+    if (value !== undefined) args.push(value ? `--${flag}` : `--no-${flag}`);
+  }
+}
+
 /** A calendar by name, for a delete's prompt; `etag` apart as the token's revision. Unreadable output names nothing. */
 export function calendarSnapshot(raw: string, calendarId: string): { id: string; summary?: string; etag?: string } {
   let cal: { summary?: unknown; etag?: unknown } | undefined;
@@ -37,17 +69,19 @@ export function calendarSnapshot(raw: string, calendarId: string): { id: string;
 // so they live in the calendar sub-package.
 export function registerExtraCalendarTools(server: McpServer): void {
   server.registerTool('gog_meet_create', {
-    description: 'Create a Google Meet space and return its meeting code.',
+    description: 'Create a Google Meet space and return its meeting code. Optionally configure recording, transcription, smart notes, attendance reports and host moderation; any setting left out uses the account default.',
     annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       access: meetAccess.optional().describe('Access type (default: trusted)'),
       open: z.boolean().optional().describe('Open the meeting in a browser after creation'),
+      ...meetSettingsSchema('use the account default'),
       account: accountParam,
     }),
-  }, async ({ access, open, account }) => {
+  }, async ({ access, open, account, ...settings }) => {
     const args: GogArg[] = ['meet', 'create'];
     if (access) args.push(`--access=${access}`);
     if (open) args.push('--open');
+    appendMeetSettings(args, settings);
     return runOrDiagnose(args, { account });
   });
 
@@ -63,16 +97,18 @@ export function registerExtraCalendarTools(server: McpServer): void {
   });
 
   server.registerTool('gog_meet_update', {
-    description: 'Update a Google Meet space configuration.',
+    description: 'Update a Google Meet space configuration: access type, recording, transcription, smart notes, attendance reports and host moderation. Only the settings you pass change; every other one keeps its current value.',
     annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       meetingCode: z.string().describe('Meeting code'),
       access: meetAccess.optional().describe('Access type'),
+      ...meetSettingsSchema('keep the current value'),
       account: accountParam,
     }),
-  }, async ({ meetingCode, access, account }) => {
+  }, async ({ meetingCode, access, account, ...settings }) => {
     const args: GogArg[] = ['meet', 'update', pos(meetingCode)];
     if (access) args.push(`--access=${access}`);
+    appendMeetSettings(args, settings);
     return runOrDiagnose(args, { account });
   });
 
