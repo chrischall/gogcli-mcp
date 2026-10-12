@@ -223,13 +223,15 @@ This needed mcp-utils **0.23.0**: 0.22.0's `MEDIA_KEY` was anchored to a bare no
 
 `runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.44.0**. A bump must also move **the `tag:` in all nine `packages/*/mint.yaml` `dependencies` blocks** — those pin the `gog` release a hosted install provisions, so leaving them behind hands the child a binary older than the floor its tools assume. `scripts/check-runner-gog-version.mjs` checks those against the floor and fails `npm test` on any pin below it, so a missed one is a red build.
 
-A third pin set it **cannot** see is the `dependencies` pin stored on each live mcp-host registration. mcp-host resolves a dependency to an exact tag + asset + sha256 at registration time and keeps it; the follow cron moves only the *package* version, never a dependency pin. So a floor bump also means, on each of the six registrations below:
+A third pin set lives outside this repo: the `dependencies` pin stored on each live mcp-host registration (an exact tag + asset + sha256). mcp-host re-pins it from the **new** version's `mint.yaml` whenever the package pin moves — the follow cron, update-all, or the portal's Upgrade button (chrischall/mcp-host#1140). So the `mint.yaml` bump above is what moves the six registrations below; nothing is run by hand. It fails closed: if the new `tag:` does not resolve (a typo, a release without the `gogcli_*_linux_amd64.tar.gz` asset), the registration stays on its old version and the cron retries nightly. Only that one log line says so, so check `mcp-host get <id>` after the follow when a bump matters.
+
+To move a pin without a release (or before mcp-host#1140 is deployed):
 
 ```sh
 mcp-host set <id> --dep 'github:openclaw/gogcli@v<NEW>:gogcli_*_linux_amd64.tar.gz#gog'
 ```
 
-(`set --dep` replaces the whole list, which is fine — gog is the only one.) Skip it and the connector follows to a release whose tools send flags its pinned `gog` does not have.
+(`set --dep` replaces the whole list, which is fine — gog is the only one.)
 
 ### Hosted registrations (mcp-host)
 
