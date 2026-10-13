@@ -13,3 +13,6 @@ packages/*/LICENSE
 # test run. They dump the FULL process environment (API tokens, passwords),
 # so they must never be committed.
 report.*.json
+# local Codex config + skill mirrors (generated, not shared)
+.agents/
+.codex/
