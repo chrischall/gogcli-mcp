@@ -4366,6 +4366,9 @@ describe('server paths and disk writes (SEC-3/SEC-4/SEC-6)', () => {
     ['gog_gmail_drafts_create', { subject: 's', body: 'b', attach: ['/Users/me/.config/gogcli/credentials.json'] }, 'attach'],
     ['gog_gmail_drafts_create', { subject: 's', body: 'b', bodyHtmlFile: '/etc/passwd' }, 'bodyHtmlFile'],
     ['gog_gmail_drafts_reply', { messageId: 'm1', body: 'b', attach: ['/etc/passwd'] }, 'attach'],
+    // gog splits drafts create|update --attach on ',' (#1190): every segment is confined.
+    ['gog_gmail_drafts_create', { subject: 's', body: 'b', attach: ['/srv/gog-files/decoy.txt,/Users/me/.ssh/id_rsa'] }, 'attach'],
+    ['gog_gmail_drafts_update', { draftId: 'd1', subject: 's', body: 'b', attach: ['/srv/gog-files/a,/proc/self/environ'] }, 'attach'],
     ['gog_gmail_import', { file: '/etc/passwd' }, 'file'],
     ['gog_gmail_drafts_create', { subject: 's', body: 'b', signatureFile: '/etc/passwd' }, 'signatureFile'],
     ['gog_gmail_drafts_update', { draftId: 'd1', subject: 's', body: 'b', signatureFile: '/etc/passwd' }, 'signatureFile'],
@@ -4377,6 +4380,15 @@ describe('server paths and disk writes (SEC-3/SEC-4/SEC-6)', () => {
     expect(result.content[0].text).toMatch(new RegExp(`${param} ".*" is outside the directories`));
     expect(lib.run).not.toHaveBeenCalled();
     expect(lib.runOrDiagnose).not.toHaveBeenCalled();
+  });
+
+  it('gog_gmail_drafts_reply keeps a comma inside one attach path (gog reply does not split --attach)', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue({ content: [{ type: 'text', text: '{}' }] });
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_gmail_drafts_reply', {
+      messageId: 'm1', body: 'b', attach: ['/srv/gog-files/Report, final.pdf'],
+    }));
+    expect(result.content[0].text).not.toMatch(/is outside the directories/);
+    expect(lib.runOrDiagnose).toHaveBeenCalled();
   });
 
   it('gog_gmail_attachment is not advertised as read-only, and is marked destructive', async () => {

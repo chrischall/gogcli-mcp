@@ -12,6 +12,7 @@ const CLASSROOM_DELETE_WORDS = new Set(['delete', 'rm', 'del', 'remove']);
 const CLASSROOM_UPDATE_WORDS = new Set(['update', 'edit', 'set']);
 const CLASSROOM_RETURN_WORDS = new Set(['return', 'send']);
 const CLASSROOM_ASSIGNEE_WORDS = new Set(['assignees', 'assign']);
+const CLASSROOM_JOIN_WORDS = new Set(['join', 'enroll']);
 type ClassroomGroup = 'courses' | 'announcements' | 'invitations' | 'coursework' | 'materials' | 'students' | 'teachers' | 'submissions' | 'guardian-invitations';
 const CLASSROOM_GROUPS: Record<string, ClassroomGroup> = {
   courses: 'courses', course: 'courses',
@@ -68,8 +69,24 @@ export function vetClassroomRun(subcommand: string, args: readonly string[]): st
       : undefined;
   };
   switch (group) {
-    case 'courses':
-      return remove ? gatedElsewhere(what(remove), via, 'deletes a course', 'gog_classroom_courses_delete') : undefined;
+    case 'courses': {
+      if (remove) return gatedElsewhere(what(remove), via, 'deletes a course', 'gog_classroom_courses_delete');
+      // `courses join|enroll --user=<someone>` makes the same Students/Teachers
+      // create call as the gated roster adds (fleet-audit #1191); joining as
+      // yourself (gog's default --user=me) reaches nobody else.
+      const join = hasCommandWord(args, CLASSROOM_JOIN_WORDS);
+      const user = flagValue(args, 'user');
+      if (join && user !== undefined && user.toLowerCase() !== 'me') {
+        return flagValue(args, 'role')?.toLowerCase() === 'teacher'
+          ? gatedElsewhere(what(join), via, "gives someone a teacher's access to a class and its roster", 'gog_classroom_teachers_add')
+          : gatedElsewhere(what(join), via, 'enrols someone in a class', 'gog_classroom_students_add');
+      }
+      // `courses update --owner` hands the course to someone else (#1258).
+      if (update && flagValue(args, 'owner') !== undefined) {
+        return gatedElsewhere(what(update), via, 'transfers ownership of a course', 'gog_classroom_courses_update');
+      }
+      return undefined;
+    }
     case 'announcements':
       if (create) return gatedElsewhere(what(create), via, 'posts to a class', 'gog_classroom_announcements_create');
       if (update && publishesToStudents(args)) return gatedElsewhere(what(update), via, 'publishes an announcement to a class', 'gog_classroom_announcements_update');
@@ -119,7 +136,7 @@ export async function readCourse(
 ) {
   const got = await runner(['classroom', 'courses', 'get', pos(courseId)], { account });
   if (got.isError) return { error: got };
-  let course: { name?: unknown; section?: unknown } | undefined;
+  let course: { name?: unknown; section?: unknown; ownerId?: unknown } | undefined;
   try {
     course = (JSON.parse(resultText(got)) as { course?: typeof course } | null)?.course;
   } catch {
@@ -131,6 +148,9 @@ export async function readCourse(
       ...(typeof course?.name === 'string' ? { name: course.name } : {}),
       ...(typeof course?.section === 'string' ? { section: course.section } : {}),
     },
+    // Kept out of `course` so every other prompt's view is unchanged; the
+    // ownership-transfer prompt shows it as the current owner.
+    ...(typeof course?.ownerId === 'string' ? { ownerId: course.ownerId } : {}),
   };
 }
 

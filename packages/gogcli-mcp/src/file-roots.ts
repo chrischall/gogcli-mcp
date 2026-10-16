@@ -54,9 +54,31 @@ export function confinePath(path: string, param: string, opts: { allowDash?: boo
   return path;
 }
 
-/** confinePath for every element of an optional list. */
-export function confinePaths(paths: readonly string[] | undefined, param: string): void {
-  for (const path of paths ?? []) confinePath(path, param);
+/**
+ * confinePath for every element of an optional list.
+ *
+ * gog's list flags (`--attach` on `gmail send`, `gmail drafts create|update`,
+ * `chat messages send`) are kong `[]string`s with the default ',' separator, so
+ * gog reads one element `a,b` as TWO files. Confining only the joined string
+ * lets `<root>/x,~/.ssh/id_rsa` through (mcp-utils resolves the missing tail
+ * lexically), so by default each comma-separated segment is confined as well —
+ * the same rule run-path-guard applies to `gog_<service>_run` flags (#1190).
+ * Pass `commaSeparated: false` only for a flag gog declares `sep:"none"` (the
+ * reply/reply-all family), where a comma is part of one file name.
+ */
+export function confinePaths(
+  paths: readonly string[] | undefined,
+  param: string,
+  opts: { commaSeparated?: boolean } = {},
+): void {
+  const split = opts.commaSeparated ?? true;
+  for (const path of paths ?? []) {
+    confinePath(path, param);
+    if (!split) continue;
+    for (const part of path.split(',')) {
+      if (part !== '') confinePath(part, param);
+    }
+  }
 }
 
 /** For JSON-or-`@file` inputs: confine the path of an `@file` value, pass inline JSON through. */

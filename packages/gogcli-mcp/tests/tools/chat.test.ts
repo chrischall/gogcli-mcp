@@ -370,4 +370,14 @@ describe('gog_chat_messages_send — server paths', () => {
     expect(result.content[0].text).toContain('attach "/etc/passwd" is outside');
     expect(runner.run).not.toHaveBeenCalled();
   });
+
+  it('refuses a comma-joined attach whose second path is outside GOG_FILE_ROOTS (gog splits on commas)', async () => {
+    const harness = await setupHandlers();
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_chat_messages_send', {
+      space: 'spaces/AAA', attach: ['/srv/gog-files/a.png,/etc/passwd'],
+    }));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('attach "/etc/passwd" is outside');
+    expect(runner.run).not.toHaveBeenCalled();
+  });
 });

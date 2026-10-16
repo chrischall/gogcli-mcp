@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ElicitRequest, ElicitResult } from '@modelcontextprotocol/server';
-import { registerApiTools } from '../../src/tools/api.js';
+import { registerApiTools, refusedApiCall, DISPATCH_API_BLOCKED } from '../../src/tools/api.js';
 import * as runner from '../../src/runner.js';
 import { createTestHarness } from '@chrischall/mcp-utils/test';
 import { pos } from '../../src/argv.js';
@@ -79,6 +79,32 @@ describe('gog_api_describe', () => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_api_describe', { api: 'x', version: 'v1' });
     expect(result.content[0].text).toBe('Error: Describe failed');
+  });
+});
+
+// #1256: the description lists the refused methods FROM the table, so it
+// cannot drift as the table grows; each listed name must really be refused.
+describe('gog_api_call description vs DISPATCH_API_BLOCKED', () => {
+  const entries = Object.entries(DISPATCH_API_BLOCKED).flatMap(([api, rows]) => rows.map((r) => ({ api, ...r })));
+
+  it.each(entries.flatMap((e) => e.names.map((n) => [e.api, n])))('%s %s is listed because it is refused', (api, name) => {
+    expect(refusedApiCall(api, name)).toMatch(/is not available through gog_api_call/);
+  });
+
+  it('gives every API in the table a display label', async () => {
+    const harness = await setupHandlers();
+    const { tools } = await harness.client.listTools();
+    expect(tools.find((t) => t.name === 'gog_api_call')!.description).not.toMatch(/undefined/);
+  });
+
+  it('names every method in the table, including the ones added after the first wave', async () => {
+    const harness = await setupHandlers();
+    const { tools } = await harness.client.listTools();
+    const description = tools.find((t) => t.name === 'gog_api_call')!.description!;
+    for (const e of entries) for (const n of e.names) expect(description).toContain(n);
+    expect(description).toContain('spaces.members.create');
+    expect(description).toContain('scripts.run');
+    expect(description).toContain('settings.updateVacation');
   });
 });
 

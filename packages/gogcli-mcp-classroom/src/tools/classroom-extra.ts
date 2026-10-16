@@ -85,15 +85,19 @@ export function registerExtraClassroomTools(server: McpServer): void {
   });
 
   server.registerTool('gog_classroom_courses_update', {
-    description: 'Update an existing Google Classroom course.',
+    description: 'Update an existing Google Classroom course. Setting owner transfers ownership of the course to that '
+      + 'user — an access grant like inviting an OWNER — so the tool reads the course and asks the MCP host to show the '
+      + 'user a confirmation prompt naming it and the new owner first; nothing changes unless they accept. Updates '
+      + 'that leave the owner alone run without a prompt.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       courseId: z.string().describe('Course ID'),
       name: z.string().optional().describe('Course name'),
       ...courseSharedFields,
       account: accountParam,
+      confirmToken: confirmTokenParam,
     }),
-  }, async ({ courseId, name, owner, section, descriptionHeading, description, room, state, account }) => {
+  }, async ({ courseId, name, owner, section, descriptionHeading, description, room, state, account, confirmToken }, ctx) => {
     const args: GogArg[] = ['classroom', 'courses', 'update', pos(courseId)];
     if (name) args.push(`--name=${name}`);
     if (owner) args.push(`--owner=${owner}`);
@@ -102,6 +106,36 @@ export function registerExtraClassroomTools(server: McpServer): void {
     if (description) args.push(`--description=${description}`);
     if (room) args.push(`--room=${room}`);
     if (state) args.push(`--state=${state}`);
+    if (owner) {
+      // fleet-audit #1258: the other route to the same grant
+      // (invitations_create role OWNER) already asks.
+      const read = await readCourse(courseId, account, runOrDiagnose);
+      if (read.error) return read.error;
+      const changes = Object.fromEntries(Object.entries({ name, section, descriptionHeading, description, room, state })
+        .filter(([, v]) => v));
+      const view = {
+        course: read.course,
+        ...(read.ownerId ? { currentOwner: read.ownerId } : {}),
+        newOwner: owner,
+        grants: 'ownership of the course: full control of it, its roster and its coursework',
+        ...(Object.keys(changes).length > 0 ? { alsoChanges: changes } : {}),
+      };
+      const confirmation = await requireDispatchConfirmation(ctx, {
+        action: 'classroom.course-owner-transfer',
+        message: 'Review and confirm transferring OWNERSHIP of this course:',
+        confirmationLabel: 'Confirm that ownership of this course should be transferred now.',
+        details: view,
+        unsupportedNote: 'Leave owner unset to update the course, or ask the user to transfer ownership from Classroom.',
+        fallback: {
+          args: { courseId, name, owner, section, descriptionHeading, description, room, state, account },
+          tool: 'gog_classroom_courses_update',
+          account,
+          confirmToken,
+          subject: () => ({ target: courseId, payload: view, preview: view }),
+        },
+      });
+      if (confirmation) return confirmation;
+    }
     return runOrDiagnose(args, { account });
   });
 
