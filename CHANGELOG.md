@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.8.1](https://github.com/chrischall/gogcli-mcp/compare/v4.8.0...v4.8.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **plugin:** launch the published package so marketplace installs start ([#456](https://github.com/chrischall/gogcli-mcp/issues/456)) ([a76c546](https://github.com/chrischall/gogcli-mcp/commit/a76c5464f330cf8749eb0c412bd8b6d5add80178))
+* **security:** confine each comma-separated attach path and close gog_*_run roster, tracking and watch gaps ([#455](https://github.com/chrischall/gogcli-mcp/issues/455)) ([072d83a](https://github.com/chrischall/gogcli-mcp/commit/072d83aa8efaed80ea675ece2a250131d1ea845a))
+
+
+### Documentation
+
+* mcp-host re-pins gog when a registration follows a release ([#452](https://github.com/chrischall/gogcli-mcp/issues/452)) ([99c4d79](https://github.com/chrischall/gogcli-mcp/commit/99c4d79c34cabd44be17c44be14aa65bb28c1556))
+
 ## [4.8.0](https://github.com/chrischall/gogcli-mcp/compare/v4.7.1...v4.8.0) (2026-10-12)
 
 
