@@ -1162,6 +1162,20 @@ describe('server paths are confined to GOG_FILE_ROOTS', () => {
     expect(runner.run).not.toHaveBeenCalled();
   });
 
+  // gog splits send's --attach on ',' (kong []string), so one element can name a
+  // second file outside the roots (#1190).
+  it('gog_gmail_send refuses a comma-joined attach whose second path is outside the roots', async () => {
+    let asked = false;
+    const harness = await setupHandlers(async () => { asked = true; return { action: 'accept', content: { confirmed: true } }; });
+    const result = await withFileRoots('/srv/gog-files', () => harness.callTool('gog_gmail_send', {
+      to: 'x@example.com', subject: 's', body: 'b', attach: ['/srv/gog-files/decoy.txt,/home/me/.ssh/id_rsa'],
+    }));
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/attach "\/home\/me\/.ssh\/id_rsa" is outside/);
+    expect(asked).toBe(false);
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
   it('gog_gmail_send accepts an attach path inside the roots', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();

@@ -46,8 +46,12 @@ const ID_FLAGS: Readonly<Record<string, ReadonlySet<string>>> = {
   drive: new Set(['file', 'filter-file']),
 };
 
-/** Flags whose value gog executes as a local command or program. */
-const EXEC_FLAGS = new Set(['on-change', 'on-new', 'mmdc']);
+/**
+ * Flags that make gog execute a local command or program: the value itself
+ * (`--on-change`, `--on-new`, `--mmdc`), or `gmail track setup --deploy`, which
+ * runs wrangler in --worker-dir under the operator's Cloudflare login (#1192).
+ */
+const EXEC_FLAGS = new Set(['on-change', 'on-new', 'mmdc', 'deploy']);
 
 // Single-dash clusters containing -o (--out) or -f (--file).
 const SHORT_PATH_CLUSTER = /^-(?!-)[A-Za-z]*[of]/;

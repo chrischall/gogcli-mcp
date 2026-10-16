@@ -236,6 +236,11 @@ describe('gog_classroom_announcements_create', () => {
     expect(await readCourse('c9', undefined)).toEqual({ course: { id: 'c9' } });
   });
 
+  it('readCourse returns the owner beside the course view, not inside it', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"course":{"name":"Algebra","ownerId":"1234"}}');
+    expect(await readCourse('c9', undefined)).toEqual({ course: { id: 'c9', name: 'Algebra' }, ownerId: '1234' });
+  });
+
   // The item a publish-through-update reaches students with (SEC-3, fleet-audit
   // #932): its text or title for the prompt, its updateTime as the token's
   // revision. gog nests the payload under the API resource name.

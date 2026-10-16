@@ -7,7 +7,7 @@ import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
 import { attachmentDetails, attachmentNames, attachmentPreview, bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText, senderPreview } from '../gmail-dispatch-guard.js';
 import { pos } from '../argv.js';
-import { gatedElsewhere, hasCommandWord, hasTrueFlag } from '../dispatch-confirmation.js';
+import { gatedElsewhere, hasCommandWord, hasTrueFlag, refusedInRun } from '../dispatch-confirmation.js';
 import { confinePath, confinePaths } from '../file-roots.js';
 
 // gog's signature flags, shared by every compose subcommand that takes them
@@ -89,7 +89,9 @@ export type ReplyFlags = {
 // read on the gog host and mailed out, so unconfined it is a file-exfiltration
 // primitive (audit SEC-3). Checked before anything else touches gog.
 export function confineReplyPaths(f: Pick<ReplyFlags, 'attach' | 'bodyHtmlFile' | 'signatureFile'>): void {
-  confinePaths(f.attach, 'attach');
+  // gog's reply/reply-all (and drafts reply/reply-all) declare --attach
+  // sep:"none", so a comma here is part of one file name, not a second file.
+  confinePaths(f.attach, 'attach', { commaSeparated: false });
   if (f.bodyHtmlFile) confinePath(f.bodyHtmlFile, 'bodyHtmlFile');
   confineSignatureFile(f);
 }
@@ -325,9 +327,28 @@ function vetGmailGatedRun(sub: string, args: readonly string[]): string | undefi
   return undefined;
 }
 
+// Refused outright: nothing in this wrapper needs them, and neither can be
+// previewed. `track setup --deploy` / `track key rotate` exec wrangler and
+// deploy a Worker + D1 under the operator's Cloudflare login (fleet-audit
+// #1192); `watch` (hidden at the top level, listed under `settings`) points
+// Gmail push notifications — and with --hook-url, message bodies — at a
+// caller-chosen Pub/Sub topic or webhook (#1257).
+const GMAIL_RUN_REFUSED: Readonly<Record<string, string>> = {
+  track: 'deploys an open-tracking Worker with wrangler and adds tracking to mail',
+  watch: 'sends Gmail push notifications for the mailbox to a caller-chosen Pub/Sub topic or webhook',
+};
+const WATCH = new Set(['watch']);
+
 export function vetGmailRun(subcommand: string, args: readonly string[]): string | undefined {
   if (subcommand === 'autoreply') {
     return 'gog gmail autoreply sends mail and is not available through gog_gmail_run. Use gog_gmail_autoreply, which asks the user to confirm.';
+  }
+  const sub = subcommand.toLowerCase();
+  if (Object.hasOwn(GMAIL_RUN_REFUSED, sub)) {
+    return refusedInRun(`gog gmail ${sub}`, 'gog_gmail_run', GMAIL_RUN_REFUSED[sub]!, 'Ask the user to set it up outside this server.');
+  }
+  if (sub === 'settings' && hasCommandWord(args, WATCH)) {
+    return refusedInRun('gog gmail settings watch', 'gog_gmail_run', GMAIL_RUN_REFUSED.watch!, 'Ask the user to set it up outside this server.');
   }
   if (GMAIL_RUN_BLOCKED_SETTINGS.has(subcommand)) {
     return `gog gmail ${subcommand} can forward or hand over mail and is not available through gog_gmail_run. Use the dedicated gog_gmail_* tool instead.`;

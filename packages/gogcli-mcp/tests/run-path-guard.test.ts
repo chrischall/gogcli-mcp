@@ -135,6 +135,8 @@ describe('assertRunPathsConfined', () => {
       ['drive', 'changes', ['serve', '--on-change', 'sh -c id']],
       ['docs', 'comments', ['poll', 'd1', '--on-new=sh -c id']],
       ['slides', 'create-from-markdown', ['--mmdc=/tmp/evil']],
+      // `gmail track setup --deploy` execs wrangler in --worker-dir (#1192).
+      ['gmail', 'track', ['setup', '--deploy', '--worker-url=https://x.example']],
     ])('refuses %s %s %j', (service, subcommand, args) => {
       expect(() => assertRunPathsConfined(service, subcommand, args)).toThrow(/runs a local program/);
     });

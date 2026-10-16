@@ -24,35 +24,48 @@ const GMAIL_API_BLOCKED = /(?:\.send$|forwarding|filters\.create|filters\.update
 // access or run code under the account's authority (moving an event with
 // sendUpdates, roster adds, returning work, posting coursework, comments,
 // send-as aliases, the vacation responder, member-seeded spaces, script runs).
-const DISPATCH_API_BLOCKED: Record<string, Array<{ method: RegExp; does: string; tool: string }>> = {
+// `names` are the Discovery method ids the regex refuses, as the gog_api_call
+// description lists them (generated, so the description cannot drift: #1256).
+export const DISPATCH_API_BLOCKED: Record<string, Array<{ method: RegExp; names: string[]; does: string; tool: string }>> = {
   chat: [
-    { method: /(?:^|\.)spaces\.messages\.create$/i, does: 'posts a Chat message', tool: 'gog_chat_messages_send / gog_chat_dm_send' },
-    { method: /(?:^|\.)spaces\.(?:setup|members\.create)$/i, does: 'adds people to a space', tool: 'gog_chat_spaces_create' },
+    { method: /(?:^|\.)spaces\.messages\.create$/i, names: ['spaces.messages.create'], does: 'posts a Chat message', tool: 'gog_chat_messages_send / gog_chat_dm_send' },
+    { method: /(?:^|\.)spaces\.(?:setup|members\.create)$/i, names: ['spaces.setup', 'spaces.members.create'], does: 'adds people to a space', tool: 'gog_chat_spaces_create' },
   ],
   drive: [
-    { method: /(?:^|\.)permissions\.(?:create|update)$/i, does: 'grants access to a file', tool: 'gog_drive_share' },
-    { method: /(?:^|\.)comments\.create$/i, does: 'notifies the file\'s owner and anyone it mentions', tool: 'gog_drive_comments_add / gog_docs_comments_add' },
-    { method: /(?:^|\.)replies\.create$/i, does: 'notifies the comment thread', tool: 'gog_drive_comments_reply / gog_docs_comments_reply' },
+    { method: /(?:^|\.)permissions\.(?:create|update)$/i, names: ['permissions.create', 'permissions.update'], does: 'grants access to a file', tool: 'gog_drive_share' },
+    { method: /(?:^|\.)comments\.create$/i, names: ['comments.create'], does: 'notifies the file\'s owner and anyone it mentions', tool: 'gog_drive_comments_add / gog_docs_comments_add' },
+    { method: /(?:^|\.)replies\.create$/i, names: ['replies.create'], does: 'notifies the comment thread', tool: 'gog_drive_comments_reply / gog_docs_comments_reply' },
   ],
   classroom: [
-    { method: /(?:^|\.)courses\.announcements\.create$/i, does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
-    { method: /(?:^|\.)invitations\.create$/i, does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
-    { method: /(?:^|\.)courses\.students\.create$/i, does: 'adds someone to a class', tool: 'gog_classroom_students_add' },
-    { method: /(?:^|\.)courses\.teachers\.create$/i, does: 'gives someone teacher access to a class', tool: 'gog_classroom_teachers_add' },
-    { method: /(?:^|\.)courses\.coursework\.create$/i, does: 'posts coursework to a class', tool: 'gog_classroom_coursework_create' },
-    { method: /(?:^|\.)studentsubmissions\.return$/i, does: 'returns work to a student', tool: 'gog_classroom_submissions_return' },
+    { method: /(?:^|\.)courses\.announcements\.create$/i, names: ['courses.announcements.create'], does: 'posts to a class', tool: 'gog_classroom_announcements_create' },
+    { method: /(?:^|\.)invitations\.create$/i, names: ['invitations.create'], does: 'invites someone to a class', tool: 'gog_classroom_invitations_create' },
+    { method: /(?:^|\.)courses\.students\.create$/i, names: ['courses.students.create'], does: 'adds someone to a class', tool: 'gog_classroom_students_add' },
+    { method: /(?:^|\.)courses\.teachers\.create$/i, names: ['courses.teachers.create'], does: 'gives someone teacher access to a class', tool: 'gog_classroom_teachers_add' },
+    { method: /(?:^|\.)courses\.coursework\.create$/i, names: ['courses.courseWork.create'], does: 'posts coursework to a class', tool: 'gog_classroom_coursework_create' },
+    { method: /(?:^|\.)studentsubmissions\.return$/i, names: ['courses.courseWork.studentSubmissions.return'], does: 'returns work to a student', tool: 'gog_classroom_submissions_return' },
   ],
   calendar: [
-    { method: /(?:^|\.)events\.(?:insert|import|quickadd)$/i, does: 'can put an event on guests\' calendars', tool: 'gog_calendar_create' },
-    { method: /(?:^|\.)events\.(?:update|patch)$/i, does: 'can change what guests see', tool: 'gog_calendar_update / gog_calendar_respond' },
-    { method: /(?:^|\.)events\.move$/i, does: 'can email every guest', tool: 'gog_calendar_move' },
+    { method: /(?:^|\.)events\.(?:insert|import|quickadd)$/i, names: ['events.insert', 'events.import', 'events.quickAdd'], does: 'can put an event on guests\' calendars', tool: 'gog_calendar_create' },
+    { method: /(?:^|\.)events\.(?:update|patch)$/i, names: ['events.update', 'events.patch'], does: 'can change what guests see', tool: 'gog_calendar_update / gog_calendar_respond' },
+    { method: /(?:^|\.)events\.move$/i, names: ['events.move'], does: 'can email every guest', tool: 'gog_calendar_move' },
   ],
   gmail: [
-    { method: /(?:^|\.)settings\.sendas\.create$/i, does: 'makes Google email the address and adds a sending identity', tool: 'gog_gmail_sendas_create' },
-    { method: /(?:^|\.)settings\.updatevacation$/i, does: 'can turn on an auto-reply to every sender', tool: 'gog_gmail_vacation_update' },
+    { method: /(?:^|\.)settings\.sendas\.create$/i, names: ['users.settings.sendAs.create'], does: 'makes Google email the address and adds a sending identity', tool: 'gog_gmail_sendas_create' },
+    { method: /(?:^|\.)settings\.updatevacation$/i, names: ['users.settings.updateVacation'], does: 'can turn on an auto-reply to every sender', tool: 'gog_gmail_vacation_update' },
   ],
-  script: [{ method: /(?:^|\.)scripts\.run$/i, does: 'executes code with this account\'s authority', tool: 'gog_appscript_run_function' }],
+  script: [{ method: /(?:^|\.)scripts\.run$/i, names: ['scripts.run'], does: 'executes code with this account\'s authority', tool: 'gog_appscript_run_function' }],
 };
+
+const API_LABELS: Readonly<Record<string, string>> = {
+  chat: 'Chat', drive: 'Drive', classroom: 'Classroom', calendar: 'Calendar', gmail: 'Gmail', script: 'Apps Script',
+};
+
+/** "Chat spaces.messages.create, …; Drive …" — every method DISPATCH_API_BLOCKED refuses, by API. */
+function dispatchBlockedSummary(): string {
+  return Object.entries(DISPATCH_API_BLOCKED)
+    .map(([api, rows]) => `${API_LABELS[api]} ${rows.flatMap((r) => r.names).join(', ')}`)
+    .join('; ');
+}
 
 export function refusedApiCall(api: string, method: string): string | undefined {
   const name = api.trim().toLowerCase();
@@ -114,7 +127,7 @@ export function registerApiTools(server: McpServer): void {
   });
 
   server.registerTool('gog_api_call', {
-    description: 'Call any Discovery-described Google API method directly — an escape hatch for endpoints gog has no dedicated tool for. Find the exact api/version/method/params with gog_api_describe first. Read methods (GET/LIST) run as-is. Mutating methods (POST/PUT/PATCH/DELETE) are refused unless you set allowWrite=true, and every write then asks the MCP host to show the user a confirmation prompt with the exact api/version/method/params/body before anything is sent; set dryRun=true to print the intended request without sending it (no prompt, no changes). Gmail send and forwarding methods (users.messages.send, users.drafts.send, forwarding/auto-forwarding, filters, delegates) are refused outright — use the dedicated gog_gmail_* tools, which ask the user to confirm. So are the other methods a dedicated tool asks about with a better preview: Chat spaces.messages.create, Drive permissions.create/update, Classroom courses.announcements.create and invitations.create, and Calendar events.insert/import/quickAdd/update/patch.' + CONFIRM_FALLBACK_DESCRIPTION,
+    description: 'Call any Discovery-described Google API method directly — an escape hatch for endpoints gog has no dedicated tool for. Find the exact api/version/method/params with gog_api_describe first. Read methods (GET/LIST) run as-is. Mutating methods (POST/PUT/PATCH/DELETE) are refused unless you set allowWrite=true, and every write then asks the MCP host to show the user a confirmation prompt with the exact api/version/method/params/body before anything is sent; set dryRun=true to print the intended request without sending it (no prompt, no changes). Gmail send and forwarding methods (users.messages.send, users.drafts.send, forwarding/auto-forwarding, filters, delegates) are refused outright — use the dedicated gog_gmail_* tools, which ask the user to confirm. So are the other methods a dedicated tool asks about with a better preview: ' + dispatchBlockedSummary() + '. Any other write (including permanent deletes) gets the generic confirmation prompt above.' + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       api: z.string().describe('Discovery API name (e.g. drive, gmail, calendar)'),

@@ -98,6 +98,18 @@ const CASES: Case[] = [
     reads: ['classroom courses get'],
     changed: { courseId: 'c2' },
   },
+  // #1258: handing a course to another owner is an access grant, like inviting an OWNER.
+  {
+    tool: 'gog_classroom_courses_update',
+    args: { courseId: 'c1', owner: 'co@example.com', room: 'R2' },
+    action: 'classroom.course-owner-transfer',
+    details: { course: COURSE_VIEW, newOwner: 'co@example.com', grants: 'ownership of the course: full control of it, its roster and its coursework', alsoChanges: { room: 'R2' } },
+    write: ['classroom', 'courses', 'update'],
+    argv: ['classroom', 'courses', 'update', pos('c1'), '--owner=co@example.com', '--room=R2'],
+    note: /transfer ownership from Classroom/,
+    reads: ['classroom courses get'],
+    changed: { owner: 'other@example.com' },
+  },
   {
     tool: 'gog_classroom_coursework_delete',
     args: { courseId: 'c1', courseworkId: 'w1' },
@@ -173,6 +185,19 @@ describe.each(CASES)('$tool', (c) => {
   });
 });
 
+describe('gog_classroom_courses_update ownership transfer', () => {
+  it('names the current owner when the course read carries one', async () => {
+    vi.mocked(lib.runOrDiagnose).mockImplementation(async (args) => (args[1] === 'courses' && args[2] === 'get'
+      ? rawTextResult(JSON.stringify({ course: { id: 'c1', name: 'Algebra II', ownerId: '1234' } }))
+      : rawTextResult('{"ok":true}')));
+    const { harness, details } = await prompted({ action: 'decline' });
+    await harness.callTool('gog_classroom_courses_update', { courseId: 'c1', owner: 'co@example.com' });
+    expect(details()).toMatchObject({ currentOwner: '1234', newOwner: 'co@example.com' });
+    expect(details().alsoChanges).toBeUndefined();
+    expect(callsTo('classroom', 'courses', 'update')).toHaveLength(0);
+  });
+});
+
 describe('the paths that reach nobody stay unprompted', () => {
   it('enrolling yourself with a code', async () => {
     stub();
@@ -182,6 +207,15 @@ describe('the paths that reach nobody stay unprompted', () => {
     expect(callsTo('classroom', 'courses', 'get')).toHaveLength(0);
     expect(callsTo('classroom', 'students', 'add')[0]![0]).toEqual(
       ['classroom', 'students', 'add', pos('c1'), pos('ME'), '--enrollment-code=abc123']);
+  });
+
+  it('a course update that keeps the owner', async () => {
+    stub();
+    const { harness, seen } = await prompted();
+    await harness.callTool('gog_classroom_courses_update', { courseId: 'c1', room: 'R2' });
+    expect(seen).toHaveLength(0);
+    expect(callsTo('classroom', 'courses', 'get')).toHaveLength(0);
+    expect(callsTo('classroom', 'courses', 'update')).toHaveLength(1);
   });
 
   it('a DRAFT coursework item', async () => {

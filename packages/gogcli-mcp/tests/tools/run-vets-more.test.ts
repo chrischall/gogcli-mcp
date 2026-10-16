@@ -58,6 +58,15 @@ describe('vetClassroomRun — roster, coursework, submissions and course deletes
     ['courses', ['delete', 'c1'], 'gog_classroom_courses_delete'],
     ['course', ['remove', 'c1'], 'gog_classroom_courses_delete'],
     ['courses', ['--color', 'never', 'del', 'c1'], 'gog_classroom_courses_delete'],
+    // #1191: `courses join|enroll --user=<someone>` is the same roster add.
+    ['courses', ['join', 'c1', '--user=outsider@example.com'], 'gog_classroom_students_add'],
+    ['course', ['enroll', 'c1', '--user', 'kid@example.com', '--role=student'], 'gog_classroom_students_add'],
+    ['courses', ['JOIN', 'c1', '--user=co@example.com', '--role=teacher'], 'gog_classroom_teachers_add'],
+    ['courses', ['enroll', '--role', 'TEACHER', 'c1', '--user=co@example.com'], 'gog_classroom_teachers_add'],
+    // #1258: handing the course to another owner.
+    ['courses', ['update', 'c1', '--owner=co@example.com'], 'gog_classroom_courses_update'],
+    ['course', ['edit', 'c1', '--owner', 'co@example.com'], 'gog_classroom_courses_update'],
+    ['courses', ['set', 'c1', '--name=x', '--owner=me'], 'gog_classroom_courses_update'],
   ])('refuses %s %j in favour of %s', (sub, args, tool) => {
     expect(vetClassroomRun(sub, args)).toMatch(new RegExp(`${tool}.*asks the user`));
   });
@@ -73,6 +82,11 @@ describe('vetClassroomRun — roster, coursework, submissions and course deletes
     ['coursework', ['list', 'c1']],
     ['courses', ['create', '--name=x']],
     ['courses', ['archive', 'c1']],
+    ['courses', ['join', 'c1']],
+    ['courses', ['enroll', 'c1', '--enrollment-code=abc123']],
+    ['courses', ['join', 'c1', '--user=me', '--role=teacher']],
+    ['courses', ['join', 'c1', '--user=ME']],
+    ['courses', ['update', 'c1', '--name=x']],
     ['announcements', ['create', 'c1']],
   ])('allows %s %j (or leaves it to the existing vet)', (sub, args) => {
     const refusal = vetClassroomRun(sub, args);
@@ -125,6 +139,29 @@ describe('vetChatRun — spaces created with members', () => {
     ['threads', ['list', 'spaces/A']],
   ])('allows %s %j', (sub, args) => {
     expect(vetChatRun(sub, args)).toBeUndefined();
+  });
+});
+
+// #1192: `gmail track` deploys a Worker with wrangler under the operator's
+// login; #1257: `watch` points Gmail push notifications at any Pub/Sub topic
+// or webhook. Nothing in this wrapper uses either.
+describe('vetGmailRun — open tracking and Gmail push watch', () => {
+  it.each([
+    ['track', ['setup', '--deploy', '--worker-url=https://x.example', '--worker-dir=/srv/gog-files/w']],
+    ['track', ['key', 'rotate']],
+    ['track', ['opens']],
+    ['watch', ['start', '--topic=projects/p/topics/t']],
+    ['watch', ['serve', '--hook-url=https://x.example']],
+    ['settings', ['watch', 'start', '--topic=projects/p/topics/t', '--hook-url=https://x.example']],
+    ['settings', ['--color', 'never', 'watch', 'renew']],
+  ])('refuses %s %j', (sub, args) => {
+    expect(vetGmailRun(sub, args)).toMatch(/is not available through gog_gmail_run/);
+  });
+
+  it('names what each one does', () => {
+    expect(vetGmailRun('track', ['setup'])).toMatch(/deploys/);
+    expect(vetGmailRun('watch', ['start'])).toMatch(/push notifications/);
+    expect(vetGmailRun('settings', ['watch', 'start'])).toMatch(/gog gmail settings watch.*push notifications/);
   });
 });
 

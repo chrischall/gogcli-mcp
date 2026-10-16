@@ -89,6 +89,21 @@ describe('confinePaths', () => {
     expect(() => confinePaths(undefined, 'attach')).not.toThrow();
     expect(() => confinePaths([join(scratch, 'a'), '/etc/hosts'], 'attach')).toThrow(/\/etc\/hosts/);
   });
+
+  // gog's `--attach` on send / drafts create|update / chat send is a kong
+  // []string that splits on ',', so one element can name several files: each
+  // segment must be inside the roots, not just the joined string (#1190).
+  it('confines every comma-separated segment, since gog splits list flags on commas', () => {
+    expect(() => confinePaths([`${join(scratch, 'decoy.txt')},/etc/hosts`], 'attach')).toThrow(/\/etc\/hosts/);
+    expect(() => confinePaths([`${join(scratch, 'sub', 'x')},../../../../etc/hosts`], 'attach')).toThrow(/outside/);
+    expect(() => confinePaths([`${join(scratch, 'a')},${join(scratch, 'b')}`], 'attach')).not.toThrow();
+    expect(() => confinePaths([`${join(scratch, 'a')},`], 'attach')).not.toThrow();
+  });
+
+  it('confines the whole element only when the flag does not split (gog reply: sep:"none")', () => {
+    expect(() => confinePaths([`${join(scratch, 'Report, final.pdf')}`], 'attach', { commaSeparated: false })).not.toThrow();
+    expect(() => confinePaths(['/etc/hosts'], 'attach', { commaSeparated: false })).toThrow(/\/etc\/hosts/);
+  });
 });
 
 describe('confineAtFile', () => {
