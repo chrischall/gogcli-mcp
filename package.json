@@ -23,5 +23,9 @@
   },
   "overrides": {
     "sharp": "0.35.4"
+  },
+  "allowScripts": {
+    "esbuild": false,
+    "fsevents": false
   }
 }
