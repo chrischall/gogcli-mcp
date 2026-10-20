@@ -4,6 +4,10 @@ slug: gogcli-mcp-sheets
 summary: >-
   Extended Google Sheets MCP server via gogcli — all base tools plus full
   Sheets support
+examples:
+  - prompt: "Read the Expenses tab of my budget spreadsheet and total each category."
+  - prompt: "List the tabs and named ranges in this spreadsheet: <sheet link>"
+  - prompt: "What charts are in my sales tracker, and which ranges do they plot?"
 command:
   # This package publishes a single bin; naming it keeps the install
   # unambiguous alongside its eight sibling packages.

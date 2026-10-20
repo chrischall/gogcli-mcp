@@ -4,6 +4,12 @@ slug: gogcli-mcp-calendar
 summary: >-
   Extended Google Calendar + Meet MCP server via gogcli — auth + Calendar
   events + Meet space management
+examples:
+  - prompt: "When am I free for an hour this Thursday afternoon?"
+    note: "Free/busy lookup; nothing is booked."
+  - prompt: "Search my calendar for any dentist appointments this year."
+  - prompt: "Who joined the last call in my team's Google Meet space?"
+    note: "Reads Meet call history and participants."
 command:
   # This package publishes a single bin; naming it keeps the install
   # unambiguous alongside its eight sibling packages.

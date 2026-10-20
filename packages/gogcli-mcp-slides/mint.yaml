@@ -3,6 +3,10 @@ name: Google Slides (gogcli)
 slug: gogcli-mcp-slides
 summary: >-
   Extended Google Slides MCP server via gogcli — auth + full Slides support
+examples:
+  - prompt: "Give me a one-line summary of every slide in this deck: <slides link>"
+  - prompt: "Pull the speaker notes from my conference talk presentation."
+  - prompt: "Which slides in the quarterly review deck mention the hiring plan?"
 command:
   # This package publishes a single bin; naming it keeps the install
   # unambiguous alongside its eight sibling packages.

@@ -4,6 +4,10 @@ slug: gogcli-mcp-gmail
 summary: >-
   Extended Gmail MCP server via gogcli — auth + full Gmail support (threads,
   labels, drafts, attachments, forward, autoreply, bulk operations)
+examples:
+  - prompt: "Summarize the unread emails in my inbox from today."
+  - prompt: "What Gmail filters do I have set up, and what does each one do?"
+  - prompt: "Is my vacation auto-reply turned on right now?"
 command:
   # This package publishes a single bin; naming it keeps the install
   # unambiguous alongside its eight sibling packages.
