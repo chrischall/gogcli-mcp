@@ -4,6 +4,12 @@ slug: gogcli-mcp-drive
 summary: >-
   Extended Google Drive MCP server via gogcli — auth + full Drive support
   (upload/download/permissions/comments/shared drives)
+examples:
+  - prompt: "Find the PDFs in my Drive that mention the lease renewal."
+  - prompt: "Which files in my Shared folder are public to anyone with the link?"
+    note: "Audits sharing without changing permissions."
+  - prompt: "What's taking up the most space in my Drive?"
+    note: "Folder sizes, disk-usage style."
 command:
   # This package publishes a single bin; naming it keeps the install
   # unambiguous alongside its eight sibling packages.

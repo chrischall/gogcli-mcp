@@ -4,6 +4,11 @@ slug: gogcli-mcp-classroom
 summary: >-
   Extended Google Classroom MCP server via gogcli — auth + full Classroom
   support
+examples:
+  - prompt: "List my active Google Classroom courses."
+  - prompt: "What assignments are due this week in my biology class?"
+  - prompt: "Which students haven't turned in the latest essay assignment yet?"
+    note: "Reads submission states; nothing is graded or returned."
 command:
   # This package publishes a single bin; naming it keeps the install
   # unambiguous alongside its eight sibling packages.

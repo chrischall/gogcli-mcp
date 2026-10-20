@@ -3,6 +3,12 @@ name: gogcli (Google Workspace)
 slug: gogcli-mcp
 summary: >-
   MCP server wrapping gogcli for Google service access
+examples:
+  - prompt: "What's on my Google Calendar tomorrow?"
+    note: "Lists events in the window via gog_calendar_events."
+  - prompt: "Find unread emails from the last week that mention an invoice."
+    note: "Gmail query syntax via gog_gmail_search."
+  - prompt: "Search my Drive for the latest quarterly planning doc and summarize it."
 command:
   # This package publishes a single bin; naming it keeps the install
   # unambiguous alongside its eight sibling packages.

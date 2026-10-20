@@ -4,6 +4,10 @@ slug: gogcli-mcp-docs
 summary: >-
   Extended Google Docs MCP server via gogcli — all base tools plus full Docs
   support
+examples:
+  - prompt: "Summarize this Google Doc for me: <doc link>"
+  - prompt: "Show me the outline of headings in my project proposal doc."
+  - prompt: "List the open comments on the design spec and who left each one."
 command:
   # This package publishes a single bin; naming it keeps the install
   # unambiguous alongside its eight sibling packages.

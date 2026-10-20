@@ -4,6 +4,12 @@ slug: gogcli-mcp-contacts
 summary: >-
   Extended Google Contacts + People MCP server via gogcli — auth + Contacts
   + Workspace directory (People API)
+examples:
+  - prompt: "Look up the phone number for my contact at the plumbing company."
+  - prompt: "Who in our company directory works on the finance team?"
+    note: "Searches the Workspace directory (People API)."
+  - prompt: "Check my contacts for likely duplicates, but don't merge anything yet."
+    note: "Dedupe defaults to a read-only preview."
 command:
   # This package publishes a single bin; naming it keeps the install
   # unambiguous alongside its eight sibling packages.
