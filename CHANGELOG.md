@@ -1,5 +1,22 @@
 # Changelog
 
+## [4.9.0](https://github.com/chrischall/gogcli-mcp/compare/v4.8.1...v4.9.0) (2026-10-21)
+
+
+### Features
+
+* **gmail:** add HTML notes to forwards (requires gog 0.46.0) ([#463](https://github.com/chrischall/gogcli-mcp/issues/463)) ([7e4f78c](https://github.com/chrischall/gogcli-mcp/commit/7e4f78cef3926e58092b91d9ef34cdc14a386de4))
+
+
+### Bug Fixes
+
+* **gmail:** show the HTML note in the forward confirmation prompt ([#464](https://github.com/chrischall/gogcli-mcp/issues/464)) ([5bf08a6](https://github.com/chrischall/gogcli-mcp/commit/5bf08a6af336f6c6c1b8f6ec0e2f27cfb7681145))
+
+
+### Documentation
+
+* **mint:** add sample prompts for the public catalog ([#461](https://github.com/chrischall/gogcli-mcp/issues/461)) ([92ebb4b](https://github.com/chrischall/gogcli-mcp/commit/92ebb4b7f0f8631f3fbf32b789ffa4e518daa4dc))
+
 ## [4.8.1](https://github.com/chrischall/gogcli-mcp/compare/v4.8.0...v4.8.1) (2026-10-16)
 
 
