@@ -3676,27 +3676,28 @@ export function registerExtraGmailTools(server: McpServer): void {
       cc: z.string().optional().describe('CC recipients (comma-separated)'),
       bcc: z.string().optional().describe('BCC recipients (comma-separated)'),
       note: z.string().optional().describe('Introductory text above the forwarded message'),
+      noteHtml: z.string().optional().describe('Introductory HTML above the forwarded message (gog >= 0.46). Combine with note to give the plain-text part its own wording; any size — a large note is written to a temp file on the gog server rather than inlined into the command line.'),
       from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
       skipAttachments: z.boolean().optional().describe('Do not include original attachments'),
       ...signatureSchema,
       account: accountParam,
       confirmToken: confirmTokenParam,
     }),
-  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, signature, signatureFrom, signatureFile, account, confirmToken }, ctx) => {
+  }, async ({ messageId, to, cc, bcc, note, noteHtml, from, skipAttachments, signature, signatureFrom, signatureFile, account, confirmToken }, ctx) => {
     const sig = { signature, signatureFrom, signatureFile };
     confineSignatureFile(sig);
     const recipients = extractEmails(to, cc, bcc);
     const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.forward', {
       messageId, to, cc, bcc, recipients, recipientCount: recipients.length,
-      noteLength: note?.length ?? 0,
-      notePreview: bodyPreview(note),
+      noteLength: (note ?? noteHtml ?? '').length,
+      notePreview: bodyPreview(note ?? noteHtml),
       skipAttachments: Boolean(skipAttachments),
       attachmentsIncluded: !skipAttachments,
       ...(signaturePreview(sig) ? { signature: signaturePreview(sig) } : {}),
     }, {
       tool: 'gog_gmail_forward',
       account,
-      args: { messageId, to, cc, bcc, note, from, skipAttachments, signature, signatureFrom, signatureFile, account },
+      args: { messageId, to, cc, bcc, note, noteHtml, from, skipAttachments, signature, signatureFrom, signatureFile, account },
       confirmToken,
       // Fallback only: read what is being forwarded, so the user sees whose
       // message and which attachments leave, and phase 2 re-reads it.
@@ -3711,10 +3712,11 @@ export function registerExtraGmailTools(server: McpServer): void {
         const localFiles = attachmentDetails(signatureFile ? [signatureFile] : undefined, undefined);
         return {
           target: messageId,
-          payload: { from: sender, to, cc, bcc, subject, note, attachments, original, signature: Boolean(signature), signatureFrom, localFiles },
+          payload: { from: sender, to, cc, bcc, subject, note, noteHtml, attachments, original, signature: Boolean(signature), signatureFrom, localFiles },
           preview: {
             from: sender, to, cc, bcc, subject,
             body: note,
+            ...(noteHtml ? { noteHtml } : {}),
             ...(signaturePreview(sig) ? { signature: signaturePreview(sig) } : {}),
             forwarding: { messageId, from: original.from, subject: original.subject, date: original.date, messageIdHeader: original.messageIdHeader },
             attachments,
@@ -3728,6 +3730,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (cc) args.push(`--cc=${cc}`);
     if (bcc) args.push(`--bcc=${bcc}`);
     if (note) args.push(payloadArg('note', 'note-file', note));
+    if (noteHtml) args.push(payloadArg('note-html', 'note-html-file', noteHtml, 'html'));
     if (from) args.push(`--from=${from}`);
     if (skipAttachments) args.push('--skip-attachments');
     appendSignatureFlags(args, sig);
@@ -3793,13 +3796,14 @@ export function registerExtraGmailTools(server: McpServer): void {
       cc: z.string().optional().describe('CC recipients (comma-separated)'),
       bcc: z.string().optional().describe('BCC recipients (comma-separated)'),
       note: z.string().optional().describe('Introductory text above the forwarded message'),
+      noteHtml: z.string().optional().describe('Introductory HTML above the forwarded message (gog >= 0.46). Combine with note to give the plain-text part its own wording; any size — a large note is written to a temp file on the gog server rather than inlined into the command line.'),
       from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
       skipAttachments: z.boolean().optional().describe('Do not include original attachments'),
       ...signatureSchema,
       returnFull: draftWriteSchema.returnFull,
       account: accountParam,
     }),
-  }, async ({ messageId, to, cc, bcc, note, from, skipAttachments, signature, signatureFrom, signatureFile, returnFull, account }) => {
+  }, async ({ messageId, to, cc, bcc, note, noteHtml, from, skipAttachments, signature, signatureFrom, signatureFile, returnFull, account }) => {
     const sig = { signature, signatureFrom, signatureFile };
     confineSignatureFile(sig);
     const args: GogArg[] = ['gmail', 'drafts', 'forward', pos(messageId)];
@@ -3807,6 +3811,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (cc) args.push(`--cc=${cc}`);
     if (bcc) args.push(`--bcc=${bcc}`);
     if (note) args.push(payloadArg('note', 'note-file', note));
+    if (noteHtml) args.push(payloadArg('note-html', 'note-html-file', noteHtml, 'html'));
     if (from) args.push(`--from=${from}`);
     if (skipAttachments) args.push('--skip-attachments');
     appendSignatureFlags(args, sig);

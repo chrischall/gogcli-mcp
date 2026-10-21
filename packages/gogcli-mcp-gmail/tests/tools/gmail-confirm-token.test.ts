@@ -247,6 +247,14 @@ describe('gog_gmail_forward — token fallback', () => {
     expect(calls('forward')).toHaveLength(0);
   });
 
+  it('previews an HTML note and binds it: changing it on phase 2 is DRAFT_CHANGED', async () => {
+    vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(META));
+    const first = json(await harness.callTool('gog_gmail_forward', { ...ARGS, noteHtml: '<b>FYI</b>' }));
+    expect(first.preview).toMatchObject({ body: 'FYI — see attached.', noteHtml: '<b>FYI</b>' });
+    expect(json(await harness.callTool('gog_gmail_forward', { ...ARGS, noteHtml: '<b>changed</b>', confirmToken: first.confirmToken }))).toMatchObject({ error: 'DRAFT_CHANGED' });
+    expect(calls('forward')).toHaveLength(0);
+  });
+
   it('previews the signature and binds it: adding one on phase 2 is DRAFT_CHANGED', async () => {
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult(META));
     const first = json(await harness.callTool('gog_gmail_forward', { ...ARGS, signatureFrom: 'alias@example.com' }));
