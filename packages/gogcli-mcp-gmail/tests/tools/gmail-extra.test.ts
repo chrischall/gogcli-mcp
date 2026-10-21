@@ -2273,6 +2273,30 @@ describe('gog_gmail_forward', () => {
     expect(details.attachmentsIncluded).toBe(true);
   });
 
+  it('shows an HTML note beside a plain one in the prompt, so neither is sent unseen', async () => {
+    let request: ElicitRequest | undefined;
+    elicitation = async (value) => {
+      request = value;
+      return { action: 'decline' };
+    };
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', note: 'FYI', noteHtml: '<b>Different</b>' });
+    const details = (JSON.parse(request!.params.message.split('\n').slice(1).join('\n')) as { details: Record<string, unknown> }).details;
+    expect(details.notePreview).toBe('FYI');
+    expect(details.noteHtmlPreview).toBe('<b>Different</b>');
+    expect(details.noteHtmlLength).toBe(16);
+  });
+
+  it('omits the HTML note fields from the prompt when there is no HTML note', async () => {
+    let request: ElicitRequest | undefined;
+    elicitation = async (value) => {
+      request = value;
+      return { action: 'decline' };
+    };
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', note: 'FYI' });
+    const details = (JSON.parse(request!.params.message.split('\n').slice(1).join('\n')) as { details: Record<string, unknown> }).details;
+    expect(details).not.toHaveProperty('noteHtmlPreview');
+  });
+
   it('sends nothing when the user accepts but leaves confirmation false', async () => {
     elicitation = async () => ({ action: 'accept', content: { confirmed: false } });
     const result = await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com' });

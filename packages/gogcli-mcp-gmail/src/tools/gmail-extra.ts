@@ -3691,6 +3691,9 @@ export function registerExtraGmailTools(server: McpServer): void {
       messageId, to, cc, bcc, recipients, recipientCount: recipients.length,
       noteLength: (note ?? noteHtml ?? '').length,
       notePreview: bodyPreview(note ?? noteHtml),
+      // With both, notePreview shows only the plain part; the HTML part can say
+      // something else and must not leave unseen.
+      ...(note && noteHtml ? { noteHtmlLength: noteHtml.length, noteHtmlPreview: bodyPreview(noteHtml) } : {}),
       skipAttachments: Boolean(skipAttachments),
       attachmentsIncluded: !skipAttachments,
       ...(signaturePreview(sig) ? { signature: signaturePreview(sig) } : {}),
