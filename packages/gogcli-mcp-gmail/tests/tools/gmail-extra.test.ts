@@ -2200,6 +2200,35 @@ describe('gog_gmail_forward', () => {
     );
   });
 
+  it('passes an HTML note beside the plain one (gog >= 0.46)', async () => {
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', note: 'FYI', noteHtml: '<b>FYI</b>' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'forward', pos('m1'), '--to=a@b.com', '--note=FYI', '--note-html=<b>FYI</b>'],
+      { account: undefined },
+    );
+  });
+
+  it('delivers a large HTML note as a --note-html-file temp file', async () => {
+    const noteHtml = `<p>${'x'.repeat(lib.PAYLOAD_INLINE_MAX)}</p>`;
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', noteHtml });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'forward', pos('m1'), '--to=a@b.com', { kind: 'file', flag: 'note-html-file', contents: noteHtml, ext: 'html' }],
+      { account: undefined },
+    );
+  });
+
+  it('previews an HTML-only note in the prompt', async () => {
+    let request: ElicitRequest | undefined;
+    elicitation = async (value) => {
+      request = value;
+      return { action: 'decline' };
+    };
+    await harness.callTool('gog_gmail_forward', { messageId: 'm1', to: 'a@b.com', noteHtml: '<b>FYI</b>' });
+    const details = (JSON.parse(request!.params.message.split('\n').slice(1).join('\n')) as { details: Record<string, unknown> }).details;
+    expect(details.notePreview).toBe('<b>FYI</b>');
+    expect(details.noteLength).toBe(10);
+  });
+
   it('omits --skip-attachments when false', async () => {
     await harness.callTool('gog_gmail_forward', {
       messageId: 'm1', to: 'a@b.com', skipAttachments: false,
@@ -2389,6 +2418,14 @@ describe('gog_gmail_drafts_forward', () => {
     await harness.callTool('gog_gmail_drafts_forward', { messageId: 'm1', to: 'a@b.com' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'forward', pos('m1'), '--to=a@b.com'],
+      { account: undefined },
+    );
+  });
+
+  it('passes an HTML note (gog >= 0.46)', async () => {
+    await harness.callTool('gog_gmail_drafts_forward', { messageId: 'm1', noteHtml: '<i>see below</i>' });
+    expect(lib.runOrDiagnose).toHaveBeenCalledWith(
+      ['gmail', 'drafts', 'forward', pos('m1'), '--note-html=<i>see below</i>'],
       { account: undefined },
     );
   });
