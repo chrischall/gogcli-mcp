@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.9.1](https://github.com/chrischall/gogcli-mcp/compare/v4.9.0...v4.9.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **deps:** bump @chrischall/mcp-utils from 3.0.3 to 3.3.1 in the production-dependencies group ([#466](https://github.com/chrischall/gogcli-mcp/issues/466)) ([f8b3421](https://github.com/chrischall/gogcli-mcp/commit/f8b3421a85a796fa3785e52db037f40c0dbb359a))
+* **deps:** bump the production-dependencies group across 1 directory with 2 updates ([#469](https://github.com/chrischall/gogcli-mcp/issues/469)) ([ff1678f](https://github.com/chrischall/gogcli-mcp/commit/ff1678f68cb3ceeb760b54864f7163042b9a818c))
+
 ## [4.9.0](https://github.com/chrischall/gogcli-mcp/compare/v4.8.1...v4.9.0) (2026-10-21)
 
 
