@@ -414,6 +414,10 @@
     {
       "name": "gog_docs_insert_date_chip",
       "description": "Insert a native Google Docs date smart chip."
+    },
+    {
+      "name": "gog_upload_slots",
+      "description": "Get signed upload URLs so a hosted (remote) server can receive files you hold; pass the returned blobKeys to the tool that takes the file"
     }
   ],
   "compatibility": {

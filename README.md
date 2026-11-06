@@ -157,7 +157,13 @@ point exports and downloads there. Widen it deliberately (for example to your ho
 "env": { "GOG_ACCOUNT": "you@gmail.com", "GOG_FILE_ROOTS": "/Users/you/Documents:/Users/you/Downloads" }
 ```
 
-`attachInline` / `content` carry file bytes with the request and are not affected.
+`attachInline` / `content` carry file bytes with the request and are not affected, and neither are `blobKeys`.
+
+On a hosted deployment (mcp-host) none of your local paths exist on the server, so a path that is not there is
+refused with an explanation. Upload the file instead: `gog_upload_slots` returns a signed URL per file, you `PUT`
+the file there (each slot carries a ready `curl`), and pass the returned `blobKeys` to the Gmail send/reply/draft
+tools, `gog_gmail_import`, `gog_chat_messages_send`, `gog_drive_upload`, or the Slides/Docs image tools. Files up to
+25 MiB; each is deleted from the upload store once the call succeeds and kept if it fails.
 
 The escape hatches are bound by the same roots: a path flag passed through `gog_<service>_run` (`--out`,
 `--out-dir`, `--attach`, `--file`, any `--*-file`, an `@file` JSON input) must be inside `GOG_FILE_ROOTS`, and

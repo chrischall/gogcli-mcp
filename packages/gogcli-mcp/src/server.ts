@@ -12,6 +12,7 @@ import { registerGmailTools } from './tools/gmail.js';
 import { registerSheetsTools } from './tools/sheets.js';
 import { registerSlidesTools } from './tools/slides.js';
 import { registerTasksTools } from './tools/tasks.js';
+import { registerUploadTools } from './tools/uploads.js';
 
 // Injected at build time by esbuild --define:GOGCLI_VERSION=... At test runtime
 // the define is not applied, so the fallback branch runs. The injected branch
@@ -37,6 +38,7 @@ export const BASE_TOOL_REGISTRARS: ToolRegistrar[] = [
   registerSheetsTools,
   registerSlidesTools,
   registerTasksTools,
+  registerUploadTools,
 ];
 
 export {
@@ -54,4 +56,5 @@ export {
   registerSheetsTools,
   registerSlidesTools,
   registerTasksTools,
+  registerUploadTools,
 };

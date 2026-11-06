@@ -5,7 +5,7 @@ description: Use when the user asks to read, organize, draft, forward, autoreply
 
 # gogcli-mcp-gmail
 
-Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 61 tools: 8 auth + 4 base Gmail + 49 extra dedicated Gmail tools.
+Extended Gmail MCP server via [gogcli](https://github.com/openclaw/gogcli) — 62 tools: 8 auth + 4 base Gmail + 49 extra dedicated Gmail tools + `gog_upload_slots`.
 
 - **Source:** [github.com/chrischall/gogcli-mcp](https://github.com/chrischall/gogcli-mcp)
 
@@ -137,3 +137,11 @@ authorised actually succeeded — a failed write says so and says nothing was sa
 | `gog_gmail_sendas_verify` | Resend an alias verification email |
 
 Plus 8 auth tools and 4 base Gmail tools (search, get, send, run). Use `gog_gmail_run` for the settings with no dedicated tool (`delegates`, `forwarding`, `watch`) and email tracking (`track`).
+
+## Files on a hosted deployment
+
+When this server is hosted (remote), it cannot read paths on your machine. Call
+`gog_upload_slots` with `files: [{filename}]`, PUT each file to its `uploadUrl`
+with the slot's `curl` command, then pass the returned `blobKeys` to the drafts tools (`gog_gmail_drafts_create`, `_update`, `_reply`, `_reply_all`), `gog_gmail_import`, and the base send/reply tools.
+Files up to 25 MiB; each is deleted from the upload store after the call succeeds
+and kept if it fails. On a local install, pass a path as before.

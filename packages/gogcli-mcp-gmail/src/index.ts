@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { runMcp } from '@chrischall/mcp-utils';
-import { VERSION, authToolsFor, registerGmailTools, bootstrapGogAuth } from '../../gogcli-mcp/src/lib.js';
+import { VERSION, authToolsFor, registerGmailTools, registerUploadTools, bootstrapGogAuth } from '../../gogcli-mcp/src/lib.js';
 import { registerExtraGmailTools } from './tools/gmail-extra.js';
 
 
@@ -10,5 +10,5 @@ await bootstrapGogAuth();
 await runMcp({
   name: 'gogcli-gmail',
   version: VERSION,
-  tools: [authToolsFor('gmail'), registerGmailTools, registerExtraGmailTools],
+  tools: [authToolsFor('gmail'), registerGmailTools, registerExtraGmailTools, registerUploadTools],
 });

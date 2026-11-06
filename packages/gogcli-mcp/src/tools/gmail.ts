@@ -8,7 +8,8 @@ import type { InlineAttachmentInput } from '../attachments.js';
 import { attachmentDetails, attachmentNames, attachmentPreview, bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText, senderPreview } from '../gmail-dispatch-guard.js';
 import { pos } from '../argv.js';
 import { gatedElsewhere, hasCommandWord, hasTrueFlag, refusedInRun } from '../dispatch-confirmation.js';
-import { confinePath, confinePaths } from '../file-roots.js';
+import { confinePath } from '../file-roots.js';
+import { ATTACH_INLINE_ALTERNATIVE, blobKeysParam, confineUploadPaths, readBlobFiles, releaseBlobs, type BlobFile } from '../upload-slots.js';
 
 // gog's signature flags, shared by every compose subcommand that takes them
 // (send, reply, reply-all, forward and the drafts create/update/reply/forward
@@ -61,8 +62,9 @@ export const replySchema = {
   remove: z.array(z.string()).optional().describe('Remove these recipients from all fields (repeatable) — e.g. to drop someone from a reply-all.'),
   subject: z.string().optional().describe('Override reply subject (default: "Re: <original>"). A changed subject starts a NEW Gmail thread.'),
   noQuote: z.boolean().optional().describe('Do not include the original message quoted below the reply (default: the original is quoted)'),
-  attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
+  attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use blobKeys (gog_upload_slots) or, for a small file, attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
   attachInline: attachInlineParam,
+  blobKeys: blobKeysParam,
   from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
   autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
   ...signatureSchema,
@@ -81,6 +83,7 @@ export type ReplyFlags = {
   noQuote?: boolean;
   attach?: string[];
   attachInline?: InlineAttachmentInput[];
+  blobKeys?: string[];
   from?: string;
   autoFromAddressedAlias?: boolean;
 } & SignatureFlags;
@@ -91,12 +94,20 @@ export type ReplyFlags = {
 export function confineReplyPaths(f: Pick<ReplyFlags, 'attach' | 'bodyHtmlFile' | 'signatureFile'>): void {
   // gog's reply/reply-all (and drafts reply/reply-all) declare --attach
   // sep:"none", so a comma here is part of one file name, not a second file.
-  confinePaths(f.attach, 'attach', { commaSeparated: false });
+  confineUploadPaths(f.attach, 'attach', { commaSeparated: false, alternative: ATTACH_INLINE_ALTERNATIVE });
   if (f.bodyHtmlFile) confinePath(f.bodyHtmlFile, 'bodyHtmlFile');
   confineSignatureFile(f);
 }
 
-export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
+/**
+ * `blobs` are the files `f.blobKeys` named, already read by `readBlobFiles` —
+ * read by the caller because it must happen before any confirmation gate (the
+ * gate binds their hashes) and that read is async.
+ */
+export function appendReplyFlags(args: GogArg[], f: ReplyFlags, blobs: readonly BlobFile[] = []): void {
+  // A caller that forgot to read them would otherwise send the mail WITHOUT
+  // the files and report success.
+  if ((f.blobKeys?.length ?? 0) !== blobs.length) throw new Error('internal error: blobKeys were not read before building the gog call.');
   assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
   confineReplyPaths(f);
   if (f.body) args.push(payloadArg('body', 'body-file', f.body));
@@ -116,6 +127,10 @@ export function appendReplyFlags(args: GogArg[], f: ReplyFlags): void {
   // passed so the size check sees the body too, which shares the same budget
   // once payloadArg has turned it into a file arg.
   args.push(...inlineAttachmentArgs('attach', f.attachInline, args));
+  // Uploaded files (blobKeys): same flag, bytes from the upload store. Pushed
+  // AFTER the inline size check — they never ride in the MCP request, so they
+  // do not spend its budget.
+  for (const blob of blobs) args.push(blob.arg);
   if (f.from) args.push(`--from=${f.from}`);
   appendSignatureFlags(args, f);
   // PINNED, not conditional: GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS in the host env
@@ -199,13 +214,14 @@ function replyTokenSubject(
   headers: Record<string, string>,
   threadId: string | undefined,
   flags: ReplyFlags,
+  blobs: readonly BlobFile[],
 ) {
   const removed = new Set(extractEmails(...(flags.remove ?? [])));
   const keep = (emails: string[]) => emails.filter((e) => !removed.has(e));
   const to = keep(extractEmails(headers.from, ...(kind === 'reply-all' ? [headers.to] : []), ...(flags.to ?? [])));
   const cc = keep(extractEmails(...(kind === 'reply-all' ? [headers.cc] : []), ...(flags.cc ?? [])));
   const bcc = keep(extractEmails(...(flags.bcc ?? [])));
-  const attachments = attachmentDetails(flags.attach, flags.attachInline);
+  const attachments = attachmentDetails(flags.attach, flags.attachInline, blobs);
   const subject = flags.subject || (headers.subject ? `Re: ${headers.subject}` : undefined);
   const from = flags.from ?? (flags.autoFromAddressedAlias ? 'the send-as alias the original was addressed to' : senderPreview(account));
   const localFiles = attachmentDetails([flags.bodyHtmlFile, flags.signatureFile].filter((p): p is string => Boolean(p)), undefined);
@@ -248,6 +264,9 @@ async function sendReply(
   ctx: ServerContext,
   confirmToken?: string,
 ) {
+  // Read (never delete) the uploaded files first: the gate binds their hashes,
+  // and gog is handed exactly these bytes.
+  const blobs = await readBlobFiles(flags.blobKeys, 'attach');
   const metaResult = await runOrDiagnose(['gmail', 'get', pos(messageId), '--format=metadata'], { account });
   if (metaResult.isError) return metaResult;
   const metaText = resultText(metaResult);
@@ -262,8 +281,8 @@ async function sendReply(
     bodyLength: (flags.body ?? flags.bodyHtml ?? '').length,
     bodyPreview: bodyPreview(flags.body ?? flags.bodyHtml),
     bodyHtmlFile: flags.bodyHtmlFile,
-    attachmentCount: (flags.attach?.length ?? 0) + (flags.attachInline?.length ?? 0),
-    attachments: attachmentNames(flags.attach, flags.attachInline),
+    attachmentCount: (flags.attach?.length ?? 0) + (flags.attachInline?.length ?? 0) + blobs.length,
+    attachments: attachmentNames(flags.attach, flags.attachInline, blobs),
   }, {
     tool: toolName,
     account,
@@ -272,14 +291,14 @@ async function sendReply(
     confirmToken,
     // The metadata read above IS the phase-2 re-read: it runs on every call,
     // so the original's Message-ID/References are fresh here.
-    subject: () => replyTokenSubject(kind, messageId, account, headers, metadataThreadId(metaText), flags),
+    subject: () => replyTokenSubject(kind, messageId, account, headers, metadataThreadId(metaText), flags, blobs),
   });
   if (confirmation) return confirmation;
   const args: GogArg[] = ['gmail', kind, pos(messageId)];
-  appendReplyFlags(args, flags);
+  appendReplyFlags(args, flags, blobs);
   const result = await runOrDiagnose(args, { account });
   if (!result.isError) logGmailDispatch(toolName, recipients, account);
-  return result;
+  return releaseBlobs(result, blobs);
 }
 
 // What --gmail-no-send does NOT cover (verified on gog 0.41.0): a bulk
@@ -433,11 +452,11 @@ export function registerGmailTools(server: McpServer): void {
     description:
       'SENDS MAIL — asks the MCP host to show a confirmation prompt with the recipients, subject, a preview of the body and the attachment names. '
       + 'Mail is sent only after the user accepts that prompt. '
-      + 'Two ways to attach a file: `attach` takes paths READ ON THE GOG SERVER, and '
-      + '`attachInline` takes the bytes themselves. Use attachInline unless you know the file exists on '
-      + 'the same machine gog runs on — on the hosted connector and any remote deployment there is no '
-      + 'shared filesystem, so no path you can name resolves there and `attach` will fail with '
-      + '"no such file or directory". When either is used, the JSON result echoes the attached filenames '
+      + 'Three ways to attach a file: `attach` takes paths READ ON THE GOG SERVER; `blobKeys` takes files you '
+      + 'uploaded with gog_upload_slots (the way to send a photo or any sizeable file to a hosted server); '
+      + '`attachInline` takes the bytes themselves as base64 (small files). On the hosted connector and any remote '
+      + 'deployment there is no shared filesystem, so no path you can name resolves there and `attach` is refused — '
+      + 'use blobKeys or attachInline. When any is used, the JSON result echoes the attached filenames '
       + 'and byte sizes — check it to confirm the files were embedded. '
       + 'NOT the tool for answering a message: replyToMessageId only files this in the right thread — the '
       + 'subject, recipients and body are entirely yours, and the original is not quoted unless you set '
@@ -453,15 +472,16 @@ export function registerGmailTools(server: McpServer): void {
       replyToMessageId: z.string().optional().describe('Message ID to thread this message against — sets In-Reply-To/References only. It does NOT quote the original (pass quote for that), inherit its recipients, or prefix the subject with "Re:". For an actual reply use gog_gmail_reply.'),
       threadId: z.string().optional().describe('Thread ID to thread this message within. Same caveat as replyToMessageId: threading only, no quote and no inherited subject or recipients.'),
       quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or threadId. gog quotes by DEFAULT on gmail reply but never on gmail send, so without this a threaded send arrives with the original nowhere in it.'),
-      attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
+      attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call is refused — use blobKeys (gog_upload_slots) or, for a small file, attachInline there. Each file is read on the server, base64-encoded with a MIME type inferred from its extension, and added as a multipart attachment. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
       attachInline: attachInlineParam,
+      blobKeys: blobKeysParam,
       ...signatureSchema,
       account: accountParam,
       confirmToken: confirmTokenParam,
     }),
-  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, signature, signatureFrom, signatureFile, account, confirmToken }, ctx) => {
+  }, async ({ to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, blobKeys, signature, signatureFrom, signatureFile, account, confirmToken }, ctx) => {
     const sig = { signature, signatureFrom, signatureFile };
-    confinePaths(attach, 'attach');
+    confineUploadPaths(attach, 'attach', { alternative: ATTACH_INLINE_ALTERNATIVE });
     confineSignatureFile(sig);
     // Built (and validated — inlineAttachmentArgs throws on bad base64 or an
     // oversize file) BEFORE the confirmation request, on both paths: a prompt that
@@ -487,6 +507,10 @@ export function registerGmailTools(server: McpServer): void {
     // file arg once it passes payloadArg's threshold and spends the same budget.
     const inline = inlineAttachmentArgs('attach', attachInline, args);
     args.push(...inline);
+    // Uploaded files: read (not deleted) before the gate, which binds their
+    // hashes; deleted only once gog has sent them.
+    const blobs = await readBlobFiles(blobKeys, 'attach');
+    for (const blob of blobs) args.push(blob.arg);
     appendSignatureFlags(args, sig);
 
     const recipients = extractEmails(to, cc, bcc);
@@ -496,18 +520,18 @@ export function registerGmailTools(server: McpServer): void {
       bodyPreview: bodyPreview(body),
       threaded: Boolean(replyToMessageId || threadId),
       quoting: Boolean(quote),
-      attachmentCount: (attach?.length ?? 0) + (attachInline?.length ?? 0),
-      attachments: attachmentNames(attach, attachInline),
+      attachmentCount: (attach?.length ?? 0) + (attachInline?.length ?? 0) + blobs.length,
+      attachments: attachmentNames(attach, attachInline, blobs),
       ...(signaturePreview(sig) ? { signature: signaturePreview(sig) } : {}),
     }, {
       tool: 'gog_gmail_send',
       account,
-      args: { to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, signature, signatureFrom, signatureFile, account },
+      args: { to, subject, body, cc, bcc, replyToMessageId, threadId, quote, attach, attachInline, blobKeys, signature, signatureFrom, signatureFile, account },
       confirmToken,
       // Nothing is stored between the phases: the payload IS the arguments,
       // so phase 2 must repeat them and any difference is a changed send.
       subject: () => {
-        const attachments = attachmentDetails(attach, attachInline);
+        const attachments = attachmentDetails(attach, attachInline, blobs);
         const from = senderPreview(account);
         // A signature file is hashed like an attachment, so an edit between
         // the phases is a changed send rather than a silent swap.
@@ -532,7 +556,7 @@ export function registerGmailTools(server: McpServer): void {
     if (confirmation) return confirmation;
     const result = await runOrDiagnose(args, { account });
     if (!result.isError) logGmailDispatch('gog_gmail_send', recipients, account);
-    return result;
+    return releaseBlobs(result, blobs);
   });
 
   // ==========================================================================

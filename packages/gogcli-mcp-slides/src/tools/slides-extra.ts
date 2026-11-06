@@ -1,7 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, payloadArg, pos, confinePath } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, payloadArg, pos, confinePath, assertOneFileSource, confineUploadPath, readBlobFiles, releaseBlobs, singleBlobKeyParam } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
+
+const URL_ALTERNATIVE = 'or pass a public HTTPS image `url`';
+const IMAGE_BLOB_NOTE = ' On a hosted deployment, where no path on your machine exists, upload the image with gog_upload_slots and pass blobKeys instead of image.';
 
 // Payload routing note — slides differs from gmail/docs.
 //
@@ -73,34 +76,38 @@ export function registerExtraSlidesTools(server: McpServer): void {
   });
 
   server.registerTool('gog_slides_add_slide', {
-    description: 'Add a new slide to a presentation from a local image, with optional speaker notes.',
+    description: 'Add a new slide to a presentation from an image, with optional speaker notes.' + IMAGE_BLOB_NOTE,
     annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
-      image: z.string().describe('Path to the local image file'),
+      image: z.string().optional().describe('Path to the image file on the gog server (exactly one of image or blobKeys)'),
+      blobKeys: singleBlobKeyParam,
       notes: z.string().optional().describe('Speaker notes text'),
       notesFile: z.string().optional().describe('Path to a file containing speaker notes'),
       before: z.string().optional().describe('Insert before this slide ID (default: append at end)'),
       account: accountParam,
     }),
-  }, async ({ presentationId, image, notes, notesFile, before, account }) => {
-    confinePath(image, 'image');
+  }, async ({ presentationId, image, blobKeys, notes, notesFile, before, account }) => {
+    if (image) confineUploadPath(image, 'image');
     if (notesFile) confinePath(notesFile, 'notesFile');
-    const args: GogArg[] = ['slides', 'add-slide', pos(presentationId), pos(image)];
+    assertOneFileSource({ image, blobKeys });
+    const blobs = await readBlobFiles(blobKeys, 'image', { positional: true });
+    const args: GogArg[] = ['slides', 'add-slide', pos(presentationId), image ? pos(image) : blobs[0]!.arg];
     if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
     if (before) args.push(`--before=${before}`);
-    return runOrDiagnose(args, { account });
+    return releaseBlobs(await runOrDiagnose(args, { account }), blobs);
   });
 
   server.registerTool('gog_slides_insert_image', {
-    description: 'Place an image on an existing slide at a given size and position, from a local file (image) or a public HTTPS URL (url — no Drive upload or sharing required). Unlike gog_slides_add_slide (which creates a new full-bleed image slide), this inserts onto a slide you already have. width is required; omit height to keep aspect ratio when using a local file (gog requires both width and height when using url).',
+    description: 'Place an image on an existing slide at a given size and position, from a local file (image) or a public HTTPS URL (url — no Drive upload or sharing required). Unlike gog_slides_add_slide (which creates a new full-bleed image slide), this inserts onto a slide you already have. width is required; omit height to keep aspect ratio when using a local file (gog requires both width and height when using url).' + IMAGE_BLOB_NOTE,
     annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID (object ID of the target slide)'),
-      image: z.string().optional().describe('Path to the local image file (exactly one of image or url)'),
-      url: z.string().optional().describe('Public HTTPS image URL to insert directly — no Drive upload or sharing (exactly one of image or url). gog requires both width and height with url.'),
+      image: z.string().optional().describe('Path to the image file on the gog server (exactly one of image, url or blobKeys)'),
+      url: z.string().optional().describe('Public HTTPS image URL to insert directly — no Drive upload or sharing (exactly one of image, url or blobKeys). gog requires both width and height with url.'),
+      blobKeys: singleBlobKeyParam,
       width: z.number().describe('Image width, in unit'),
       height: z.number().optional().describe('Image height, in unit; omit to keep the image\'s aspect ratio (required when using url)'),
       x: z.number().optional().describe('Left position of the image, in unit'),
@@ -108,17 +115,20 @@ export function registerExtraSlidesTools(server: McpServer): void {
       unit: z.enum(['PT', 'EMU']).optional().describe('Measurement unit for x/y/width/height (default: PT)'),
       account: accountParam,
     }),
-  }, async ({ presentationId, slideId, image, url, width, height, x, y, unit, account }) => {
-    if (image) confinePath(image, 'image');
+  }, async ({ presentationId, slideId, image, url, blobKeys, width, height, x, y, unit, account }) => {
+    if (image) confineUploadPath(image, 'image', URL_ALTERNATIVE);
+    assertOneFileSource({ image, url, blobKeys });
+    const blobs = await readBlobFiles(blobKeys, 'image', { positional: true });
     const args: GogArg[] = ['slides', 'insert-image', pos(presentationId), pos(slideId)];
     if (image) args.push(pos(image));
+    for (const blob of blobs) args.push(blob.arg);
     args.push(`--width=${width}`);
     if (url) args.push(`--url=${url}`);
     if (height !== undefined) args.push(`--height=${height}`);
     if (x !== undefined) args.push(`--x=${x}`);
     if (y !== undefined) args.push(`--y=${y}`);
     if (unit) args.push(`--unit=${unit}`);
-    return runOrDiagnose(args, { account });
+    return releaseBlobs(await runOrDiagnose(args, { account }), blobs);
   });
 
   server.registerTool('gog_slides_delete_slide', {
@@ -189,26 +199,30 @@ export function registerExtraSlidesTools(server: McpServer): void {
   });
 
   server.registerTool('gog_slides_replace_slide', {
-    description: 'Replace the image content of an existing slide, from a local file (image) or a public HTTPS URL (url — no Drive upload or sharing required), with optional speaker notes.',
+    description: 'Replace the image content of an existing slide, from a file on the gog server (image), an uploaded file (blobKeys) or a public HTTPS URL (url — no Drive upload or sharing required), with optional speaker notes.' + IMAGE_BLOB_NOTE,
     annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       presentationId: z.string().describe('Presentation ID'),
       slideId: z.string().describe('Slide ID to replace'),
-      image: z.string().optional().describe('Path to the new local image file (exactly one of image or url)'),
-      url: z.string().optional().describe('Public HTTPS image URL to use directly — no Drive upload or sharing (exactly one of image or url)'),
+      image: z.string().optional().describe('Path to the new image file on the gog server (exactly one of image, url or blobKeys)'),
+      url: z.string().optional().describe('Public HTTPS image URL to use directly — no Drive upload or sharing (exactly one of image, url or blobKeys)'),
+      blobKeys: singleBlobKeyParam,
       notes: z.string().optional().describe('Speaker notes text'),
       notesFile: z.string().optional().describe('Path to a file containing speaker notes'),
       account: accountParam,
     }),
-  }, async ({ presentationId, slideId, image, url, notes, notesFile, account }) => {
-    if (image) confinePath(image, 'image');
+  }, async ({ presentationId, slideId, image, url, blobKeys, notes, notesFile, account }) => {
+    if (image) confineUploadPath(image, 'image', URL_ALTERNATIVE);
     if (notesFile) confinePath(notesFile, 'notesFile');
+    assertOneFileSource({ image, url, blobKeys });
+    const blobs = await readBlobFiles(blobKeys, 'image', { positional: true });
     const args: GogArg[] = ['slides', 'replace-slide', pos(presentationId), pos(slideId)];
     if (image) args.push(pos(image));
+    for (const blob of blobs) args.push(blob.arg);
     if (url) args.push(`--url=${url}`);
     if (notes) args.push(payloadArg('notes', 'notes-file', notes));
     if (notesFile) args.push(`--notes-file=${notesFile}`);
-    return runOrDiagnose(args, { account });
+    return releaseBlobs(await runOrDiagnose(args, { account }), blobs);
   });
 
   // --- gog 0.29 reads ---

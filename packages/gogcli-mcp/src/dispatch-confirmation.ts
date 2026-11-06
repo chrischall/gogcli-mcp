@@ -44,8 +44,9 @@ export function bodyPreview(text: string | undefined): string | undefined {
 export function attachmentNames(
   paths: readonly string[] | undefined,
   inline: ReadonlyArray<{ filename: string }> | undefined,
+  blobs: ReadonlyArray<{ filename: string }> = [],
 ): string[] {
-  return [...(paths ?? []), ...(inline ?? []).map((a) => a.filename)];
+  return [...(paths ?? []), ...(inline ?? []).map((a) => a.filename), ...blobs.map((b) => b.filename)];
 }
 
 /** One attachment as the fallback preview shows it and its hash binds it. */
@@ -61,6 +62,7 @@ export type AttachmentDetail = { name: string; size: number | null; sha256?: str
 export function attachmentDetails(
   paths: readonly string[] | undefined,
   inline: ReadonlyArray<{ filename: string; contentBase64: string }> | undefined,
+  blobs: ReadonlyArray<{ filename: string; size: number; sha256: string }> = [],
 ): AttachmentDetail[] {
   const out: AttachmentDetail[] = [];
   for (const path of paths ?? []) {
@@ -81,6 +83,9 @@ export function attachmentDetails(
       sha256: createHash('sha256').update(a.contentBase64).digest('hex'),
     });
   }
+  // Uploaded files (blobKeys) were read once, before the gate; their hash is of
+  // those exact bytes, so a re-PUT between the phases is a changed payload.
+  for (const b of blobs) out.push({ name: b.filename, size: b.size, sha256: b.sha256 });
   return out;
 }
 

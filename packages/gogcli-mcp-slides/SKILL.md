@@ -50,3 +50,11 @@ Extended Google Slides MCP server via [gogcli](https://github.com/openclaw/gogcl
 | `gog_slides_replace_slide` | Replace the image on an existing slide |
 
 Plus 5 auth tools and `gog_slides_run` for anything not covered.
+
+## Files on a hosted deployment
+
+When this server is hosted (remote), it cannot read paths on your machine. Call
+`gog_upload_slots` with `files: [{filename}]`, PUT each file to its `uploadUrl`
+with the slot's `curl` command, then pass the returned `blobKeys` to `gog_slides_add_slide`, `gog_slides_insert_image` and `gog_slides_replace_slide` (instead of `image`).
+Files up to 25 MiB; each is deleted from the upload store after the call succeeds
+and kept if it fails. On a local install, pass a path as before.

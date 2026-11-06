@@ -46,7 +46,7 @@ claude mcp add gogcli-slides -- gogcli-mcp-slides
 
 ## Slides Tools
 
-The package registers **55** tools: 40 Slides authoring tools, 7 base Slides tools, and 8 auth tools. The table below covers the most-used; `manifest.json` lists every one.
+The package registers **56** tools: 40 Slides authoring tools, 7 base Slides tools, 8 auth tools, and `gog_upload_slots`. The table below covers the most-used; `manifest.json` lists every one.
 
 | Tool | Description |
 |------|-------------|
@@ -64,6 +64,14 @@ The package registers **55** tools: 40 Slides authoring tools, 7 base Slides too
 | `gog_slides_read_slide` | Read the content of a slide |
 | `gog_slides_update_notes` | Update speaker notes on a slide |
 | `gog_slides_replace_slide` | Replace the image content of an existing slide |
+
+## Files on a hosted deployment
+
+When this server is hosted (remote), it cannot read paths on your machine. Call
+`gog_upload_slots` with `files: [{filename}]`, PUT each file to its `uploadUrl`
+with the slot's `curl` command, then pass the returned `blobKeys` to `gog_slides_add_slide`, `gog_slides_insert_image` and `gog_slides_replace_slide` (instead of `image`).
+Files up to 25 MiB; each is deleted from the upload store after the call succeeds
+and kept if it fails. On a local install, pass a path as before.
 
 ## License
 

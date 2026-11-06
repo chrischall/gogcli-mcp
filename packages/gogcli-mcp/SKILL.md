@@ -32,7 +32,7 @@ MCP server wrapping [gogcli](https://github.com/openclaw/gogcli) — provides Cl
 
 `GOG_ACCOUNT` is optional — omit it to use gogcli's configured default account.
 
-## Tools (115)
+## Tools (116)
 
 | Service | Tools |
 |---------|-------|
@@ -49,5 +49,15 @@ MCP server wrapping [gogcli](https://github.com/openclaw/gogcli) — provides Cl
 | **Contacts** (5) | search, list, get, create, run |
 | **API** (3) | list, describe, call |
 | **Auth** (8) | list, status, health, services, add, add-url, add-complete, run |
+| **Upload** (1) | slots — signed upload URLs for files you hold, on a hosted deployment |
 
 All tools accept an optional `account` parameter to override the default Google account for that call.
+
+## Files on a hosted deployment
+
+When this server is hosted (remote), no path on your machine exists on it. To attach or
+upload a file you hold: call `gog_upload_slots` with `files: [{filename}]`, run each
+slot's `curl` to PUT the file, then pass the returned `blobKeys` to the tool
+(`gog_gmail_send`, `gog_gmail_reply`, `gog_gmail_reply_all`, `gog_chat_messages_send`).
+Files up to 25 MiB; each is deleted after the call succeeds and kept if it fails.
+For a small file, `attachInline` (base64) also works.
