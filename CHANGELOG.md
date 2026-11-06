@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.10.0](https://github.com/chrischall/gogcli-mcp/compare/v4.9.1...v4.10.0) (2026-11-06)
+
+
+### Features
+
+* **uploads:** send files from hosted sessions via upload slots and blobKeys ([#470](https://github.com/chrischall/gogcli-mcp/issues/470)) ([5619644](https://github.com/chrischall/gogcli-mcp/commit/5619644a73a2564e961386814bf38084c8edd105))
+
 ## [4.9.1](https://github.com/chrischall/gogcli-mcp/compare/v4.9.0...v4.9.1) (2026-11-01)
 
 
