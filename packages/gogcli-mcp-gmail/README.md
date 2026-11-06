@@ -218,6 +218,14 @@ with the mailbox), and **zero** when the param is absent. A refusal spends that 
 
 Email tracking (`track`) and the remaining admin settings (`delegates`, `forwarding`, `watch`) have no dedicated tool — reach them through the base `gog_gmail_run` escape hatch.
 
+## Files on a hosted deployment
+
+When this server is hosted (remote), it cannot read paths on your machine. Call
+`gog_upload_slots` with `files: [{filename}]`, PUT each file to its `uploadUrl`
+with the slot's `curl` command, then pass the returned `blobKeys` to the drafts tools (`gog_gmail_drafts_create`, `_update`, `_reply`, `_reply_all`), `gog_gmail_import`, and the base send/reply tools.
+Files up to 25 MiB; each is deleted from the upload store after the call succeeds
+and kept if it fails. On a local install, pass a path as before.
+
 ## License
 
 MIT

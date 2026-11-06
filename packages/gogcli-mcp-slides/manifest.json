@@ -304,6 +304,10 @@
     {
       "name": "gog_slides_run",
       "description": "Run any gog slides subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_upload_slots",
+      "description": "Get signed upload URLs so a hosted (remote) server can receive files you hold; pass the returned blobKeys to the tool that takes the file"
     }
   ],
   "compatibility": {

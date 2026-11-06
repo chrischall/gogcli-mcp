@@ -550,6 +550,10 @@
     {
       "name": "gog_appscript_run",
       "description": "Run any gog appscript subcommand not covered by the other tools"
+    },
+    {
+      "name": "gog_upload_slots",
+      "description": "Get signed upload URLs so a hosted (remote) server can receive files you hold; pass the returned blobKeys to the tool that takes the file"
     }
   ],
   "compatibility": {

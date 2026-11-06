@@ -137,14 +137,14 @@ describe('gog_drive_upload', () => {
     it('rejects supplying BOTH localPath and content — never a precedence rule', async () => {
       const result = await harness.callTool('gog_drive_upload', { localPath: '/tmp/x.png', content: PNG, name: 'x.png' });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/Pass exactly one of localPath or content/);
+      expect(result.content[0].text).toMatch(/Pass exactly one of localPath, content or blobKeys/);
       expect(lib.runOrDiagnose).not.toHaveBeenCalled();
     });
 
     it('rejects supplying NEITHER localPath nor content', async () => {
       const result = await harness.callTool('gog_drive_upload', { name: 'x.png' });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/Pass exactly one of localPath or content/);
+      expect(result.content[0].text).toMatch(/Pass exactly one of localPath, content or blobKeys/);
       expect(lib.runOrDiagnose).not.toHaveBeenCalled();
     });
 

@@ -169,6 +169,46 @@ otherwise "every input was inside its own documented limit" can still add up to
 an over-budget request. Each payload is materialized into its **own** numbered subdirectory, so
 repeated `--attach` with colliding basenames is safe.
 
+### Hosted uploads (`src/upload-slots.ts`, `gog_upload_slots`)
+
+`attachInline` caps at 8 MiB and rides in the MCP request, which mcp-host caps
+at ~9.9 MiB; it cannot carry a batch of photos. The slot route takes the bytes
+out of the request: `gog_upload_slots` (`src/tools/uploads.ts`, registered in
+the base list and in the gmail/drive/slides/docs packages) mints signed PUT
+URLs with mcp-utils' `mintUploadSlot`, the caller `curl`s each file, and the
+file-taking tool's `blobKeys` param turns each key into a base64 `GogFileArg`
+under the slot's filename, so the existing temp-file seam hands gog a plain
+path. Only keys of the `uploads/<uuid>/<name>` shape are accepted
+(`uploadFileNameFromKey`), so `blobKeys` cannot point at a download object.
+
+- **Deletion is `get` → run → `delete`, never `consume`.** `readBlobFiles`
+  reads every blob BEFORE any confirmation gate (the gate binds each blob's
+  SHA-256 through `attachmentDetails`' third argument), and `releaseBlobs`
+  deletes them only when the gog result is not `isError`. On failure the blobs
+  are kept and the result says the keys can be reused; a failed delete is a
+  `WARNING` content block beside the success, never an error (the write
+  happened; a retry would duplicate it). The token fallback's phase 1 therefore
+  deletes nothing, and a blob re-PUT before phase 2 changes the payload hash
+  and is refused as `DRAFT_CHANGED`.
+- **Blob args go after `inlineAttachmentArgs`.** They never ride in the MCP
+  request, so they must not count against its wire budget. `appendReplyFlags`
+  and the drafts' `appendDraftFlags` take the already-read `BlobFile[]` as an
+  argument (the read is async; the builders are sync).
+- **25 MiB per file** (`MAX_BLOB_FILE_BYTES`): Gmail's message ceiling, the
+  fleet upload cap, and a bound on child memory (bytes + base64 held at once).
+- **Hosted detection** is `isHostedDeployment()`: `MCP_DATA_DIR` (every gog
+  registration uses `--data-dir`) or the blob env `blob-urls.ts` already reads.
+  `confineUploadPath(s)` wraps `confinePath(s)` for the binary inputs (attach,
+  `drive upload` localPath, `gmail import` file, Slides `image`, Docs `file`):
+  locally identical; hosted, a path outside the roots or not on disk is refused
+  with the slot route instead of a confinement error or gog's ENOENT, while a
+  file that really is on the server (one gog downloaded there) still passes.
+- The signed DOWNLOAD URLs (`blob-urls.ts`, `blob-upload.ts`) predate mcp-utils'
+  `BlobStore` and are a separate implementation of the same signing; not yet
+  migrated.
+- A new hosted tool is withheld by each registration's `enabledTools` until
+  `npm run sync:mcp-host-tools` runs after the follow (see Hosted registrations).
+
 Every gog response passes through `normalizeTimestamps` (`src/timestamps.ts`) on the `runOrDiagnose` seam, which rewrites allowlisted timestamp fields to ISO-8601 with an explicit offset and adds a `<field>Display` sibling. Both the key and the value shape must match before anything is rewritten — a name-only match would corrupt spreadsheet cell data. See [`docs/timestamps.md`](docs/timestamps.md).
 
 ### Response whitespace

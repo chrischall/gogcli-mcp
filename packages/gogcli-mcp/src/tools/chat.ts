@@ -9,8 +9,8 @@ import {
 } from './utils.js';
 import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
+import { ATTACH_INLINE_ALTERNATIVE, blobKeysParam, confineUploadPaths, readBlobFiles, releaseBlobs } from '../upload-slots.js';
 import { pos } from '../argv.js';
-import { confinePaths } from '../file-roots.js';
 import {
   attachmentDetails,
   attachmentNames,
@@ -252,15 +252,16 @@ export function registerChatTools(server: McpServer): void {
       thread: threadParam,
       attach: z.array(z.string()).optional().describe(
         'Attachment file paths, read WHERE GOG RUNS. On a hosted or remote deployment that is not your machine — use '
-        + 'attachInline there instead. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).',
+        + 'blobKeys (gog_upload_slots) or, for a small file, attachInline there instead. Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).',
       ),
       attachInline: attachInlineParam,
+      blobKeys: blobKeysParam,
       account: accountParam,
       confirmToken: confirmTokenParam,
     }),
-  }, async ({ space, text, thread, attach, attachInline, account, confirmToken }, ctx) => {
-    confinePaths(attach, 'attach');
-    if (text === undefined && !attach?.length && !attachInline?.length) {
+  }, async ({ space, text, thread, attach, attachInline, blobKeys, account, confirmToken }, ctx) => {
+    confineUploadPaths(attach, 'attach', { alternative: ATTACH_INLINE_ALTERNATIVE });
+    if (text === undefined && !attach?.length && !attachInline?.length && !blobKeys?.length) {
       throw new Error('A Chat message needs text, an attachment, or both.');
     }
     const args: GogArg[] = ['chat', 'messages', 'send', pos(space)];
@@ -271,17 +272,21 @@ export function registerChatTools(server: McpServer): void {
     // a temp file beside gog. `args` is passed so the size check sees the whole
     // request, not just the attachments.
     args.push(...inlineAttachmentArgs('attach', attachInline, args));
+    // Uploaded files: read (not deleted) before the gate, which binds their
+    // hashes; deleted only once gog has posted them.
+    const blobs = await readBlobFiles(blobKeys, 'attach');
+    for (const blob of blobs) args.push(blob.arg);
     const confirmation = await requireDispatchConfirmation(ctx, {
       ...CHAT_CONFIRM,
       action: 'chat.message-send',
-      details: { space, thread, textPreview: bodyPreview(text), attachments: attachmentNames(attach, attachInline) },
+      details: { space, thread, textPreview: bodyPreview(text), attachments: attachmentNames(attach, attachInline, blobs) },
       fallback: {
-        args: { space, text, thread, attach, attachInline, account },
+        args: { space, text, thread, attach, attachInline, blobKeys, account },
         tool: 'gog_chat_messages_send',
         account,
         confirmToken,
         subject: () => {
-          const attachments = attachmentDetails(attach, attachInline);
+          const attachments = attachmentDetails(attach, attachInline, blobs);
           const from = senderPreview(account);
           return {
             target: space,
@@ -292,7 +297,7 @@ export function registerChatTools(server: McpServer): void {
       },
     });
     if (confirmation) return confirmation;
-    return runOrDiagnose(args, { account });
+    return releaseBlobs(await runOrDiagnose(args, { account }), blobs);
   });
 
   server.registerTool('gog_chat_dm_send', {

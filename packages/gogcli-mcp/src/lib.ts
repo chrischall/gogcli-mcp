@@ -15,6 +15,7 @@ export {
   registerSheetsTools,
   registerSlidesTools,
   registerTasksTools,
+  registerUploadTools,
 } from './server.js';
 // The reply/reply-all schema and flag builder live in the base package so the
 // gmail sub-package's draft-side twins reuse ONE definition — registering the
@@ -78,6 +79,22 @@ export {
   MAX_REQUEST_PAYLOAD_WIRE_BYTES,
 } from './attachments.js';
 export type { InlineAttachmentInput } from './attachments.js';
+// Upload slots — a hosted caller PUTs a file to a signed URL and passes the
+// blobKey; see src/upload-slots.ts.
+export {
+  ATTACH_INLINE_ALTERNATIVE,
+  assertOneFileSource,
+  blobKeysParam,
+  confineUploadPath,
+  confineUploadPaths,
+  isHostedDeployment,
+  MAX_BLOB_FILE_BYTES,
+  readBlobFiles,
+  releaseBlobs,
+  singleBlobKeyParam,
+  UPLOAD_SLOTS_TOOL,
+} from './upload-slots.js';
+export type { BlobFile } from './upload-slots.js';
 export {
   PAYLOAD_INLINE_MAX,
   payloadArg,

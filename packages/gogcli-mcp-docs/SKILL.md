@@ -62,3 +62,11 @@ Three bugs in gogcli's upstream markdown→Docs converter to be aware of:
 - **3+ tables in one call** reorders the trailing punctuation of the paragraph before the 3rd table — split into multiple calls with ≤2 tables each ([openclaw/gogcli#607](https://github.com/openclaw/gogcli/issues/607)).
 - **Inline `**bold**` / `*italic*` / `` `code` `` inside table cells** renders as literal characters — insert plain cell text, then apply formatting via `gog_docs_format` ([openclaw/gogcli#608](https://github.com/openclaw/gogcli/issues/608)).
 - **Empty-header tables** leak the last data row as literal pipe text — always supply a non-empty header row ([openclaw/gogcli#609](https://github.com/openclaw/gogcli/issues/609)).
+
+## Files on a hosted deployment
+
+When this server is hosted (remote), it cannot read paths on your machine. Call
+`gog_upload_slots` with `files: [{filename}]`, PUT each file to its `uploadUrl`
+with the slot's `curl` command, then pass the returned `blobKeys` to `gog_docs_insert_image` and `gog_docs_replace_image` (instead of `file`).
+Files up to 25 MiB; each is deleted from the upload store after the call succeeds
+and kept if it fails. On a local install, pass a path as before.

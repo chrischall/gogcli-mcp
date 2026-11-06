@@ -2,8 +2,8 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
-import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, signatureSchema, appendSignatureFlags, confineSignatureFile, signaturePreview, attachmentDetails, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, senderPreview, requireDispatchConfirmation, parseMetadataHeaders, pos, confinePath, confinePaths, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
-import type { GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome, SignatureFlags } from '../../../gogcli-mcp/src/lib.js';
+import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, signatureSchema, appendSignatureFlags, confineSignatureFile, signaturePreview, attachmentDetails, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, ATTACH_INLINE_ALTERNATIVE, assertOneFileSource, blobKeysParam, confineUploadPath, confineUploadPaths, readBlobFiles, releaseBlobs, singleBlobKeyParam, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, senderPreview, requireDispatchConfirmation, parseMetadataHeaders, pos, confinePath, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
+import type { BlobFile, GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome, SignatureFlags } from '../../../gogcli-mcp/src/lib.js';
 
 // How many messages a forced batch delete names in its prompt; every id is still bound.
 export const BATCH_DELETE_PREVIEW_MAX = 25;
@@ -3322,8 +3322,9 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyTo: z.string().optional().describe('Reply-To header address'),
     quote: z.boolean().optional().describe('Include the original message quoted below the body. Requires replyToMessageId or replyToThreadId. DEFAULTS OFF: a draft created with a reply target but without this threads correctly and still reads as a brand-new message, because gog only quotes by default on its reply subcommands. For a real reply draft prefer gog_gmail_drafts_reply / gog_gmail_drafts_reply_all, which also inherit the recipients and the "Re:" subject that this tool leaves to you.'),
     replyAll: z.boolean().optional().describe('Auto-populate recipients from the original message (reply-all), inferring To/Cc from it. Requires replyToMessageId or replyToThreadId. Explicit to/cc/bcc still apply on top; omitRecipients still suppresses them.'),
-    attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach REPLACES the draft\'s existing attachments; omitting it preserves them (use clearAttachments to remove all). Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
+    attach: z.array(z.string()).optional().describe('File paths to attach (repeatable), resolved ON THE GOG SERVER\'s filesystem — NOT this client\'s. Only usable when gog runs on the same machine you do (local stdio); on a hosted deployment (e.g. mcp-host) these paths do not exist and the call fails with "no such file or directory" — use blobKeys (gog_upload_slots) or, for a small file, attachInline there. Read on the server, base64-encoded with a MIME type inferred from the extension. The JSON result echoes attached filenames and byte sizes — check it to confirm the files were found and embedded. On gog_gmail_drafts_update, supplying attach / attachInline / blobKeys REPLACES the draft\'s existing attachments; omitting all three preserves them (use clearAttachments to remove all). Must be inside the server\'s GOG_FILE_ROOTS directories (default ~/gogcli-mcp-files).'),
     attachInline: attachInlineParam,
+    blobKeys: blobKeysParam,
     from: z.string().optional().describe('Send from this email address (must be a verified send-as alias)'),
     autoFromAddressedAlias: z.boolean().optional().describe('When from is omitted, send from the verified send-as alias the original message was addressed TO, instead of the account\'s primary address — so a reply to mail sent to an alias goes back out from that alias. Ignored when from is set.'),
     omitRecipients: z.boolean().optional().describe('Create the draft with no recipients even if to/cc/bcc are supplied — an accidental-send guard. Populate recipients in a later update before sending.'),
@@ -3347,15 +3348,20 @@ export function registerExtraGmailTools(server: McpServer): void {
     replyAll?: boolean;
     attach?: string[];
     attachInline?: InlineAttachmentInput[];
+    blobKeys?: string[];
     from?: string;
     autoFromAddressedAlias?: boolean;
     omitRecipients?: boolean;
   } & SignatureFlags;
 
-  function appendDraftFlags(args: GogArg[], f: DraftFlags): void {
+  // `blobs` are the files f.blobKeys named, already read by readBlobFiles (async,
+  // so the caller does it). REQUIRED, not defaulted: a caller that forgot to
+  // read them would save the draft without the files and report success.
+  function appendDraftFlags(args: GogArg[], f: DraftFlags, blobs: readonly BlobFile[]): void {
     assertNotBoth('bodyHtml', 'bodyHtmlFile', f.bodyHtml, f.bodyHtmlFile);
     // Server paths are read on the gog host and mailed out: confined (SEC-3).
-    confinePaths(f.attach, 'attach');
+    // On a hosted deployment a path that is not there says so, and names blobKeys.
+    confineUploadPaths(f.attach, 'attach', { alternative: ATTACH_INLINE_ALTERNATIVE });
     if (f.bodyHtmlFile) confinePath(f.bodyHtmlFile, 'bodyHtmlFile');
     confineSignatureFile(f);
     // `!== undefined`, not truthiness: since gog 0.44 `drafts update` keeps an
@@ -3388,6 +3394,9 @@ export function registerExtraGmailTools(server: McpServer): void {
     // not share a filesystem (a hosted deployment such as mcp-host).
     // `args` is passed so the size check sees the body, which shares the budget.
     args.push(...inlineAttachmentArgs('attach', f.attachInline, args));
+    // Uploaded files (blobKeys): same flag, bytes from the upload store, outside
+    // the request budget the inline check enforces.
+    for (const blob of blobs) args.push(blob.arg);
     if (f.from) args.push(`--from=${f.from}`);
     appendSignatureFlags(args, f);
     // PINNED, not conditional: GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS in the host env
@@ -3492,9 +3501,11 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object(draftWriteSchema),
   }, async ({ account, returnFull, ...flags }) => {
+    const blobs = await readBlobFiles(flags.blobKeys, 'attach');
     const args: GogArg[] = ['gmail', 'drafts', 'create'];
-    appendDraftFlags(args, flags);
-    return writeDraft(args, account, returnFull);
+    appendDraftFlags(args, flags, blobs);
+    // Uploaded files are deleted only once the draft holds them.
+    return releaseBlobs(await writeDraft(args, account, returnFull), blobs);
   });
 
   server.registerTool('gog_gmail_drafts_update', {
@@ -3541,8 +3552,9 @@ export function registerExtraGmailTools(server: McpServer): void {
       if (check.status !== 'clean' && !acceptContentLoss) return contentLossRefusal(draftId, check);
       overridden = check.status !== 'clean';
     }
+    const blobs = await readBlobFiles(flags.blobKeys, 'attach');
     const args: GogArg[] = ['gmail', 'drafts', 'update', pos(draftId)];
-    appendDraftFlags(args, flags);
+    appendDraftFlags(args, flags, blobs);
     if (clearAttachments) args.push('--clear-attachments');
     if (clearReplyContext) args.push('--clear-reply-context');
     const intent = threadingIntentOf({ ...flags, clearReplyContext });
@@ -3574,7 +3586,7 @@ export function registerExtraGmailTools(server: McpServer): void {
             `only the body you passed, and the lines listed above exist only in draft ${check.siblingDraftId}.`,
         };
     }
-    return check ? withContentLossCheck(reported, check) : reported;
+    return releaseBlobs(check ? withContentLossCheck(reported, check) : reported, blobs);
   });
 
   server.registerTool('gog_gmail_drafts_delete', {
@@ -3639,27 +3651,30 @@ export function registerExtraGmailTools(server: McpServer): void {
       'leaves the account, and the message keeps its own From/Date/Message-Id headers so it files where it ' +
       'belongs chronologically. Use it to restore an exported message or to file a .eml under a label; to ' +
       'actually send mail use gog_gmail_send, and to stage one use gog_gmail_drafts_create. The file is read on ' +
-      'the gog SERVER, not your machine.',
+      'the gog SERVER, not your machine — on a hosted deployment upload it with gog_upload_slots and pass blobKeys instead.',
     annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
-      file: z.string().describe('Path to an RFC822/EML file that ALREADY EXISTS on the gog server. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out.'),
+      file: z.string().optional().describe('Path to an RFC822/EML file that ALREADY EXISTS on the gog server (exactly one of file or blobKeys). gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out.'),
+      blobKeys: singleBlobKeyParam,
       labels: z.array(z.string()).optional().describe('Labels to apply to the imported message (repeatable). Each may be a label ID or a label name — names are resolved server-side. A name containing a COMMA cannot be passed here: gog declares --label as a Kong slice with no separator override, so Kong splits each value on commas and "Clients, Inc" is looked up as two labels ("Clients" and "Inc") and fails. Use that label\'s ID instead — ids never contain a comma; gog_gmail_labels_list gives you one.'),
       internalDateSource: z.enum(['dateHeader', 'receivedTime']).optional().describe('Which clock sets Gmail\'s internal date: dateHeader (gog default — the message\'s own Date header, so it sorts into the mailbox at its original time) or receivedTime (now).'),
       neverMarkSpam: z.boolean().optional().describe('Never classify the imported message as spam.'),
       processForCalendar: z.boolean().optional().describe('Process calendar invitations inside the imported message — this can ADD EVENTS to your calendar.'),
       account: accountParam,
     }),
-  }, async ({ file, labels, internalDateSource, neverMarkSpam, processForCalendar, account }) => {
-    confinePath(file, 'file');
+  }, async ({ file, blobKeys, labels, internalDateSource, neverMarkSpam, processForCalendar, account }) => {
+    if (file !== undefined) confineUploadPath(file, 'file');
+    assertOneFileSource({ file, blobKeys });
+    const blobs = await readBlobFiles(blobKeys, 'file', { positional: true });
     // Not gated: gogcli's internal/cmd/gmail_import.go has no confirmDestructive /
     // dryRunAndConfirmDestructive call site (checked at upstream v0.35.0, and a live
     // `--dry-run` against a v0.35.0 build proceeds), so no --force is appended.
-    const args: GogArg[] = ['gmail', 'import', pos(file)];
+    const args: GogArg[] = ['gmail', 'import', file !== undefined ? pos(file) : blobs[0]!.arg];
     if (labels) for (const label of labels) args.push(`--label=${label}`);
     if (internalDateSource) args.push(`--internal-date-source=${internalDateSource}`);
     if (neverMarkSpam) args.push('--never-mark-spam');
     if (processForCalendar) args.push('--process-for-calendar');
-    return runOrDiagnose(args, { account });
+    return releaseBlobs(await runOrDiagnose(args, { account }), blobs);
   });
 
   server.registerTool('gog_gmail_forward', {
@@ -3768,9 +3783,10 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({ ...replySchema, returnFull: draftWriteSchema.returnFull }),
   }, async ({ messageId, account, returnFull, ...flags }) => {
+    const blobs = await readBlobFiles(flags.blobKeys, 'attach');
     const args: GogArg[] = ['gmail', 'drafts', 'reply', pos(messageId)];
-    appendReplyFlags(args, flags);
-    return writeDraft(args, account, returnFull);
+    appendReplyFlags(args, flags, blobs);
+    return releaseBlobs(await writeDraft(args, account, returnFull), blobs);
   });
 
   server.registerTool('gog_gmail_drafts_reply_all', {
@@ -3781,9 +3797,10 @@ export function registerExtraGmailTools(server: McpServer): void {
     annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object({ ...replySchema, returnFull: draftWriteSchema.returnFull }),
   }, async ({ messageId, account, returnFull, ...flags }) => {
+    const blobs = await readBlobFiles(flags.blobKeys, 'attach');
     const args: GogArg[] = ['gmail', 'drafts', 'reply-all', pos(messageId)];
-    appendReplyFlags(args, flags);
-    return writeDraft(args, account, returnFull);
+    appendReplyFlags(args, flags, blobs);
+    return releaseBlobs(await writeDraft(args, account, returnFull), blobs);
   });
 
   server.registerTool('gog_gmail_drafts_forward', {

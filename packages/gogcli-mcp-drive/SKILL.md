@@ -50,3 +50,11 @@ Extended Google Drive MCP server via [gogcli](https://github.com/openclaw/gogcli
 | `gog_drive_comments_reply` | Reply to a comment |
 
 Plus 5 auth tools and 9 base Drive tools (ls, search, get, mkdir, rename, move, delete, share, run).
+
+## Files on a hosted deployment
+
+When this server is hosted (remote), it cannot read paths on your machine. Call
+`gog_upload_slots` with `files: [{filename}]`, PUT each file to its `uploadUrl`
+with the slot's `curl` command, then pass the returned `blobKeys` to `gog_drive_upload` (instead of `localPath` or `content`).
+Files up to 25 MiB; each is deleted from the upload store after the call succeeds
+and kept if it fails. On a local install, pass a path as before.

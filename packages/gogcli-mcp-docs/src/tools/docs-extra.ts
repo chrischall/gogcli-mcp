@@ -8,6 +8,11 @@ import {
   payloadArg,
   pos,
   confinePath,
+  assertOneFileSource,
+  confineUploadPath,
+  readBlobFiles,
+  releaseBlobs,
+  singleBlobKeyParam,
   bodyPreview,
   commentMentions,
   commentSnapshot,
@@ -17,6 +22,9 @@ import {
   resultText,
 } from '../../../gogcli-mcp/src/lib.js';
 import type { GogArg } from '../../../gogcli-mcp/src/lib.js';
+
+const URL_ALTERNATIVE = 'or pass a public HTTPS image `url`';
+const IMAGE_BLOB_NOTE = ' On a hosted deployment, where no path on your machine exists, upload the image with gog_upload_slots and pass blobKeys instead of file.';
 
 /** A Doc's title from `gog docs info`, for a comment's prompt. Unreadable output names nothing. */
 export function docTitle(raw: string): string | undefined {
@@ -1135,12 +1143,13 @@ export function registerExtraDocsTools(server: McpServer): void {
   });
 
   server.registerTool('gog_docs_insert_image', {
-    description: 'Insert an image into a Google Doc from a local file or a public HTTPS URL. file: uploaded to Drive, temporarily shared so Docs can fetch it, inserted, then the public permission is revoked. url: inserted directly with no Drive upload or temporary sharing. Replaces placeholder text (at) or appends at end-of-doc.',
+    description: 'Insert an image into a Google Doc from a local file or a public HTTPS URL. file: uploaded to Drive, temporarily shared so Docs can fetch it, inserted, then the public permission is revoked. url: inserted directly with no Drive upload or temporary sharing. Replaces placeholder text (at) or appends at end-of-doc.' + IMAGE_BLOB_NOTE,
     annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
-      file: z.string().optional().describe('Local PNG, JPEG, or GIF image to upload and insert (exactly one of file or url)'),
-      url: z.string().optional().describe('Public HTTPS image URL to insert directly — no Drive upload or temporary public sharing (exactly one of file or url)'),
+      file: z.string().optional().describe('PNG, JPEG, or GIF image on the gog server to upload and insert (exactly one of file, url or blobKeys)'),
+      url: z.string().optional().describe('Public HTTPS image URL to insert directly — no Drive upload or temporary public sharing (exactly one of file, url or blobKeys)'),
+      blobKeys: singleBlobKeyParam,
       at: z.string().optional().describe('Placeholder text to replace, or "end" to append (default: end)'),
       before: z.string().optional().describe('Insert the image immediately before the first literal text match (no text is deleted)'),
       after: z.string().optional().describe('Insert the image immediately after the first literal text match (no text is deleted)'),
@@ -1152,10 +1161,13 @@ export function registerExtraDocsTools(server: McpServer): void {
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
       account: accountParam,
     }),
-  }, async ({ docId, file, url, at, before, after, width, height, name, parent, onRestricted, tab, account }) => {
-    if (file) confinePath(file, 'file');
+  }, async ({ docId, file, url, blobKeys, at, before, after, width, height, name, parent, onRestricted, tab, account }) => {
+    if (file) confineUploadPath(file, 'file', URL_ALTERNATIVE);
+    assertOneFileSource({ file, url, blobKeys });
+    const blobs = await readBlobFiles(blobKeys, 'file');
     const args: GogArg[] = ['docs', 'insert-image', pos(docId)];
     if (file) args.push(`--file=${file}`);
+    for (const blob of blobs) args.push(blob.arg);
     if (url) args.push(`--url=${url}`);
     if (at) args.push(`--at=${at}`);
     if (before) args.push(`--before=${before}`);
@@ -1166,8 +1178,8 @@ export function registerExtraDocsTools(server: McpServer): void {
     if (parent) args.push(`--parent=${parent}`);
     if (onRestricted) args.push(`--on-restricted=${onRestricted}`);
     if (tab) args.push(`--tab=${tab}`);
-    if (file) args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse (local files upload via a temporary public share)
-    return runOrDiagnose(args, { account });
+    if (file || blobs.length > 0) args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse (local files upload via a temporary public share)
+    return releaseBlobs(await runOrDiagnose(args, { account }), blobs);
   });
 
   server.registerTool('gog_docs_insert_person', {
@@ -1517,12 +1529,13 @@ export function registerExtraDocsTools(server: McpServer): void {
   // --- gog 0.30 image replacement & table-row pin/style ---
 
   server.registerTool('gog_docs_replace_image', {
-    description: 'Replace an existing image in a Google Doc in place — keeping its position and bounds — with a new image from a local file or public HTTPS URL. Target the image by exact object ID (from gog_docs_images_list), by alt-text substring, or leave both off to replace the only image in the doc/tab.',
+    description: 'Replace an existing image in a Google Doc in place — keeping its position and bounds — with a new image from a local file or public HTTPS URL. Target the image by exact object ID (from gog_docs_images_list), by alt-text substring, or leave both off to replace the only image in the doc/tab.' + IMAGE_BLOB_NOTE,
     annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
       docId: z.string().describe('Doc ID (from the URL)'),
-      file: z.string().optional().describe('Local PNG, JPEG, or GIF image to upload and use (exactly one of file or url)'),
-      url: z.string().optional().describe('Public HTTPS image URL to use directly — no Drive upload (exactly one of file or url)'),
+      file: z.string().optional().describe('PNG, JPEG, or GIF image on the gog server to upload and use (exactly one of file, url or blobKeys)'),
+      url: z.string().optional().describe('Public HTTPS image URL to use directly — no Drive upload (exactly one of file, url or blobKeys)'),
+      blobKeys: singleBlobKeyParam,
       objectId: z.string().optional().describe('Exact image object ID to replace (from gog_docs_images_list)'),
       matchAlt: z.string().optional().describe('Select the image whose alt text contains this value (case-insensitive)'),
       name: z.string().optional().describe('Override the uploaded Drive filename (file mode)'),
@@ -1530,18 +1543,21 @@ export function registerExtraDocsTools(server: McpServer): void {
       tab: z.string().optional().describe('Target a specific tab by title or ID'),
       account: accountParam,
     }),
-  }, async ({ docId, file, url, objectId, matchAlt, name, parent, tab, account }) => {
-    if (file) confinePath(file, 'file');
+  }, async ({ docId, file, url, blobKeys, objectId, matchAlt, name, parent, tab, account }) => {
+    if (file) confineUploadPath(file, 'file', URL_ALTERNATIVE);
+    assertOneFileSource({ file, url, blobKeys });
+    const blobs = await readBlobFiles(blobKeys, 'file');
     const args: GogArg[] = ['docs', 'replace-image', pos(docId)];
     if (file) args.push(`--file=${file}`);
+    for (const blob of blobs) args.push(blob.arg);
     if (url) args.push(`--url=${url}`);
     if (objectId) args.push(`--object-id=${objectId}`);
     if (matchAlt) args.push(`--match-alt=${matchAlt}`);
     if (name) args.push(`--name=${name}`);
     if (parent) args.push(`--parent=${parent}`);
     if (tab) args.push(`--tab=${tab}`);
-    if (file) args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse (local files upload via a temporary public share)
-    return runOrDiagnose(args, { account });
+    if (file || blobs.length > 0) args.push('--force'); // gog gates this op; without --force the runner's --no-input makes it refuse (local files upload via a temporary public share)
+    return releaseBlobs(await runOrDiagnose(args, { account }), blobs);
   });
 
   server.registerTool('gog_docs_table_row_pin_header', {
