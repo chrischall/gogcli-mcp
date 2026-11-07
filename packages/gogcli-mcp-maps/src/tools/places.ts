@@ -37,11 +37,11 @@ export interface PlacesToolDeps {
 }
 
 let processCache: PlacesCache | undefined;
-function defaultCache(): PlacesCache {
+export function defaultCache(): PlacesCache {
   return (processCache ??= new PlacesCache());
 }
 
-const VIEWS = ['compact', 'full'] as const;
+export const VIEWS = ['compact', 'full'] as const;
 
 export const nearSchema = z.object({
   lat: z.number().min(-90).max(90).describe('Latitude of the bias centre'),
@@ -61,7 +61,7 @@ export const apiBudgetParam = z.number().int().min(0).max(API_BUDGET_MAX).option
     + 'Cache hits are free. When it runs out, remaining items come back unresolved with reason "api_budget reached".',
 );
 
-const viewOpt = viewParam([...VIEWS], {
+export const viewOpt = viewParam([...VIEWS], {
   note: 'compact (the default) gives name, address, lat/lng, Maps link, status, website, phone, weekday hours text, '
     + 'price level and the accessibility features present. full adds hours periods, current (special-day) hours, '
     + 'international phone, UTC offset and the raw accessibility flags.',
@@ -102,7 +102,7 @@ export function projectPlace(place: PlacesPlace, view: View): Record<string, unk
 }
 
 /** Loud warnings (closed businesses) first, as their own text block, then the JSON. */
-function placesResult(data: Record<string, unknown>, warnings: string[]): CallToolResult {
+export function placesResult(data: Record<string, unknown>, warnings: string[]): CallToolResult {
   const result = minifiedResult(data);
   if (warnings.length === 0) return result;
   const loud = warnings.filter((w) => w.startsWith('⚠️'));
@@ -110,11 +110,11 @@ function placesResult(data: Record<string, unknown>, warnings: string[]): CallTo
   return { ...result, content: [{ type: 'text', text: [...loud, ...rest].join('\n') }, ...result.content] };
 }
 
-function failure(err: unknown): CallToolResult {
+export function failure(err: unknown): CallToolResult {
   return errorResult(redactSecrets(err instanceof Error ? err.message : String(err)));
 }
 
-function projectResolved(item: ResolvedItem, view: View): Record<string, unknown> {
+export function projectResolved(item: ResolvedItem, view: View): Record<string, unknown> {
   const input = pruneUndefined({ name: item.input.name, address: item.input.address, near: item.input.near });
   if (!item.place) {
     return { input, resolved: false, reason: item.reason, warnings: item.warnings, cached: false };

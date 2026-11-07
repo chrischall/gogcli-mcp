@@ -375,3 +375,12 @@ describe('PlacesClient errors never carry the key', () => {
     await expect(withCallSignal(controller.signal, () => client.details('a'))).rejects.toThrow('Places API request cancelled');
   });
 });
+
+describe('PlacesClient.scrub (text from elsewhere in the same call)', () => {
+  it('uses the shared redactor before the key is known, and strips the key once it is', async () => {
+    const client = new PlacesClient({ fetch: async () => new Response('{"places":[]}', { status: 200 }), env: { GOG_PLACES_API_KEY: 'plain-key-123' } });
+    expect(client.scrub('gog said plain-key-123')).toBe('gog said plain-key-123');
+    await client.searchText({ query: 'x' });
+    expect(client.scrub('gog said plain-key-123')).toBe('gog said [REDACTED]');
+  });
+});

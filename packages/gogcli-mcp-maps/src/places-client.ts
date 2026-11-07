@@ -216,6 +216,14 @@ export class PlacesClient {
     return this.key;
   }
 
+  /**
+   * Scrub text from elsewhere (a gog error in the same tool call) bound for the
+   * caller: the shared redactor, plus this client's key once it is known.
+   */
+  scrub(text: string): string {
+    return this.key ? this.redact(text) : redactSecrets(text);
+  }
+
   /** Scrub the key (and any other secret shape) out of text bound for the caller. */
   private redact(text: string): string {
     // Only ever called after apiKey() resolved, so the key is known here.

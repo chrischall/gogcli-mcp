@@ -135,6 +135,10 @@
     {
       "name": "gog_places_details",
       "description": "Details for one place id, with an optional open-at check for a local date and time"
+    },
+    {
+      "name": "gog_trip_map",
+      "description": "Trip stops as pins on a map: resolve, warn (closed/not open), KML + CSV to Drive Trips/<title>, optional confirmed reader share"
     }
   ],
   "compatibility": {
