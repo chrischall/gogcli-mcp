@@ -17,6 +17,7 @@ A monorepo of [Model Context Protocol](https://modelcontextprotocol.io) servers 
 | [gogcli-mcp](packages/gogcli-mcp) | 52 | All services — Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, Auth |
 | [gogcli-mcp-sheets](packages/gogcli-mcp-sheets) | 35 | Auth + full Sheets (base + 22 extra: tabs, formatting, named ranges, etc.) |
 | [gogcli-mcp-docs](packages/gogcli-mcp-docs) | 26 | Auth + full Docs (base + 14 extra: insert, export, sed, comments, etc.) |
+| [gogcli-mcp-maps](packages/gogcli-mcp-maps) | 8 | Auth + Google Places lookups and trip stops as pins on a map (KML/CSV in Drive for My Maps) |
 
 Each package is a **standalone** MCP server. Install whichever one fits your needs — you don't need to install more than one.
 

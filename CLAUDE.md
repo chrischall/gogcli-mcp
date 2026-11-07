@@ -17,6 +17,7 @@ All under `packages/*` as an npm workspace. Single source of truth for version: 
 | `gogcli-mcp-gmail` | `packages/gogcli-mcp-gmail` | Auth + Gmail (base + threads, labels, drafts, bulk ops) |
 | `gogcli-mcp-contacts` | `packages/gogcli-mcp-contacts` | Auth + Contacts (base + People API extras) |
 | `gogcli-mcp-calendar` | `packages/gogcli-mcp-calendar` | Auth + Calendar (base + Meet space management) |
+| `gogcli-mcp-maps` | `packages/gogcli-mcp-maps` | Auth + Google Places (direct HTTPS with an API key, policy-bounded cache) + trip stops as map pins (KML/CSV in Drive) |
 
 ## Commands
 
@@ -79,6 +80,7 @@ MCP_CONFIRM_MODE=<mode>         # fleet-wide: ask-user (default) | auto | refuse
 MCP_CONFIRM_ELICITATION=off     # fleet-wide: never prompt; every fallback-capable gate takes the MCP_CONFIRM_MODE path and a gate with no fallback (forwarding filter) is refused (clients whose prompt never shows, e.g. opencode 2.0.x)
 MCP_CONFIRM_TTL_SECONDS=<n>     # fleet-wide: confirmToken lifetime (default 600)
 MCP_CONFIRM_SECRET=<secret>     # fleet-wide: confirmToken HMAC key (default: random per process); stripped from gog's env by the _SECRET rule
+GOG_PLACES_API_KEY=<key> # gogcli-mcp-maps only: Places API (New) key; falls back to GOOGLE_PLACES_API_KEY, then `gog config get places_api_key`; redacted from every result
 GOG_FILE_ROOTS=<dirs>  # ':'-separated dirs every server-side path param (attach/localPath/file/out/outDir/dir) must resolve inside; default ~/gogcli-mcp-files
 GOG_CLIENT_ID=<id>          # startup auth bootstrap: OAuth client id, imported into gog's keyring
 GOG_CLIENT_SECRET=<secret>  # startup auth bootstrap: OAuth client secret
@@ -261,7 +263,7 @@ This needed mcp-utils **0.23.0**: 0.22.0's `MEDIA_KEY` was anchored to a bare no
 
 ### Required gog version
 
-`runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.46.0**. A bump must also move **the `tag:` in all nine `packages/*/mint.yaml` `dependencies` blocks** — those pin the `gog` release a hosted install provisions, so leaving them behind hands the child a binary older than the floor its tools assume. `scripts/check-runner-gog-version.mjs` checks those against the floor and fails `npm test` on any pin below it, so a missed one is a red build.
+`runner.ts` exports `MIN_GOG_VERSION` — the minimum gogcli (`gog`) binary version the wrapper's tools assume. It's the single source of truth (keep this section in sync). When a change starts relying on a newer `gog` flag/subcommand, bump `MIN_GOG_VERSION` and label the PR **`gogcli-bump`** so the requirement change surfaces in its own release-notes section (`.github/release.yml`). Current floor: **gog ≥ 0.46.0**. A bump must also move **the `tag:` in all ten `packages/*/mint.yaml` `dependencies` blocks** — those pin the `gog` release a hosted install provisions, so leaving them behind hands the child a binary older than the floor its tools assume. `scripts/check-runner-gog-version.mjs` checks those against the floor and fails `npm test` on any pin below it, so a missed one is a red build.
 
 A third pin set lives outside this repo: the `dependencies` pin stored on each live mcp-host registration (an exact tag + asset + sha256). mcp-host re-pins it from the **new** version's `mint.yaml` whenever the package pin moves — the follow cron, update-all, or the portal's Upgrade button (chrischall/mcp-host#1140). So the `mint.yaml` bump above is what moves the six registrations below; nothing is run by hand. It fails closed: if the new `tag:` does not resolve (a typo, a release without the `gogcli_*_linux_amd64.tar.gz` asset), the registration stays on its old version and the cron retries nightly. Only that one log line says so, so check `mcp-host get <id>` after the follow when a bump matters.
 

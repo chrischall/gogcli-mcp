@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "gogcli-maps": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "gogcli-mcp-maps"
+      ],
+      "env": {
+        "GOG_ACCOUNT": "${GOG_ACCOUNT}",
+        "GOG_PATH": "${GOG_PATH}",
+        "GOG_PLACES_API_KEY": "${GOG_PLACES_API_KEY}"
+      }
+    }
+  }
+}

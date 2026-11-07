@@ -1,0 +1,60 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.chrischall/gogcli-mcp-maps",
+  "description": "Google Places + trip maps via gogcli for Claude — hours, open-at checks, pins in My Maps",
+  "repository": {
+    "url": "https://github.com/chrischall/gogcli-mcp",
+    "source": "github",
+    "subfolder": "packages/gogcli-mcp-maps"
+  },
+  "version": "4.10.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "gogcli-mcp-maps",
+      "version": "4.10.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GOG_ACCOUNT",
+          "description": "Email address of the Google account to use (matches gogcli auth)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOG_PATH",
+          "description": "Override path to the gogcli binary (auto-discovered otherwise)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "DISPLAY_TZ",
+          "description": "zone for *Display fields and for interpreting naive gog values; defaults to America/New_York",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOG_READONLY",
+          "description": "block all mutating gog API requests (injects gog's --readonly); set to 0/false/no/off (or unset) to allow writes",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOG_TIMEZONE",
+          "description": "zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "GOG_PLACES_API_KEY",
+          "description": "Places API (New) key; falls back to GOOGLE_PLACES_API_KEY, then gog config places_api_key",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
