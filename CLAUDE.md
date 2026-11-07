@@ -104,7 +104,7 @@ missing and skips.
 
 **Dispatch confirmation.** `requireDispatchConfirmation` (`src/dispatch-confirmation.ts`) is the one rail every
 tool that reaches another person goes through: Gmail (via the `requireGmailDispatchConfirmation` wrapper in
-`src/gmail-dispatch-guard.ts`), Chat send, DM and member-seeded space create, Drive share, Drive/Docs comments,
+`src/gmail-dispatch-guard.ts`), Chat send, DM and member-seeded space create, Drive share (and `gog_trip_map`'s trip-folder share), Drive/Docs comments,
 Classroom announcement, invitation, roster add, course ownership transfer (`courses_update` with `owner`), coursework create and submission return (and an
 announcement/coursework update that publishes: state PUBLISHED or a schedule), guest-visible Calendar
 create/update/respond/move/delete, Out of Office with auto-decline, Gmail vacation enable and send-as create, Apps

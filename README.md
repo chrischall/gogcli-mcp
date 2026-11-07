@@ -17,7 +17,7 @@ A monorepo of [Model Context Protocol](https://modelcontextprotocol.io) servers 
 | [gogcli-mcp](packages/gogcli-mcp) | 52 | All services — Sheets, Docs, Gmail, Calendar, Drive, Tasks, Contacts, Auth |
 | [gogcli-mcp-sheets](packages/gogcli-mcp-sheets) | 35 | Auth + full Sheets (base + 22 extra: tabs, formatting, named ranges, etc.) |
 | [gogcli-mcp-docs](packages/gogcli-mcp-docs) | 26 | Auth + full Docs (base + 14 extra: insert, export, sed, comments, etc.) |
-| [gogcli-mcp-maps](packages/gogcli-mcp-maps) | 8 | Auth + Google Places lookups and trip stops as pins on a map (KML/CSV in Drive for My Maps) |
+| [gogcli-mcp-maps](packages/gogcli-mcp-maps) | 12 | Auth + Google Places lookups and trip stops as pins on a map (KML/CSV in Drive for My Maps) |
 
 Each package is a **standalone** MCP server. Install whichever one fits your needs — you don't need to install more than one.
 
@@ -138,6 +138,7 @@ Ask Claude things like:
 - *"Create a calendar event for tomorrow at 3pm"*
 - *"List comments on my project doc"*
 - *"Export my doc as a PDF"*
+- *"Put my weekend trip stops on a map I can share"* (gogcli-mcp-maps)
 
 ## Multiple Accounts
 
@@ -183,6 +184,7 @@ student, spreadsheet or messages — rather than an opaque id:
 | Gmail | `gog_gmail_send`, `_reply`, `_reply_all`, `_forward`, `_autoreply`, `_drafts_send` | always |
 | Chat | `gog_chat_messages_send`, `gog_chat_dm_send` | always |
 | Drive | `gog_drive_share` | always (granting access is the risk; gog sends no share email by default) |
+| Maps | `gog_trip_map` | only with `share_with` and `confirm_share: true` (the trip folder is shared as reader with those emails; never public) |
 | Classroom | `gog_classroom_announcements_create` | unless `state` is `DRAFT` with no `scheduled` time (students cannot see drafts; a scheduled one publishes itself) |
 | Classroom | `gog_classroom_invitations_create` | always |
 | Calendar | `gog_calendar_create` | only with attendees (the event lands on their calendars; no invitation email is sent) |
