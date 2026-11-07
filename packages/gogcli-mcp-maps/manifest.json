@@ -123,6 +123,18 @@
     {
       "name": "gog_auth_run",
       "description": "Run any gog auth subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_places_search",
+      "description": "Search Google Places by free text, optionally biased to a circle"
+    },
+    {
+      "name": "gog_places_resolve",
+      "description": "Resolve 1-50 named stops to places: id, address, lat/lng, hours, website, phone, status (cached)"
+    },
+    {
+      "name": "gog_places_details",
+      "description": "Details for one place id, with an optional open-at check for a local date and time"
     }
   ],
   "compatibility": {
