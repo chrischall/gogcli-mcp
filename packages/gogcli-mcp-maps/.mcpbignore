@@ -1,0 +1,27 @@
+# Source — dist/ is all that's needed at runtime
+src/
+tests/
+
+# Dev tooling
+node_modules/
+coverage/
+tsconfig.json
+tsconfig.tsbuildinfo
+vitest.config.ts
+*.skill
+*.mcpb
+
+# Plugin/marketplace files (not needed in the MCPB bundle)
+.claude-plugin/
+.mcp.json
+
+# GitHub/CI (lives at monorepo root, belt-and-suspenders)
+.github/
+
+# Local config
+.env
+.env.*
+
+# Git
+.git/
+.gitignore

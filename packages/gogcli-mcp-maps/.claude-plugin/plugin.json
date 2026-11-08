@@ -1,0 +1,25 @@
+{
+  "name": "gogcli-mcp-maps",
+  "displayName": "gogcli (Maps)",
+  "version": "4.10.0",
+  "description": "Trip mapping for Claude via gogcli — Google Places lookups (hours, website, phone, open-at checks) and trip stops as pins on a map",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp/tree/main/packages/gogcli-mcp-maps",
+  "repository": "https://github.com/chrischall/gogcli-mcp",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "maps",
+    "places",
+    "gogcli",
+    "gog",
+    "trip",
+    "kml",
+    "my-maps"
+  ],
+  "skills": ".",
+  "mcpServers": "./.mcp.json"
+}

@@ -1,0 +1,146 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/dxt/main/dist/mcpb-manifest.schema.json",
+  "manifest_version": "0.3",
+  "name": "gogcli-mcp-maps",
+  "display_name": "gogcli (Maps)",
+  "version": "4.10.0",
+  "description": "Trip mapping for Claude via gogcli — Google Places and Geocoding through gog maps, and trip stops as pins on a map (Google Maps shortlist links, KML/CSV in Drive for My Maps)",
+  "author": {
+    "name": "Chris Hall",
+    "email": "chris.c.hall@gmail.com",
+    "url": "https://github.com/chrischall"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chrischall/gogcli-mcp"
+  },
+  "homepage": "https://github.com/chrischall/gogcli-mcp",
+  "support": "https://github.com/chrischall/gogcli-mcp/issues",
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "maps",
+    "places",
+    "gogcli",
+    "gog",
+    "trip",
+    "kml",
+    "my-maps"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {
+        "GOG_ACCOUNT": "${user_config.gog_account}",
+        "GOG_PATH": "${user_config.gog_path}",
+        "GOG_FILE_ROOTS": "${user_config.gog_file_roots}",
+        "DISPLAY_TZ": "${user_config.display_tz}",
+        "GOG_READONLY": "${user_config.gog_readonly}",
+        "GOG_TIMEZONE": "${user_config.gog_timezone}"
+      }
+    }
+  },
+  "user_config": {
+    "gog_account": {
+      "type": "string",
+      "title": "Google Account",
+      "description": "Default Google account email (optional — uses gogcli's configured default if omitted)",
+      "required": false
+    },
+    "gog_path": {
+      "type": "string",
+      "title": "gog Executable Path",
+      "description": "Path to the gog executable (optional — defaults to 'gog' on your PATH)",
+      "required": false
+    },
+    "gog_file_roots": {
+      "type": "string",
+      "title": "Allowed file directories",
+      "description": "Directories tools may read files from (attachments, uploads) or write files to (exports, downloads), separated by ':' (';' on Windows). Optional — defaults to ~/gogcli-mcp-files",
+      "required": false
+    },
+    "display_tz": {
+      "type": "string",
+      "title": "Display time zone",
+      "description": "zone for *Display fields and for interpreting naive gog values; defaults to America/New_York",
+      "required": false
+    },
+    "gog_readonly": {
+      "type": "string",
+      "title": "Read-only mode",
+      "description": "block all mutating gog API requests (injects gog's --readonly); set to 0/false/no/off (or unset) to allow writes",
+      "required": false
+    },
+    "gog_timezone": {
+      "type": "string",
+      "title": "gog time zone",
+      "description": "zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge",
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "gog_auth_add",
+      "description": "Authorize a Google account via browser-based OAuth"
+    },
+    {
+      "name": "gog_auth_health",
+      "description": "Live per-account token health: validity, age, and pre-expiry warnings (detects invalid_grant)"
+    },
+    {
+      "name": "gog_auth_add_url",
+      "description": "Begin remote/headless OAuth (step 1): return a sign-in URL to open in any browser"
+    },
+    {
+      "name": "gog_auth_add_complete",
+      "description": "Complete remote/headless OAuth (step 2): exchange the pasted redirect URL and store the token"
+    },
+    {
+      "name": "gog_auth_list",
+      "description": "List all Google accounts stored in gogcli"
+    },
+    {
+      "name": "gog_auth_status",
+      "description": "Show gogcli auth configuration (keyring, credential files)"
+    },
+    {
+      "name": "gog_auth_services",
+      "description": "List Google services and OAuth scopes supported by gogcli"
+    },
+    {
+      "name": "gog_auth_run",
+      "description": "Run any gog auth subcommand (escape hatch)"
+    },
+    {
+      "name": "gog_places_search",
+      "description": "The single top Google match for free text: place id, address, Maps link, lat/lng (via gog maps)"
+    },
+    {
+      "name": "gog_places_resolve",
+      "description": "Resolve 1-50 named stops to places: id, address, lat/lng, Maps link, status (cached)"
+    },
+    {
+      "name": "gog_places_details",
+      "description": "One place id: name, address, Maps link, lat/lng (via gog maps)"
+    },
+    {
+      "name": "gog_trip_map",
+      "description": "Trip stops as pins on a map: resolve, warn (approximate/ambiguous/unresolved), Google Maps shortlist links, KML + CSV to Drive Trips/<title>, optional confirmed reader share"
+    }
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=22.0.0"
+    }
+  }
+}

@@ -129,7 +129,7 @@ export const MIN_GOG_VERSION = '0.48.0';
 // (0/false/no/off) enables readonly — parseBoolEnv's `default: true` covers
 // unrecognised values (e.g. "enable"), so a typo blocks writes instead of
 // silently allowing them.
-function readonlyEnvEnabled(): boolean {
+export function readonlyEnvEnabled(): boolean {
   return readEnvVar('GOG_READONLY') !== undefined && parseBoolEnv('GOG_READONLY', { default: true });
 }
 

@@ -12,7 +12,7 @@ examples:
     note: "Folder sizes, disk-usage style."
 command:
   # This package publishes a single bin; naming it keeps the install
-  # unambiguous alongside its eight sibling packages.
+  # unambiguous alongside its nine sibling packages.
   bin: gogcli-mcp-drive
 env:
   - name: GOG_CLIENT_ID
@@ -95,7 +95,7 @@ dependencies:
   # then fails on the first call. This tag must track
   # packages/gogcli-mcp/src/runner.ts's MIN_GOG_VERSION (the floor the tools
   # assume). See CLAUDE.md "Required gog version" — bumping the floor means
-  # bumping these nine pins, and the pin stored on each mcp-host registration.
+  # bumping these ten pins, and the pin stored on each mcp-host registration.
   - kind: github-release
     repo: openclaw/gogcli
     tag: v0.48.0

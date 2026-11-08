@@ -47,7 +47,7 @@ export type { ClassroomWork, ClassroomWorkKind } from './tools/classroom.js';
 export { eventSnapshot } from './tools/calendar.js';
 export { commentMentions, commentSnapshot, shareTargetMeta } from './tools/drive.js';
 export type { AttachmentDetail, DispatchTokenFallback, TokenSubject } from './gmail-dispatch-guard.js';
-export { run, runBinary, isGogFileArg, MIN_GOG_VERSION } from './runner.js';
+export { run, runBinary, isGogFileArg, MIN_GOG_VERSION, readonlyEnvEnabled } from './runner.js';
 // Sub-package tools that read gog JSON through bare `run()` (rather than the
 // `runOrDiagnose` seam) must still apply this, or their timestamps skip the
 // offset repair and the `<field>Display` sibling every other tool returns.
