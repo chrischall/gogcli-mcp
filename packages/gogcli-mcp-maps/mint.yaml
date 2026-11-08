@@ -66,16 +66,6 @@ env:
       Encrypts gog's file keyring on the data dir. Required with
       GOG_KEYRING_BACKEND=file. Deliberately not stripped from the spawned
       CLI's environment — it is the one credential gog itself reads.
-  - name: GOG_PLACES_API_KEY
-    secret: true
-    required: false
-    help: >-
-      Google Places API (New) key, sent straight from Node to
-      places.googleapis.com (never through gog, never OAuth). Restrict it to
-      the Places API (New) in a billing-enabled Cloud project. Unset, the
-      wrapper tries GOOGLE_PLACES_API_KEY, then `gog config get
-      places_api_key`. Stripped from the spawned CLI's environment by
-      runner.ts's *_KEY rule, and redacted from every tool result.
   - name: GOG_READONLY
     required: false
     help: >-
@@ -126,5 +116,8 @@ egress:
     - oauth2.googleapis.com
     - www.googleapis.com
     - googleapis.com
-    # Places API (New), called directly by src/places-client.ts with the key.
+    # Reached by the gog CLI itself, never by this package's Node code:
+    # `gog maps places search|details` (Places API (New)) and `gog maps
+    # geocode` (Geocoding API), with the places_api_key in gog's config.
     - places.googleapis.com
+    - maps.googleapis.com

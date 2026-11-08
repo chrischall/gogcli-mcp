@@ -1,37 +1,28 @@
 /**
  * gog_places_search / gog_places_resolve / gog_places_details — Google Places
- * (New) over HTTPS with the user's API key, through the policy-bounded cache.
- *
- * Every call gets its own ApiBudget (`api_budget`, default 50): cache hits are
- * free, and once the budget is spent nothing else is sent. Every result
- * reports `apiCalls` (counts, SKU, a USD estimate before free allowances).
- * A closed business is shouted first, before the JSON.
+ * and Geocoding through gog (`gog maps places search|details`, `gog maps
+ * geocode`), via the policy-bounded cache. This package makes no network call
+ * of its own and handles no API key: gog uses the `places_api_key` in its own
+ * config. Each result says which gog commands it ran (`gogCalls`; each one is
+ * a billed Google request) and every item carries a status — see
+ * places-service.ts for the rule.
  */
-import type { McpServer } from '@modelcontextprotocol/server';
-import type { CallToolResult } from '@modelcontextprotocol/server';
+import type { CallToolResult, McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import {
-  errorResult,
-  minifiedResult,
-  pruneUndefined,
-  redactSecrets,
-  resolveView,
-  viewParam,
-  type EnvSource,
-  type View,
-} from '@chrischall/mcp-utils';
+import { errorResult, minifiedResult, pruneUndefined, redactSecrets } from '@chrischall/mcp-utils';
 import type { Spawner } from '../../../gogcli-mcp/src/lib.js';
-import { API_BUDGET_DEFAULT, API_BUDGET_MAX, ApiBudget, type PlacesFieldSet } from '../budget.js';
-import { evaluateOpenAt, parseLocalDateTime } from '../open-at.js';
 import { PlacesCache } from '../places-cache.js';
-import { PlacesClient, type FetchLike, type PlacesPlace } from '../places-client.js';
-import { detailsById, resolveItems, statusWarnings, type ResolvedItem } from '../places-service.js';
+import {
+  newCallCounter,
+  resolveItems,
+  type GogCalls,
+  type ResolvedItem,
+  type ResolveItem,
+  type ResolveStatus,
+} from '../places-service.js';
 
 export interface PlacesToolDeps {
-  fetch?: FetchLike;
-  env?: EnvSource;
   spawner?: Spawner;
-  readGogConfig?: () => Promise<string | undefined>;
   /** The cache to use; defaults to one per process at ~/.gogcli-mcp/places-cache.json. */
   cache?: () => PlacesCache;
 }
@@ -41,219 +32,158 @@ export function defaultCache(): PlacesCache {
   return (processCache ??= new PlacesCache());
 }
 
-export const VIEWS = ['compact', 'full'] as const;
-
-export const nearSchema = z.object({
-  lat: z.number().min(-90).max(90).describe('Latitude of the bias centre'),
-  lng: z.number().min(-180).max(180).describe('Longitude of the bias centre'),
-  radius_m: z.number().positive().max(50_000).optional().describe('Bias radius in metres (default and max 50000)'),
-});
-
-export const fieldsParam = (dflt: PlacesFieldSet) =>
-  z.enum(['basic', 'full']).optional().describe(
-    'Which Places fields to request (sets the billed SKU). basic (Pro): id, name, address, location, Maps link, '
-      + 'business status, UTC offset. full (Enterprise): basic + website, phones, opening hours, price level, '
-      + `accessibility. Default: ${dflt}.`,
-  );
-
-export const apiBudgetParam = z.number().int().min(0).max(API_BUDGET_MAX).optional().describe(
-  `Max billable Places requests this call may make (default ${API_BUDGET_DEFAULT}, max ${API_BUDGET_MAX}). `
-    + 'Cache hits are free. When it runs out, remaining items come back unresolved with reason "api_budget reached".',
+export const nearParam = z.string().trim().min(1).max(200).optional().describe(
+  'Area hint appended to the search text, e.g. "Tampa, FL" (gog has no location bias, so this is plain text)',
 );
 
-export const viewOpt = viewParam([...VIEWS], {
-  note: 'compact (the default) gives name, address, lat/lng, Maps link, status, website, phone, weekday hours text, '
-    + 'price level and the accessibility features present. full adds hours periods, current (special-day) hours, '
-    + 'international phone, UTC offset and the raw accessibility flags.',
-});
+export const refreshParam = z.boolean().optional().describe(
+  'Ignore cached entries and look up again (each lookup is a billed Google request through gog)',
+);
 
-/** The caller-facing shape of a place in the requested view. */
-export function projectPlace(place: PlacesPlace, view: View): Record<string, unknown> {
-  const base = {
-    placeId: place.id,
-    displayName: place.displayName?.text,
-    formattedAddress: place.formattedAddress,
-    lat: place.location?.latitude,
-    lng: place.location?.longitude,
-    googleMapsUri: place.googleMapsUri,
-    businessStatus: place.businessStatus,
-    websiteUri: place.websiteUri,
-    phone: place.nationalPhoneNumber ?? place.internationalPhoneNumber,
-    priceLevel: place.priceLevel,
-  };
-  if (view === 'full') {
-    return pruneUndefined({
-      ...base,
-      internationalPhoneNumber: place.internationalPhoneNumber,
-      utcOffsetMinutes: place.utcOffsetMinutes,
-      regularOpeningHours: place.regularOpeningHours,
-      currentOpeningHours: place.currentOpeningHours,
-      accessibilityOptions: place.accessibilityOptions,
-    });
-  }
-  const accessibility = place.accessibilityOptions
-    ? Object.entries(place.accessibilityOptions).filter(([, v]) => v).map(([k]) => k)
-    : undefined;
+const STATUS_NOTE =
+  'Each result has a status: ok (place found, pin exact or given), approximate (the pin is the geocoded address, '
+  + 'not the place itself, or there is no pin), not_found, or error.';
+
+/** The caller-facing shape of one resolved item. */
+export function projectResolved(item: ResolvedItem, withInput = true): Record<string, unknown> {
+  const { input } = item;
   return pruneUndefined({
-    ...base,
-    regularOpeningHours: place.regularOpeningHours?.weekdayDescriptions,
-    accessibility: accessibility?.length ? accessibility : undefined,
+    input: withInput
+      ? pruneUndefined({
+        name: input.name, address: input.address, near: input.near, place_id: input.placeId, lat: input.lat, lng: input.lng,
+      })
+      : undefined,
+    status: item.status,
+    placeId: item.place?.id,
+    name: item.place?.name,
+    formattedAddress: item.place?.formattedAddress,
+    lat: item.location?.lat,
+    lng: item.location?.lng,
+    location: item.location?.match,
+    googleMapsUri: item.place?.googleMapsUri,
+    matchConfidence: item.matchConfidence,
+    cached: item.cached,
+    reason: item.reason,
   });
 }
 
-/** Loud warnings (closed businesses) first, as their own text block, then the JSON. */
+/** Warnings first, as their own text block, then the JSON. */
 export function placesResult(data: Record<string, unknown>, warnings: string[]): CallToolResult {
   const result = minifiedResult(data);
   if (warnings.length === 0) return result;
-  const loud = warnings.filter((w) => w.startsWith('⚠️'));
-  const rest = warnings.filter((w) => !w.startsWith('⚠️'));
-  return { ...result, content: [{ type: 'text', text: [...loud, ...rest].join('\n') }, ...result.content] };
+  return { ...result, content: [{ type: 'text', text: warnings.join('\n') }, ...result.content] };
 }
 
 export function failure(err: unknown): CallToolResult {
   return errorResult(redactSecrets(err instanceof Error ? err.message : String(err)));
 }
 
-export function projectResolved(item: ResolvedItem, view: View): Record<string, unknown> {
-  const input = pruneUndefined({ name: item.input.name, address: item.input.address, near: item.input.near });
-  if (!item.place) {
-    return { input, resolved: false, reason: item.reason, warnings: item.warnings, cached: false };
-  }
-  return {
-    input,
-    ...projectPlace(item.place, view),
-    warnings: item.warnings,
-    cached: item.cached,
-    matchConfidence: item.matchConfidence,
-  };
+/** Both coordinates or neither; a TypeError-free message naming the item. */
+export function checkCoordinates(items: Array<{ lat?: number; lng?: number }>, label = 'item'): void {
+  items.forEach((item, i) => {
+    if ((item.lat === undefined) !== (item.lng === undefined)) {
+      throw new Error(`${label} ${i + 1}: give both lat and lng, or neither`);
+    }
+  });
+}
+
+export function statusCounts(items: ResolvedItem[]): Record<ResolveStatus, number> {
+  const counts: Record<ResolveStatus, number> = { ok: 0, approximate: 0, not_found: 0, error: 0 };
+  for (const item of items) counts[item.status] += 1;
+  return counts;
 }
 
 export function placesTools(deps: PlacesToolDeps = {}): (server: McpServer) => void {
   const cacheOf = deps.cache ?? defaultCache;
-  const clientFor = (budget: ApiBudget) =>
-    new PlacesClient({ fetch: deps.fetch, env: deps.env, spawner: deps.spawner, readGogConfig: deps.readGogConfig, budget });
+
+  /** Resolve through the cache, saving it afterwards (resolveItems never throws). */
+  async function lookup(items: ResolveItem[], opts: { refresh?: boolean; checkNames?: boolean }) {
+    const cache = cacheOf();
+    const calls: GogCalls = newCallCounter();
+    try {
+      const resolved = await resolveItems(items, { cache, spawner: deps.spawner, calls, ...opts });
+      return { resolved, calls };
+    } finally {
+      await cache.save();
+    }
+  }
+
+  /** One item: an error status is a tool error; anything else is a result. */
+  function single(resolved: ResolvedItem[], calls: GogCalls): CallToolResult {
+    const item = resolved[0]!;
+    if (item.status === 'error') return failure(item.reason);
+    return placesResult({ result: projectResolved(item, false), gogCalls: calls }, item.warnings);
+  }
 
   return (server: McpServer) => {
     server.registerTool('gog_places_search', {
       description:
-        'Search Google Places (New) by free text, optionally biased to a circle (near). Returns up to `max` places '
-        + 'with name, address, lat/lng and a Google Maps link. Calls Places directly with your API key '
-        + '(GOG_PLACES_API_KEY or `gog config set places_api_key`); one billable request per call.',
+        'Find ONE place on Google by free text (the single top match) and return its place id, name, '
+        + 'address, Google Maps link and lat/lng. Runs `gog maps places search`, then `gog maps geocode` on the '
+        + 'address for the coordinates (cached). ' + STATUS_NOTE,
       annotations: { readOnlyHint: true, openWorldHint: true },
       inputSchema: z.object({
-        query: z.string().trim().min(1).describe('What to search for, e.g. "Cuban sandwich Ybor City"'),
-        near: nearSchema.optional().describe('Bias (not restrict) results to this circle'),
-        max: z.number().int().min(1).max(20).optional().describe('Max results, 1-20 (default 10)'),
-        fields: fieldsParam('basic'),
-        view: viewOpt,
-        api_budget: apiBudgetParam,
+        query: z.string().trim().min(1).max(500).describe('What to look for, e.g. "Armature Works" or "Cuban sandwich Ybor City"'),
+        near: nearParam,
       }),
-    }, async ({ query, near, max, fields = 'basic', view, api_budget }) => {
-      const cache = cacheOf();
-      const budget = new ApiBudget(api_budget ?? API_BUDGET_DEFAULT);
-      try {
-        const places = await clientFor(budget).searchText(
-          { query, near: near && { lat: near.lat, lng: near.lng, radiusM: near.radius_m }, maxResults: max },
-          fields,
-        );
-        for (const place of places) await cache.put(place, fields);
-        const rung = resolveView(view, [...VIEWS]);
-        const warnings = places.flatMap(statusWarnings);
-        return placesResult({
-          places: places.map((p) => ({ ...projectPlace(p, rung), warnings: statusWarnings(p) })),
-          warnings,
-          apiCalls: budget.report(),
-        }, warnings);
-      } catch (err) {
-        return failure(err);
-      } finally {
-        await cache.save();
-      }
+    }, async ({ query, near }) => {
+      const { resolved, calls } = await lookup([pruneUndefined({ name: query, near }) as ResolveItem], { checkNames: false });
+      return single(resolved, calls);
     });
 
     server.registerTool('gog_places_resolve', {
       description:
-        'Resolve a list of named stops (1-50) to Google places: place id, address, lat/lng, Maps link, website, '
-        + 'phone, opening hours and business status. Takes the top Text Search match per item and flags it '
-        + 'ambiguous when the name does not match. Cached per Google policy (ids kept, coordinates 30 days, '
-        + 'everything else 24 h), so re-resolving the same list is free. Closed businesses are warned first.',
+        'Resolve a list of named stops (1-50) to Google places: place id, address, Maps link and lat/lng, each from '
+        + 'the top match for "name, address, near" (or `gog maps places details` for a known place_id), with the '
+        + 'point from `gog maps geocode`. Flags a top match whose name does not match as ambiguous. Up to 4 lookups '
+        + 'run at once; a cancelled call starts no more. Cached per Google policy (ids kept, coordinates 30 days, '
+        + 'everything else 24 h), so re-resolving the same list is free; refresh: true bypasses the cache. '
+        + STATUS_NOTE,
       annotations: { readOnlyHint: true, openWorldHint: true },
       inputSchema: z.object({
         items: z.array(z.object({
-          name: z.string().trim().min(1).describe('Place name, e.g. "Armature Works"'),
-          address: z.string().trim().min(1).optional().describe('Address or city to disambiguate, e.g. "Tampa, FL"'),
-          near: nearSchema.optional().describe('Bias this item\'s search to a circle'),
+          name: z.string().trim().min(1).max(200).describe('Place name, e.g. "Armature Works"'),
+          address: z.string().trim().min(1).max(300).optional().describe('Address or city to disambiguate, e.g. "Tampa, FL"'),
+          near: nearParam,
+          place_id: z.string().trim().min(1).max(512).optional().describe('A known Google place id (skips the search)'),
+          lat: z.number().min(-90).max(90).optional().describe('Known latitude: used as the pin (with lng), no geocode'),
+          lng: z.number().min(-180).max(180).optional().describe('Known longitude (with lat)'),
         })).min(1).max(50).describe('Stops to resolve (1-50)'),
-        fields: fieldsParam('full'),
-        view: viewOpt,
-        api_budget: apiBudgetParam,
-        refresh: z.boolean().optional().describe('Ignore cached entries and look every item up again (costs requests)'),
+        refresh: refreshParam,
       }),
-    }, async ({ items, fields = 'full', view, api_budget, refresh }) => {
-      const cache = cacheOf();
-      const budget = new ApiBudget(api_budget ?? API_BUDGET_DEFAULT);
+    }, async ({ items, refresh }) => {
       try {
-        const resolved = await resolveItems(items, { client: clientFor(budget), cache, fields, refresh });
-        const rung = resolveView(view, [...VIEWS]);
-        const warnings = resolved.flatMap((r) => r.warnings);
-        return placesResult({
-          results: resolved.map((r) => projectResolved(r, rung)),
-          resolved: resolved.filter((r) => r.place).length,
-          unresolved: resolved.filter((r) => !r.place).length,
-          warnings,
-          apiCalls: budget.report(),
-        }, warnings);
-      } finally {
-        // resolveItems never throws: every failure lands on its item.
-        await cache.save();
+        checkCoordinates(items);
+      } catch (err) {
+        return failure(err);
       }
+      const input = items.map((i): ResolveItem => pruneUndefined({
+        name: i.name, address: i.address, near: i.near, placeId: i.place_id, lat: i.lat, lng: i.lng,
+      }) as ResolveItem);
+      const { resolved, calls } = await lookup(input, { refresh });
+      const warnings = resolved.flatMap((r) => r.warnings);
+      return placesResult({
+        results: resolved.map((r) => projectResolved(r)),
+        counts: statusCounts(resolved),
+        warnings,
+        gogCalls: calls,
+      }, warnings);
     });
 
     server.registerTool('gog_places_details', {
       description:
-        'Details for one Google place id: address, lat/lng, website, phone, opening hours, price level, '
-        + 'accessibility and business status. With `at` (local time at the place, e.g. 2026-11-21T19:30), also '
-        + 'says whether it is open then, and when it opens or closes. Free when cached (24 h).',
+        'Look up one Google place id: name, address, Google Maps link and lat/lng. Runs `gog maps places details` '
+        + 'and `gog maps geocode`; free when cached (content 24 h, coordinates 30 days); refresh: true bypasses '
+        + 'the cache. ' + STATUS_NOTE,
       annotations: { readOnlyHint: true, openWorldHint: true },
       inputSchema: z.object({
-        placeId: z.string().trim().min(1).describe('Google place id (from search/resolve), with or without "places/"'),
-        at: z.union([
-          z.string().describe('Local date-time at the place, e.g. 2026-11-21T19:30 (no Z/offset)'),
-          z.object({
-            date: z.string().describe('YYYY-MM-DD'),
-            time: z.string().describe('HH:MM, 24-hour'),
-          }),
-        ]).optional().describe('Check whether the place is open at this local date and time. Requests full fields.'),
-        fields: fieldsParam('full'),
-        view: viewOpt,
-        refresh: z.boolean().optional().describe('Ignore a cached entry and fetch again (one request)'),
+        placeId: z.string().trim().min(1).max(520).describe('Google place id (from search/resolve), with or without "places/"'),
+        refresh: refreshParam,
       }),
-    }, async ({ placeId, at, fields = 'full', view, refresh }) => {
-      const cache = cacheOf();
-      const budget = new ApiBudget(1);
-      try {
-        // Validate before spending anything; an open-at check needs the hours (full).
-        if (at !== undefined) parseLocalDateTime(at);
-        const mask: PlacesFieldSet = at !== undefined ? 'full' : fields;
-        const id = placeId.startsWith('places/') ? placeId.slice('places/'.length) : placeId;
-        const { place, cached } = await detailsById(id, { client: clientFor(budget), cache, fields: mask, refresh });
-        const warnings = statusWarnings(place);
-        const openAt = at !== undefined ? evaluateOpenAt(place, at) : undefined;
-        if (openAt && openAt.open === false && warnings.length === 0) {
-          warnings.push(`Not open at ${openAt.at}: ${openAt.reason}`);
-        }
-        return placesResult(pruneUndefined({
-          place: projectPlace(place, resolveView(view, [...VIEWS])),
-          openAt,
-          cached,
-          warnings,
-          apiCalls: budget.report(),
-        }), warnings);
-      } catch (err) {
-        return failure(err);
-      } finally {
-        await cache.save();
-      }
+    }, async ({ placeId, refresh }) => {
+      const id = placeId.startsWith('places/') ? placeId.slice('places/'.length) : placeId;
+      const { resolved, calls } = await lookup([{ name: id, placeId: id }], { refresh, checkNames: false });
+      return single(resolved, calls);
     });
   };
 }

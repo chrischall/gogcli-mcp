@@ -41,8 +41,7 @@
         "GOG_FILE_ROOTS": "${user_config.gog_file_roots}",
         "DISPLAY_TZ": "${user_config.display_tz}",
         "GOG_READONLY": "${user_config.gog_readonly}",
-        "GOG_TIMEZONE": "${user_config.gog_timezone}",
-        "GOG_PLACES_API_KEY": "${user_config.gog_places_api_key}"
+        "GOG_TIMEZONE": "${user_config.gog_timezone}"
       }
     }
   },
@@ -81,13 +80,6 @@
       "type": "string",
       "title": "gog time zone",
       "description": "zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge",
-      "required": false
-    },
-    "gog_places_api_key": {
-      "type": "string",
-      "title": "Google Places API key",
-      "description": "Places API (New) key, restricted to the Places API (New) in a billing-enabled Cloud project. Optional — falls back to GOOGLE_PLACES_API_KEY, then `gog config get places_api_key`",
-      "sensitive": true,
       "required": false
     }
   },

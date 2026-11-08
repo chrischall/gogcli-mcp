@@ -1,7 +1,8 @@
 /**
  * gog_trip_map — a trip's stops as PINS ON A MAP (never a route): resolve each
- * stop through the Places cache/budget, warn about closed businesses, stops not
- * open at the planned time, ambiguous matches and unresolved stops, build a
+ * stop through gog (`gog maps places search|details` + `gog maps geocode`) and
+ * the cache, warn about approximate pins, ambiguous matches and unresolved
+ * stops, build a
  * KML (for My Maps import — My Maps has no API) and a CSV, write both under
  * GOG_FILE_ROOTS, then upload them to Drive "Trips/<title>" and, only when the
  * caller passes confirm_share AND the user confirms on the dispatch rail, share
@@ -12,7 +13,7 @@ import { join } from 'node:path';
 import type { CallToolResult, McpServer } from '@modelcontextprotocol/server';
 import { isInputRequiredResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { pruneUndefined, resolveView } from '@chrischall/mcp-utils';
+import { pruneUndefined, redactSecrets, resolveView, viewParam } from '@chrischall/mcp-utils';
 import {
   accountParam,
   CONFIRM_FALLBACK_DESCRIPTION,
@@ -23,10 +24,7 @@ import {
   requireDispatchConfirmation,
   resultText,
 } from '../../../gogcli-mcp/src/lib.js';
-import { API_BUDGET_DEFAULT, ApiBudget } from '../budget.js';
-import { evaluateOpenAt } from '../open-at.js';
-import { PlacesClient } from '../places-client.js';
-import { resolveItems, statusWarnings, type ResolveItem } from '../places-service.js';
+import { newCallCounter, resolveItems, type ResolveItem } from '../places-service.js';
 import { buildCsv, buildKml, dayLabel, normalizeStops, pinUrl, type TripMapStop } from '../trip.js';
 import {
   CSV_MIME,
@@ -39,20 +37,22 @@ import {
   type DriveOps,
 } from '../trip-drive.js';
 import {
-  apiBudgetParam,
+  checkCoordinates,
   defaultCache,
   failure,
-  fieldsParam,
   placesResult,
   projectResolved,
-  viewOpt,
-  VIEWS,
   type PlacesToolDeps,
 } from './places.js';
 
 export type TripToolDeps = PlacesToolDeps;
 
 const TRIPS_FOLDER = 'Trips';
+const VIEWS = ['compact', 'full'] as const;
+const viewOpt = viewParam([...VIEWS], {
+  note: 'compact (the default) gives the days, pins and files. full adds `places`: every stop\'s lookup '
+    + '(status, place id, address, lat/lng, match confidence, cached).',
+});
 
 const stopSchema = z.object({
   day: z.union([z.string(), z.number().int()]).describe('ISO date (YYYY-MM-DD) or a day number from 1 (dated by start_date)'),
@@ -60,6 +60,8 @@ const stopSchema = z.object({
   name: z.string().trim().min(1).describe('Place name, e.g. "Armature Works"'),
   address: z.string().optional().describe('Address or city to disambiguate, e.g. "Tampa, FL"'),
   place_id: z.string().optional().describe('A known Google place id (skips the search)'),
+  lat: z.number().min(-90).max(90).optional().describe('Known latitude: used as the pin (with lng), no geocode'),
+  lng: z.number().min(-180).max(180).optional().describe('Known longitude (with lat)'),
   note: z.string().optional().describe('Free text shown on the pin'),
   category: z.string().optional().describe('lodging, food, drinks, sight, activity, event, transport or shopping (pin colour)'),
 });
@@ -85,10 +87,10 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
   return (server: McpServer) => {
     server.registerTool('gog_trip_map', {
       description:
-        'Turn a trip itinerary into PINS ON A MAP (not a route): resolves each stop to a Google place (cached; '
-        + '`api_budget` caps billable Places requests), warns first about closed businesses, stops not open at the '
-        + 'planned day+time, ambiguous matches and unresolved stops, and returns each stop\'s Google Maps pin link '
-        + 'grouped by day. Writes a KML (one folder per day, one colour per category) and a CSV, uploads both to '
+        'Turn a trip itinerary into PINS ON A MAP (not a route): resolves each stop to a Google place through gog '
+        + '(`gog maps places search`/`details` + `gog maps geocode`, cached), warns first about approximate pins, '
+        + 'ambiguous matches and unresolved stops, and returns each stop\'s status and Google Maps pin link grouped '
+        + 'by day. Writes a KML (one folder per day, one colour per category) and a CSV, uploads both to '
         + 'Drive "Trips/<title>" (reused on re-runs; same-named files replaced), and gives the 3 steps to import the '
         + 'KML into Google My Maps (My Maps and Maps Lists have no API). With share_with + confirm_share: true, '
         + 'shares the folder as reader with those emails only, after the user confirms; never public. '
@@ -97,22 +99,21 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
       inputSchema: z.object({
         title: z.string().trim().min(1).max(200).describe('Trip title: the map, folder and file name'),
-        start_date: z.string().optional().describe('YYYY-MM-DD of day 1, so numbered days get dates (and open-at checks)'),
+        start_date: z.string().optional().describe('YYYY-MM-DD of day 1, so numbered days get dates'),
         stops: z.array(stopSchema).min(1).max(100).describe('The stops (1-100), in any order'),
         share_with: z.array(z.email()).max(50).optional().describe('Emails to share the Drive folder with as reader'),
         confirm_share: z.boolean().optional().describe('Must be true for share_with to be acted on'),
         upload: z.boolean().optional().describe('Upload to Drive (default true); false keeps the files local/inline'),
         drive_parent: z.string().optional().describe('Drive folder id to hold "Trips" (default: My Drive root)'),
-        fields: fieldsParam('full'),
         view: viewOpt,
-        api_budget: apiBudgetParam,
         account: accountParam,
         confirmToken: confirmTokenParam,
       }),
     }, async (args, ctx) => {
-      const { title, start_date, stops, share_with, confirm_share, upload = true, drive_parent, fields = 'full', view, api_budget, account, confirmToken } = args;
+      const { title, start_date, stops, share_with, confirm_share, upload = true, drive_parent, view, account, confirmToken } = args;
       let normalized: ReturnType<typeof normalizeStops>;
       try {
+        checkCoordinates(stops, 'stop');
         normalized = normalizeStops(stops, start_date);
       } catch (err) {
         return failure(err);
@@ -124,7 +125,7 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
         ? 'GOG_READONLY is set: nothing was written to Drive'
         : !upload ? 'upload: false: nothing was written to Drive' : undefined;
 
-      // The share gate runs FIRST, before any Places request or write: a prompt
+      // The share gate runs FIRST, before any gog lookup or write: a prompt
       // round (or the token fallback's phase 1) re-runs the whole call, and it
       // must not have spent or written anything by then.
       const emails = [...new Set((share_with ?? []).map((e) => e.trim().toLowerCase()))];
@@ -169,42 +170,29 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
       }
 
       const cache = cacheOf();
-      const budget = new ApiBudget(api_budget ?? API_BUDGET_DEFAULT);
-      const client = new PlacesClient({
-        fetch: deps.fetch, env: deps.env, spawner: deps.spawner, readGogConfig: deps.readGogConfig, budget,
-      });
-      const items = normalized.stops.map((s): ResolveItem => pruneUndefined({ name: s.name, address: s.address, placeId: s.placeId }) as ResolveItem);
-      const resolved = await resolveItems(items, { client, cache, fields });
+      const calls = newCallCounter();
+      const items = normalized.stops.map((s): ResolveItem => pruneUndefined({
+        name: s.name, address: s.address, placeId: s.placeId, lat: stops[s.index]!.lat, lng: stops[s.index]!.lng,
+      }) as ResolveItem);
+      const resolved = await resolveItems(items, { cache, spawner: deps.spawner, calls });
       await cache.save();
 
-      // Stops with their places and warnings, loudest first.
-      const mapStops: TripMapStop[] = [];
-      const stopWarnings: string[][] = [];
-      normalized.stops.forEach((stop, i) => {
-        const r = resolved[i]!;
-        const warnings = [...r.warnings];
-        const place = r.place;
-        if (place && stop.date && stop.time && statusWarnings(place).length === 0) {
-          const openAt = evaluateOpenAt(place, { date: stop.date, time: stop.time });
-          if (openAt.open === false) warnings.push(`Not open at ${stop.date} ${stop.time}: ${stop.name} (${openAt.reason})`);
-        }
-        stopWarnings.push(warnings);
-        mapStops.push(place
-          ? {
-            ...stop,
-            place: {
-              placeId: place.id,
-              lat: place.location?.latitude,
-              lng: place.location?.longitude,
-              formattedAddress: place.formattedAddress,
-              googleMapsUri: place.googleMapsUri,
-              websiteUri: place.websiteUri,
-              phone: place.nationalPhoneNumber ?? place.internationalPhoneNumber,
-            },
-          }
-          : stop);
+      // Stops with their places (and pins, when there is a point).
+      const mapStops: TripMapStop[] = normalized.stops.map((stop, i) => {
+        const { place, location } = resolved[i]!;
+        if (!place && !location) return stop;
+        return {
+          ...stop,
+          place: pruneUndefined({
+            placeId: place?.id,
+            lat: location?.lat,
+            lng: location?.lng,
+            formattedAddress: place?.formattedAddress,
+            googleMapsUri: place?.googleMapsUri,
+          }),
+        };
       });
-      const warnings = stopWarnings.flat();
+      const warnings = resolved.flatMap((r) => r.warnings);
 
       const trip = { title, stops: mapStops };
       const { kml } = buildKml(trip);
@@ -256,7 +244,7 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
           }
         } catch (err) {
           // run(), JSON.parse and findOrCreateFolder only ever throw Errors.
-          const message = client.scrub((err as Error).message);
+          const message = redactSecrets((err as Error).message);
           drive = { error: message };
           if (shareApproved) share = { shared: false, sharedWith, reason: `Drive step failed: ${message}` };
         }
@@ -272,16 +260,18 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
         const label = dayLabel(stop.dayNumber, stop.date);
         let day = days.at(-1);
         if (day?.day !== label) days.push(day = { day: label, stops: [] });
+        const r = resolved[i]!;
         day.stops.push(pruneUndefined({
           time: stop.time,
           name: stop.name,
+          status: r.status,
           pin: pinUrl(stop),
-          warnings: stopWarnings[i]!.length ? stopWarnings[i] : undefined,
+          warnings: r.warnings.length ? r.warnings : undefined,
         }));
       });
-      const unresolved = mapStops.flatMap((stop, i) => (typeof stop.place?.lat === 'number' && typeof stop.place?.lng === 'number'
+      const unresolved = mapStops.flatMap((stop, i) => (typeof stop.place?.lat === 'number'
         ? []
-        : [{ day: dayLabel(stop.dayNumber, stop.date), name: stop.name, reason: resolved[i]!.reason ?? 'no coordinates for this place' }]));
+        : [{ day: dayLabel(stop.dayNumber, stop.date), name: stop.name, status: resolved[i]!.status, reason: resolved[i]!.reason }]));
 
       const rung = resolveView(view, [...VIEWS]);
       const result: CallToolResult = placesResult(pruneUndefined({
@@ -295,8 +285,8 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
         importIntoMyMaps: importSteps(title, kmlName, folder ? folderPath : undefined, kmlPath),
         notes: notes.length ? notes : undefined,
         warnings,
-        apiCalls: budget.report(),
-        places: rung === 'full' ? resolved.map((r) => projectResolved(r, rung)) : undefined,
+        gogCalls: calls,
+        places: rung === 'full' ? resolved.map((r) => projectResolved(r, false)) : undefined,
       }), warnings);
       return result;
     });

@@ -2,25 +2,38 @@
  * Local Places cache, shaped by Google's Places policies:
  *  - place IDs may be stored indefinitely  → the query index and the id never expire;
  *  - lat/lng at most 30 consecutive days   → `location`, TTL 30 d (configurable lower only);
- *  - no other Places content beyond 24 h   → `content` (name, address, hours, status,
- *    website, phone, Maps link, price, accessibility), TTL 24 h.
+ *  - no other Places content beyond 24 h   → `content` (name, address, Maps link), TTL 24 h.
  * Expired data is pruned on load and on save, so it is never kept past its window.
  *
- * A hit with a known id but stale content costs one Place Details call (never a
- * Text Search); a fully fresh hit costs nothing. The file lives in the wrapper's
- * state dir (~/.gogcli-mcp), is written atomically (temp + rename) with mode
- * 0600, and a corrupt or unreadable file means "start empty" — never an error.
+ * Content and location are kept and expire independently, because they come
+ * from different gog calls: content from `gog maps places search|details`,
+ * the point from `gog maps geocode`. A stored location of `null` means "the
+ * geocoder found nothing" (known, so not asked again); an absent one means
+ * "not looked up yet".
+ *
+ * The file lives in the wrapper's state dir (~/.gogcli-mcp), is written
+ * atomically (temp + rename) with mode 0600, and a corrupt or unreadable file
+ * (or the v1 format the direct-HTTPS client wrote) means "start empty" —
+ * never an error.
  */
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import type { PlacesFieldSet } from './budget.js';
-import type { LatLng, PlacesPlace } from './places-client.js';
+import type { GogPlace } from './places-gog.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const LOCATION_TTL_MS = 30 * DAY_MS;
 export const CONTENT_TTL_MS = DAY_MS;
+
+/** exact: the geocoder's point is this very place; approximate: it geocoded the address to something else. */
+export type LocationMatch = 'exact' | 'approximate';
+
+export interface PlaceLocation {
+  lat: number;
+  lng: number;
+  match: LocationMatch;
+}
 
 /** Lowercase, drop apostrophes, turn other punctuation into spaces, collapse whitespace. */
 export function normalizeForKey(text: string): string {
@@ -43,20 +56,20 @@ export function defaultCachePath(home: string = homedir()): string {
 
 export interface CacheLookup {
   placeId: string;
-  /** True when `place` can be used as-is: zero billable calls. */
-  fresh: boolean;
-  /** Present only when fresh. */
-  place?: PlacesPlace;
+  /** Present only when fresh (≤ 24 h). */
+  content?: GogPlace;
+  /** undefined: unknown or stale; null: the geocoder found nothing (fresh); else a fresh point. */
+  location?: PlaceLocation | null;
 }
 
 interface StoredContent {
-  fields: PlacesFieldSet;
   fetchedAt: number;
-  data: Omit<PlacesPlace, 'id' | 'location'>;
+  data: Omit<GogPlace, 'id'>;
 }
 
-interface StoredLocation extends LatLng {
+interface StoredLocation {
   fetchedAt: number;
+  point: PlaceLocation | null;
 }
 
 interface StoredPlace {
@@ -65,7 +78,7 @@ interface StoredPlace {
 }
 
 interface CacheFile {
-  version: 1;
+  version: 2;
   places: Record<string, StoredPlace>;
   queries: Record<string, string>;
 }
@@ -80,31 +93,33 @@ export interface PlacesCacheOptions {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+function sanitizePoint(raw: unknown): PlaceLocation | null | undefined {
+  if (raw === null) return null;
+  if (
+    isRecord(raw) &&
+    typeof raw.lat === 'number' &&
+    typeof raw.lng === 'number' &&
+    (raw.match === 'exact' || raw.match === 'approximate')
+  ) {
+    return { lat: raw.lat, lng: raw.lng, match: raw.match };
+  }
+  return undefined;
+}
+
 function sanitizePlace(raw: unknown): StoredPlace | undefined {
   if (!isRecord(raw)) return undefined;
   const place: StoredPlace = {};
   const { content, location } = raw;
-  if (
-    isRecord(content) &&
-    (content.fields === 'basic' || content.fields === 'full') &&
-    typeof content.fetchedAt === 'number' &&
-    isRecord(content.data)
-  ) {
-    place.content = content as unknown as StoredContent;
-  }
-  if (location !== undefined) {
-    if (
-      isRecord(location) &&
-      typeof location.latitude === 'number' &&
-      typeof location.longitude === 'number' &&
-      typeof location.fetchedAt === 'number'
-    ) {
-      place.location = location as unknown as StoredLocation;
-    } else {
-      // Content without the coordinates it came with would read as "this
-      // place has no location"; drop it so the next lookup refetches both.
-      delete place.content;
+  if (isRecord(content) && typeof content.fetchedAt === 'number' && isRecord(content.data)) {
+    const data: Omit<GogPlace, 'id'> = {};
+    for (const key of ['name', 'formattedAddress', 'googleMapsUri'] as const) {
+      if (typeof content.data[key] === 'string') data[key] = content.data[key];
     }
+    place.content = { fetchedAt: content.fetchedAt, data };
+  }
+  if (isRecord(location) && typeof location.fetchedAt === 'number') {
+    const point = sanitizePoint(location.point);
+    if (point !== undefined) place.location = { fetchedAt: location.fetchedAt, point };
   }
   return place;
 }
@@ -116,8 +131,8 @@ function parseCacheFile(text: string): CacheFile | undefined {
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.places) || !isRecord(parsed.queries)) return undefined;
-  const file: CacheFile = { version: 1, places: {}, queries: {} };
+  if (!isRecord(parsed) || parsed.version !== 2 || !isRecord(parsed.places) || !isRecord(parsed.queries)) return undefined;
+  const file: CacheFile = { version: 2, places: {}, queries: {} };
   for (const [id, raw] of Object.entries(parsed.places)) {
     const place = sanitizePlace(raw);
     if (place) file.places[id] = place;
@@ -133,7 +148,7 @@ export class PlacesCache {
   private readonly now: () => number;
   private readonly locationTtlMs: number;
   private readonly log: (line: string) => void;
-  private file: CacheFile = { version: 1, places: {}, queries: {} };
+  private file: CacheFile = { version: 2, places: {}, queries: {} };
   private loaded: Promise<void> | undefined;
   private dirty = false;
 
@@ -148,26 +163,34 @@ export class PlacesCache {
     this.log = opts.log ?? ((line) => process.stderr.write(`[gogcli-mcp-maps] ${line}\n`));
   }
 
-  async lookupQuery(name: string, address: string | undefined, fields: PlacesFieldSet): Promise<CacheLookup | undefined> {
+  /** What is known for a name+address query; a bare `{placeId}` when only the id is. */
+  async lookupQuery(name: string, address?: string): Promise<CacheLookup | undefined> {
     await this.load();
     const placeId = this.file.queries[cacheKey(name, address)];
-    return placeId === undefined ? undefined : this.lookupLoaded(placeId, fields, true);
+    return placeId === undefined ? undefined : this.lookupLoaded(placeId);
   }
 
-  async lookupPlace(placeId: string, fields: PlacesFieldSet): Promise<CacheLookup | undefined> {
+  /** What is known for a place id; undefined when nothing is. */
+  async lookupPlace(placeId: string): Promise<CacheLookup | undefined> {
     await this.load();
-    return this.lookupLoaded(placeId, fields, false);
+    return this.file.places[placeId] ? this.lookupLoaded(placeId) : undefined;
   }
 
-  /** Store a place fetched with `fields`; with `query`, index that name+address to it. */
-  async put(place: PlacesPlace, fields: PlacesFieldSet, query?: { name: string; address?: string }): Promise<void> {
+  /** Store a place's content; with `query`, index that name+address to it. */
+  async putPlace(place: GogPlace, query?: { name: string; address?: string }): Promise<void> {
     await this.load();
-    const fetchedAt = this.now();
-    const { id, location, ...data } = place;
-    const stored: StoredPlace = { content: { fields, fetchedAt, data: structuredClone(data) } };
-    if (location) stored.location = { latitude: location.latitude, longitude: location.longitude, fetchedAt };
-    this.file.places[id] = stored;
+    const { id, ...data } = place;
+    const stored = (this.file.places[id] ??= {});
+    stored.content = { fetchedAt: this.now(), data: { ...data } };
     if (query) this.file.queries[cacheKey(query.name, query.address)] = id;
+    this.dirty = true;
+  }
+
+  /** Store a place's geocoded point, or null for "the geocoder found nothing". */
+  async putLocation(placeId: string, point: PlaceLocation | null): Promise<void> {
+    await this.load();
+    const stored = (this.file.places[placeId] ??= {});
+    stored.location = { fetchedAt: this.now(), point: point && { ...point } };
     this.dirty = true;
   }
 
@@ -190,20 +213,19 @@ export class PlacesCache {
     }
   }
 
-  private lookupLoaded(placeId: string, fields: PlacesFieldSet, fromQuery: boolean): CacheLookup | undefined {
+  private lookupLoaded(placeId: string): CacheLookup {
+    const out: CacheLookup = { placeId };
     const stored = this.file.places[placeId];
-    if (!stored) return fromQuery ? { placeId, fresh: false } : undefined;
+    if (!stored) return out;
     const now = this.now();
     const { content, location } = stored;
-    const contentFresh =
-      content !== undefined && this.within(now, content.fetchedAt, CONTENT_TTL_MS) && (fields === 'basic' || content.fields === 'full');
-    // No stored location means the place genuinely had none: prune() and
-    // sanitizePlace() drop the content whenever they drop its coordinates.
-    const locationOk = location === undefined || this.within(now, location.fetchedAt, this.locationTtlMs);
-    if (!contentFresh || !locationOk) return { placeId, fresh: false };
-    const place: PlacesPlace = { id: placeId, ...structuredClone(content.data) };
-    if (location) place.location = { latitude: location.latitude, longitude: location.longitude };
-    return { placeId, fresh: true, place };
+    if (content && this.within(now, content.fetchedAt, CONTENT_TTL_MS)) {
+      out.content = { id: placeId, ...content.data };
+    }
+    if (location && this.within(now, location.fetchedAt, this.locationTtlMs)) {
+      out.location = location.point && { ...location.point };
+    }
+    return out;
   }
 
   private within(now: number, fetchedAt: number, ttl: number): boolean {
@@ -215,10 +237,7 @@ export class PlacesCache {
     const now = this.now();
     for (const stored of Object.values(this.file.places)) {
       if (stored.content && !this.within(now, stored.content.fetchedAt, CONTENT_TTL_MS)) delete stored.content;
-      if (stored.location && !this.within(now, stored.location.fetchedAt, this.locationTtlMs)) {
-        delete stored.location;
-        delete stored.content;
-      }
+      if (stored.location && !this.within(now, stored.location.fetchedAt, this.locationTtlMs)) delete stored.location;
     }
   }
 

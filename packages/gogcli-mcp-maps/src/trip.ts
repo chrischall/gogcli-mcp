@@ -68,7 +68,7 @@ export interface Trip {
 }
 
 const NO_START_DATE_NOTE =
-  'No start_date: days are numbered, not dated, so open-at checks against opening hours are skipped.';
+  'No start_date: days are numbered, not dated (give start_date to put them on the calendar).';
 
 const DAY_MS = 86_400_000;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -127,7 +127,7 @@ function parseDay(day: string | number, where: string): ParsedDay {
  * Validate the stops and put them in display order: by day, then by time,
  * with a day's untimed stops after its timed ones; ties keep the caller's
  * order. Numbered days get dates from `startDate`; without it they stay
- * numbered and a note says open-at checks are skipped. Dated days are
+ * numbered and a note says so. Dated days are
  * numbered from `startDate`, or from the earliest date when there is none.
  */
 export function normalizeStops(

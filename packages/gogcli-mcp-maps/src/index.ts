@@ -10,7 +10,8 @@ await bootstrapGogAuth();
 await runMcp({
   name: 'gogcli-maps',
   version: VERSION,
-  // Drive scope only: the trip map lands as KML/CSV files in Drive. Places is
-  // called directly over HTTPS with an API key (src/places-client.ts), not OAuth.
+  // Drive scope only: the trip map lands as KML/CSV files in Drive. Places and
+  // Geocoding go through `gog maps` too, which uses the API key in gog's own
+  // config (not OAuth); this process makes no network call of its own.
   tools: [authToolsFor('drive'), placesTools(), tripTools()],
 });

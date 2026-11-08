@@ -46,13 +46,6 @@
           "description": "zone gog formats naive dates in; unset, runner.ts hands gog DISPLAY_TZ so the two cannot diverge",
           "isRequired": false,
           "format": "string"
-        },
-        {
-          "name": "GOG_PLACES_API_KEY",
-          "description": "Places API (New) key; falls back to GOOGLE_PLACES_API_KEY, then gog config places_api_key",
-          "isRequired": false,
-          "isSecret": true,
-          "format": "string"
         }
       ]
     }

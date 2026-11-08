@@ -140,12 +140,12 @@ describe('normalizeStops', () => {
     expect(stops[0]).toMatchObject({ dayNumber: 3, date: '2026-11-23' });
   });
 
-  it('leaves day numbers dateless without start_date and says open-at checks are skipped', () => {
+  it('leaves day numbers dateless without start_date and says so', () => {
     const { stops, notes } = normalizeStops([{ day: 1, name: 'A' }]);
     expect(stops[0].date).toBeUndefined();
     expect(stops[0].dayNumber).toBe(1);
     expect(notes).toEqual([
-      'No start_date: days are numbered, not dated, so open-at checks against opening hours are skipped.',
+      'No start_date: days are numbered, not dated (give start_date to put them on the calendar).',
     ]);
   });
 

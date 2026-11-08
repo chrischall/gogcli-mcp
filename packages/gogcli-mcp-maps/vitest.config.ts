@@ -2,12 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    // The places tests inject fetch, clock and cache path; nothing here may
-    // reach Google or read a real key, so the ambient key vars are blanked.
-    env: {
-      GOG_PLACES_API_KEY: '',
-      GOOGLE_PLACES_API_KEY: '',
-    },
+    // Every Google lookup goes through gog, and the tests hand the tools a
+    // fake Spawner (tests/support/fake-maps.ts): no test may run the real gog,
+    // which would bill a Places/Geocoding key.
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
