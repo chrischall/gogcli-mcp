@@ -2,12 +2,13 @@ version: 1
 name: Google Maps trips (gogcli)
 slug: gogcli-mcp-maps
 summary: >-
-  Trip mapping via gogcli — Google Places lookups (hours, website, phone,
-  open-at checks) and trip stops as pins on a map, delivered as KML/CSV in
-  Drive for a My Maps import
+  Trip mapping via gogcli — Google Places and Geocoding through `gog maps`
+  (place id, address, Maps link, coordinates) and trip stops as pins on a
+  map, with Google Maps shortlist links and KML/CSV in Drive for a My Maps
+  import
 examples:
-  - prompt: "Is Armature Works open at 8pm on Saturday?"
-    note: "One Place Details call; cached for 24 hours."
+  - prompt: "Find Armature Works in Tampa and give me its Google Maps link."
+    note: "One gog maps places search plus one geocode; cached (24 h, coordinates 30 days)."
   - prompt: "Put my Tampa weekend stops on a map I can share with my partner."
     note: "Pins, not a route: KML + CSV in Drive/Trips, sharing only on confirmation."
 command:
@@ -98,7 +99,7 @@ dependencies:
   # bumping these ten pins, and the pin stored on each mcp-host registration.
   - kind: github-release
     repo: openclaw/gogcli
-    tag: v0.46.0
+    tag: v0.48.0
     asset: "gogcli_*_linux_amd64.tar.gz"
     bin: [gog]
 state:

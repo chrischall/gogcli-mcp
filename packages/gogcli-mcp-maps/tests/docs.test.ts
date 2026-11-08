@@ -47,6 +47,61 @@ describe('package docs', () => {
     expect(text).toContain('confirm_share');
   });
 
+  const PACKAGE_TEXTS = ['../README.md', '../SKILL.md', '../manifest.json', '../package.json', '../server.json', '../mint.yaml'];
+
+  it.each(PACKAGE_TEXTS)('%s promises nothing gog 0.48 cannot give and no key handling in the MCP', (file) => {
+    const text = read(file);
+    for (const gone of [
+      /api_budget/, /open[_-]at/i, /closures?\b/i, /CLOSED/, /fields: (basic|full)/, /field mask/i,
+      /opening hours/i, /\bhours\b/i, /\bphone/i, /\bwebsite/i, /GOG_PLACES_API_KEY/,
+      /GOOGLE_PLACES_API_KEY/, /over HTTPS/i, /directly from Node/i, /Enterprise/, /estimatedUsd/,
+    ]) {
+      expect(text, `${file} still mentions ${gone}`).not.toMatch(gone);
+    }
+  });
+
+  it('README says gog does every Google call, with the key in gog\'s own config', () => {
+    const text = read('../README.md');
+    expect(text).toMatch(/calls nothing outside gog|never calls Google itself/i);
+    expect(text).toContain('Geocoding API');
+    expect(text).toContain('gog maps places search');
+    expect(text).toContain('gog maps geocode');
+    // Costs: per-call SKUs, with the pricing page cited, and no budget parameter.
+    expect(text).toMatch(/Text Search Pro/);
+    expect(text).toMatch(/Place Details Pro/);
+    expect(text).toMatch(/Geocoding[^\n]*\$5/);
+    expect(text).toContain('https://developers.google.com/maps/billing-and-pricing/pricing');
+    expect(text).toContain('gogCalls');
+  });
+
+  it('README names exactly the tools that take refresh', () => {
+    const text = read('../README.md');
+    const line = text.split('\n').find((l) => l.includes('`refresh: true`'));
+    expect(line).toBeDefined();
+    expect(line).toContain('`gog_places_resolve`');
+    expect(line).toContain('`gog_places_details`');
+    expect(line).not.toContain('`gog_places_search`');
+    expect(line).not.toContain('`gog_trip_map`');
+  });
+
+  it('README documents the shortlist links: what they do, the 20-place limit, unverified save behaviour', () => {
+    const text = read('../README.md');
+    expect(text).toMatch(/^## .*[Ss]hortlist/m);
+    expect(text).toContain('map_action=shortlist');
+    expect(text).toContain('shortlist_urls');
+    expect(text).toMatch(/20 places/);
+    expect(text).toMatch(/not (been )?verified/i);
+    expect(text).toMatch(/My Maps/);
+  });
+
+  it('SKILL mentions the shortlist links', () => {
+    expect(read('../SKILL.md')).toMatch(/shortlist/i);
+  });
+
+  it('mint.yaml pins gog v0.48.0, the release whose `gog maps` the tools use', () => {
+    expect(read('../mint.yaml')).toMatch(/^\s+tag: v0\.48\.0$/m);
+  });
+
   it('root README counts the package tools and lists gog_trip_map among the confirmed tools', async () => {
     const total = (await liveToolNames()).length;
     const text = read('../../../README.md');

@@ -4,7 +4,7 @@
   "name": "gogcli-mcp-maps",
   "display_name": "gogcli (Maps)",
   "version": "4.10.0",
-  "description": "Trip mapping for Claude via gogcli — Google Places lookups (hours, website, phone, open-at checks) and trip stops as pins on a map (KML/CSV in Drive for My Maps)",
+  "description": "Trip mapping for Claude via gogcli — Google Places and Geocoding through gog maps, and trip stops as pins on a map (Google Maps shortlist links, KML/CSV in Drive for My Maps)",
   "author": {
     "name": "Chris Hall",
     "email": "chris.c.hall@gmail.com",
@@ -118,19 +118,19 @@
     },
     {
       "name": "gog_places_search",
-      "description": "Search Google Places by free text, optionally biased to a circle"
+      "description": "The single top Google match for free text: place id, address, Maps link, lat/lng (via gog maps)"
     },
     {
       "name": "gog_places_resolve",
-      "description": "Resolve 1-50 named stops to places: id, address, lat/lng, hours, website, phone, status (cached)"
+      "description": "Resolve 1-50 named stops to places: id, address, lat/lng, Maps link, status (cached)"
     },
     {
       "name": "gog_places_details",
-      "description": "Details for one place id, with an optional open-at check for a local date and time"
+      "description": "One place id: name, address, Maps link, lat/lng (via gog maps)"
     },
     {
       "name": "gog_trip_map",
-      "description": "Trip stops as pins on a map: resolve, warn (closed/not open), KML + CSV to Drive Trips/<title>, optional confirmed reader share"
+      "description": "Trip stops as pins on a map: resolve, warn (approximate/ambiguous/unresolved), Google Maps shortlist links, KML + CSV to Drive Trips/<title>, optional confirmed reader share"
     }
   ],
   "compatibility": {

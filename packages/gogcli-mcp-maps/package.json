@@ -2,7 +2,7 @@
   "name": "gogcli-mcp-maps",
   "version": "4.10.0",
   "mcpName": "io.github.chrischall/gogcli-mcp-maps",
-  "description": "Trip mapping MCP server via gogcli — Google Places lookups (hours, website, phone, open-at checks) and trip stops as pins on a map (KML/CSV in Drive for My Maps import)",
+  "description": "Trip mapping MCP server via gogcli — Google Places and Geocoding through gog maps, and trip stops as pins on a map (Google Maps shortlist links, KML/CSV in Drive for My Maps import)",
   "author": "Claude Code (AI) <https://www.anthropic.com/claude>",
   "repository": {
     "type": "git",
