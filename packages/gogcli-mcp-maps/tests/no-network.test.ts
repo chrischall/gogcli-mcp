@@ -20,6 +20,9 @@ const FORBIDDEN: Array<[string, RegExp]> = [
   ['undici', /undici/],
   ['googleapis.com', /googleapis\.com/],
   ['XMLHttpRequest / WebSocket', /\b(?:XMLHttpRequest|WebSocket)\b/],
+  // The Places key is gog's: runner.ts hands GOG_PLACES_API_KEY to gog, and
+  // this package never reads a key itself.
+  ['a Places API key', /PLACES_API_KEY|places_api_key\s*[:=]/],
 ];
 
 describe('no network outside gog', () => {

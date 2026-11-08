@@ -67,6 +67,15 @@ env:
       Encrypts gog's file keyring on the data dir. Required with
       GOG_KEYRING_BACKEND=file. Deliberately not stripped from the spawned
       CLI's environment — it is the one credential gog itself reads.
+  - name: GOG_PLACES_API_KEY
+    secret: true
+    required: false
+    help: >-
+      Google Maps Platform key with Places API (New) and Geocoding API enabled,
+      read by gog itself for `gog maps`. The one *_KEY the wrapper passes to
+      gog; locally, `gog config set places_api_key <key>` does the same job.
+      Hosted, this is the only way to give gog the key: without it every
+      place lookup fails.
   - name: GOG_READONLY
     required: false
     help: >-

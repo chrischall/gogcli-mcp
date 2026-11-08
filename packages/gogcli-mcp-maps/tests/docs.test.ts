@@ -53,11 +53,18 @@ describe('package docs', () => {
     const text = read(file);
     for (const gone of [
       /api_budget/, /open[_-]at/i, /closures?\b/i, /CLOSED/, /fields: (basic|full)/, /field mask/i,
-      /opening hours/i, /\bhours\b/i, /\bphone/i, /\bwebsite/i, /GOG_PLACES_API_KEY/,
-      /GOOGLE_PLACES_API_KEY/, /over HTTPS/i, /directly from Node/i, /Enterprise/, /estimatedUsd/,
+      /opening hours/i, /\bhours\b/i, /\bphone/i, /\bwebsite/i,
+      /over HTTPS/i, /directly from Node/i, /Enterprise/, /estimatedUsd/,
     ]) {
       expect(text, `${file} still mentions ${gone}`).not.toMatch(gone);
     }
+  });
+
+  // The key is gog's: the runner passes GOG_PLACES_API_KEY through to gog and
+  // this package's code never reads it.
+  it('documents GOG_PLACES_API_KEY as read by gog (no-network.test.ts keeps it out of src)', () => {
+    expect(read('../README.md')).toMatch(/GOG_PLACES_API_KEY[^\n]*passes through|passes through[^\n]*GOG_PLACES_API_KEY|`GOG_PLACES_API_KEY` is the one it passes through/);
+    expect(read('../mint.yaml')).toMatch(/GOG_PLACES_API_KEY[\s\S]*read by gog itself/);
   });
 
   it('README says gog does every Google call, with the key in gog\'s own config', () => {

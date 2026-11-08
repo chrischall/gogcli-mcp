@@ -154,9 +154,18 @@ export function readonlyEnvEnabled(): boolean {
 // own file keyring (`GOG_KEYRING_BACKEND=file`), so that rule would strip the
 // one credential the child needs and turn every call into an auth failure.
 // Both directions are tested — a widening with no control case is a guess.
+//
+// `GOG_PLACES_API_KEY` is the one `_KEY` gog itself reads: `gog maps` takes the
+// Places/Geocoding key from it or from `places_api_key` in gog's config, and a
+// hosted connector cannot run `gog config set`. Only gog's own spelling passes;
+// `GOOGLE_PLACES_API_KEY`, which gog also reads, stays stripped so an ambient
+// Google key is never spent by accident.
+const GOG_OWN_KEYS = new Set(['GOG_PLACES_API_KEY']);
+
 function sanitizedEnv(): NodeJS.ProcessEnv {
   const result: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
+    if (GOG_OWN_KEYS.has(key)) { result[key] = value; continue; }
     if (key === 'GOG_ACCESS_TOKEN') continue;
     if (key === 'GOOGLE_APPLICATION_CREDENTIALS') continue;
     if (/(_TOKEN|_SECRET|_KEY|_CREDENTIALS)$/.test(key)) continue;

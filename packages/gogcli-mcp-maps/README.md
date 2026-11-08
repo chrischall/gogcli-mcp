@@ -38,7 +38,7 @@ The places tools run `gog maps places search`, `gog maps places details` and `go
    gog config set places_api_key <key>
    ```
 
-Use gog's config, not an environment variable: the server strips every `*_KEY` variable from the environment of the `gog` it spawns. Without a key, gog's own error (how to set one) comes back from the places tools.
+On a hosted connector, where you cannot run `gog config`, set `GOG_PLACES_API_KEY` instead (as a secret). The server strips every other `*_KEY` variable from the environment of the `gog` it spawns, including `GOOGLE_PLACES_API_KEY`, which gog would otherwise also read; `GOG_PLACES_API_KEY` is the one it passes through. Without a key, gog's own error (how to set one) comes back from the places tools.
 
 ## Installation
 

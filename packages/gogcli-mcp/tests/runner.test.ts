@@ -568,20 +568,29 @@ describe('run', () => {
   // its own file keyring (`GOG_KEYRING_BACKEND=file`), so a `_PASSWORD` rule
   // would strip the one credential the child legitimately needs and turn every
   // call into an auth failure. `GOG_KEYRING_BACKEND` is the same story without
-  // the secret.
+  // the secret. `GOG_PLACES_API_KEY` is the Places/Geocoding key `gog maps`
+  // reads; a hosted connector has no other way to hand it to gog.
   it('keeps the credentials gog itself reads from the environment', async () => {
     const spawner = makeSpawner(0, '{}');
     const snapshot = {
       GOG_KEYRING_PASSWORD: process.env.GOG_KEYRING_PASSWORD,
       GOG_KEYRING_BACKEND: process.env.GOG_KEYRING_BACKEND,
+      GOG_PLACES_API_KEY: process.env.GOG_PLACES_API_KEY,
+      GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY,
     };
     process.env.GOG_KEYRING_PASSWORD = 'keyring-pass';
     process.env.GOG_KEYRING_BACKEND = 'file';
+    process.env.GOG_PLACES_API_KEY = 'places-key';
+    process.env.GOOGLE_PLACES_API_KEY = 'ambient-places-key';
     try {
       await run(['docs', 'cat', 'id'], { spawner });
       const envPassed = (spawner as ReturnType<typeof vi.fn>).mock.calls[0][2].env as NodeJS.ProcessEnv;
       expect(envPassed.GOG_KEYRING_PASSWORD).toBe('keyring-pass');
       expect(envPassed.GOG_KEYRING_BACKEND).toBe('file');
+      // gog's own name for the Places key passes; the generic Google spelling
+      // gog also reads stays stripped, so an ambient key is never picked up.
+      expect(envPassed.GOG_PLACES_API_KEY).toBe('places-key');
+      expect(envPassed.GOOGLE_PLACES_API_KEY).toBeUndefined();
     } finally {
       for (const [k, v] of Object.entries(snapshot)) {
         if (v === undefined) delete process.env[k];
