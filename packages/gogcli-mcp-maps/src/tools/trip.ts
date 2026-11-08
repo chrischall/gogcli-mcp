@@ -25,10 +25,20 @@ import {
   resultText,
 } from '../../../gogcli-mcp/src/lib.js';
 import { newCallCounter, resolveItems, type ResolveItem } from '../places-service.js';
-import { buildCsv, buildKml, dayLabel, normalizeStops, pinUrl, type TripMapStop } from '../trip.js';
+import {
+  buildCsv,
+  buildKml,
+  buildShortlists,
+  dayLabel,
+  normalizeStops,
+  pinUrl,
+  SHORTLIST_MAX_IDS,
+  type TripMapStop,
+} from '../trip.js';
 import {
   CSV_MIME,
   findOrCreateFolder,
+  folderName,
   KML_MIME,
   listFolderFiles,
   shareFolderWith,
@@ -48,6 +58,10 @@ import {
 export type TripToolDeps = PlacesToolDeps;
 
 const TRIPS_FOLDER = 'Trips';
+const SHORTLIST_ABOUT =
+  'Each shortlist link opens Google Maps on those places, where the user can save them to a list in their '
+  + `Google Maps profile (Lists); a link holds at most ${SHORTLIST_MAX_IDS} places. What saving creates (a new list `
+  + 'or an addition to an existing one) has not been verified and differs by device (app or browser).';
 const VIEWS = ['compact', 'full'] as const;
 const viewOpt = viewParam([...VIEWS], {
   note: 'compact (the default) gives the days, pins and files. full adds `places`: every stop\'s lookup '
@@ -90,7 +104,8 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
         'Turn a trip itinerary into PINS ON A MAP (not a route): resolves each stop to a Google place through gog '
         + '(`gog maps places search`/`details` + `gog maps geocode`, cached), warns first about approximate pins, '
         + 'ambiguous matches and unresolved stops, and returns each stop\'s status and Google Maps pin link grouped '
-        + 'by day. Writes a KML (one folder per day, one colour per category) and a CSV, uploads both to '
+        + 'by day, with Google Maps shortlist links per day (and for the whole trip when it has at most 20 places) '
+        + 'that let the user save the places to their Google Maps Lists. Writes a KML (one folder per day, one colour per category) and a CSV, uploads both to '
         + 'Drive "Trips/<title>" (reused on re-runs; same-named files replaced), and gives the 3 steps to import the '
         + 'KML into Google My Maps (My Maps and Maps Lists have no API). With share_with + confirm_share: true, '
         + 'shares the folder as reader with those emails only, after the user confirms; never public. '
@@ -119,7 +134,8 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
         return failure(err);
       }
       const notes = [...normalized.notes];
-      const folderPath = `${TRIPS_FOLDER}/${title}`;
+      const tripFolder = folderName(title);
+      const folderPath = `${TRIPS_FOLDER}/${tripFolder}`;
       const readonly = readonlyEnvEnabled();
       const driveSkipReason = readonly
         ? 'GOG_READONLY is set: nothing was written to Drive'
@@ -228,7 +244,7 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
         const sharedWith: string[] = [];
         try {
           const trips = await findOrCreateFolder(TRIPS_FOLDER, drive_parent, ops);
-          const made = await findOrCreateFolder(title, trips.folder.id, ops);
+          const made = await findOrCreateFolder(tripFolder, trips.folder.id, ops);
           const existing = await listFolderFiles(made.folder.id, ops);
           const kmlUp = await uploadOrReplace(kmlPath, kmlName, KML_MIME, made.folder.id, existing, ops);
           const csvUp = await uploadOrReplace(csvPath, csvName, CSV_MIME, made.folder.id, existing, ops);
@@ -255,12 +271,13 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
         files.csv!.content = csv;
       }
 
-      const days: Array<{ day: string; stops: Array<Record<string, unknown>> }> = [];
+      const days: Array<{ day: string; stops: Array<Record<string, unknown>>; members: TripMapStop[] }> = [];
       mapStops.forEach((stop, i) => {
         const label = dayLabel(stop.dayNumber, stop.date);
         let day = days.at(-1);
-        if (day?.day !== label) days.push(day = { day: label, stops: [] });
+        if (day?.day !== label) days.push(day = { day: label, stops: [], members: [] });
         const r = resolved[i]!;
+        day.members.push(stop);
         day.stops.push(pruneUndefined({
           time: stop.time,
           name: stop.name,
@@ -269,6 +286,26 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
           warnings: r.warnings.length ? r.warnings : undefined,
         }));
       });
+      const dayOut = days.map(({ day, stops: dayStops, members }) => {
+        const { urls, omitted } = buildShortlists(members);
+        return pruneUndefined({
+          day,
+          stops: dayStops,
+          shortlist_urls: urls.length ? urls : undefined,
+          shortlist_left_out: omitted.length ? omitted.map((o) => ({ name: o.stop.name, reason: o.reason })) : undefined,
+        });
+      });
+      const whole = buildShortlists(mapStops);
+      const placeCount = new Set(mapStops.flatMap((s) => s.place?.placeId ?? s.placeId ?? [])).size;
+      const shortlist = whole.urls.length === 0
+        ? undefined
+        : whole.urls.length === 1
+          ? { trip_url: whole.urls[0], about: SHORTLIST_ABOUT }
+          : {
+            trip_note: `The trip has ${placeCount} places, more than the ${SHORTLIST_MAX_IDS} one shortlist link can hold `
+              + '(or too long for one link): use the per-day links.',
+            about: SHORTLIST_ABOUT,
+          };
       const unresolved = mapStops.flatMap((stop, i) => (typeof stop.place?.lat === 'number'
         ? []
         : [{ day: dayLabel(stop.dayNumber, stop.date), name: stop.name, status: resolved[i]!.status, reason: resolved[i]!.reason }]));
@@ -276,7 +313,8 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
       const rung = resolveView(view, [...VIEWS]);
       const result: CallToolResult = placesResult(pruneUndefined({
         title,
-        days,
+        days: dayOut,
+        shortlist,
         unresolved: unresolved.length ? unresolved : undefined,
         files,
         folder,

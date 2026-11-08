@@ -9,7 +9,7 @@ import { createTestHarness, type TestHarness } from '@chrischall/mcp-utils/test'
 import type { Spawner } from '../../../gogcli-mcp/src/lib.js';
 import { resetConfirmTokenState } from '../../../gogcli-mcp/src/send-confirm-token.js';
 import { PlacesCache } from '../../src/places-cache.js';
-import { driveQuoted, slugify } from '../../src/trip-drive.js';
+import { driveQuoted, folderName, slugify } from '../../src/trip-drive.js';
 import { tripTools, type TripToolDeps } from '../../src/tools/trip.js';
 import { ARMATURE, command, GEO, mapsAnswer, STADIUM, type GogPlaceJson, type MapsFixtures } from '../support/fake-maps.js';
 
@@ -34,6 +34,7 @@ const MAPS: MapsFixtures = {
 };
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
+const SHORTLIST = 'https://www.google.com/maps/@?api=1&map_action=shortlist&place_ids=';
 
 interface DriveItem {
   id: string;
@@ -167,13 +168,20 @@ describe('helpers', () => {
     expect(slugify('x'.repeat(100))).toHaveLength(60);
   });
 
+  it('turns slashes in a title into a single Drive folder name', () => {
+    expect(folderName('Tampa Weekend')).toBe('Tampa Weekend');
+    expect(folderName('Paris / London 2026')).toBe('Paris-London 2026');
+    expect(folderName('a\\b//c')).toBe('a-b-c');
+    expect(folderName('/')).toBe('Trip');
+  });
+
   it('quotes Drive query strings', () => {
     expect(driveQuoted("Bob's \\ trip")).toBe("'Bob\\'s \\\\ trip'");
   });
 });
 
 describe('gog_trip_map', () => {
-  it('resolves, warns closed and not-open stops first, writes KML/CSV and uploads them into Trips/<title>', async () => {
+  it('resolves, warns about approximate pins first, writes KML/CSV and uploads them into Trips/<title>', async () => {
     const gog = fakeGog();
     await start(gog);
     const r = await harness.callTool('gog_trip_map', {
@@ -230,6 +238,69 @@ describe('gog_trip_map', () => {
     ]);
     expect(out.share).toBeUndefined();
     expect(gog.shares).toEqual([]);
+
+    // Shortlist links: one per day, place ids in stop order, plus the whole trip.
+    expect(out.days[0].shortlist_urls).toEqual([`${SHORTLIST}ChIJ_stadium%2CChIJ_armature`]);
+    expect(out.days[1].shortlist_urls).toEqual([`${SHORTLIST}ChIJ_armature%2CChIJ_diner`]);
+    expect(out.days[0].shortlist_left_out).toBeUndefined();
+    expect(out.shortlist).toEqual({
+      trip_url: `${SHORTLIST}ChIJ_stadium%2CChIJ_armature%2CChIJ_diner`,
+      about: expect.stringMatching(/save them to a list.*20 places.*not been verified.*differs by device/s),
+    });
+    // Tool output only: the KML and CSV do not carry shortlist links.
+    expect(kml).not.toContain('map_action=shortlist');
+    expect(readFileSync(out.files.csv.path, 'utf8')).not.toContain('map_action=shortlist');
+  });
+
+  it('leaves stops with no place id out of the shortlist and says which', async () => {
+    const gog = fakeGog();
+    await start(gog);
+    const out = data(await harness.callTool('gog_trip_map', {
+      title: 'T', stops: [{ day: 1, name: 'Armature Works' }, { day: 1, name: 'Nowhere Cafe' }], upload: false,
+    }));
+    expect(out.days[0].shortlist_urls).toEqual([`${SHORTLIST}ChIJ_armature`]);
+    expect(out.days[0].shortlist_left_out).toEqual([{ name: 'Nowhere Cafe', reason: 'no place id' }]);
+    expect(out.shortlist.trip_url).toBe(`${SHORTLIST}ChIJ_armature`);
+  });
+
+  it('has no shortlist when no stop has a place id', async () => {
+    const gog = fakeGog();
+    await start(gog);
+    const out = data(await harness.callTool('gog_trip_map', { title: 'T', stops: [{ day: 1, name: 'Nowhere Cafe' }], upload: false }));
+    expect(out.days[0].shortlist_urls).toBeUndefined();
+    expect(out.days[0].shortlist_left_out).toEqual([{ name: 'Nowhere Cafe', reason: 'no place id' }]);
+    expect(out.shortlist).toBeUndefined();
+  });
+
+  it('splits a day over 20 places into several shortlist links and gives no whole-trip link', async () => {
+    const ids = Array.from({ length: 23 }, (_, i) => `ChIJ_p${i}`);
+    const details = Object.fromEntries(ids.map((id) => [id, { id, name: id }]));
+    const gog = fakeGog({ maps: { ...MAPS, details } });
+    await start(gog);
+    const out = data(await harness.callTool('gog_trip_map', {
+      title: 'Big', stops: ids.map((id, i) => ({ day: 1, name: `P${i}`, place_id: id, lat: 1, lng: 2 })), upload: false,
+    }));
+    const links = out.days[0].shortlist_urls as string[];
+    expect(links).toHaveLength(2);
+    expect(links.map((u) => new URL(u).searchParams.get('place_ids')!.split(',').length)).toEqual([20, 3]);
+    expect(out.shortlist.trip_url).toBeUndefined();
+    expect(out.shortlist.trip_note).toMatch(/23 places.*more than the 20/);
+  });
+
+  it('a title with slashes makes one folder under Trips, in the path, preview and import steps', async () => {
+    const seen: ElicitRequest[] = [];
+    const gog = fakeGog();
+    await start(gog, { elicitation: (r) => { seen.push(r); return { action: 'accept', content: { confirmed: true } }; } });
+    const out = data(await harness.callTool('gog_trip_map', {
+      title: 'Paris / London', stops: STOPS, share_with: ['a@example.com'], confirm_share: true,
+    }));
+    const [trips, folder] = gog.items.filter((i) => i.mimeType === FOLDER_MIME);
+    expect(folder).toMatchObject({ name: 'Paris-London', parent: trips!.id });
+    expect(out.folder.path).toBe('Trips/Paris-London');
+    expect(JSON.parse(seen[0]!.params.message.split('\n').slice(1).join('\n')).details.folder).toBe('Trips/Paris-London');
+    expect(out.importIntoMyMaps[1]).toContain('pick paris-london.kml in Trips/Paris-London.');
+    expect(out.importIntoMyMaps[2]).toMatch(/^3\. Name the map Paris \/ London;/);
+    expect(out.share).toMatchObject({ shared: true, folder: 'Trips/Paris-London' });
   });
 
   it('reuses the folders and replaces same-named files on a re-run, at no Places cost', async () => {

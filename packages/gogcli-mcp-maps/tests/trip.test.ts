@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCsv,
   buildKml,
+  buildShortlists,
   CATEGORY_COLORS,
   dayLabel,
   MAPS_URL_MAX,
   normalizeStops,
   pinUrl,
+  SHORTLIST_MAX_IDS,
   TripInputError,
   type Trip,
   type TripMapStop,
@@ -314,8 +316,77 @@ describe('pinUrl', () => {
     expect(url.startsWith('https://www.google.com/maps/search/?api=1&query=')).toBe(true);
   });
 
-  it('refuses a place id that cannot fit in a Maps URL', () => {
-    expect(() => pinUrl(stop({ placeId: 'x'.repeat(2100) }))).toThrow(/place id is too long/);
+  it('drops a place id that cannot fit and pins the coordinates instead of throwing', () => {
+    const url = pinUrl(resolved({}, { placeId: 'x'.repeat(2100), googleMapsUri: undefined }));
+    expect(url).toBe('https://www.google.com/maps/search/?api=1&query=27.9605%2C-82.4626');
+  });
+
+  it('drops a place id that cannot fit and searches by name when there are no coordinates', () => {
+    const url = pinUrl(stop({ placeId: 'x'.repeat(2100) }));
+    expect(url).toBe('https://www.google.com/maps/search/?api=1&query=Armature%20Works');
+    expect(url).not.toContain('query_place_id');
+  });
+});
+
+describe('buildShortlists', () => {
+  const BASE = 'https://www.google.com/maps/@?api=1&map_action=shortlist&place_ids=';
+  const ids = (url: string): string[] => new URL(url).searchParams.get('place_ids')!.split(',');
+  const withId = (i: number, placeId = `ChIJ${String(i).padStart(23, '0')}`): TripMapStop =>
+    resolved({ index: i, name: `Stop ${i}` }, { placeId });
+
+  it('builds one documented shortlist URL, ids in stop order, commas encoded as %2C', () => {
+    const { urls, omitted } = buildShortlists([withId(0, 'ChIJa'), withId(1, 'ChIJb'), withId(2, 'ChIJc')]);
+    expect(urls).toEqual([`${BASE}ChIJa%2CChIJb%2CChIJc`]);
+    expect(ids(urls[0]!)).toEqual(['ChIJa', 'ChIJb', 'ChIJc']);
+    expect(omitted).toEqual([]);
+  });
+
+  it("uses the stop's own place_id when the place has none", () => {
+    expect(buildShortlists([stop({ placeId: 'ChIJown' })]).urls).toEqual([`${BASE}ChIJown`]);
+  });
+
+  it('chunks at 20 place ids per link, keeping order', () => {
+    const stops = Array.from({ length: 45 }, (_, i) => withId(i));
+    const { urls } = buildShortlists(stops);
+    expect(SHORTLIST_MAX_IDS).toBe(20);
+    expect(urls.map((u) => ids(u).length)).toEqual([20, 20, 5]);
+    expect(urls.flatMap(ids)).toEqual(stops.map((s) => s.place!.placeId));
+  });
+
+  it('splits earlier when a link would pass 2,048 characters', () => {
+    const stops = Array.from({ length: 20 }, (_, i) => withId(i, `ChIJ${String(i).padStart(2, '0')}${'z'.repeat(194)}`));
+    const { urls } = buildShortlists(stops);
+    expect(urls.length).toBeGreaterThan(1);
+    for (const u of urls) expect(u.length).toBeLessThanOrEqual(MAPS_URL_MAX);
+    expect(urls.flatMap(ids)).toEqual(stops.map((s) => s.place!.placeId));
+    // Each chunk is as full as the limit allows: one more id would not fit.
+    expect(urls[0]!.length + '%2C'.length + 200).toBeGreaterThan(MAPS_URL_MAX);
+  });
+
+  it('lists stops without a place id, and ids too long for any link, as left out', () => {
+    const noId = stop({ index: 1, name: 'Somewhere' });
+    const huge = stop({ index: 2, name: 'Huge', placeId: 'x'.repeat(2100) });
+    const { urls, omitted } = buildShortlists([withId(0, 'ChIJa'), noId, huge]);
+    expect(urls).toEqual([`${BASE}ChIJa`]);
+    expect(omitted).toEqual([
+      { stop: noId, reason: 'no place id' },
+      { stop: huge, reason: 'place id too long for a Maps URL' },
+    ]);
+  });
+
+  it('lists a place once even when several stops share it', () => {
+    const { urls } = buildShortlists([withId(0, 'ChIJa'), withId(1, 'ChIJb'), withId(2, 'ChIJa')]);
+    expect(urls).toEqual([`${BASE}ChIJa%2CChIJb`]);
+  });
+
+  it('percent-encodes anything unsafe inside an id', () => {
+    const { urls } = buildShortlists([stop({ placeId: 'a,b&c' })]);
+    expect(urls).toEqual([`${BASE}a%2Cb%26c`]);
+  });
+
+  it('returns no links when no stop has a place id', () => {
+    const only = stop();
+    expect(buildShortlists([only])).toEqual({ urls: [], omitted: [{ stop: only, reason: 'no place id' }] });
   });
 });
 
@@ -450,7 +521,7 @@ describe('buildKml', () => {
 describe('buildCsv', () => {
   it('starts with a UTF-8 BOM and the header, CRLF line endings', () => {
     const csv = buildCsv(tripOf([resolved({ time: '18:00', note: 'patio' })]));
-    expect(csv.startsWith('﻿Day,Time,Name,Address,Lat,Lng,Notes,Maps URL\r\n')).toBe(true);
+    expect(csv.startsWith('\uFEFFDay,Time,Name,Address,Lat,Lng,Notes,Maps URL\r\n')).toBe(true);
     expect(csv.split('\r\n')[1]).toBe(
       '2026-11-21,18:00,Armature Works,"1910 N Ola Ave, Tampa, FL 33602, USA",27.9605,-82.4626,patio,https://maps.google.com/?cid=123',
     );

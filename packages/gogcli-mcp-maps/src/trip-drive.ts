@@ -28,13 +28,23 @@ export interface DriveFile {
 export function slugify(title: string): string {
   const slug = title
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60)
     .replace(/-+$/, '');
   return slug || 'trip';
+}
+
+/**
+ * The trip's Drive folder name: the title with each run of slashes (and the
+ * spaces around it) turned into one "-", so "Trips/<name>" is one folder deep
+ * and its path reads unambiguously; "Trip" when nothing else is left.
+ */
+export function folderName(title: string): string {
+  const name = title.replace(/\s*[\\/]+\s*/g, '-').trim();
+  return /^-*$/.test(name) ? 'Trip' : name;
 }
 
 /** A Drive query string literal: backslash and single quote escaped. */

@@ -8,6 +8,7 @@
  * - `pinUrl` is one stop's Google Maps link (≤ 2,048 chars, the URL limit).
  * - `buildKml` is a KML 2.2 document for My Maps import (My Maps has no API).
  * - `buildCsv` is the same stops as an RFC 4180 spreadsheet.
+ * - `buildShortlists` is Google Maps shortlist links (≤ 20 place ids each) the user can save to a List.
  */
 
 export class TripInputError extends Error {
@@ -216,15 +217,19 @@ function stopAddress(stop: TripMapStop): string | undefined {
  * The stop's pin: the place's own googleMapsUri when known, else a Maps search
  * URL for "name, address" carrying the place id when there is one. A search
  * URL over the limit loses query text from the end (never mid-character, never
- * the place id).
+ * the place id). A place id too long for any Maps URL is dropped: the pin is
+ * then the stop's coordinates when known, else the name search. Never throws.
  */
 export function pinUrl(stop: TripMapStop): string {
   const uri = stop.place?.googleMapsUri;
   if (uri && uri.length <= MAPS_URL_MAX) return uri;
   const placeId = stop.place?.placeId ?? stop.placeId;
-  const suffix = placeId ? `&query_place_id=${encodeURIComponent(wellFormed(placeId))}` : '';
+  let suffix = placeId ? `&query_place_id=${encodeURIComponent(wellFormed(placeId))}` : '';
+  if (SEARCH_BASE.length + suffix.length > MAPS_URL_MAX) {
+    suffix = '';
+    if (isResolved(stop)) return `${SEARCH_BASE}${stop.place!.lat}%2C${stop.place!.lng}`;
+  }
   const room = MAPS_URL_MAX - SEARCH_BASE.length - suffix.length;
-  if (room < 0) throw new TripInputError(`stop "${stop.name}": place id is too long for a Maps URL`);
   const address = stopAddress(stop);
   const query = wellFormed(address ? `${stop.name}, ${address}` : stop.name);
   let encoded = '';
@@ -234,6 +239,62 @@ export function pinUrl(stop: TripMapStop): string {
     encoded += piece;
   }
   return `${SEARCH_BASE}${encoded}${suffix}`;
+}
+
+/** Google's documented limit on place ids in one shortlist link. */
+export const SHORTLIST_MAX_IDS = 20;
+const SHORTLIST_BASE = 'https://www.google.com/maps/@?api=1&map_action=shortlist&place_ids=';
+/**
+ * The ids are comma-separated; the comma goes out as %2C because the Maps URLs
+ * guide ("Constructing valid URLs") says "You must encode the comma as %2C".
+ * It decodes to the plain comma of the guide's own shortlist example.
+ */
+const SHORTLIST_SEP = '%2C';
+
+export interface ShortlistOmission {
+  stop: TripMapStop;
+  reason: 'no place id' | 'place id too long for a Maps URL';
+}
+
+/**
+ * Google Maps shortlist links (`map_action=shortlist`) for these stops, in
+ * stop order: each link shows the places and lets the user save them to their
+ * Google Maps profile (Lists). A link carries at most 20 place ids and stays
+ * within 2,048 characters, so a long list is split into several links. A place
+ * shared by several stops is listed once. Stops with no place id (and ids too
+ * long for any link) cannot be in a shortlist; they come back in `omitted`.
+ */
+export function buildShortlists(stops: TripMapStop[]): { urls: string[]; omitted: ShortlistOmission[] } {
+  const urls: string[] = [];
+  const omitted: ShortlistOmission[] = [];
+  const seen = new Set<string>();
+  let chunk: string[] = [];
+  let length = SHORTLIST_BASE.length;
+  const flush = (): void => {
+    if (chunk.length) urls.push(`${SHORTLIST_BASE}${chunk.join(SHORTLIST_SEP)}`);
+    chunk = [];
+    length = SHORTLIST_BASE.length;
+  };
+  for (const stop of stops) {
+    const placeId = stop.place?.placeId ?? stop.placeId;
+    if (!placeId) {
+      omitted.push({ stop, reason: 'no place id' });
+      continue;
+    }
+    if (seen.has(placeId)) continue;
+    const encoded = encodeURIComponent(wellFormed(placeId));
+    if (SHORTLIST_BASE.length + encoded.length > MAPS_URL_MAX) {
+      omitted.push({ stop, reason: 'place id too long for a Maps URL' });
+      continue;
+    }
+    seen.add(placeId);
+    const added = (chunk.length ? SHORTLIST_SEP.length : 0) + encoded.length;
+    if (chunk.length === SHORTLIST_MAX_IDS || length + added > MAPS_URL_MAX) flush();
+    length += (chunk.length ? SHORTLIST_SEP.length : 0) + encoded.length;
+    chunk.push(encoded);
+  }
+  flush();
+  return { urls, omitted };
 }
 
 /** Icon colours in KML's aabbggrr order; every known category is distinct. */
@@ -257,7 +318,7 @@ function styleKey(category: string | undefined): string {
 
 /** Characters XML 1.0 forbids outright, and lone surrogates. */
 function xmlSafe(text: string): string {
-  return wellFormed(text).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '');
+  return wellFormed(text).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '');
 }
 
 function esc(text: string): string {
@@ -397,5 +458,5 @@ export function buildCsv(trip: Trip): string {
       csvCell(pinUrl(stop)),
     ].join(','),
   );
-  return `﻿${[CSV_HEADER.join(','), ...rows].map((r) => `${r}\r\n`).join('')}`;
+  return `\uFEFF${[CSV_HEADER.join(','), ...rows].map((r) => `${r}\r\n`).join('')}`;
 }
