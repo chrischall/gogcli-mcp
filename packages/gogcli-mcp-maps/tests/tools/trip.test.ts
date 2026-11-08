@@ -287,6 +287,19 @@ describe('gog_trip_map', () => {
     expect(out.shortlist.trip_note).toMatch(/23 places.*more than the 20/);
   });
 
+  it('says the trip is too long, not too big, when 20 or fewer places overflow one link', async () => {
+    const ids = Array.from({ length: 18 }, (_, i) => `ChIJ_${String(i).padStart(2, '0')}${'x'.repeat(120)}`);
+    const details = Object.fromEntries(ids.map((id) => [id, { id, name: id }]));
+    const gog = fakeGog({ maps: { ...MAPS, details } });
+    await start(gog);
+    const out = data(await harness.callTool('gog_trip_map', {
+      title: 'Long', stops: ids.map((id, i) => ({ day: 1, name: `P${i}`, place_id: id, lat: 1, lng: 2 })), upload: false,
+    }));
+    expect((out.days[0].shortlist_urls as string[]).length).toBeGreaterThan(1);
+    expect(out.shortlist.trip_url).toBeUndefined();
+    expect(out.shortlist.trip_note).toMatch(/18 place ids are too long/);
+  });
+
   it('a title with slashes makes one folder under Trips, in the path, preview and import steps', async () => {
     const seen: ElicitRequest[] = [];
     const gog = fakeGog();

@@ -3,7 +3,7 @@
  * network connection of its own and never sees an API key: gog reads
  * `places_api_key` from its own config and makes the request.
  *
- * gog 0.46+ offers exactly three read commands, and this module wraps them
+ * gog 0.48+ offers exactly three read commands, and this module wraps them
  * as they are (JSON mode is the runner's global `--json`):
  *  - `gog maps places search <query>`  → `{"place":{id,name,formatted_address,google_maps_uri}}`,
  *    the TOP match only (no coordinates, no location bias, no result count);

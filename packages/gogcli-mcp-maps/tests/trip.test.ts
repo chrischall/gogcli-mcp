@@ -379,7 +379,7 @@ describe('buildShortlists', () => {
     expect(urls).toEqual([`${BASE}ChIJa%2CChIJb`]);
   });
 
-  it('percent-encodes anything unsafe inside an id', () => {
+  it('percent-encodes commas and ampersands inside an id', () => {
     const { urls } = buildShortlists([stop({ placeId: 'a,b&c' })]);
     expect(urls).toEqual([`${BASE}a%2Cb%26c`]);
   });

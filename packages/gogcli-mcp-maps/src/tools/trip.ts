@@ -302,8 +302,9 @@ export function tripTools(deps: TripToolDeps = {}): (server: McpServer) => void 
         : whole.urls.length === 1
           ? { trip_url: whole.urls[0], about: SHORTLIST_ABOUT }
           : {
-            trip_note: `The trip has ${placeCount} places, more than the ${SHORTLIST_MAX_IDS} one shortlist link can hold `
-              + '(or too long for one link): use the per-day links.',
+            trip_note: placeCount > SHORTLIST_MAX_IDS
+              ? `The trip has ${placeCount} places, more than the ${SHORTLIST_MAX_IDS} one shortlist link can hold: use the per-day links.`
+              : `The trip's ${placeCount} place ids are too long to fit in one shortlist link: use the per-day links.`,
             about: SHORTLIST_ABOUT,
           };
       const unresolved = mapStops.flatMap((stop, i) => (typeof stop.place?.lat === 'number'
