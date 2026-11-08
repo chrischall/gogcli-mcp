@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.11.0](https://github.com/chrischall/gogcli-mcp/compare/v4.10.0...v4.11.0) (2026-11-08)
+
+
+### Features
+
+* **maps:** turn an itinerary into pins, a Google Maps shortlist and a My Maps import ([#472](https://github.com/chrischall/gogcli-mcp/issues/472)) ([a548a4b](https://github.com/chrischall/gogcli-mcp/commit/a548a4b20cd7a6510256b37bddbf7356065de990))
+
+
+### Bug Fixes
+
+* require gog 0.48.0 so hosted connectors get its Gmail, Calendar and auth fixes ([#474](https://github.com/chrischall/gogcli-mcp/issues/474)) ([35cadd3](https://github.com/chrischall/gogcli-mcp/commit/35cadd34e48dd4a235345040b576c95c8da0e6c0))
+
 ## [4.10.0](https://github.com/chrischall/gogcli-mcp/compare/v4.9.1...v4.10.0) (2026-11-06)
 
 

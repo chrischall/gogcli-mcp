@@ -7,7 +7,7 @@
   },
   "metadata": {
     "description": "Trip mapping for Claude via gogcli — Google Places lookups (hours, website, phone, open-at checks) and trip stops as pins on a map",
-    "version": "4.10.0"
+    "version": "4.11.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
       "displayName": "gogcli (Maps)",
       "source": "./",
       "description": "Trip mapping for Claude via gogcli — Google Places lookups (hours, website, phone, open-at checks) and trip stops as pins on a map",
-      "version": "4.10.0",
+      "version": "4.11.0",
       "author": {
         "name": "Chris Hall"
       },
