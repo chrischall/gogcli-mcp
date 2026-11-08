@@ -1,7 +1,7 @@
 {
   "name": "gogcli-mcp-maps",
   "displayName": "gogcli (Maps)",
-  "version": "4.10.0",
+  "version": "4.11.0",
   "description": "Trip mapping for Claude via gogcli — Google Places lookups (hours, website, phone, open-at checks) and trip stops as pins on a map",
   "author": {
     "name": "Chris Hall",
