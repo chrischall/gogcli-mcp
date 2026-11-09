@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.1](https://github.com/chrischall/gogcli-mcp/compare/v4.11.0...v4.11.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **maps:** pass GOG_PLACES_API_KEY to gog so hosted place lookups work ([#476](https://github.com/chrischall/gogcli-mcp/issues/476)) ([6ae5eb1](https://github.com/chrischall/gogcli-mcp/commit/6ae5eb1648ae3745f8c6379983258101fa2aae57))
+
 ## [4.11.0](https://github.com/chrischall/gogcli-mcp/compare/v4.10.0...v4.11.0) (2026-11-08)
 
 
