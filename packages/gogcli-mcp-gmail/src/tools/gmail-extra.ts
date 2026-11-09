@@ -1,9 +1,16 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { rawTextResult, textResult, errorResult } from '@chrischall/mcp-utils';
+import { rawTextResult, textResult, errorResult, redactSecrets } from '@chrischall/mcp-utils';
 import { accountParam, runOrDiagnose, run, diagnose, payloadArg, normalizeTimestamps, finalizeGmailSearch, fetchGmailPages, pageTokenParam, pageAliasParam, resolvePageToken, attachInlineParam, inlineAttachmentArgs, assertNotBoth, replySchema, appendReplyFlags, signatureSchema, appendSignatureFlags, confineSignatureFile, signaturePreview, attachmentDetails, blobStoreFromEnv, createBlobUrlMinter, uploadToBlobStore, ATTACHMENT_DOWNLOAD_ROOT, ATTACH_INLINE_ALTERNATIVE, assertOneFileSource, blobKeysParam, confineUploadPath, confineUploadPaths, readBlobFiles, releaseBlobs, singleBlobKeyParam, extractEmails, logGmailDispatch, requireGmailDispatchConfirmation, bodyPreview, attachmentNames, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, senderPreview, requireDispatchConfirmation, parseMetadataHeaders, pos, confinePath, prepareDownloadRoot, removeDownload } from '../../../gogcli-mcp/src/lib.js';
 import type { BlobFile, GogArg, InlineAttachmentInput, BlobUrlMinter, BlobUploadOutcome, SignatureFlags } from '../../../gogcli-mcp/src/lib.js';
+import { readDecodedMessage, escapeHtml, markdownToHtml, parseHeaders, headerValue, partMimeType, decodePartText, bestBodyText, firstInlineBody, applyTextPatch, composeBodyParts, storedBodyText, bodySha256, readerHeaders, confirmationSkippedFor, withConfirmSkippedNote, CONFIRM_SKIP_TO_ENV } from '../../../gogcli-mcp/src/lib.js';
+import type { GmailHeader, GmailPayloadPart, GmailDraftMessage, GmailStoredMessage } from '../../../gogcli-mcp/src/lib.js';
+
+// Body extraction moved to gogcli-mcp's src/gmail-mime.ts; re-exported so this
+// package's callers (and its tests) keep their import path.
+export { parseHeaders, headerValue, decodeTextBytes, partMimeType, decodePartText, decodeBase64UrlText, bestBodyText } from '../../../gogcli-mcp/src/lib.js';
+export type { HeaderMap, GmailPayloadPart, GmailDraftMessage } from '../../../gogcli-mcp/src/lib.js';
 
 // How many messages a forced batch delete names in its prompt; every id is still bound.
 export const BATCH_DELETE_PREVIEW_MAX = 25;
@@ -15,7 +22,6 @@ function resultText(result: CallToolResult): string | undefined {
   return first?.type === 'text' ? first.text : undefined;
 }
 
-type GmailHeader = { name?: string; value?: string };
 type GmailMessage = {
   id?: string;
   threadId?: string;
@@ -642,29 +648,6 @@ export function rootsOwnThread(d: DraftListEntry): boolean {
 }
 
 /**
- * Case-insensitive header index. Apple writes `Mime-Version`, the Gmail API
- * writes `MIME-Version`; a case-sensitive lookup silently misses one of them.
- * Repeated headers (Received, References) keep every value, in order.
- */
-export type HeaderMap = ReadonlyMap<string, string[]>;
-
-export function parseHeaders(payload: { headers?: GmailHeader[] } | undefined): HeaderMap {
-  const map = new Map<string, string[]>();
-  for (const h of payload?.headers ?? []) {
-    if (!h.name) continue;
-    const key = h.name.toLowerCase();
-    const existing = map.get(key);
-    if (existing) existing.push(h.value ?? '');
-    else map.set(key, [h.value ?? '']);
-  }
-  return map;
-}
-
-export function headerValue(headers: HeaderMap, name: string): string | undefined {
-  return headers.get(name.toLowerCase())?.[0];
-}
-
-/**
  * Apple identity headers found on a message, reported as `Name: value` strings
  * so the caller can read the evidence rather than trust a boolean.
  *
@@ -1249,172 +1232,8 @@ export function evaluateForkPairing(
 }
 
 
-// ---------------------------------------------------------------------------
-// BODY EXTRACTION.
-//
-// `gog gmail drafts get --json` hands back the RAW Gmail payload — gog's own
-// text renderer (gmailcontent.BestBodyText) only runs on its human output, so
-// over --json the wrapper has to walk the MIME tree itself. A body this fails
-// to find would surface as a diff claiming an entire draft is empty, which is
-// exactly the kind of confident-and-wrong answer this feature must not give.
-// ---------------------------------------------------------------------------
-
-/** One MIME node of a Gmail message payload. */
-export type GmailPayloadPart = {
-  mimeType?: string;
-  filename?: string;
-  headers?: GmailHeader[];
-  body?: { data?: string; size?: number };
-  parts?: GmailPayloadPart[];
-};
-
-/** `draft.message` out of `gog gmail drafts get --json`. */
-export type GmailDraftMessage = {
-  id?: string;
-  threadId?: string;
-  internalDate?: string;
-  payload?: GmailPayloadPart;
-};
-
-/** Gmail encodes part bodies as unpadded base64url. Anything undecodable
- *  yields no bytes rather than throwing: a diff must degrade to "no body
- *  found", never take down the whole call. */
-function decodeBase64UrlBytes(data: string | undefined): Uint8Array | undefined {
-  if (!data) return undefined;
-  try {
-    const binary = atob(data.replace(/-/g, '+').replace(/_/g, '/'));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Code points for bytes 0x80-0x9F, the only range where windows-1252 differs
- *  from latin-1 — and exactly where Apple Mail and Outlook put curly quotes and
- *  dashes, so it is the range whose loss shows up as `don?t`. Written as
- *  numbers because five of the slots are unassigned control characters. */
-const CP1252_HIGH = [
-  0x20ac, 0x0081, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021,
-  0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008d, 0x017d, 0x008f,
-  0x0090, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
-  0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x009d, 0x017e, 0x0178,
-];
-
-function decodeCp1252(bytes: Uint8Array): string {
-  let out = '';
-  for (const b of bytes) out += String.fromCharCode(b >= 0x80 && b <= 0x9f ? CP1252_HIGH[b - 0x80]! : b);
-  return out;
-}
-
-/**
- * Bytes -> text, by SNIFFING rather than by trusting the declared charset.
- *
- * Gmail transcodes part bodies to UTF-8 while leaving the message's original
- * `Content-Type: ...; charset=` in place, so that header describes the bytes
- * the SENDER wrote, not the bytes the API just handed us: decoding on it alone
- * would mangle a UTF-8 body labelled windows-1252. Valid UTF-8 is not produced
- * by accident, so a strict UTF-8 decode is the reliable discriminator. Only
- * when that fails do we fall back — to the declared charset if the runtime
- * knows it, else to windows-1252, a superset of latin-1 that covers what
- * desktop mail clients actually emit.
- */
-export function decodeTextBytes(bytes: Uint8Array, declaredCharset?: string): string {
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    // Not UTF-8. Fall through to the legacy decoders.
-  }
-  const charset = (declaredCharset ?? '').trim().toLowerCase().replace(/^["']|["']$/g, '');
-  if (charset !== '' && !/^(utf-?8|us-ascii|ascii)$/.test(charset)) {
-    try {
-      return new TextDecoder(charset, { fatal: true }).decode(bytes);
-    } catch {
-      // Unknown to this runtime, or the bytes are not valid in it either.
-    }
-  }
-  return decodeCp1252(bytes);
-}
-
-/** A soft line break, a high-byte escape, or an escaped `=`. Requiring one of
- *  these — rather than any `=XX` — is what keeps an already-decoded body such
- *  as `2+2=44` from being "decoded" into `2+2D`. */
-const QUOTED_PRINTABLE_MARKER = /=(?:\r?\n|[89a-f][0-9a-f]|3d)/i;
-
-function decodeQuotedPrintableBytes(bytes: Uint8Array): Uint8Array {
-  const src = decodeCp1252(bytes); // 1:1 for the 7-bit input QP is by definition
-  const out: number[] = [];
-  for (let i = 0; i < src.length; i += 1) {
-    if (src[i] !== '=') { out.push(src.charCodeAt(i)); continue; }
-    const rest = src.slice(i, i + 3);
-    const soft = /^=\r?\n/.exec(rest);
-    if (soft) { i += soft[0]!.length - 1; continue; }
-    const hex = /^=([0-9A-Fa-f]{2})/.exec(rest);
-    if (hex) { out.push(parseInt(hex[1]!, 16)); i += 2; continue; }
-    out.push(0x3d); // a lone `=`: keep it exactly as the encoder left it
-  }
-  return Uint8Array.from(out);
-}
-
-/** `text/plain; charset="UTF-8"` -> `text/plain`. Gmail returns the full media
- *  type with its parameters, so keying on the raw string silently misses the
- *  body (gog normalizes with mime.ParseMediaType for the same reason). */
-export function partMimeType(part: GmailPayloadPart): string {
-  return (part.mimeType ?? '').split(';')[0]!.trim().toLowerCase();
-}
-
-/**
- * One part's body as text, honouring what the part says about itself.
- *
- * Transfer encoding is applied CONDITIONALLY, not on the header alone: Gmail
- * has already decoded `body.data` while keeping the original
- * Content-Transfer-Encoding header, so decoding unconditionally would destroy
- * every base64 body (double-decode) and rewrite `2+2=44` in every text one. The
- * quoted-printable decoder therefore runs only when the bytes still LOOK
- * quoted-printable: 7-bit throughout (QP is 7-bit by definition, so any high
- * byte proves it is already decoded) and carrying a real QP marker. base64 is
- * never re-applied — a false positive there is unrecoverable.
- */
-export function decodePartText(part: GmailPayloadPart): string {
-  let bytes = decodeBase64UrlBytes(part.body?.data);
-  if (bytes === undefined) return '';
-  const headers = parseHeaders(part);
-  const encoding = headerValue(headers, 'Content-Transfer-Encoding')?.trim().toLowerCase();
-  if (encoding === 'quoted-printable'
-      && bytes.every((b) => b < 0x80)
-      && QUOTED_PRINTABLE_MARKER.test(decodeCp1252(bytes))) {
-    bytes = decodeQuotedPrintableBytes(bytes);
-  }
-  const charset = /charset\s*=\s*([^;]+)/i.exec(headerValue(headers, 'Content-Type') ?? '')?.[1];
-  return decodeTextBytes(bytes, charset);
-}
-
-/** For the callers that hold raw base64url and no part metadata. */
-export function decodeBase64UrlText(data: string | undefined): string {
-  const bytes = decodeBase64UrlBytes(data);
-  return bytes === undefined ? '' : decodeTextBytes(bytes);
-}
-
-/**
- * The best plain-text rendering of a message payload: the FIRST inline
- * text/plain part found anywhere in the tree, else the first inline text/html,
- * else ''. Parts carrying a `filename` are attachments and are skipped — an
- * attached .txt is not the body.
- */
-export function bestBodyText(payload: GmailPayloadPart | undefined): string {
-  const firstOfType = new Map<string, string>();
-  const walk = (part: GmailPayloadPart | undefined): void => {
-    if (!part) return;
-    const mime = partMimeType(part);
-    if (part.body?.data && !part.filename && !firstOfType.has(mime)) {
-      firstOfType.set(mime, decodePartText(part));
-    }
-    for (const child of part.parts ?? []) walk(child);
-  };
-  walk(payload);
-  return firstOfType.get('text/plain') ?? firstOfType.get('text/html') ?? '';
-}
+// BODY EXTRACTION lives in gogcli-mcp's src/gmail-mime.ts (shared with
+// gog_gmail_get); the names are re-exported below for this package's callers.
 
 // ---------------------------------------------------------------------------
 // THE DIVERGENCE REPORT.
@@ -1559,7 +1378,34 @@ const DRAFT_ENRICH_COST_NOTE =
   'so Google reads and wall-clock are linear in the result count. Narrow `max` before turning it on.';
 
 /** One row of `gog gmail messages search --json`; only the fields the join needs. */
-type EnrichedDraftMessage = { id?: string; from?: string; subject?: string; internalDateIso?: string };
+type EnrichedDraftMessage = {
+  id?: string;
+  from?: string;
+  subject?: string;
+  internalDateIso?: string;
+  to?: string;
+  cc?: string;
+  bcc?: string;
+  headers?: Record<string, string>;
+};
+
+/**
+ * The addressing facts an enriched listing row carries: the recipient fields
+ * as stored (omitted when empty), how many addresses they hold, whether there
+ * are any, and whether the draft is a reply (In-Reply-To present). Answers
+ * "is this draft still unaddressed?" for the whole listing in one call.
+ */
+export function draftRecipientFacts(m: EnrichedDraftMessage): Record<string, unknown> {
+  const recipientCount = extractEmails(m.to, m.cc, m.bcc).length;
+  return {
+    ...(m.to ? { to: m.to } : {}),
+    ...(m.cc ? { cc: m.cc } : {}),
+    ...(m.bcc ? { bcc: m.bcc } : {}),
+    recipientCount,
+    hasRecipients: Boolean(m.to || m.cc || m.bcc),
+    isReply: Boolean(m.headers?.['In-Reply-To']),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // TIER 2 — a NAMED PAIR only, never a scan.
@@ -2484,18 +2330,6 @@ export function previewStoredDraft(raw: string): {
   };
 }
 
-/** The first inline (non-attachment) body of one MIME type, decoded; '' if none. */
-function firstInlineBody(payload: GmailPayloadPart | undefined, mime: string): string {
-  let found: string | undefined;
-  const walk = (part: GmailPayloadPart | undefined): void => {
-    if (!part || found !== undefined) return;
-    if (part.body?.data && !part.filename && partMimeType(part) === mime) found = decodePartText(part);
-    for (const child of part.parts ?? []) walk(child);
-  };
-  walk(payload);
-  return found ?? '';
-}
-
 /** Every named attachment part with its byte size, in order. */
 function attachmentSizes(payload: GmailPayloadPart | undefined): Array<{ name: string; size: number | null }> {
   const out: Array<{ name: string; size: number | null }> = [];
@@ -2552,6 +2386,49 @@ export function storedDraftTokenSubject(raw: string, draftId: string, account: s
     },
   };
 }
+
+/** How much of a copied body the copy_to confirmation shows. */
+export const COPY_TO_PREVIEW_CHARS = 300;
+
+/** The separator line above a quoted message in a review copy. */
+export const COPY_TO_QUOTE_SEPARATOR = '-------- Message being answered --------';
+
+/**
+ * The review copy of a stored draft: its subject behind `subjectPrefix`, its
+ * plain body (an HTML-only draft converted to text) and — only when the draft
+ * HAS one — its HTML part, each with the optional note and quoted message
+ * below. Recipients, threading and attachments are deliberately not part of it.
+ */
+export function buildDraftCopy(
+  draft: GmailStoredMessage,
+  opts: { subjectPrefix: string; appendText?: string; quoted?: GmailStoredMessage },
+): { subject: string; text: string; html?: string } {
+  const subject = `${opts.subjectPrefix}${headerValue(parseHeaders(draft.payload), 'Subject') ?? ''}`;
+  let text = storedBodyText(draft.payload).text;
+  const storedHtml = firstInlineBody(draft.payload, 'text/html');
+  let html = storedHtml === '' ? undefined : storedHtml;
+  const addBlock = (blockText: string, blockHtml: string): void => {
+    text = text === '' ? blockText : `${text}\n\n${blockText}`;
+    if (html !== undefined) html = `${html}\n${blockHtml}`;
+  };
+  if (opts.appendText) addBlock(opts.appendText, markdownToHtml(opts.appendText));
+  if (opts.quoted) {
+    const h = readerHeaders(opts.quoted.payload);
+    const meta = [h.from && `From: ${h.from}`, h.date && `Date: ${h.date}`, h.subject && `Subject: ${h.subject}`].filter((l): l is string => Boolean(l));
+    const quotedText = storedBodyText(opts.quoted.payload).text;
+    const block = [COPY_TO_QUOTE_SEPARATOR, ...meta, '', quotedText].join('\n');
+    const quotedHtml = `<hr><p>${[COPY_TO_QUOTE_SEPARATOR, ...meta].map(escapeHtml).join('<br>')}</p>`
+      + `<blockquote style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex">${escapeHtml(quotedText).replace(/\n/g, '<br>')}</blockquote>`;
+    addBlock(block, quotedHtml);
+  }
+  return { subject, text, ...(html !== undefined ? { html } : {}) };
+}
+
+const BODY_FORMAT_DESCRIPTION =
+  'How `body` is written. text (default): the plain part is sent exactly as given. markdown: the plain part drops the ' +
+  '**bold**/*italic* markers, and when no bodyHtml is passed the HTML part is rendered from the markdown (paragraphs, "- " ' +
+  'and "1. " lists, **bold**, *italic*, "> " quotes) — one input, both parts. On gog_gmail_drafts_update the HTML part ' +
+  'is generated from the body in either format unless htmlFromText is false.';
 
 export function registerExtraGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_raw', {
@@ -3110,7 +2987,7 @@ export function registerExtraGmailTools(server: McpServer): void {
       page: pageAliasParam,
       all: z.boolean().optional().describe('Fetch all pages'),
       enrich: z.boolean().optional().describe(
-        'Add subject, from and internalDateIso to each draft. Costs ONE extra gog invocation (`gmail messages search in:drafts`) ' +
+        'Add subject, from, internalDateIso, to/cc/bcc, recipientCount, hasRecipients and isReply (In-Reply-To present) to each draft. Costs ONE extra gog invocation (`gmail messages search in:drafts`) ' +
         'regardless of how many drafts there are — but that single command makes gog fetch every matching draft server-side at ' +
         'concurrency 10, so Google reads and wall-clock are linear in the result count even though gog spawns are not. Narrow `max` ' +
         'before enabling it. If the search fails the listing silently degrades to the free fields rather than erroring.',
@@ -3156,6 +3033,10 @@ export function registerExtraGmailTools(server: McpServer): void {
       // Both PINNED for the same reason as gog_gmail_messages_search: the env
       // vars behind them change the result shape (and the per-message cost).
       searchArgs.push('--include-attachments=false', '--use-indexed-attachment-ids=false');
+      // Recipients and In-Reply-To ride the SAME metadata read gog already makes
+      // per draft (gog >= 0.48: no extra API call), so "is this draft addressed
+      // yet / is it a reply" never needs a per-draft fetch.
+      searchArgs.push('--include-recipients', '--headers=In-Reply-To');
       try {
         const messages = (JSON.parse(await runNormalized(searchArgs, { account })) as { messages?: EnrichedDraftMessage[] }).messages;
         if (!Array.isArray(messages)) throw new Error('`gog gmail messages search in:drafts` returned no messages array');
@@ -3184,7 +3065,7 @@ export function registerExtraGmailTools(server: McpServer): void {
         ...d,
         origin: originFromDraftId(d.id ?? ''),
         rootsOwnThread: roots,
-        ...(extra ? { subject: extra.subject, from: extra.from, internalDateIso: extra.internalDateIso } : {}),
+        ...(extra ? { subject: extra.subject, from: extra.from, internalDateIso: extra.internalDateIso, ...draftRecipientFacts(extra) } : {}),
       };
     });
     if (enrichment?.applied === true) {
@@ -3296,18 +3177,75 @@ export function registerExtraGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_drafts_get', {
-    description: 'Get a Gmail draft by ID. Read-only: it lists attachments but never downloads them — fetch each one with gog_gmail_attachment.',
+    description:
+      'Get a Gmail draft by ID, DECODED by default (format "text"): draftId, messageId, threadId, the headers that matter ' +
+      '(from, to, cc, bcc, replyTo, subject, date, messageId, inReplyTo, references), isReply, the plain-text body (an ' +
+      'HTML-only draft is converted to text; `textSource` says which) and the attachments by name. "html" returns the HTML ' +
+      'part instead, "both" returns both, and "raw" returns gog\'s complete JSON (raw MIME payload with base64 parts and ' +
+      'attachment ids) as before. Read-only: it lists attachments but never downloads them — fetch each one with gog_gmail_attachment.',
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       draftId: z.string().describe('Draft ID'),
-      useIndexedAttachmentIds: z.boolean().optional().describe('Report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId` (stable across calls, unlike the id).'),
+      format: z.enum(['text', 'html', 'both', 'raw']).optional().describe('text (default): decoded plain-text body + key headers. html: decoded HTML part. both: text and html. raw: gog\'s full JSON with base64 MIME parts (the previous behaviour).'),
+      useIndexedAttachmentIds: z.boolean().optional().describe('format raw only: report each attachment as a 0-based `attachmentIndex` instead of an opaque `attachmentId` (stable across calls, unlike the id).'),
       account: accountParam,
     }),
-  }, async ({ draftId, useIndexedAttachmentIds, account }) => {
+  }, async ({ draftId, format = 'text', useIndexedAttachmentIds, account }) => {
     const args: GogArg[] = ['gmail', 'drafts', 'get', pos(draftId)];
     args.push(useIndexedAttachmentIds ? '--use-indexed-attachment-ids' : '--use-indexed-attachment-ids=false'); // PINNED — see gog_gmail_thread_get
-    return runOrDiagnose(args, { account });
+    if (format === 'raw') return runOrDiagnose(args, { account });
+    return readDecodedMessage(args, account, format, (out) => (out as { draft?: { message?: GmailStoredMessage } }).draft?.message, { draftId }, run);
   });
+
+  /** Read a stored draft for a read-modify-write: unredacted (it is written
+   *  back) with its base64 parts kept out of redaction. A failed read comes
+   *  back as the diagnosed result so the caller's fork-aware path applies. */
+  async function readStoredDraft(
+    draftId: string,
+    account: string | undefined,
+  ): Promise<{ message: GmailStoredMessage } | { result: CallToolResult }> {
+    let raw: string;
+    try {
+      raw = await run(['gmail', 'drafts', 'get', pos(draftId), '--use-indexed-attachment-ids=false'], { account, opaqueFields: ['data', 'attachmentId'] });
+    } catch (err) {
+      return { result: await diagnose(err) };
+    }
+    let message: GmailStoredMessage | undefined;
+    try {
+      message = (JSON.parse(raw) as { draft?: { message?: GmailStoredMessage } }).draft?.message;
+    } catch {
+      message = undefined;
+    }
+    if (!message) {
+      return { result: errorResult(`Could not read draft ${draftId}: \`gog gmail drafts get\` returned no \`draft.message\` object. Nothing was written or sent.`) };
+    }
+    return { message };
+  }
+
+  /** A patch whose `old` matched zero or several times: nothing is written,
+   *  and the caller gets the text it has to match against (redacted, like any
+   *  output — it is shown, never written back). */
+  function patchRefusal(draftId: string, reason: string, current: { text: string; source: string }): CallToolResult {
+    return errorResult(JSON.stringify({
+      error: 'PATCH_NO_MATCH',
+      draftId,
+      reason,
+      note: 'NOTHING WAS WRITTEN. Each replace[].old must occur exactly once in the stored plain-text body below; widen it with surrounding text to make it unique.',
+      textSource: current.source,
+      currentText: redactSecrets(current.text),
+    }));
+  }
+
+  /** Settle the plain and HTML parts before the flags are built. With
+   *  `autoHtml` and no caller HTML, the HTML part is generated from the body. */
+  function resolveBodyParts<T extends { body: string; bodyFormat?: 'text' | 'markdown'; bodyHtml?: string; bodyHtmlFile?: string }>(
+    flags: T,
+    autoHtml: boolean,
+  ): T {
+    const parts = composeBodyParts(flags.body, flags.bodyFormat ?? 'text');
+    const generate = autoHtml && !flags.bodyHtml && !flags.bodyHtmlFile && flags.body.trim() !== '';
+    return { ...flags, body: parts.text, ...(generate ? { bodyHtml: parts.html } : {}) };
+  }
 
   const draftWriteSchema = {
     to: z.string().optional().describe('Recipients (comma-separated). On gog_gmail_drafts_update: omit to keep the draft\'s current To, pass "" to clear it.'),
@@ -3315,6 +3253,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     bcc: z.string().optional().describe('BCC recipients (comma-separated). On gog_gmail_drafts_update: omit to keep the draft\'s current Bcc, pass "" to clear it.'),
     subject: z.string().describe('Subject'),
     body: z.string().describe('Body (plain text). Any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Note gog strips trailing newlines from a file-delivered body.'),
+    bodyFormat: z.enum(['text', 'markdown']).optional().describe(BODY_FORMAT_DESCRIPTION),
     bodyHtml: z.string().optional().describe('Body (HTML; optional). Pass the HTML itself at any size — a large body is written to a temp file on the gog server rather than inlined into the command line. Mutually exclusive with bodyHtmlFile.'),
     bodyHtmlFile: z.string().optional().describe('Path to an HTML file that ALREADY EXISTS on the gog server to use as the HTML body. gog also accepts "-" for stdin, but this server never writes to gog\'s stdin, so "-" would hang until the call times out. Mutually exclusive with bodyHtml — supplying both is rejected. You rarely need this: bodyHtml handles large bodies on its own.'),
     replyToMessageId: z.string().optional().describe('Reply to a specific Gmail MESSAGE id — the short hex `id` field from gog_gmail_get / _search / _thread_get (e.g. 19e7593d77fd9636), NOT a thread id and NOT the RFC822 `<…@host>` Message-Id header. Anchors In-Reply-To/References to that exact message. To reply to a thread when you don\'t know the latest message, use replyToThreadId instead. If both are given, replyToMessageId wins.'),
@@ -3339,6 +3278,7 @@ export function registerExtraGmailTools(server: McpServer): void {
     bcc?: string;
     subject: string;
     body: string;
+    bodyFormat?: 'text' | 'markdown';
     bodyHtml?: string;
     bodyHtmlFile?: string;
     replyToMessageId?: string;
@@ -3500,7 +3440,10 @@ export function registerExtraGmailTools(server: McpServer): void {
     description: 'SAVES ONLY. DOES NOT SEND. Create a new Gmail draft. Recipients (to/cc/bcc) are optional; omit them (or set omitRecipients) to create a recipient-less draft as an accidental-send guard. For replies, prefer replyToThreadId (anchors to the thread\'s latest message) or replyToMessageId (a specific message) — don\'t pass a thread id into replyToMessageId, which mis-threads silently.',
     annotations: { destructiveHint: false, openWorldHint: true },
     inputSchema: z.object(draftWriteSchema),
-  }, async ({ account, returnFull, ...flags }) => {
+  }, async ({ account, returnFull, ...input }) => {
+    // Only bodyFormat markdown adds an HTML part on create; plain text stays
+    // plain, exactly as before.
+    const flags = resolveBodyParts(input, input.bodyFormat === 'markdown');
     const blobs = await readBlobFiles(flags.blobKeys, 'attach');
     const args: GogArg[] = ['gmail', 'drafts', 'create'];
     appendDraftFlags(args, flags, blobs);
@@ -3523,9 +3466,15 @@ export function registerExtraGmailTools(server: McpServer): void {
       'and a plain-English note, so you can confirm the repair WITHOUT a raw-header fetch and without a second call. Read it: an ' +
       'explicit reply target REPLACES the draft\'s stored lineage rather than merging with it, and if the target thread yields ' +
       'no reply headers the draft is still MOVED onto that thread — it would arrive inside the conversation but not as a reply. ' +
-      'THE BODY IS ALWAYS OVERWRITTEN: gog requires a body on every update, so there is no header-only edit. If a sibling copy ' +
-      'of this draft exists, diff them with gog_gmail_drafts_diff and merge BEFORE updating, or whatever text you do not pass ' +
-      'is lost. A 404 comes back diagnosed rather than as a bare notFound, and the diagnosis is checked against a draft ' +
+      'TWO WAYS TO CHANGE THE BODY. (1) Whole body: pass `body` and it replaces the stored text. (2) Patch: pass `replace` ' +
+      '([{old, new}], each `old` must occur EXACTLY once in the stored text), `append` and/or `prepend` INSTEAD of `body`; ' +
+      'the tool reads the stored plain text, applies the edits and writes the result, so an edit to one paragraph never resends ' +
+      'the rest. Zero or several matches is an error that writes NOTHING and returns the current text. In both modes, when ' +
+      'bodyHtml/bodyHtmlFile are omitted the HTML part is GENERATED from the plain text (minimal markdown: paragraphs, "- " ' +
+      'and "1. " lists, **bold**, *italic*, "> " quotes), so the two parts cannot drift; set htmlFromText false to send plain ' +
+      'text only. `subject` may be omitted: the stored subject is kept. If a sibling copy ' +
+      'of this draft exists, diff them with gog_gmail_drafts_diff and merge BEFORE updating, or whatever text the new body ' +
+      'does not hold is lost. A 404 comes back diagnosed rather than as a bare notFound, and the diagnosis is checked against a draft ' +
       'listing first: GOOGLE_404_NOT_THE_DRAFT when the draft is still listed — because replyToThreadId and replyToMessageId ' +
       'resolve their own Google entities and a miss on either 404s with the identical message — and DRAFT_FORKED otherwise. ' +
       'That listing is capped at 20 drafts, so DRAFT_FORKED reports under `listingEvidence` whether its own evidence actually ' +
@@ -3536,12 +3485,44 @@ export function registerExtraGmailTools(server: McpServer): void {
     inputSchema: z.object({
       draftId: z.string().describe('Draft ID'),
       ...draftWriteSchema,
+      subject: z.string().optional().describe('Subject. Omit to keep the draft\'s stored subject (costs one read of the draft).'),
+      body: z.string().optional().describe('The WHOLE new body (plain text). Any size — a large body is written to a temp file on the gog server. Omit it when patching with replace/append/prepend; exactly one of the two modes must be used.'),
+      replace: z.array(z.object({
+        old: z.string().describe('Exact text to find in the draft\'s stored plain-text body. Must occur exactly once.'),
+        new: z.string().describe('Text to put in its place ("" deletes it).'),
+      })).optional().describe('Exact-match edits applied in order to the stored plain text, each against the text as the earlier ones left it. Every `old` must occur EXACTLY once; otherwise nothing is written and the error returns the current text.'),
+      append: z.string().optional().describe('Text added at the end of the stored body (after a blank line). Patch mode.'),
+      prepend: z.string().optional().describe('Text added at the start of the stored body (before a blank line). Patch mode.'),
+      htmlFromText: z.boolean().optional().describe('Default true: when bodyHtml/bodyHtmlFile are omitted, generate the HTML part from the plain text so both parts match. false sends plain text only (gog then drops any stored HTML part).'),
       clearAttachments: z.boolean().optional().describe('Remove all attachments from the draft. By default, omitting attach preserves the draft\'s existing attachments; this intentionally clears them. Ignored if attach is also supplied (attach replaces).'),
       clearReplyContext: z.boolean().optional().describe('Strip In-Reply-To/References from the draft, turning a reply back into a standalone message while keeping the same draft id and threadId. Use this to repair a mis-threaded draft in place instead of deleting and recreating it. Mutually exclusive with replyToMessageId, replyToThreadId and quote — gog rejects the call if any of them is combined with this.'),
       forkSiblingDraftId: z.string().optional().describe('Id of the OTHER copy of this draft — the one a mail client left behind, or the one you are merging from. Because gog requires a body on every update, this call rewrites the WHOLE body; naming a sibling makes the tool read that draft FIRST (one extra gog call, on this id only — it never scans) and refuse to write if your body omits any line the sibling still holds, naming the exact lines. Set acceptContentLoss to write anyway. Omit this param and nothing extra is spent. It is purely a text comparison and makes NO claim that either draft replaced the other — for that verdict use gog_gmail_drafts_diff.'),
       acceptContentLoss: z.boolean().optional().describe('Write even though the forkSiblingDraftId check found lines your body drops — or could not be run at all (sibling unfetchable/unreadable). Without it either outcome refuses the write and changes nothing. The lines are still reported on the result under contentLossCheck. Ignored when forkSiblingDraftId is not set.'),
     }),
-  }, async ({ draftId, account, returnFull, clearAttachments, clearReplyContext, forkSiblingDraftId, acceptContentLoss, ...flags }) => {
+  }, async ({ draftId, account, returnFull, clearAttachments, clearReplyContext, forkSiblingDraftId, acceptContentLoss, replace, append, prepend, htmlFromText, ...input }) => {
+    const patching = (replace?.length ?? 0) > 0 || append !== undefined || prepend !== undefined;
+    if (patching && input.body !== undefined) {
+      return errorResult('Pass EITHER body (replace the whole body) OR replace/append/prepend (patch the stored body), not both. Nothing was written.');
+    }
+    if (!patching && input.body === undefined) {
+      return errorResult('body is required unless you patch the stored body with replace, append or prepend. Nothing was written.');
+    }
+    // Patching, or keeping the stored subject, needs the draft as it is now:
+    // ONE read, before anything is written. Whole-body with a subject reads nothing.
+    let body = input.body ?? '';
+    let subject = input.subject;
+    if (patching || subject === undefined) {
+      const stored = await readStoredDraft(draftId, account);
+      if ('result' in stored) return forkAwareDraftFailure(stored.result, 'gog_gmail_drafts_update', draftId, account);
+      subject ??= headerValue(parseHeaders(stored.message.payload), 'Subject') ?? '';
+      if (patching) {
+        const current = storedBodyText(stored.message.payload);
+        const outcome = applyTextPatch(current.text, { replace, append, prepend });
+        if (!outcome.ok) return patchRefusal(draftId, outcome.reason, current);
+        body = outcome.text;
+      }
+    }
+    const flags = resolveBodyParts({ ...input, subject, body }, htmlFromText !== false);
     // BEFORE the write, never after: a report on an overwrite that already
     // happened is not a guard. Skipped entirely — zero extra invocations — when
     // no sibling was named.
@@ -3632,7 +3613,8 @@ export function registerExtraGmailTools(server: McpServer): void {
     const preview = previewStoredDraft(raw);
     // The drafts get above runs on EVERY call, so on phase 2 of the token
     // fallback it is the re-read the token is checked against.
-    const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.drafts-send', { draftId, ...preview }, {
+    const skipped = confirmationSkippedFor('gmail.drafts-send', { to: preview.to, cc: preview.cc, bcc: preview.bcc });
+    const confirmation = skipped ? undefined : await requireGmailDispatchConfirmation(ctx, 'gmail.drafts-send', { draftId, ...preview }, {
       tool: 'gog_gmail_drafts_send',
       account,
       args: { draftId, account },
@@ -3642,7 +3624,92 @@ export function registerExtraGmailTools(server: McpServer): void {
     if (confirmation) return confirmation;
     const result = await runOrDiagnose(['gmail', 'drafts', 'send', pos(draftId)], { account });
     if (!result.isError) logGmailDispatch('gog_gmail_drafts_send', preview.recipients, account);
-    return forkAwareDraftFailure(result, 'gog_gmail_drafts_send', draftId, account);
+    const reported = await forkAwareDraftFailure(result, 'gog_gmail_drafts_send', draftId, account);
+    return skipped ? withConfirmSkippedNote(reported) : reported;
+  });
+
+  server.registerTool('gog_gmail_drafts_copy_to', {
+    description:
+      'SENDS MAIL — sends a COPY of a stored draft (its current subject and body, text and HTML parts) to the addresses you ' +
+      'name, for review: the classic "DRAFT: <subject>" copy to someone who should read it before it goes out. The draft ' +
+      'itself is NOT touched, and nothing of its addressing comes along: not its recipients, not its threading, not its ' +
+      'attachments. You never pass the body — the tool reads it from the draft — so a review copy costs no more than its ' +
+      'arguments. The confirmation prompt shows the recipients, the subject, the first ' + COPY_TO_PREVIEW_CHARS + ' ' +
+      'characters of the body, its length and its SHA-256 — NOT the whole body. `appendText` adds a note below the body; ' +
+      '`includeQuotedFrom` appends the text of another message (e.g. the one the draft answers) below a separator. ' +
+      `If the server sets ${CONFIRM_SKIP_TO_ENV} and EVERY To/Cc/Bcc address is on it, no confirmation is asked and the result says so.` +
+      CONFIRM_FALLBACK_DESCRIPTION +
+      ' The token is bound to the draft\'s current messageId, so a draft edited between the two calls is DRAFT_CHANGED, never sent unseen.',
+    annotations: { destructiveHint: true, openWorldHint: true },
+    inputSchema: z.object({
+      draftId: z.string().describe('The draft to copy. It is read, never modified.'),
+      to: z.string().describe('Who receives the copy (comma-separated).'),
+      cc: z.string().optional().describe('CC for the copy (comma-separated).'),
+      bcc: z.string().optional().describe('BCC for the copy (comma-separated).'),
+      subjectPrefix: z.string().optional().describe('Prefix for the copy\'s subject (default "DRAFT: "; "" for none).'),
+      appendText: z.string().optional().describe('A note added below the draft\'s body in the copy (plain text; rendered into the HTML part too).'),
+      includeQuotedFrom: z.string().optional().describe('A Gmail message id whose text is appended below a separator — typically the message the draft replies to, so the reviewer sees what is being answered. Costs one extra read.'),
+      account: accountParam,
+      confirmToken: confirmTokenParam,
+    }),
+  }, async ({ draftId, to, cc, bcc, subjectPrefix, appendText, includeQuotedFrom, account, confirmToken }, ctx) => {
+    // Read on EVERY call: on phase 2 of the token fallback this is the re-read
+    // the token is checked against.
+    const stored = await readStoredDraft(draftId, account);
+    if ('result' in stored) return forkAwareDraftFailure(stored.result, 'gog_gmail_drafts_copy_to', draftId, account);
+    let quoted: GmailStoredMessage | undefined;
+    if (includeQuotedFrom) {
+      try {
+        quoted = (JSON.parse(await run(['gmail', 'get', pos(includeQuotedFrom), '--format=full'], { account, opaqueFields: ['data', 'attachmentId'] })) as { message?: GmailStoredMessage }).message;
+      } catch (err) {
+        return diagnose(err);
+      }
+      if (!quoted) return errorResult(`Could not read message ${includeQuotedFrom} to quote: gog returned no \`message\` object. Nothing was sent.`);
+    }
+    const copy = buildDraftCopy(stored.message, { subjectPrefix: subjectPrefix ?? 'DRAFT: ', appendText, quoted });
+    if (copy.text === '' && copy.html === undefined) {
+      return errorResult(`Draft ${draftId} has no body to copy. Nothing was sent.`);
+    }
+    const args: GogArg[] = ['gmail', 'send', `--to=${to}`, `--subject=${copy.subject}`, payloadArg('body', 'body-file', copy.text)];
+    if (cc) args.push(`--cc=${cc}`);
+    if (bcc) args.push(`--bcc=${bcc}`);
+    if (copy.html !== undefined) args.push(payloadArg('body-html', 'body-html-file', copy.html, 'html'));
+
+    const recipients = extractEmails(to, cc, bcc);
+    const sha256 = bodySha256(copy.text);
+    const summary = {
+      draftId,
+      to,
+      ...(cc ? { cc } : {}),
+      ...(bcc ? { bcc } : {}),
+      recipients,
+      subject: copy.subject,
+      bodyLength: copy.text.length,
+      bodySha256: sha256,
+      bodyStart: copy.text.length > COPY_TO_PREVIEW_CHARS ? `${copy.text.slice(0, COPY_TO_PREVIEW_CHARS)}…` : copy.text,
+      hasHtmlPart: copy.html !== undefined,
+      ...(appendText ? { appendedNoteLength: appendText.length } : {}),
+      ...(includeQuotedFrom ? { quotesMessageId: includeQuotedFrom } : {}),
+      draftUnchanged: true,
+    };
+    const skipped = confirmationSkippedFor('gmail.drafts-copy-to', { to, cc, bcc });
+    const confirmation = skipped ? undefined : await requireGmailDispatchConfirmation(ctx, 'gmail.drafts-copy-to', summary, {
+      tool: 'gog_gmail_drafts_copy_to',
+      account,
+      args: { draftId, to, cc, bcc, subjectPrefix, appendText, includeQuotedFrom, account },
+      confirmToken,
+      // The WHOLE copy is hashed into the token; only the summary is shown.
+      subject: () => ({
+        target: draftId,
+        revision: stored.message.id,
+        payload: { to, cc, bcc, subject: copy.subject, text: copy.text, html: copy.html },
+        preview: summary,
+      }),
+    });
+    if (confirmation) return confirmation;
+    const result = await runOrDiagnose(args, { account });
+    if (!result.isError) logGmailDispatch('gog_gmail_drafts_copy_to', recipients, account);
+    return skipped ? withConfirmSkippedNote(result) : result;
   });
 
   server.registerTool('gog_gmail_import', {

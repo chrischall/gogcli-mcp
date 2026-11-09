@@ -20,7 +20,7 @@ export {
 // The reply/reply-all schema and flag builder live in the base package so the
 // gmail sub-package's draft-side twins reuse ONE definition — registering the
 // same tool name from both registrar lists would be a duplicate-name error.
-export { replySchema, appendReplyFlags, parseMetadataHeaders, signatureSchema, appendSignatureFlags, confineSignatureFile, signaturePreview } from './tools/gmail.js';
+export { readDecodedMessage, replySchema, appendReplyFlags, parseMetadataHeaders, signatureSchema, appendSignatureFlags, confineSignatureFile, signaturePreview } from './tools/gmail.js';
 export type { ReplyFlags, SignatureFlags } from './tools/gmail.js';
 // The gmail confirmation gate — gog_gmail_reply/send/forward/autoreply are
 // the only tools that dispatch mail irreversibly on the first call. The
@@ -38,7 +38,45 @@ export {
   requireGmailDispatchConfirmation,
   resultText,
   senderPreview,
+  confirmationSkippedFor,
+  withConfirmSkippedNote,
+  CONFIRM_SKIP_TO_ENV,
 } from './gmail-dispatch-guard.js';
+// Decoding a stored Gmail message, and building the parts of one (shared by
+// gog_gmail_get and the gmail package's drafts tools).
+export {
+  parseHeaders,
+  headerValue,
+  decodeTextBytes,
+  partMimeType,
+  decodePartText,
+  decodeBase64UrlText,
+  bestBodyText,
+  firstInlineBody,
+  htmlToText,
+  escapeHtml,
+  markdownToHtml,
+  stripInlineMarkdown,
+  composeBodyParts,
+  applyTextPatch,
+  readerHeaders,
+  attachmentSummaries,
+  storedBodyText,
+  bodySha256,
+  decodedMessageView,
+  MAX_QUOTE_DEPTH,
+} from './gmail-mime.js';
+export type {
+  GmailHeader,
+  HeaderMap,
+  GmailPayloadPart,
+  GmailDraftMessage,
+  GmailStoredMessage,
+  ContentFormat,
+  TextReplacement,
+  TextPatch,
+  TextPatchOutcome,
+} from './gmail-mime.js';
 // The service-neutral rail for every other tool that reaches another person.
 export { requireDispatchConfirmation } from './dispatch-confirmation.js';
 export { readCourse, readCoursework, readClassroomWork, studentLabel } from './tools/classroom.js';

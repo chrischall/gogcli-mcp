@@ -200,36 +200,133 @@ describe('gog_gmail_search — maxPages', () => {
   });
 });
 
+const b64url = (text: string): string => Buffer.from(text, 'utf8').toString('base64url');
+
+// gog's `gmail get --json` shape: the Gmail message under `message`, plus the
+// convenience fields gog adds (only `message` is read for the decoded view).
+const gmailGetJson = (payload: Record<string, unknown>, extra: Record<string, unknown> = {}): string => JSON.stringify({
+  message: { id: 'msg1', threadId: 't1', labelIds: ['INBOX'], payload, ...extra },
+  headers: { subject: 'ignored' },
+});
+
+const HEADERS = [
+  { name: 'From', value: 'Pat <pat@example.com>' },
+  { name: 'To', value: 'me@example.com' },
+  { name: 'Cc', value: 'cc@example.com' },
+  { name: 'Subject', value: 'Pickup Friday' },
+  { name: 'Message-ID', value: '<m1@example.com>' },
+  { name: 'In-Reply-To', value: '<m0@example.com>' },
+  { name: 'References', value: '<m0@example.com>' },
+];
+
 describe('gog_gmail_get', () => {
-  it('calls run with message ID', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{"id":"msg1"}');
+  it('defaults to the decoded text view: reads --format=full with the base64 parts kept out of redaction', async () => {
+    vi.mocked(runner.run).mockResolvedValue(gmailGetJson({ mimeType: 'text/plain', headers: HEADERS, body: { data: b64url('Hello there') } }));
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_get', { messageId: 'msg1' });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1')], { account: undefined });
+    const result = await harness.callTool('gog_gmail_get', { messageId: 'msg1' });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1'), '--format=full'], { account: undefined, opaqueFields: ['data', 'attachmentId'] });
+    const view = JSON.parse(result.content[0].text);
+    expect(view).toMatchObject({
+      id: 'msg1',
+      threadId: 't1',
+      labelIds: ['INBOX'],
+      format: 'text',
+      text: 'Hello there',
+      textSource: 'text/plain',
+      isReply: true,
+      bodyLength: 11,
+      headers: {
+        from: 'Pat <pat@example.com>', to: 'me@example.com', cc: 'cc@example.com', subject: 'Pickup Friday',
+        messageId: '<m1@example.com>', inReplyTo: '<m0@example.com>', references: '<m0@example.com>',
+      },
+    });
+    expect(view).not.toHaveProperty('html');
+    expect(result.content[0].text).not.toContain(b64url('Hello there'));
   });
 
-  it('appends --format flag when provided', async () => {
+  it('converts an HTML-only message to text', async () => {
+    vi.mocked(runner.run).mockResolvedValue(gmailGetJson({
+      mimeType: 'text/html', headers: HEADERS, body: { data: b64url('<p>First &amp; best</p><ul><li>one</li><li>two</li></ul>') },
+    }));
+    const harness = await setupHandlers();
+    const view = JSON.parse((await harness.callTool('gog_gmail_get', { messageId: 'msg1' })).content[0].text);
+    expect(view.text).toBe('First & best\n\n- one\n- two');
+    expect(view.textSource).toBe('converted-from-html');
+  });
+
+  it('prefers the text/plain part of a multipart message, lists attachments, and returns html on request', async () => {
+    const payload = {
+      mimeType: 'multipart/mixed',
+      headers: HEADERS,
+      parts: [
+        {
+          mimeType: 'multipart/alternative',
+          parts: [
+            { mimeType: 'text/plain', body: { data: b64url('plain words') } },
+            { mimeType: 'text/html', body: { data: b64url('<p>rich words</p>') } },
+          ],
+        },
+        { mimeType: 'application/pdf', filename: 'plan.pdf', body: { size: 42, attachmentId: 'ANGjdJ_att1' } },
+      ],
+    };
+    vi.mocked(runner.run).mockResolvedValue(gmailGetJson(payload));
+    const harness = await setupHandlers();
+    const text = JSON.parse((await harness.callTool('gog_gmail_get', { messageId: 'msg1' })).content[0].text);
+    expect(text.text).toBe('plain words');
+    expect(text.attachments).toEqual([{ filename: 'plan.pdf', mimeType: 'application/pdf', size: 42, attachmentId: 'ANGjdJ_att1' }]);
+    const html = JSON.parse((await harness.callTool('gog_gmail_get', { messageId: 'msg1', format: 'html' })).content[0].text);
+    expect(html.html).toBe('<p>rich words</p>');
+    expect(html).not.toHaveProperty('text');
+    const both = JSON.parse((await harness.callTool('gog_gmail_get', { messageId: 'msg1', format: 'both' })).content[0].text);
+    expect(both).toMatchObject({ text: 'plain words', html: '<p>rich words</p>', format: 'both' });
+  });
+
+  it('reports html: null for a plain-only message asked for html', async () => {
+    vi.mocked(runner.run).mockResolvedValue(gmailGetJson({ mimeType: 'text/plain', body: { data: b64url('x') } }));
+    const harness = await setupHandlers();
+    const view = JSON.parse((await harness.callTool('gog_gmail_get', { messageId: 'msg1', format: 'html' })).content[0].text);
+    expect(view.html).toBeNull();
+    expect(view.isReply).toBe(false);
+  });
+
+  it('redacts a secret in the decoded body, as gog output always is', async () => {
+    vi.mocked(runner.run).mockResolvedValue(gmailGetJson({ mimeType: 'text/plain', body: { data: b64url('token: Bearer abcdefghijklmnopqrstuvwxyz0123456789') } }));
+    const harness = await setupHandlers();
+    const view = JSON.parse((await harness.callTool('gog_gmail_get', { messageId: 'msg1' })).content[0].text);
+    expect(view.text).not.toContain('abcdefghijklmnopqrstuvwxyz0123456789');
+  });
+
+  it('returns gog output unchanged when it is not a message', async () => {
+    vi.mocked(runner.run).mockResolvedValue('not json');
+    const harness = await setupHandlers();
+    expect((await harness.callTool('gog_gmail_get', { messageId: 'msg1' })).content[0].text).toBe('not json');
+    vi.mocked(runner.run).mockResolvedValue('{"other":1}');
+    expect((await harness.callTool('gog_gmail_get', { messageId: 'msg1' })).content[0].text).toBe('{"other":1}');
+  });
+
+  it.each(['full', 'metadata', 'raw'] as const)('passes format %s straight to gog, as before', async (format) => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_get', { messageId: 'msg1', format: 'metadata' });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1'), '--format=metadata'], { account: undefined });
+    await harness.callTool('gog_gmail_get', { messageId: 'msg1', format });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1'), `--format=${format}`], { account: undefined });
   });
 
   // gog >= 0.37.0 (openclaw/gogcli#992): before that release the sanitized
   // JSON repeated the headers and body at the top level, so this flag grew the
   // payload it exists to shrink. Pinned here as the flag spelling gog expects.
-  it('appends --sanitize-content when asked', async () => {
-    vi.mocked(runner.run).mockResolvedValue('{}');
+  it('appends --sanitize-content when asked and returns gog\'s sanitized JSON', async () => {
+    vi.mocked(runner.run).mockResolvedValue('{"message":{"body":"clean"}}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_get', { messageId: 'msg1', sanitizeContent: true });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1'), '--sanitize-content'], { account: undefined });
+    const result = await harness.callTool('gog_gmail_get', { messageId: 'msg1', sanitizeContent: true });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1'), '--format=full', '--sanitize-content'], { account: undefined });
+    expect(JSON.parse(result.content[0].text)).toEqual({ message: { body: 'clean' } });
   });
 
   it('omits --sanitize-content when false', async () => {
     vi.mocked(runner.run).mockResolvedValue('{}');
     const harness = await setupHandlers();
-    await harness.callTool('gog_gmail_get', { messageId: 'msg1', sanitizeContent: false });
-    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1')], { account: undefined });
+    await harness.callTool('gog_gmail_get', { messageId: 'msg1', format: 'full', sanitizeContent: false });
+    expect(runner.run).toHaveBeenCalledWith(['gmail', 'get', pos('msg1'), '--format=full'], { account: undefined });
   });
 
   it('returns error text on failure', async () => {
@@ -237,6 +334,34 @@ describe('gog_gmail_get', () => {
     const harness = await setupHandlers();
     const result = await harness.callTool('gog_gmail_get', { messageId: 'bad' });
     expect(result.content[0].text).toBe('Error: Not found');
+  });
+});
+
+describe('gog_gmail_send — MCP_CONFIRM_SKIP_TO allowlist', () => {
+  afterEach(() => { delete process.env.MCP_CONFIRM_SKIP_TO; });
+
+  const neverAsk = vi.fn(async (): Promise<ElicitResult> => ({ action: 'decline' }));
+
+  it('sends without asking when every To/Cc/Bcc address is allowlisted, and says so', async () => {
+    process.env.MCP_CONFIRM_SKIP_TO = 'wife@example.com, Me@Example.com';
+    vi.mocked(runner.run).mockResolvedValue('{"id":"sent"}');
+    neverAsk.mockClear();
+    const harness = await setupHandlers(neverAsk);
+    const result = await harness.callTool('gog_gmail_send', { to: 'Wife <wife@example.com>', cc: 'me@example.com', bcc: 'wife@example.com', subject: 's', body: 'b' });
+    expect(neverAsk).not.toHaveBeenCalled();
+    expect(runner.run).toHaveBeenCalledWith(expect.arrayContaining(['gmail', 'send', '--to=Wife <wife@example.com>']), { account: undefined });
+    expect(result.content.map((c) => c.text).join('\n')).toContain('WITHOUT a confirmation prompt');
+  });
+
+  it('still asks when any one recipient is not on the list', async () => {
+    process.env.MCP_CONFIRM_SKIP_TO = 'wife@example.com';
+    vi.mocked(runner.run).mockResolvedValue('{"id":"sent"}');
+    neverAsk.mockClear();
+    const harness = await setupHandlers(neverAsk);
+    const result = await harness.callTool('gog_gmail_send', { to: 'wife@example.com', bcc: 'coordinator@example.org', subject: 's', body: 'b' });
+    expect(neverAsk).toHaveBeenCalledTimes(1);
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(result.content.map((c) => c.text).join('\n')).not.toContain('WITHOUT a confirmation prompt');
   });
 });
 

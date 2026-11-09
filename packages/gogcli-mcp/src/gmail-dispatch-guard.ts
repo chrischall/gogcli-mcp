@@ -69,6 +69,9 @@ export type GmailDispatchOp =
   // send; draft-create then drafts-send was an unconfirmed two-step around the
   // rail (audit SEC-2).
   | 'gmail.drafts-send'
+  // A review copy of a stored draft sent to someone else (gog_gmail_drafts_copy_to):
+  // a real send, of text the caller did not have to repeat.
+  | 'gmail.drafts-copy-to'
   // A filter with a forward action sends every FUTURE matching message to
   // another address — persistent exfiltration, not a one-off send.
   | 'gmail.filter-forward';
@@ -81,6 +84,7 @@ export const GMAIL_DISPATCH_OPS: readonly GmailDispatchOp[] = [
   'gmail.forward',
   'gmail.autoreply',
   'gmail.drafts-send',
+  'gmail.drafts-copy-to',
   'gmail.filter-forward',
 ];
 
@@ -118,7 +122,82 @@ const STAGING_TWIN: Partial<Record<GmailDispatchOp, string>> = {
 // What to say when there is no staging twin but there IS still a way through.
 const UNSUPPORTED_NOTE: Partial<Record<GmailDispatchOp, string>> = {
   'gmail.drafts-send': 'The draft is still saved: ask the user to review it and send it from Gmail.',
+  'gmail.drafts-copy-to': 'The draft is unchanged: ask the user to forward a copy of it from Gmail.',
 };
+
+// ============================================================================
+// THE RECIPIENT ALLOWLIST (MCP_CONFIRM_SKIP_TO).
+//
+// Some sends are routine and only ever reach the user's own people — a
+// "DRAFT:" review copy to a spouse, a note to self. Confirming each one costs a
+// full preview round trip (and, on a client without elicitation, the whole
+// body passed twice) for no protection: the operator already knows where it is
+// going. MCP_CONFIRM_SKIP_TO names those addresses. A dispatch skips the prompt
+// ONLY when every recipient it carries — To, Cc AND Bcc — is on the list.
+//
+// Deliberately narrow, because every mistake here sends mail unasked:
+//  - Set by whoever runs the server (env), never by a tool argument, so a
+//    model cannot widen it.
+//  - Only the ops in CONFIRM_SKIPPABLE_OPS. A reply resolves its recipients
+//    from someone else's message, a forward re-sends third-party content, a
+//    filter forwards future mail: none of those ever skip.
+//  - Fails closed on anything it cannot read: a recipient field segment with
+//    no address in it (a contact-group name, a malformed entry, the surname
+//    half of an unquoted "Hall, Chris <…>") means the prompt is shown, and so
+//    does a dispatch with no recipients at all.
+//  - Exact addresses, case-insensitive. No domains, no wildcards.
+// ============================================================================
+
+/** The env var naming the addresses whose sends skip confirmation. */
+export const CONFIRM_SKIP_TO_ENV = 'MCP_CONFIRM_SKIP_TO';
+
+/** The dispatches the allowlist may ever skip. */
+export const CONFIRM_SKIPPABLE_OPS: ReadonlySet<GmailDispatchOp> = new Set<GmailDispatchOp>([
+  'gmail.send',
+  'gmail.drafts-send',
+  'gmail.drafts-copy-to',
+]);
+
+/** The allowlisted addresses, lowercased; empty when the env var is unset. */
+export function confirmSkipAllowlist(): Set<string> {
+  return new Set(extractEmails(readEnvVar(CONFIRM_SKIP_TO_ENV)));
+}
+
+/** The recipient fields of a dispatch, as written (comma-separated). */
+export type RecipientFields = { to?: string; cc?: string; bcc?: string };
+
+/**
+ * True when `op` may skip confirmation because every recipient in `fields` is
+ * on {@link CONFIRM_SKIP_TO_ENV}. See the block above for why each rule is there.
+ */
+export function confirmationSkippedFor(op: GmailDispatchOp, fields: RecipientFields): boolean {
+  if (!CONFIRM_SKIPPABLE_OPS.has(op)) return false;
+  const allow = confirmSkipAllowlist();
+  if (allow.size === 0) return false;
+  let count = 0;
+  for (const value of [fields.to, fields.cc, fields.bcc]) {
+    for (const segment of (value ?? '').split(',')) {
+      if (segment.trim() === '') continue;
+      const emails = extractEmails(segment);
+      if (emails.length === 0) return false;
+      for (const email of emails) {
+        if (!allow.has(email)) return false;
+        count += 1;
+      }
+    }
+  }
+  return count > 0;
+}
+
+/** The note a skipped dispatch's result carries, so nobody mistakes it for a confirmed one. */
+export const CONFIRM_SKIPPED_NOTE =
+  `Sent WITHOUT a confirmation prompt: every recipient is on the server's ${CONFIRM_SKIP_TO_ENV} allowlist.`;
+
+/** Append {@link CONFIRM_SKIPPED_NOTE} to a successful dispatch result; an error passes through. */
+export function withConfirmSkippedNote(result: CallToolResult): CallToolResult {
+  if (result.isError) return result;
+  return { ...result, content: [...result.content, { type: 'text', text: CONFIRM_SKIPPED_NOTE }] };
+}
 
 /**
  * Apply the shared stateless confirmation flow with Gmail-specific copy.

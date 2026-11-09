@@ -1,11 +1,15 @@
-import { McpServer, type ServerContext } from '@modelcontextprotocol/server';
+import { McpServer, type CallToolResult, type ServerContext } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { accountParam, runOrDiagnose, registerRunTool, payloadArg, pageTokenParam, pageAliasParam, resolvePageToken, assertNotBoth } from './utils.js';
+import { rawTextResult } from '@chrischall/mcp-utils';
+import { accountParam, runOrDiagnose, registerRunTool, payloadArg, pageTokenParam, pageAliasParam, resolvePageToken, assertNotBoth, diagnose } from './utils.js';
+import { run } from '../runner.js';
+import { normalizeTimestamps } from '../timestamps.js';
+import { decodedMessageView, type ContentFormat, type GmailStoredMessage } from '../gmail-mime.js';
 import { finalizeGmailSearch, fetchGmailPages } from '../gmail-results.js';
 import type { GogArg } from '../runner.js';
 import { attachInlineParam, inlineAttachmentArgs } from '../attachments.js';
 import type { InlineAttachmentInput } from '../attachments.js';
-import { attachmentDetails, attachmentNames, attachmentPreview, bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, confirmTokenParam, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText, senderPreview } from '../gmail-dispatch-guard.js';
+import { attachmentDetails, attachmentNames, attachmentPreview, bodyPreview, CONFIRM_FALLBACK_DESCRIPTION, CONFIRM_SKIP_TO_ENV, confirmationSkippedFor, confirmTokenParam, extractEmails, logGmailDispatch, replyDispatchOp, requireGmailDispatchConfirmation, resultText, senderPreview, withConfirmSkippedNote } from '../gmail-dispatch-guard.js';
 import { pos } from '../argv.js';
 import { gatedElsewhere, hasCommandWord, hasTrueFlag, refusedInRun } from '../dispatch-confirmation.js';
 import { confinePath } from '../file-roots.js';
@@ -387,6 +391,38 @@ export function vetGmailRun(subcommand: string, args: readonly string[]): string
   return undefined;
 }
 
+/**
+ * Run a gog read that returns a stored message, and answer with the DECODED
+ * view of it (gmail-mime's decodedMessageView). `opaqueFields` keeps the
+ * base64url part bodies (and attachment ids) out of redaction — a body that happened to spell a
+ * key shape would otherwise be cut mid-blob and decode to garbage; the decoded
+ * text is redacted instead, as prose. Output gog did not shape as expected is
+ * returned as gog wrote it rather than as an empty view.
+ */
+export async function readDecodedMessage(
+  args: GogArg[],
+  account: string | undefined,
+  format: ContentFormat,
+  pick: (out: unknown) => GmailStoredMessage | undefined,
+  extra: Record<string, unknown> = {},
+  runGog: typeof run = run,
+): Promise<CallToolResult> {
+  let raw: string;
+  try {
+    raw = await runGog(args, { account, opaqueFields: ['data', 'attachmentId'] });
+  } catch (err) {
+    return diagnose(err);
+  }
+  let message: GmailStoredMessage | undefined;
+  try {
+    message = pick(JSON.parse(raw));
+  } catch {
+    message = undefined;
+  }
+  if (!message) return rawTextResult(normalizeTimestamps(raw));
+  return rawTextResult(normalizeTimestamps(JSON.stringify({ ...extra, ...decodedMessageView(message, format) })));
+}
+
 export function registerGmailTools(server: McpServer): void {
   server.registerTool('gog_gmail_search', {
     description: 'Search Gmail threads using Gmail query syntax (e.g. "from:alice subject:invoice is:unread"). The query is passed verbatim to Gmail; a bare name token (from:alison) matches per Gmail\'s own heuristics, a full address (from:alison@example.com) is exact. To match a contact across several addresses, OR them: from:(a@x.com OR b@y.com). '
@@ -429,23 +465,32 @@ export function registerGmailTools(server: McpServer): void {
   });
 
   server.registerTool('gog_gmail_get', {
-    description: 'Get a Gmail message by ID. For a long message, sanitizeContent is the cheapest way to keep it in context: it drops the raw MIME payload and the HTML part, which are usually the bulk of the response.',
+    description: 'Get a Gmail message by ID. By DEFAULT (format "text") the result is the message DECODED: the headers that matter '
+      + '(from, to, cc, bcc, replyTo, subject, date, messageId, inReplyTo, references), threadId, isReply, the plain-text body '
+      + '(an HTML-only message is converted to text; `textSource` says which) and the attachments by name — no base64 to decode. '
+      + '"html" returns the HTML part instead, "both" returns both. "full" is gog\'s complete JSON (the old default: raw MIME '
+      + 'payload, base64 parts), "metadata" is headers only, and "raw" is the RFC822 source as gog returns it. For a long message '
+      + 'with format full, sanitizeContent is the cheapest way to keep it in context.',
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: z.object({
       messageId: z.string().describe('Message ID'),
-      format: z.enum(['full', 'metadata', 'raw']).optional().describe('Message format (default: full)'),
+      format: z.enum(['text', 'html', 'both', 'full', 'metadata', 'raw']).optional().describe(
+        'text (default): decoded plain-text body + key headers. html: decoded HTML part + key headers. both: text and html. '
+        + 'full: gog\'s complete JSON (raw MIME payload, base64 parts). metadata: headers only. raw: the RFC822 source.',
+      ),
       // Requires gog >= 0.37.0. Before that (openclaw/gogcli#992) the JSON
       // carried the headers and body TWICE — once inside `message`, once
       // copied to the top level — so the flag meant to shrink the payload
       // enlarged it. MIN_GOG_VERSION is the guard; there is no runtime check.
-      sanitizeContent: z.boolean().optional().describe('Return agent-oriented sanitized content: HTML stripped, HTTP(S) URLs removed, raw Gmail payloads omitted from the JSON. The largest payload-size reduction available here. Note the URL removal is lossy — omit this when you need to follow a link out of the message.'),
+      sanitizeContent: z.boolean().optional().describe('Return gog\'s agent-oriented sanitized content instead: HTML stripped, HTTP(S) URLs removed, raw Gmail payloads omitted from the JSON. With text/html/both (or no format) this returns gog\'s sanitized full-format JSON unchanged. Note the URL removal is lossy — omit this when you need to follow a link out of the message.'),
       account: accountParam,
     }),
-  }, async ({ messageId, format, sanitizeContent, account }) => {
-    const args: GogArg[] = ['gmail', 'get', pos(messageId)];
-    if (format) args.push(`--format=${format}`);
+  }, async ({ messageId, format = 'text', sanitizeContent, account }) => {
+    const decoded = format === 'text' || format === 'html' || format === 'both';
+    const args: GogArg[] = ['gmail', 'get', pos(messageId), `--format=${decoded ? 'full' : format}`];
     if (sanitizeContent) args.push('--sanitize-content');
-    return runOrDiagnose(args, { account });
+    if (!decoded || sanitizeContent) return runOrDiagnose(args, { account });
+    return readDecodedMessage(args, account, format, (out) => (out as { message?: GmailStoredMessage }).message);
   });
 
   server.registerTool('gog_gmail_send', {
@@ -460,7 +505,8 @@ export function registerGmailTools(server: McpServer): void {
       + 'and byte sizes — check it to confirm the files were embedded. '
       + 'NOT the tool for answering a message: replyToMessageId only files this in the right thread — the '
       + 'subject, recipients and body are entirely yours, and the original is not quoted unless you set '
-      + 'quote. Use gog_gmail_reply / gog_gmail_reply_all instead, which inherit all three.'
+      + 'quote. Use gog_gmail_reply / gog_gmail_reply_all instead, which inherit all three. '
+      + `If the server sets ${CONFIRM_SKIP_TO_ENV} and EVERY To/Cc/Bcc address is on it, no confirmation is asked and the result says so.`
       + CONFIRM_FALLBACK_DESCRIPTION,
     annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: z.object({
@@ -514,7 +560,10 @@ export function registerGmailTools(server: McpServer): void {
     appendSignatureFlags(args, sig);
 
     const recipients = extractEmails(to, cc, bcc);
-    const confirmation = await requireGmailDispatchConfirmation(ctx, 'gmail.send', {
+    // An operator-set allowlist (MCP_CONFIRM_SKIP_TO) skips the prompt only when
+    // EVERY To/Cc/Bcc address is on it; see gmail-dispatch-guard.ts.
+    const skipped = confirmationSkippedFor('gmail.send', { to, cc, bcc });
+    const confirmation = skipped ? undefined : await requireGmailDispatchConfirmation(ctx, 'gmail.send', {
       to, cc, bcc, recipients, recipientCount: recipients.length, subject,
       bodyLength: body.length,
       bodyPreview: bodyPreview(body),
@@ -556,7 +605,7 @@ export function registerGmailTools(server: McpServer): void {
     if (confirmation) return confirmation;
     const result = await runOrDiagnose(args, { account });
     if (!result.isError) logGmailDispatch('gog_gmail_send', recipients, account);
-    return releaseBlobs(result, blobs);
+    return releaseBlobs(skipped ? withConfirmSkippedNote(result) : result, blobs);
   });
 
   // ==========================================================================

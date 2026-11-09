@@ -80,6 +80,7 @@ MCP_CONFIRM_MODE=<mode>         # fleet-wide: ask-user (default) | auto | refuse
 MCP_CONFIRM_ELICITATION=off     # fleet-wide: never prompt; every fallback-capable gate takes the MCP_CONFIRM_MODE path and a gate with no fallback (forwarding filter) is refused (clients whose prompt never shows, e.g. opencode 2.0.x)
 MCP_CONFIRM_TTL_SECONDS=<n>     # fleet-wide: confirmToken lifetime (default 600)
 MCP_CONFIRM_SECRET=<secret>     # fleet-wide: confirmToken HMAC key (default: random per process); stripped from gog's env by the _SECRET rule
+MCP_CONFIRM_SKIP_TO=<csv>       # this repo, Gmail only: exact addresses; a send / drafts_send / drafts_copy_to whose To+Cc+Bcc are ALL listed skips confirmation (CONFIRM_SKIPPABLE_OPS in src/gmail-dispatch-guard.ts; fails closed on unparseable recipients)
 GOG_FILE_ROOTS=<dirs>  # ':'-separated dirs every server-side path param (attach/localPath/file/out/outDir/dir) must resolve inside; default ~/gogcli-mcp-files
 GOG_CLIENT_ID=<id>          # startup auth bootstrap: OAuth client id, imported into gog's keyring
 GOG_CLIENT_SECRET=<secret>  # startup auth bootstrap: OAuth client secret
@@ -124,6 +125,20 @@ A read a sub-package makes through a base helper must take the sub-package's `ru
 or the sub-package's `lib.js` mock misses it and the unit test spawns the real `gog`.
 
 `runner.ts` treats unresolved `.mcpb` placeholders (`${user_config.xxx}`) and empty strings as unset — useful for desktop clients that pass blank user-config fields through literally.
+
+### Decoded message content (`src/gmail-mime.ts`)
+
+`gog_gmail_get` and `gog_gmail_drafts_get` default to `format: "text"`: the MIME tree is walked here
+(gog's own text renderer only runs on its human output) and the result carries the reader headers,
+the decoded plain body (an HTML-only message goes through `htmlToText`), and attachments by name.
+`raw` on drafts_get / `full` on gmail_get is gog's JSON as before. The reads pass
+`opaqueFields: ['data', 'attachmentId']` so a base64url part cannot be cut by redaction mid-blob;
+the DECODED text is then redacted as prose (`decodedMessageView`). The one exception is a
+read-modify-write (`gog_gmail_drafts_update` patch mode, `gog_gmail_drafts_copy_to`): the stored
+text is used unredacted because it is written or sent back, and redacting it would destroy the draft.
+`markdownToHtml` (paragraphs, lists, bold, italic, quotes nested at most `MAX_QUOTE_DEPTH`) builds the
+HTML part a draft update no longer has to hand-write. Every scan in the module is linear; the 200 KB
+timing tests are in `tests/gmail-mime.test.ts`. Keep them that way.
 
 ### Redaction vs. binary payloads
 

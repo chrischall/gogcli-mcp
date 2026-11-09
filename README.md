@@ -181,7 +181,7 @@ student, spreadsheet or messages — rather than an opaque id:
 
 | Service | Tools | Asks when |
 |---|---|---|
-| Gmail | `gog_gmail_send`, `_reply`, `_reply_all`, `_forward`, `_autoreply`, `_drafts_send` | always |
+| Gmail | `gog_gmail_send`, `_reply`, `_reply_all`, `_forward`, `_autoreply`, `_drafts_send`, `_drafts_copy_to` | always, except a `send` / `drafts_send` / `drafts_copy_to` whose recipients are all on `MCP_CONFIRM_SKIP_TO` ([below](#skipping-confirmation-for-your-own-addresses-mcp_confirm_skip_to)) |
 | Chat | `gog_chat_messages_send`, `gog_chat_dm_send` | always |
 | Drive | `gog_drive_share` | always (granting access is the risk; gog sends no share email by default) |
 | Maps | `gog_trip_map` | only with `share_with` and `confirm_share: true` (the trip folder is shared as reader with those emails; never public) |
@@ -253,6 +253,30 @@ sends nothing and returns an error:
 | `MCP_CONFIRM_ELICITATION` | `on` | `off` never sends a confirmation prompt, so every client gets the `MCP_CONFIRM_MODE` path. Set it for a client that declares it can show prompts but never does (the gated call hangs — opencode 2.0.x). A gate with no token fallback (such as a Gmail forwarding filter) is refused instead. Any other value stays `on`, with a stderr warning. |
 | `MCP_CONFIRM_TTL_SECONDS` | `600` | token lifetime |
 | `MCP_CONFIRM_SECRET` | random per process | HMAC key; set it only if tokens must survive a server restart. Used tokens are remembered in memory, per process, so with a fixed secret a token that was already used is accepted again after a restart (or by another instance with the same secret) until it expires. Leave it unset unless you need that. |
+| `MCP_CONFIRM_SKIP_TO` | unset | Gmail only: exact addresses whose sends skip confirmation when EVERY recipient is listed ([above](#skipping-confirmation-for-your-own-addresses-mcp_confirm_skip_to)) |
+
+### Skipping confirmation for your own addresses (`MCP_CONFIRM_SKIP_TO`)
+
+Some sends only ever reach your own people: a "DRAFT:" review copy to your partner, a note to yourself. Set
+`MCP_CONFIRM_SKIP_TO` to a comma-separated list of exact addresses and those sends go out without a prompt:
+
+```sh
+MCP_CONFIRM_SKIP_TO="partner@example.com,me@example.com"
+```
+
+The rules, all of which fail toward asking:
+
+- It applies to `gog_gmail_send`, `gog_gmail_drafts_send` (judged on the stored draft's recipients) and
+  `gog_gmail_drafts_copy_to` only. Replies, reply-all, forwards, auto-replies and forwarding filters always ask:
+  their recipients come from someone else's message, or the mail goes on to third parties.
+- **Every** To, Cc **and** Bcc address must be on the list. One address off it and the prompt is shown as usual.
+- Exact addresses, case-insensitive; display names (`Name <a@b.com>`) are fine. No domains, no wildcards.
+- A recipient entry with no address in it (a contact-group name, or an unquoted `Hall, Chris <…>` that splits on its
+  comma) means the prompt is shown. So does a send with no recipients.
+- It is server configuration, never a tool argument, so the model cannot widen it. An unset, empty or unexpanded
+  (`${user_config.…}`) value skips nothing.
+- A skipped send says so in its result (`Sent WITHOUT a confirmation prompt: …`), and is still written to the
+  `gmail_dispatch` audit line on stderr.
 
 **What this does not do.** With elicitation, the host asks the user and the model never sees the approval. With
 the fallback, the approval is a tool argument, so the check that the user really approved is the model following

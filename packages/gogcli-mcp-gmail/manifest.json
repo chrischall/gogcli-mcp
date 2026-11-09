@@ -245,6 +245,10 @@
       "description": "Send an existing Gmail draft after the user confirms a preview of it; a 404 comes back diagnosed (DRAFT_FORKED, or GOOGLE_404_NOT_THE_DRAFT when the draft is still listed)"
     },
     {
+      "name": "gog_gmail_drafts_copy_to",
+      "description": "Send a review copy of a stored draft (subject + body) to other addresses without changing the draft (confirms first)"
+    },
+    {
       "name": "gog_gmail_drafts_diff",
       "description": "Diff two named drafts: what each body has that the other lost, how their threading differs, and (only on a link back to the original or on agreement over unquoted text, with evidence) whether one replaced the other"
     },

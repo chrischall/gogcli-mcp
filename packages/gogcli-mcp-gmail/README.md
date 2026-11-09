@@ -94,12 +94,13 @@ Plus 8 auth tools and 4 base Gmail tools (search, get, send, run) — 61 in all.
 
 | Tool | Description |
 |------|-------------|
-| `gog_gmail_drafts_list` | List drafts (free `origin` + `rootsOwnThread`; `enrich` adds subject/from/date for one extra call) |
-| `gog_gmail_drafts_get` | Get a draft by ID |
-| `gog_gmail_drafts_create` | Create a new draft |
-| `gog_gmail_drafts_update` | Update a draft — and re-thread it in place with `replyToThreadId`, keeping the same id, with a `threadingVerification` block reporting what gog actually wrote. `forkSiblingDraftId` refuses the write when the new body would drop text the other copy still holds |
+| `gog_gmail_drafts_list` | List drafts (free `origin` + `rootsOwnThread`; `enrich` adds subject/from/date, to/cc/bcc, `hasRecipients` and `isReply` for one extra call) |
+| `gog_gmail_drafts_get` | Get a draft by ID, decoded by default (`format`: `text` / `html` / `both`, or `raw` for gog's base64 MIME JSON) |
+| `gog_gmail_drafts_create` | Create a new draft (`bodyFormat: "markdown"` renders the HTML part from one markdown body) |
+| `gog_gmail_drafts_update` | Update a draft — whole body, or patch the stored text with `replace` (exact, once) / `append` / `prepend`; the HTML part is generated from the text unless you pass one — and re-thread it in place with `replyToThreadId`, keeping the same id, with a `threadingVerification` block reporting what gog actually wrote. `forkSiblingDraftId` refuses the write when the new body would drop text the other copy still holds |
 | `gog_gmail_drafts_delete` | Delete a draft |
 | `gog_gmail_drafts_send` | Send an existing draft (a 404 comes back diagnosed — `DRAFT_FORKED`, or `GOOGLE_404_NOT_THE_DRAFT` when the draft is still listed) |
+| `gog_gmail_drafts_copy_to` | Send a review copy of a stored draft (subject + body, prefixed `DRAFT: `) to other addresses without touching the draft; the prompt shows 300 characters, length and SHA-256, not the whole body. `appendText` and `includeQuotedFrom` add a note and the message being answered |
 | `gog_gmail_drafts_diff` | Diff two named drafts — divergent body lines (with untruncated `onlyInACount`/`onlyInBCount`), threading loss, and a conservative fork verdict (2 gog calls) |
 | `gog_gmail_drafts_reply` | Save a reply as a draft — inherited recipients, subject and quote; never sends |
 | `gog_gmail_drafts_reply_all` | Save a reply-all as a draft; never sends |
