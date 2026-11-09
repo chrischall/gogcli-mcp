@@ -20,6 +20,11 @@ import {
   replyDispatchOp,
   requireGmailDispatchConfirmation,
   resultText,
+  confirmationSkippedFor,
+  confirmSkipAllowlist,
+  withConfirmSkippedNote,
+  CONFIRM_SKIP_TO_ENV,
+  CONFIRM_SKIPPED_NOTE,
 } from '../src/gmail-dispatch-guard.js';
 import type { DispatchTokenFallback, GmailDispatchOp, TokenSubject } from '../src/gmail-dispatch-guard.js';
 
@@ -204,6 +209,8 @@ const EXPECTED_TWIN: Record<GmailDispatchOp, string | null> = {
   // Sending a draft IS the end of the staging path, and a forwarding filter
   // routes future mail: neither has anything to stage instead.
   'gmail.drafts-send': null,
+  // A review copy of a draft is already the staged text going somewhere else.
+  'gmail.drafts-copy-to': null,
   'gmail.filter-forward': null,
 };
 
@@ -567,5 +574,50 @@ describe('senderPreview', () => {
     expect(senderPreview(undefined)).toBe('env@example.com');
     delete process.env.GOG_ACCOUNT;
     expect(senderPreview(undefined)).toBe("the gog account's default address");
+  });
+});
+
+describe('MCP_CONFIRM_SKIP_TO — confirmationSkippedFor', () => {
+  afterEach(() => { delete process.env[CONFIRM_SKIP_TO_ENV]; });
+
+  it('never skips when the variable is unset, empty or an unexpanded placeholder', () => {
+    expect(confirmationSkippedFor('gmail.send', { to: 'a@x.com' })).toBe(false);
+    process.env[CONFIRM_SKIP_TO_ENV] = '';
+    expect(confirmationSkippedFor('gmail.send', { to: 'a@x.com' })).toBe(false);
+    process.env[CONFIRM_SKIP_TO_ENV] = '${user_config.skip}';
+    expect(confirmSkipAllowlist().size).toBe(0);
+  });
+
+  it('skips only when EVERY To, Cc and Bcc address is listed (case-insensitive, display names allowed)', () => {
+    process.env[CONFIRM_SKIP_TO_ENV] = 'wife@example.com,ME@example.com';
+    expect(confirmationSkippedFor('gmail.send', { to: '"Wife" <Wife@Example.com>', cc: 'me@example.com, ', bcc: '' })).toBe(true);
+    expect(confirmationSkippedFor('gmail.drafts-send', { to: 'wife@example.com' })).toBe(true);
+    expect(confirmationSkippedFor('gmail.drafts-copy-to', { to: 'wife@example.com' })).toBe(true);
+    expect(confirmationSkippedFor('gmail.send', { to: 'wife@example.com', cc: 'someone@else.org' })).toBe(false);
+    expect(confirmationSkippedFor('gmail.send', { to: 'wife@example.com', bcc: 'someone@else.org' })).toBe(false);
+  });
+
+  it('fails closed on a segment with no address in it, and on no recipients at all', () => {
+    process.env[CONFIRM_SKIP_TO_ENV] = 'wife@example.com';
+    expect(confirmationSkippedFor('gmail.send', { to: 'Suffron, Wife <wife@example.com>' })).toBe(false);
+    expect(confirmationSkippedFor('gmail.send', { to: 'family-group' })).toBe(false);
+    expect(confirmationSkippedFor('gmail.send', {})).toBe(false);
+    expect(confirmationSkippedFor('gmail.send', { to: ' , ' })).toBe(false);
+  });
+
+  it.each(GMAIL_DISPATCH_OPS.filter((op) => !['gmail.send', 'gmail.drafts-send', 'gmail.drafts-copy-to'].includes(op)))(
+    'never skips %s, whatever the recipients',
+    (op) => {
+      process.env[CONFIRM_SKIP_TO_ENV] = 'wife@example.com';
+      expect(confirmationSkippedFor(op, { to: 'wife@example.com' })).toBe(false);
+    },
+  );
+
+  it('marks a skipped dispatch\'s success, and leaves an error alone', () => {
+    const ok = withConfirmSkippedNote(rawTextResult('{"id":"1"}'));
+    expect(ok.content).toHaveLength(2);
+    expect(ok.content[1]).toEqual({ type: 'text', text: CONFIRM_SKIPPED_NOTE });
+    const failed: CallToolResult = { content: [{ type: 'text', text: 'boom' }], isError: true };
+    expect(withConfirmSkippedNote(failed)).toBe(failed);
   });
 });

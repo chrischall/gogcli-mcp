@@ -1269,7 +1269,7 @@ describe('gog_gmail_drafts_list — tier 1 enrich', () => {
     expect(vi.mocked(lib.run).mock.calls).toHaveLength(1);
     expect(vi.mocked(lib.run).mock.calls[0]![0]).toEqual([
       'gmail', 'messages', 'search', 'in:drafts', '--max=20',
-      '--include-attachments=false', '--use-indexed-attachment-ids=false',
+      '--include-attachments=false', '--use-indexed-attachment-ids=false', '--include-recipients', '--headers=In-Reply-To',
     ]);
     expect(parsed.drafts[0]).toMatchObject({
       id: 'r1', origin: 'api', subject: 'Re: August schedule', from: 'Chris <chris@x.com>', internalDateIso: '2026-08-09T10:00:00-04:00',
@@ -1286,7 +1286,7 @@ describe('gog_gmail_drafts_list — tier 1 enrich', () => {
     await harness.callTool('gog_gmail_drafts_list', { enrich: true, max: 50, all: true, account: 'a@b.com' });
     expect(vi.mocked(lib.run).mock.calls[0]![0]).toEqual([
       'gmail', 'messages', 'search', 'in:drafts', '--max=50', '--all',
-      '--include-attachments=false', '--use-indexed-attachment-ids=false',
+      '--include-attachments=false', '--use-indexed-attachment-ids=false', '--include-recipients', '--headers=In-Reply-To',
     ]);
     expect(vi.mocked(lib.run).mock.calls[0]![1]).toEqual({ account: 'a@b.com' });
   });
@@ -1652,8 +1652,8 @@ describe('gog_gmail_drafts_diff', () => {
 });
 
 describe('gog_gmail_drafts_get', () => {
-  it('calls runOrDiagnose with draftId', async () => {
-    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1' });
+  it('format raw calls runOrDiagnose with draftId (the previous behaviour)', async () => {
+    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', format: 'raw' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'get', pos('d1'), '--use-indexed-attachment-ids=false'],
       { account: undefined },
@@ -1661,7 +1661,7 @@ describe('gog_gmail_drafts_get', () => {
   });
 
   it('ignores a stale download and only reads the draft', async () => {
-    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', download: true });
+    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', format: 'raw', download: true });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'get', pos('d1'), '--use-indexed-attachment-ids=false'],
       { account: undefined },
@@ -1891,7 +1891,7 @@ describe('gmail draft reply threading (native --thread-id)', () => {
       draftId: 'd1', subject: 'S', body: 'B', replyToThreadId: 't1',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--thread-id=t1', '--auto-from-addressed-alias=false'],
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--body-html=<p>B</p>', '--thread-id=t1', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -1914,7 +1914,7 @@ describe('gog_gmail_drafts_update', () => {
   it('forwards an explicitly empty to/cc/bcc so gog clears that field', async () => {
     await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B', to: 'a@b.com', cc: '', bcc: '' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--to=a@b.com', '--cc=', '--bcc=', '--subject=S', '--body=B', '--auto-from-addressed-alias=false'],
+      ['gmail', 'drafts', 'update', pos('d1'), '--to=a@b.com', '--cc=', '--bcc=', '--subject=S', '--body=B', '--body-html=<p>B</p>', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -1922,7 +1922,7 @@ describe('gog_gmail_drafts_update', () => {
   it('passes signatureFile through after confining it', async () => {
     await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B', signatureFile: '/tmp/sig.html' });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--signature-file=/tmp/sig.html', '--auto-from-addressed-alias=false'],
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--body-html=<p>B</p>', '--signature-file=/tmp/sig.html', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -1934,7 +1934,7 @@ describe('gog_gmail_drafts_update', () => {
       body: 'New body',
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--subject=New subject', '--body=New body', '--auto-from-addressed-alias=false'],
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=New subject', '--body=New body', '--body-html=<p>New body</p>', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -1947,7 +1947,7 @@ describe('gog_gmail_drafts_update', () => {
       attach: ['/tmp/x.pdf'],
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--attach=/tmp/x.pdf', '--auto-from-addressed-alias=false'],
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--body-html=<p>B</p>', '--attach=/tmp/x.pdf', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -1957,7 +1957,7 @@ describe('gog_gmail_drafts_update', () => {
       draftId: 'd1', to: 'a@b.com', subject: 'S', body: 'B', omitRecipients: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--auto-from-addressed-alias=false'],
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--body-html=<p>B</p>', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
@@ -1967,7 +1967,7 @@ describe('gog_gmail_drafts_update', () => {
       draftId: 'd1', subject: 'S', body: 'B', clearAttachments: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--auto-from-addressed-alias=false', '--clear-attachments'],
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--body-html=<p>B</p>', '--auto-from-addressed-alias=false', '--clear-attachments'],
       { account: undefined },
     );
   });
@@ -1977,7 +1977,7 @@ describe('gog_gmail_drafts_update', () => {
       draftId: 'd1', subject: 'S', body: 'B', clearReplyContext: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--auto-from-addressed-alias=false', '--clear-reply-context'],
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--body-html=<p>B</p>', '--auto-from-addressed-alias=false', '--clear-reply-context'],
       { account: undefined },
     );
   });
@@ -2000,7 +2000,7 @@ describe('gog_gmail_drafts_update', () => {
       draftId: 'd1', subject: 'S', body: 'B', clearAttachments: true, clearReplyContext: true,
     });
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B',
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--body-html=<p>B</p>',
         '--auto-from-addressed-alias=false', '--clear-attachments', '--clear-reply-context'],
       { account: undefined },
     );
@@ -3198,7 +3198,10 @@ describe('large payloads route to file args', () => {
     expect(args()).toEqual([
       'gmail', 'drafts', 'update', pos('d1'),
       '--subject=S',
-      { kind: 'file', flag: 'body-file', contents: big, ext: undefined }, '--auto-from-addressed-alias=false'
+      { kind: 'file', flag: 'body-file', contents: big, ext: undefined },
+      // The generated HTML part is as large as the body, so it rides as a file too.
+      expect.objectContaining({ kind: 'file', flag: 'body-html-file', ext: 'html' }),
+      '--auto-from-addressed-alias=false',
     ]);
   });
 
@@ -3435,11 +3438,11 @@ describe('gog 0.35.0 — indexed ids are pinned on every listing that emits atta
   });
 
   it('gog_gmail_drafts_get pins the mode', async () => {
-    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1' });
+    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', format: 'raw' });
     expect(args()).toEqual(['gmail', 'drafts', 'get', pos('d1'), '--use-indexed-attachment-ids=false']);
     vi.clearAllMocks();
     vi.mocked(lib.runOrDiagnose).mockResolvedValue(rawTextResult('{}'));
-    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', useIndexedAttachmentIds: true });
+    await harness.callTool('gog_gmail_drafts_get', { draftId: 'd1', format: 'raw', useIndexedAttachmentIds: true });
     expect(args()).toEqual(['gmail', 'drafts', 'get', pos('d1'), '--use-indexed-attachment-ids']);
   });
 
@@ -3471,7 +3474,7 @@ describe('gog 0.35.0 — --auto-from-addressed-alias is pinned on every send-sha
 
   it('gog_gmail_drafts_update pins it', async () => {
     await harness.callTool('gog_gmail_drafts_update', { draftId: 'd1', subject: 'S', body: 'B', autoFromAddressedAlias: true });
-    expect(args()).toEqual(['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--auto-from-addressed-alias']);
+    expect(args()).toEqual(['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--body-html=<p>B</p>', '--auto-from-addressed-alias']);
   });
 });
 
@@ -3650,7 +3653,7 @@ describe('gog_gmail_drafts_update — threading verification', () => {
     expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
       ['gmail', 'drafts', 'update', pos('r4303011157206680397'), '--subject=Re: pickup schedule',
-        '--body=merged text', '--thread-id=19f856becba0661d', '--auto-from-addressed-alias=false'],
+        '--body=merged text', '--body-html=<p>merged text</p>', '--thread-id=19f856becba0661d', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
 
@@ -4020,7 +4023,7 @@ describe('gog_gmail_drafts_update — content-loss check', () => {
     expect(lib.run).not.toHaveBeenCalled();
     expect(lib.runOrDiagnose).toHaveBeenCalledTimes(1);
     expect(lib.runOrDiagnose).toHaveBeenCalledWith(
-      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--auto-from-addressed-alias=false'],
+      ['gmail', 'drafts', 'update', pos('d1'), '--subject=S', '--body=B', '--body-html=<p>B</p>', '--auto-from-addressed-alias=false'],
       { account: undefined },
     );
   });
