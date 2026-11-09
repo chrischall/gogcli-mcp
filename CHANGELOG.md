@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.12.0](https://github.com/chrischall/gogcli-mcp/compare/v4.11.1...v4.12.0) (2026-11-09)
+
+
+### Features
+
+* **gmail:** decoded draft reads, review copies, patch edits and a confirm allowlist ([#478](https://github.com/chrischall/gogcli-mcp/issues/478)) ([2cf4fd1](https://github.com/chrischall/gogcli-mcp/commit/2cf4fd129fe76cabf82a751028c38822e2dec7f9))
+
 ## [4.11.1](https://github.com/chrischall/gogcli-mcp/compare/v4.11.0...v4.11.1) (2026-11-08)
 
 
